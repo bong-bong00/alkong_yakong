@@ -1,39 +1,67 @@
 import 'package:flutter/material.dart';
-// [참조] 상태 관리를 위한 리버팟 라이브러리
+import '../../core/constants/app_colors.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-// [참조] 경로에 맞춰 분리된 홈 화면 가져오기
+import 'package:go_router/go_router.dart';
 import 'features/dashboard/presentation/screens/home_screen.dart';
+import 'features/dashboard/presentation/screens/dashboard_screen.dart';
+import 'features/prescription/presentation/screens/prescription_screen.dart';
+import 'features/dur_analysis/presentation/screens/dur_analysis_screen.dart';
+import 'features/biosignal/presentation/screens/biosignal_screen.dart';
+import 'features/drug_explain/drug_explain_screen.dart';
 
-// ════════════════════════════════════════════════════
-//  [앱시작] ProviderScope로 감싸 리버팟 사용 가능하게 설정
-// ════════════════════════════════════════════════════
-void main() {
-  runApp(
-    const ProviderScope(
-      child: MyApp(),
+final _router = GoRouter(
+  initialLocation: '/',
+  routes: [
+    GoRoute(path: '/', builder: (context, state) => const HomeScreen()),
+    GoRoute(
+      path: '/prescription',
+      builder: (context, state) => const PrescriptionScreen(),
     ),
-  );
+    GoRoute(
+      path: '/dur-analysis',
+      builder: (context, state) => const DurAnalysisScreen(),
+    ),
+    GoRoute(
+      path: '/biosignal',
+      builder: (context, state) => const BiosignalScreen(),
+    ),
+    GoRoute(
+      path: '/dashboard',
+      builder: (context, state) => const DashboardScreen(),
+    ),
+    GoRoute(
+      path: '/drug-explain',
+      builder: (context, state) => const DrugExplainScreen(),
+    ),
+  ],
+);
+
+void main() {
+  runApp(const ProviderScope(child: AlkongYakongApp()));
 }
 
-class MyApp extends StatelessWidget {
-  const MyApp({super.key});
+class AlkongYakongApp extends StatelessWidget {
+  const AlkongYakongApp({super.key});
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      // [앱-제목]
+    return MaterialApp.router(
       title: '알콩약콩',
-      // [앱-디버그배너] 우측 상단 디버그 띠 숨김
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
-        // [앱-메인컬러] 0xFF1D9E75 (민트초록) 기반으로 테마 생성
+        primaryColor: kPrimary,
+        scaffoldBackgroundColor: kBackground,
         colorScheme: ColorScheme.fromSeed(
-          seedColor: const Color(0xFF1D9E75),
+          seedColor: kPrimary,
+          surface: kBackground,
         ),
-        useMaterial3: true,
+        appBarTheme: const AppBarTheme(
+          backgroundColor: kPrimary,
+          foregroundColor: Colors.white,
+          elevation: 0,
+        ),
       ),
-      // [앱-첫화면] 에러 원인 해결: MainScreen -> HomeScreen으로 수정
-      home: const HomeScreen(),
+      routerConfig: _router,
     );
   }
 }
