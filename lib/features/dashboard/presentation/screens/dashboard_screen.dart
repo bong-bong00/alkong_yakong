@@ -15,7 +15,6 @@ class DashboardScreen extends StatefulWidget {
 class _DashboardScreenState extends State<DashboardScreen> {
   final _apiClient = ApiClient();
 
-  bool _isLoading = false;
   int? _submittingScheduleId;
   String? _errorMessage;
   Map<String, dynamic>? _dashboard;
@@ -39,7 +38,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
 
     setState(() {
-      _isLoading = true;
       _errorMessage = null;
     });
 
@@ -61,8 +59,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
     } catch (error) {
       if (!mounted) return;
       setState(() => _errorMessage = '응답 처리 중 오류가 발생했습니다: $error');
-    } finally {
-      if (mounted) setState(() => _isLoading = false);
     }
   }
 
@@ -108,9 +104,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final risk = _asMap(_dashboard?['latest_risk']);
     final prescription = _asMap(_dashboard?['latest_prescription']);
     final event = _asMap(_dashboard?['latest_abnormal_event']);
-    final recentNotifications = _dashboard?['recent_notifications'] is List
-        ? _dashboard!['recent_notifications'] as List
-        : const <dynamic>[];
     final prescriptionMedicines = _stringList(prescription?['medicine_names']);
 
     return Scaffold(

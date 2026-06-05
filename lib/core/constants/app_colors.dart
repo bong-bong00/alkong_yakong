@@ -1,10 +1,22 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 
 const Color kPrimary = Color.fromARGB(255, 44, 180, 137);
 const Color kPrimaryLight = Color(0xFFE8F5EE);
+const Color kPrimaryDark = Color(0xFF167A5B);
 const Color kBackground = Color(0xFFFAF8F5);
 const Color kCard = Color(0xFFFFFFFF);
 const Color kText = Color(0xFF2D2D2D);
 const Color kTextSub = Color(0xFF999999);
-const Color kGuardian = Color(0xFF6E79A8); // 보호자 메인 (차분한 인디고)
-const Color kGuardianLight = Color(0xFFEDEEF6); // 보호자 연한 톤
+const Color kGuardian = Color(0xFF6E79A8);
+const Color kGuardianLight = Color(0xFFEDEEF6);
+const Color kBorder = Color(0xFFE8E5E0);
+const Color kOrange = Color(0xFFF5A623);
+const Color kOrangeLight = Color(0xFFFFF3E0);
+const Color kRed = Color(0xFFE53935);
+const Color kRedLight = Color(0xFFFFEBEE);
+const Color kPink = Color(0xFFF48FB1);
+const Color kPinkLight = Color(0xFFFCE4EC);
+const Color kGreen = Color(0xFF4CAF50);
+const Color kGreenLight = Color(0xFFE8F5E9);
+const Color kBlue = Color(0xFF1565C0);
+const Color kBlueLight = Color(0xFFE3F2FD);
