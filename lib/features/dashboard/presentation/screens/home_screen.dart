@@ -1,10 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/constants/app_colors.dart';
-<<<<<<< Updated upstream
-
-class HomeScreen extends StatefulWidget {
-=======
 import '../../../../core/providers/user_role.dart';
 import '../../../drug_explain/drug_explain_screen.dart';
 import '../../../biosignal/presentation/screens/biosignal_screen.dart';
@@ -15,8 +11,8 @@ import 'guardian_home_screen.dart';
 /// 앱 루트. 역할(환자/보호자)에 따라 다른 쉘을 띄운다.
 /// go_router 의 '/' 가 그대로 이 위젯을 가리키면 됨 → main.dart 라우터 수정 불필요.
 class HomeScreen extends ConsumerWidget {
->>>>>>> Stashed changes
   const HomeScreen({super.key});
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final role = ref.watch(userRoleProvider);
@@ -41,8 +37,6 @@ class PatientShell extends StatefulWidget {
 class _PatientShellState extends State<PatientShell> {
   int _navIndex = 0;
 
-<<<<<<< Updated upstream
-=======
   void _goToTab(int index) => setState(() => _navIndex = index);
 
   @override
@@ -131,7 +125,6 @@ class _HomeTab extends StatefulWidget {
 }
 
 class _HomeTabState extends State<_HomeTab> {
->>>>>>> Stashed changes
   final List<Map<String, dynamic>> _todayMeds = [
     {
       'time': '아침 08:00',
@@ -149,20 +142,6 @@ class _HomeTabState extends State<_HomeTab> {
       'done': false,
     },
   ];
-
-  void _onNavTap(int index) {
-    setState(() => _navIndex = index);
-    switch (index) {
-      case 1:
-        context.push('/drug-explain');
-        break;
-      case 2:
-        context.push('/dashboard');
-        break;
-      case 3:
-        break;
-    }
-  }
 
   void _onTakeMedicine(int index) {
     setState(() {
@@ -238,7 +217,7 @@ class _HomeTabState extends State<_HomeTab> {
         ),
       ),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.fromLTRB(20, 20, 20, 100),
+        padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -257,11 +236,7 @@ class _HomeTabState extends State<_HomeTab> {
             ),
             const SizedBox(height: 20),
 
-<<<<<<< Updated upstream
-            // 폴라 센서 상태
-=======
             // 폴라 센서 상태바 → 누르면 생체신호 탭으로 전환
->>>>>>> Stashed changes
             GestureDetector(
               onTap: widget.onOpenBiosignal,
               child: Container(
@@ -422,215 +397,14 @@ class _HomeTabState extends State<_HomeTab> {
                 ),
               );
             }),
-<<<<<<< Updated upstream
-            const SizedBox(height: 20),
-
-            // 빠른 메뉴
-            Row(
-              children: [
-                Expanded(
-                  child: GestureDetector(
-                    onTap: () => context.push('/drug-explain'),
-                    child: _QuickMenu(
-                      emoji: '🤖',
-                      title: 'AI 약물 설명',
-                      sub: '내 약 쉽게 알아보기',
-                      bgColor: const Color(0xFFE3EEF8),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: GestureDetector(
-                    onTap: () => context.push('/dur-analysis'),
-                    child: _QuickMenu(
-                      emoji: '🛡️',
-                      title: '복약 안전도',
-                      sub: 'LOW',
-                      bgColor: const Color(0xFFE8F5E9),
-                      isTag: true,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                Expanded(
-                  child: GestureDetector(
-                    onTap: () => context.push('/prescription'),
-                    child: _QuickMenu(
-                      emoji: '📋',
-                      title: '처방전 등록',
-                      sub: 'OCR 자동 추출',
-                      bgColor: const Color(0xFFFFF3E0),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: GestureDetector(
-                    onTap: () => context.push('/biosignal'),
-                    child: _QuickMenu(
-                      emoji: '💓',
-                      title: '생체 신호',
-                      sub: '심박수 그래프 확인',
-                      bgColor: const Color(0xFFFFEBEE),
-                    ),
-                  ),
-                ),
-              ],
-            ),
           ],
-        ),
-      ),
-      bottomNavigationBar: Container(
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: const BorderRadius.only(
-            topLeft: Radius.circular(24),
-            topRight: Radius.circular(24),
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.05),
-              blurRadius: 16,
-              offset: const Offset(0, -4),
-            ),
-          ],
-        ),
-        child: SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceAround,
-              children: [
-                _NavItem(
-                  icon: Icons.home_rounded,
-                  label: '홈',
-                  isSelected: _navIndex == 0,
-                  onTap: () => _onNavTap(0),
-                ),
-                _NavItem(
-                  icon: Icons.search_rounded,
-                  label: '약 정보',
-                  isSelected: _navIndex == 1,
-                  onTap: () => _onNavTap(1),
-                ),
-                _NavItem(
-                  icon: Icons.calendar_month_rounded,
-                  label: '기록',
-                  isSelected: _navIndex == 2,
-                  onTap: () => _onNavTap(2),
-                ),
-                _NavItem(
-                  icon: Icons.person_rounded,
-                  label: '내 정보',
-                  isSelected: _navIndex == 3,
-                  onTap: () => _onNavTap(3),
-                ),
-              ],
-            ),
-          ),
         ),
       ),
     );
   }
 }
 
-class _QuickMenu extends StatelessWidget {
-  final String emoji;
-  final String title;
-  final String sub;
-  final Color bgColor;
-  final bool isTag;
-
-  const _QuickMenu({
-    required this.emoji,
-    required this.title,
-    required this.sub,
-    required this.bgColor,
-    this.isTag = false,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: kCard,
-        borderRadius: BorderRadius.circular(18),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.04),
-            blurRadius: 12,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            width: 40,
-            height: 40,
-            decoration: BoxDecoration(
-              color: bgColor,
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Center(
-              child: Text(emoji, style: const TextStyle(fontSize: 20)),
-            ),
-          ),
-          const SizedBox(height: 10),
-          Text(
-            title,
-            style: const TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w700,
-              color: kText,
-            ),
-          ),
-          const SizedBox(height: 2),
-          isTag
-              ? Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 2,
-                  ),
-                  decoration: BoxDecoration(
-                    color: bgColor,
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Text(
-                    sub,
-                    style: const TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w700,
-                      color: Color(0xFF4CAF50),
-                    ),
-                  ),
-                )
-              : Text(
-                  sub,
-                  style: TextStyle(fontSize: 11, color: Colors.grey[500]),
-                ),
-        ],
-      ),
-=======
-          ],
-        ),
-      ),
->>>>>>> Stashed changes
-    );
-  }
-}
-
-<<<<<<< Updated upstream
-=======
 /// 하단 탭 아이템 (선택 시 라벨이 펼쳐지는 pill 스타일).
->>>>>>> Stashed changes
 class _NavItem extends StatelessWidget {
   final IconData icon;
   final String label;
