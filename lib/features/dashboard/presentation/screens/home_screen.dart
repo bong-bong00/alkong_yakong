@@ -1,16 +1,137 @@
 import 'package:flutter/material.dart';
-import 'package:go_router/go_router.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/constants/app_colors.dart';
+<<<<<<< Updated upstream
 
 class HomeScreen extends StatefulWidget {
+=======
+import '../../../../core/providers/user_role.dart';
+import '../../../drug_explain/drug_explain_screen.dart';
+import '../../../biosignal/presentation/screens/biosignal_screen.dart';
+import '../../../profile/presentation/screens/mypage_screen.dart';
+import 'dashboard_screen.dart';
+import 'guardian_home_screen.dart';
+
+/// 앱 루트. 역할(환자/보호자)에 따라 다른 쉘을 띄운다.
+/// go_router 의 '/' 가 그대로 이 위젯을 가리키면 됨 → main.dart 라우터 수정 불필요.
+class HomeScreen extends ConsumerWidget {
+>>>>>>> Stashed changes
   const HomeScreen({super.key});
   @override
-  State<HomeScreen> createState() => _HomeScreenState();
+  Widget build(BuildContext context, WidgetRef ref) {
+    final role = ref.watch(userRoleProvider);
+    switch (role) {
+      case UserRole.patient:
+        return const PatientShell();
+      case UserRole.guardian:
+        return const GuardianShell();
+    }
+  }
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+/// 환자용 5탭 쉘: 홈 / 약정보 / 생체신호 / 기록 / 내정보
+/// 탭 전환은 IndexedStack 인덱스만 바꾼다(push 안 함 → 하단바 항상 유지).
+class PatientShell extends StatefulWidget {
+  const PatientShell({super.key});
+
+  @override
+  State<PatientShell> createState() => _PatientShellState();
+}
+
+class _PatientShellState extends State<PatientShell> {
   int _navIndex = 0;
 
+<<<<<<< Updated upstream
+=======
+  void _goToTab(int index) => setState(() => _navIndex = index);
+
+  @override
+  Widget build(BuildContext context) {
+    final pages = <Widget>[
+      _HomeTab(onOpenBiosignal: () => _goToTab(2)),
+      DrugExplainScreen(),
+      const BiosignalScreen(),
+      const DashboardScreen(),
+      const MyPageScreen(),
+    ];
+
+    return Scaffold(
+      backgroundColor: kBackground,
+      body: IndexedStack(index: _navIndex, children: pages),
+      bottomNavigationBar: Container(
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: const BorderRadius.only(
+            topLeft: Radius.circular(24),
+            topRight: Radius.circular(24),
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.05),
+              blurRadius: 16,
+              offset: const Offset(0, -4),
+            ),
+          ],
+        ),
+        child: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceAround,
+              children: [
+                _NavItem(
+                  icon: Icons.home_rounded,
+                  label: '홈',
+                  isSelected: _navIndex == 0,
+                  onTap: () => _goToTab(0),
+                ),
+                _NavItem(
+                  icon: Icons.search_rounded,
+                  label: '약 정보',
+                  isSelected: _navIndex == 1,
+                  onTap: () => _goToTab(1),
+                ),
+                _NavItem(
+                  icon: Icons.favorite_rounded,
+                  label: '생체신호',
+                  isSelected: _navIndex == 2,
+                  onTap: () => _goToTab(2),
+                ),
+                _NavItem(
+                  icon: Icons.calendar_month_rounded,
+                  label: '기록',
+                  isSelected: _navIndex == 3,
+                  onTap: () => _goToTab(3),
+                ),
+                _NavItem(
+                  icon: Icons.person_rounded,
+                  label: '내 정보',
+                  isSelected: _navIndex == 4,
+                  onTap: () => _goToTab(4),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// 홈 탭 본문: 인사 + 폴라 센서 상태바 + 오늘의 복약 + '약 먹었어요' 버튼.
+/// (빠른 메뉴 2x2 그리드는 제거 — 기능은 약정보/생체신호 탭으로 이동)
+class _HomeTab extends StatefulWidget {
+  /// 폴라 센서 상태바를 누르면 생체신호 탭으로 전환하기 위한 콜백.
+  final VoidCallback onOpenBiosignal;
+
+  const _HomeTab({required this.onOpenBiosignal});
+
+  @override
+  State<_HomeTab> createState() => _HomeTabState();
+}
+
+class _HomeTabState extends State<_HomeTab> {
+>>>>>>> Stashed changes
   final List<Map<String, dynamic>> _todayMeds = [
     {
       'time': '아침 08:00',
@@ -136,9 +257,13 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
             const SizedBox(height: 20),
 
+<<<<<<< Updated upstream
             // 폴라 센서 상태
+=======
+            // 폴라 센서 상태바 → 누르면 생체신호 탭으로 전환
+>>>>>>> Stashed changes
             GestureDetector(
-              onTap: () => context.push('/biosignal'),
+              onTap: widget.onOpenBiosignal,
               child: Container(
                 width: double.infinity,
                 padding: const EdgeInsets.symmetric(
@@ -297,6 +422,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
               );
             }),
+<<<<<<< Updated upstream
             const SizedBox(height: 20),
 
             // 빠른 메뉴
@@ -492,10 +618,19 @@ class _QuickMenu extends StatelessWidget {
                 ),
         ],
       ),
+=======
+          ],
+        ),
+      ),
+>>>>>>> Stashed changes
     );
   }
 }
 
+<<<<<<< Updated upstream
+=======
+/// 하단 탭 아이템 (선택 시 라벨이 펼쳐지는 pill 스타일).
+>>>>>>> Stashed changes
 class _NavItem extends StatelessWidget {
   final IconData icon;
   final String label;
@@ -516,7 +651,7 @@ class _NavItem extends StatelessWidget {
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
         padding: EdgeInsets.symmetric(
-          horizontal: isSelected ? 16 : 12,
+          horizontal: isSelected ? 12 : 10,
           vertical: 8,
         ),
         decoration: BoxDecoration(
@@ -533,7 +668,7 @@ class _NavItem extends StatelessWidget {
                 label,
                 style: const TextStyle(
                   color: kPrimary,
-                  fontSize: 13,
+                  fontSize: 12,
                   fontWeight: FontWeight.w700,
                 ),
               ),
