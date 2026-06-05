@@ -1,309 +1,244 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import '../../../../core/constants/app_colors.dart';
 
-// ════════════════════════════════════════════════════
-//  [환자홈] 박스 4개 세로 배치 화면
-// ════════════════════════════════════════════════════
 class PatientHomeScreen extends StatelessWidget {
   const PatientHomeScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      // [환자홈-여백] 화면 가장자리 여백. 순서: 좌, 상, 우, 하
-      padding: const EdgeInsets.fromLTRB(16, 20, 16, 20),
+    return SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(20, 20, 20, 100),
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // [박스1-복약스케줄]
-          const Expanded(
-            flex: 5,
-            child: MedicationScheduleCard(),
-          ),
-          // [박스간격-1]
-          const SizedBox(height: 16),
+          // [인사말]
+          const Text('안녕하세요 👋', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: kText)),
+          const SizedBox(height: 2),
+          Text('오늘도 건강한 하루 보내세요!', style: TextStyle(fontSize: 14, color: Colors.grey[500])),
+          const SizedBox(height: 20),
 
-          // [박스2-상호작용가이드]
-          Expanded(
-            flex: 2,
-            child: Row(
-              children: const [
-                Expanded(child: InteractionCard()),
-                // [상호작용가이드-사이간격]
-                SizedBox(width: 16),
-                Expanded(child: GuideCard()),
+          // [처방전 등록 배너]
+          GestureDetector(
+            onTap: () => context.push('/prescription'),
+            child: Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(18),
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(colors: [Color(0xFF1D9E75), Color(0xFF25B88A)]),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    width: 48, height: 48,
+                    decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.25), borderRadius: BorderRadius.circular(14)),
+                    child: const Center(child: Text('📋', style: TextStyle(fontSize: 24))),
+                  ),
+                  const SizedBox(width: 14),
+                  const Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('처방전 등록하기', style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w700)),
+                        SizedBox(height: 2),
+                        Text('처방전을 촬영하면 약 정보가 자동 등록돼요', style: TextStyle(color: Colors.white70, fontSize: 12)),
+                      ],
+                    ),
+                  ),
+                  const Icon(Icons.arrow_forward_ios_rounded, color: Colors.white54, size: 16),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 20),
+
+          // [복약 스케줄]
+          _SectionTitle(emoji: '💊', title: '오늘의 복약'),
+          const SizedBox(height: 10),
+          Container(
+            decoration: BoxDecoration(color: kCard, borderRadius: BorderRadius.circular(20), boxShadow: [_softShadow]),
+            child: Column(
+              children: [
+                _MedTile(time: '아침 8:00', pills: '암로디핀 5mg, 아스피린 100mg', done: true),
+                const Divider(height: 1, indent: 56),
+                _MedTile(time: '점심 12:00', pills: '메트포르민 500mg', done: true),
+                const Divider(height: 1, indent: 56),
+                _MedTile(time: '저녁 6:00', pills: '메트포르민 500mg, 암로디핀 5mg', done: false),
               ],
             ),
           ),
-          // [박스간격-2]
-          const SizedBox(height: 16),
+          const SizedBox(height: 20),
 
-          // [박스3-지도]
-          const Expanded(
-            flex: 3,
-            child: MapCard(),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-// [복약스케줄카드] 오늘 먹을 약 목록
-class MedicationScheduleCard extends StatelessWidget {
-  const MedicationScheduleCard({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      // [복약카드-내부여백]
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        // [복약카드-모서리]
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            // [수정] withOpacity 대신 withValues 사용
-            color: Colors.black.withValues(alpha: 0.07),
-            blurRadius: 10,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        // [복약카드-항목배치]
-        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-        children: [
+          // [복약 안전도 + 가이드]
           Row(
-            children: const [
-              Icon(Icons.medication, color: kPrimary, size: 24),
-              SizedBox(width: 8),
-              Text(
-                '오늘의 복약 스케줄',
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                  color: Color(0xFF2D3748),
+            children: [
+              Expanded(
+                child: GestureDetector(
+                  onTap: () => context.push('/dur-analysis'),
+                  child: _MiniCard(
+                    emoji: '🛡️',
+                    title: '복약 안전도',
+                    value: 'LOW',
+                    valueColor: kGreen,
+                    bgColor: kGreenLight,
+                  ),
                 ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: _MiniCard(emoji: '📖', title: '앱 가이드', value: '보기', valueColor: kPrimary, bgColor: kPrimaryLight),
               ),
             ],
           ),
-          const Divider(height: 1),
-          const MedItem(time: '오전 8:00', pills: '혈압약, 아스피린', done: true),
-          const Divider(height: 1),
-          const MedItem(time: '오후 12:00', pills: '소화제', done: false),
-          const Divider(height: 1),
-          const MedItem(time: '오후 8:00', pills: '혈압약, 비타민D', done: false),
+          const SizedBox(height: 20),
+
+          // [생체 신호]
+          _SectionTitle(emoji: '❤️', title: '생체 신호'),
+          const SizedBox(height: 10),
+          GestureDetector(
+            onTap: () => context.push('/biosignal'),
+            child: Container(
+              padding: const EdgeInsets.all(18),
+              decoration: BoxDecoration(color: kCard, borderRadius: BorderRadius.circular(20), boxShadow: [_softShadow]),
+              child: Row(
+                children: [
+                  Container(
+                    width: 48, height: 48,
+                    decoration: BoxDecoration(color: kRedLight, borderRadius: BorderRadius.circular(14)),
+                    child: const Center(child: Text('💓', style: TextStyle(fontSize: 22))),
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text('폴라 베리티 센스', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: kText)),
+                        const SizedBox(height: 2),
+                        Text('탭하여 센서를 연결하세요', style: TextStyle(fontSize: 12, color: Colors.grey[500])),
+                      ],
+                    ),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    decoration: BoxDecoration(color: Colors.grey[100], borderRadius: BorderRadius.circular(20)),
+                    child: Text('연결 대기', style: TextStyle(fontSize: 11, color: Colors.grey[500], fontWeight: FontWeight.w600)),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 20),
+
+          // [주변 약국]
+          _SectionTitle(emoji: '🏥', title: '주변 약국'),
+          const SizedBox(height: 10),
+          Container(
+            width: double.infinity,
+            height: 130,
+            decoration: BoxDecoration(
+              color: const Color(0xFFEEF2F6),
+              borderRadius: BorderRadius.circular(20),
+              boxShadow: [_softShadow],
+            ),
+            child: Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.map_outlined, size: 36, color: Colors.grey[400]),
+                  const SizedBox(height: 6),
+                  Text('지도 연동 예정', style: TextStyle(fontSize: 13, color: Colors.grey[400])),
+                ],
+              ),
+            ),
+          ),
         ],
       ),
     );
   }
 }
 
-// [복약항목] 복약 스케줄 카드 안의 약 한 줄
-class MedItem extends StatelessWidget {
-  final String time;
-  final String pills;
-  final bool done;
+// ════════════════════════════════════════════════════
+//  공통 위젯들
+// ════════════════════════════════════════════════════
 
-  const MedItem({super.key, required this.time, required this.pills, required this.done});
+final _softShadow = BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 12, offset: const Offset(0, 4));
+
+class _SectionTitle extends StatelessWidget {
+  final String emoji; final String title;
+  const _SectionTitle({required this.emoji, required this.title});
+  @override
+  Widget build(BuildContext context) {
+    return Row(children: [
+      Text(emoji, style: const TextStyle(fontSize: 18)),
+      const SizedBox(width: 6),
+      Text(title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: kText)),
+    ]);
+  }
+}
+
+class _MedTile extends StatelessWidget {
+  final String time; final String pills; final bool done;
+  const _MedTile({required this.time, required this.pills, required this.done});
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      children: [
-        // [복약항목-체크아이콘]
-        Icon(
-          done ? Icons.check_circle : Icons.radio_button_unchecked,
-          color: done ? kPrimary : Colors.grey[400],
-          size: 28,
-        ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                time,
-                style: TextStyle(fontSize: 13, color: Colors.grey[600]),
-              ),
-              const SizedBox(height: 2),
-              Text(
-                pills,
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                  color: done ? Colors.grey : const Color(0xFF2D3748),
-                  decoration: done ? TextDecoration.lineThrough : null,
-                ),
-              ),
-            ],
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      child: Row(
+        children: [
+          Container(
+            width: 36, height: 36,
+            decoration: BoxDecoration(
+              color: done ? kPrimaryLight : kPinkLight,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Icon(done ? Icons.check_rounded : Icons.access_time_rounded, color: done ? kPrimary : kPink, size: 20),
           ),
-        ),
-        // [복약항목-완료뱃지]
-        if (done)
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(time, style: TextStyle(fontSize: 12, color: Colors.grey[500])),
+                const SizedBox(height: 2),
+                Text(pills, style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: done ? Colors.grey : kText)),
+              ],
+            ),
+          ),
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-            decoration: BoxDecoration(
-              color: kPrimaryLight,
-              borderRadius: BorderRadius.circular(20),
-            ),
-            child: const Text(
-              '완료',
-              style: TextStyle(
-                color: kPrimary,
-                fontSize: 12,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
+            decoration: BoxDecoration(color: done ? kPrimaryLight : kPinkLight, borderRadius: BorderRadius.circular(20)),
+            child: Text(done ? '완료' : '미복약', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: done ? kPrimary : kPink)),
           ),
-      ],
+        ],
+      ),
     );
   }
 }
 
-// [상호작용카드]
-class InteractionCard extends StatelessWidget {
-  const InteractionCard({super.key});
+class _MiniCard extends StatelessWidget {
+  final String emoji; final String title; final String value; final Color valueColor; final Color bgColor;
+  const _MiniCard({required this.emoji, required this.title, required this.value, required this.valueColor, required this.bgColor});
+
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.07),
-            blurRadius: 10,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(color: kCard, borderRadius: BorderRadius.circular(20), boxShadow: [_softShadow]),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.warning_amber_rounded, color: Colors.orange[600], size: 22),
+          Text(emoji, style: const TextStyle(fontSize: 22)),
+          const SizedBox(height: 8),
+          Text(title, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: kText)),
           const SizedBox(height: 6),
-          const Text(
-            '상호작용 확인',
-            style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Color(0xFF2D3748)),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            '주의 1건',
-            style: TextStyle(fontSize: 12, color: Colors.orange[700], fontWeight: FontWeight.w600),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+            decoration: BoxDecoration(color: bgColor, borderRadius: BorderRadius.circular(10)),
+            child: Text(value, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: valueColor)),
           ),
         ],
-      ),
-    );
-  }
-}
-
-// [가이드카드]
-class GuideCard extends StatelessWidget {
-  const GuideCard({super.key});
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: kPrimaryLight,
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.05),
-            blurRadius: 10,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: const [
-          Icon(Icons.help_outline, color: kPrimary, size: 22),
-          SizedBox(height: 6),
-          Text(
-            '앱 사용 가이드',
-            style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Color(0xFF2D3748)),
-          ),
-          SizedBox(height: 4),
-          Text(
-            '처음이세요?',
-            style: TextStyle(fontSize: 12, color: kPrimary, fontWeight: FontWeight.w600),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-// [지도카드]
-class MapCard extends StatelessWidget {
-  const MapCard({super.key});
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.07),
-            blurRadius: 10,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(20),
-        child: Stack(
-          children: [
-            Container(
-              color: const Color(0xFFE8EDF2),
-              child: const Center(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(Icons.map_outlined, size: 48, color: Colors.grey),
-                    SizedBox(height: 8),
-                    Text(
-                      '주변 약국 지도',
-                      style: TextStyle(color: Colors.grey, fontSize: 14, fontWeight: FontWeight.w500),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            Positioned(
-              top: 12,
-              right: 12,
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                decoration: BoxDecoration(
-                  color: kPrimary,
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: const Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(Icons.local_pharmacy, color: Colors.white, size: 14),
-                    SizedBox(width: 4),
-                    Text(
-                      '근처 약국',
-                      style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ],
-        ),
       ),
     );
   }

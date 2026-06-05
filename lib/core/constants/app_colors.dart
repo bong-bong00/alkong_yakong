@@ -1,8 +1,20 @@
 import 'package:flutter/material.dart';
 
-// [색상-메인] 앱 대표 민트 초록색
 const Color kPrimary = Color(0xFF1D9E75);
-// [색상-연한민트] 가이드 카드 배경색
-const Color kPrimaryLight = Color(0xFFE8F7F2);
-// [색상-배경] 전체 화면 배경 회색
-const Color kBackground = Color(0xFFF5F7FA);
+const Color kPrimaryLight = Color(0xFFE8F5EE);
+const Color kPrimaryDark = Color(0xFF167A5B);
+const Color kBackground = Color(0xFFFAF8F5);
+const Color kCard = Color(0xFFFFFFFF);
+const Color kText = Color(0xFF2D2D2D);
+const Color kTextSub = Color(0xFF999999);
+const Color kBorder = Color(0xFFE8E5E0);
+const Color kOrange = Color(0xFFF5A623);
+const Color kOrangeLight = Color(0xFFFFF3E0);
+const Color kRed = Color(0xFFE53935);
+const Color kRedLight = Color(0xFFFFEBEE);
+const Color kPink = Color(0xFFF48FB1);
+const Color kPinkLight = Color(0xFFFCE4EC);
+const Color kGreen = Color(0xFF4CAF50);
+const Color kGreenLight = Color(0xFFE8F5E9);
+const Color kBlue = Color(0xFF1565C0);
+const Color kBlueLight = Color(0xFFE3F2FD);
