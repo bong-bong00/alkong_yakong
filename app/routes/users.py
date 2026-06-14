@@ -1,36 +1,53 @@
-from fastapi import APIRouter
+import uuid
+
+from fastapi import APIRouter, HTTPException
+
 from app.database import get_connection
 from app.models.schemas import UserCreate
 
-router = APIRouter(prefix="/users", tags=["Users"])
 
-@router.post("/")
+router = APIRouter(prefix="/api/v1/users", tags=["Users"])
+
+
+@router.post("")
 def create_user(user: UserCreate):
     conn = get_connection()
-    cursor = conn.cursor()
+    try:
+        user_id = str(uuid.uuid4())
+        conn.execute(
+            """
+            INSERT INTO users (id, name, birth_date, gender, phone, role)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (user_id, user.name, user.birth_date, user.gender, user.phone, user.role),
+        )
+        conn.commit()
+        return {"id": user_id, **user.model_dump()}
+    finally:
+        conn.close()
 
-    cursor.execute("""
-        INSERT INTO users (name, birth_date, gender, phone)
-        VALUES (?, ?, ?, ?)
-    """, (user.name, user.birth_date, user.gender, user.phone))
 
-    conn.commit()
-    user_id = cursor.lastrowid
-    conn.close()
-
-    return {
-        "message": "사용자 등록 완료",
-        "user_id": user_id,
-        "name": user.name
-    }
-
-@router.get("/")
+@router.get("")
 def get_users():
     conn = get_connection()
-    cursor = conn.cursor()
+    try:
+        return [
+            dict(row)
+            for row in conn.execute(
+                "SELECT * FROM users ORDER BY created_at DESC"
+            ).fetchall()
+        ]
+    finally:
+        conn.close()
 
-    cursor.execute("SELECT * FROM users ORDER BY id DESC")
-    rows = cursor.fetchall()
-    conn.close()
 
-    return [dict(row) for row in rows]
+@router.get("/{user_id}")
+def get_user(user_id: str):
+    conn = get_connection()
+    try:
+        row = conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="사용자가 없습니다.")
+        return dict(row)
+    finally:
+        conn.close()

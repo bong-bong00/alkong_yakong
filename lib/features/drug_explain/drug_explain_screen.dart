@@ -1,257 +1,339 @@
 import 'package:flutter/material.dart';
-import '../../../../core/constants/app_colors.dart';
 
-class DrugExplainScreen extends StatelessWidget {
+import '../../core/constants/app_colors.dart';
+import '../../core/network/api_client.dart';
+import '../../core/session/mvp_session.dart';
+
+class DrugExplainScreen extends StatefulWidget {
   const DrugExplainScreen({super.key});
 
   @override
+  State<DrugExplainScreen> createState() => _DrugExplainScreenState();
+}
+
+class _DrugExplainScreenState extends State<DrugExplainScreen> {
+  final _apiClient = ApiClient();
+  late final TextEditingController _medicineCodeController;
+
+  bool _isLoading = false;
+  String? _errorMessage;
+  Map<String, dynamic>? _medicine;
+  Map<String, dynamic>? _explanation;
+
+  @override
+  void initState() {
+    super.initState();
+    _medicineCodeController = TextEditingController(
+      text: MvpSession.medicineCode,
+    );
+  }
+
+  @override
+  void dispose() {
+    _medicineCodeController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadExplanation() async {
+    var medicineCode = _medicineCodeController.text.trim();
+    if (medicineCode.isEmpty && MvpSession.medicineCode.isNotEmpty) {
+      medicineCode = MvpSession.medicineCode;
+      _medicineCodeController.text = medicineCode;
+    }
+    if (medicineCode.isEmpty) {
+      setState(() => _errorMessage = 'medicine_code를 입력해주세요.');
+      return;
+    }
+
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+      _medicine = null;
+      _explanation = null;
+    });
+
+    try {
+      final response = await _apiClient.get(
+        '/api/v1/drug-explain/${Uri.encodeComponent(medicineCode)}',
+      );
+      final data = Map<String, dynamic>.from(response as Map);
+      if (!mounted) return;
+      setState(() {
+        _medicine = _asMap(data['medicine']);
+        _explanation = _asMap(data['explanation']);
+      });
+      MvpSession.medicineCode = medicineCode;
+    } on ApiException catch (error) {
+      if (!mounted) return;
+      setState(() => _errorMessage = _apiError(error));
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _errorMessage = '응답 처리 중 오류가 발생했습니다: $error');
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final medicineCode = _text(
+      _medicine?['medicine_code'],
+      fallback: _medicineCodeController.text,
+    );
+
     return Scaffold(
       backgroundColor: kBackground,
-      appBar: AppBar(
-        title: const Text('AI 약물 설명'),
-        backgroundColor: kPrimary,
-        shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.only(
-            bottomLeft: Radius.circular(20),
-            bottomRight: Radius.circular(20),
-          ),
-        ),
-      ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: const Color(0xFFE3EEF8),
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: const Color(0xFFB8CCE0)),
+      appBar: AppBar(title: const Text('AI 약물 설명'), backgroundColor: kPrimary),
+      body: SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const _FeatureBanner(
+                icon: Icons.psychology_alt_outlined,
+                text: '처방전 등록 결과의 medicine_code로 백엔드 Mock 설명을 조회합니다.',
               ),
-              child: Row(
-                children: [
-                  const Text('🤖', style: TextStyle(fontSize: 22)),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Text(
-                      '식약처 공식 데이터를 기반으로 내 증상에 맞춘 쉬운 설명을 제공해요',
-                      style: TextStyle(fontSize: 12, color: Colors.grey[700]),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 20),
-            const Text(
-              '내 약 목록',
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w700,
-                color: kText,
-              ),
-            ),
-            const SizedBox(height: 12),
-            const _DrugCard(
-              name: '암로디핀 5mg',
-              category: '혈압약',
-              simpleExplain: '혈관을 넓혀서 혈압을 낮추는 약이에요.',
-              howToTake: '1일 1회, 아침에 드세요.',
-              warnings: ['자몽주스와 함께 드시지 마세요.', '어지러울 수 있으니 갑자기 일어나지 마세요.'],
-              myCondition: '고혈압에 직접 효과가 있는 약이에요.',
-            ),
-            const SizedBox(height: 12),
-            const _DrugCard(
-              name: '메트포르민 500mg',
-              category: '당뇨약',
-              simpleExplain: '혈당을 낮추는 약이에요. 간에서 포도당이 만들어지는 것을 줄여줘요.',
-              howToTake: '1일 2회, 아침·저녁 식사와 함께 드세요.',
-              warnings: ['술을 많이 드시면 안 돼요.', '설사가 날 수 있어요.'],
-              myCondition: '당뇨병 관리에 핵심적인 약이에요.',
-            ),
-            const SizedBox(height: 12),
-            const _DrugCard(
-              name: '아스피린 100mg',
-              category: '혈전 예방',
-              simpleExplain: '피가 굳는 것을 막아서 혈관이 막히지 않게 해주는 약이에요.',
-              howToTake: '1일 1회, 아침 식후에 드세요.',
-              warnings: ['위장에 부담이 될 수 있어요.', '출혈이 잘 멈추지 않을 수 있어요.'],
-              myCondition: '혈전 예방을 위해 복용하는 약이에요.',
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _DrugCard extends StatefulWidget {
-  final String name;
-  final String category;
-  final String simpleExplain;
-  final String howToTake;
-  final List<String> warnings;
-  final String myCondition;
-
-  const _DrugCard({
-    required this.name,
-    required this.category,
-    required this.simpleExplain,
-    required this.howToTake,
-    required this.warnings,
-    required this.myCondition,
-  });
-
-  @override
-  State<_DrugCard> createState() => _DrugCardState();
-}
-
-class _DrugCardState extends State<_DrugCard> {
-  bool _expanded = false;
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: () => setState(() => _expanded = !_expanded),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        width: double.infinity,
-        padding: const EdgeInsets.all(18),
-        decoration: BoxDecoration(
-          color: kCard,
-          borderRadius: BorderRadius.circular(18),
-          border: _expanded ? Border.all(color: kPrimary, width: 1.5) : null,
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.04),
-              blurRadius: 12,
-              offset: const Offset(0, 4),
-            ),
-          ],
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Container(
-                  width: 40,
-                  height: 40,
-                  decoration: BoxDecoration(
-                    color: kPrimaryLight,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: const Center(
-                    child: Text('💊', style: TextStyle(fontSize: 18)),
-                  ),
+              const SizedBox(height: 18),
+              TextField(
+                controller: _medicineCodeController,
+                decoration: const InputDecoration(
+                  labelText: 'medicine_code',
+                  hintText: '예: MOCK-XXXXXXXXXX',
+                  border: OutlineInputBorder(),
                 ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        widget.name,
-                        style: const TextStyle(
-                          fontSize: 15,
-                          fontWeight: FontWeight.w700,
-                          color: kText,
-                        ),
-                      ),
-                      Text(
-                        widget.category,
-                        style: TextStyle(fontSize: 12, color: Colors.grey[500]),
-                      ),
-                    ],
-                  ),
+              ),
+              const SizedBox(height: 12),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton.icon(
+                  onPressed: _isLoading ? null : _loadExplanation,
+                  icon: _isLoading
+                      ? const _ButtonProgress()
+                      : const Icon(Icons.auto_awesome),
+                  label: Text(_isLoading ? '조회 중...' : 'AI 설명 조회'),
                 ),
-                Icon(
-                  _expanded
-                      ? Icons.keyboard_arrow_up
-                      : Icons.keyboard_arrow_down,
-                  color: kTextSub,
+              ),
+              if (_errorMessage != null) ...[
+                const SizedBox(height: 18),
+                _MessageCard(
+                  title: '조회 실패',
+                  message: _errorMessage!,
+                  color: Colors.red,
                 ),
               ],
-            ),
-            const SizedBox(height: 10),
-            Text(
-              widget.simpleExplain,
-              style: const TextStyle(fontSize: 14, color: kText, height: 1.5),
-            ),
-            if (_expanded) ...[
-              const SizedBox(height: 14),
-              const Divider(height: 1),
-              const SizedBox(height: 14),
-              _Section(emoji: '⏰', title: '복용법', content: widget.howToTake),
-              const SizedBox(height: 12),
-              _Section(
-                emoji: '⚠️',
-                title: '주의사항',
-                content: widget.warnings.map((w) => '• $w').join('\n'),
-              ),
-              const SizedBox(height: 12),
-              _Section(
-                emoji: '🩺',
-                title: '내 증상과의 관계',
-                content: widget.myCondition,
-              ),
-              const SizedBox(height: 10),
-              Text(
-                '출처: 식약처 의약품개요정보(e약은요)',
-                style: TextStyle(fontSize: 10, color: Colors.grey[400]),
-              ),
+              if (_explanation != null) ...[
+                const SizedBox(height: 18),
+                _ExplanationCard(
+                  medicineCode: medicineCode,
+                  productName: _text(_medicine?['product_name']),
+                  ingredient: _text(_medicine?['ingredient']),
+                  summary: _text(_explanation?['summary']),
+                  howToTake: _text(_explanation?['how_to_take']),
+                  cautions: _text(
+                    _explanation?['cautions'] ?? _explanation?['warnings'],
+                  ),
+                  modelName: _text(_explanation?['model_name']),
+                ),
+              ],
             ],
-          ],
+          ),
         ),
       ),
     );
   }
 }
 
-class _Section extends StatelessWidget {
-  final String emoji;
-  final String title;
-  final String content;
-  const _Section({
-    required this.emoji,
-    required this.title,
-    required this.content,
+class _ExplanationCard extends StatelessWidget {
+  final String medicineCode;
+  final String productName;
+  final String ingredient;
+  final String summary;
+  final String howToTake;
+  final String cautions;
+  final String modelName;
+
+  const _ExplanationCard({
+    required this.medicineCode,
+    required this.productName,
+    required this.ingredient,
+    required this.summary,
+    required this.howToTake,
+    required this.cautions,
+    required this.modelName,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            Text(emoji, style: const TextStyle(fontSize: 14)),
-            const SizedBox(width: 6),
-            Text(
-              title,
-              style: const TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w700,
-                color: kText,
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 4),
-        Padding(
-          padding: const EdgeInsets.only(left: 22),
-          child: Text(
-            content,
-            style: TextStyle(
-              fontSize: 13,
-              color: Colors.grey[600],
-              height: 1.6,
+    return _CardShell(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            productName,
+            style: const TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.w800,
+              color: kText,
             ),
           ),
-        ),
-      ],
+          const SizedBox(height: 4),
+          Text(
+            '$medicineCode · 성분 $ingredient',
+            style: const TextStyle(color: kTextSub),
+          ),
+          const Divider(height: 28),
+          _LabelValue(label: '쉬운 설명', value: summary),
+          _LabelValue(label: '복용 방법', value: howToTake),
+          _LabelValue(label: '주의사항', value: cautions),
+          _LabelValue(label: '생성 방식', value: modelName),
+        ],
+      ),
     );
   }
+}
+
+class _FeatureBanner extends StatelessWidget {
+  final IconData icon;
+  final String text;
+
+  const _FeatureBanner({required this.icon, required this.text});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color(0xFFE3EEF8),
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, color: kPrimary),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(text, style: const TextStyle(color: kTextSub)),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _CardShell extends StatelessWidget {
+  final Widget child;
+
+  const _CardShell({required this.child});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.05),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: child,
+    );
+  }
+}
+
+class _LabelValue extends StatelessWidget {
+  final String label;
+  final String value;
+
+  const _LabelValue({required this.label, required this.value});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: const TextStyle(
+              fontWeight: FontWeight.w700,
+              color: kPrimary,
+            ),
+          ),
+          const SizedBox(height: 5),
+          Text(value, style: const TextStyle(height: 1.5, color: kText)),
+        ],
+      ),
+    );
+  }
+}
+
+class _MessageCard extends StatelessWidget {
+  final String title;
+  final String message;
+  final Color color;
+
+  const _MessageCard({
+    required this.title,
+    required this.message,
+    required this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: color.withValues(alpha: 0.4)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: TextStyle(fontWeight: FontWeight.w700, color: color),
+          ),
+          const SizedBox(height: 6),
+          Text(message, style: const TextStyle(color: kText)),
+        ],
+      ),
+    );
+  }
+}
+
+class _ButtonProgress extends StatelessWidget {
+  const _ButtonProgress();
+
+  @override
+  Widget build(BuildContext context) {
+    return const SizedBox(
+      width: 18,
+      height: 18,
+      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+    );
+  }
+}
+
+Map<String, dynamic>? _asMap(dynamic value) {
+  return value is Map ? Map<String, dynamic>.from(value) : null;
+}
+
+String _text(dynamic value, {String fallback = '데이터 없음'}) {
+  final text = value?.toString().trim();
+  return text == null || text.isEmpty ? fallback : text;
+}
+
+String _apiError(ApiException error) {
+  return error.statusCode == null
+      ? error.message
+      : '${error.message} (HTTP ${error.statusCode})';
 }
