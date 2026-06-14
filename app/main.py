@@ -1,15 +1,57 @@
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
-from app.routes import users, prescription, prescription_drugs, schedules, medication_logs, external
+from fastapi.middleware.cors import CORSMiddleware
 
-app = FastAPI(title="알콩약콩 API", version="1.0.0")
+from app.routes import (
+    biosignal,
+    dashboard,
+    drug_explain,
+    dur_analysis,
+    guardians,
+    prescription,
+    users,
+)
+from init_db import initialize_database
 
-app.include_router(users.router)
-app.include_router(prescription.router)
-app.include_router(prescription_drugs.router)
-app.include_router(schedules.router)
-app.include_router(medication_logs.router)
-app.include_router(external.router)
+
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    initialize_database()
+    yield
+
+
+app = FastAPI(
+    title="알콩약콩 MVP API",
+    version="1.1.0",
+    lifespan=lifespan,
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=False,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+for router in (
+    users.router,
+    guardians.router,
+    prescription.router,
+    dur_analysis.router,
+    drug_explain.router,
+    biosignal.router,
+    dashboard.router,
+):
+    app.include_router(router)
+
 
 @app.get("/")
 def root():
-    return {"message": "알콩약콩 서버 실행 중"}
+    return {"message": "알콩약콩 MVP 서버 실행 중", "docs": "/docs"}
+
+
+@app.get("/health")
+def health():
+    return {"status": "ok"}

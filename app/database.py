@@ -1,8 +1,14 @@
+import os
 import sqlite3
+from pathlib import Path
 
-DB_PATH = "alkongyakong.db"
 
-def get_connection():
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+DB_PATH = os.getenv("ALKONGYAKONG_DB_PATH", str(PROJECT_ROOT / "alkongyakong.db"))
+
+
+def get_connection() -> sqlite3.Connection:
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA foreign_keys = ON")
     return conn
