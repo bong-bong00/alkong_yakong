@@ -16,6 +16,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   late final TextEditingController _userIdController;
 
   bool _isLoading = false;
+  bool _isNotificationActionLoading = false;
   int? _submittingScheduleId;
   String? _errorMessage;
   Map<String, dynamic>? _dashboard;
@@ -98,6 +99,32 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
   }
 
+  Future<void> _runNotificationAction(String path) async {
+    final userId = _userIdController.text.trim();
+    if (userId.isEmpty) {
+      setState(() => _errorMessage = '사용자 ID를 입력해주세요.');
+      return;
+    }
+    setState(() {
+      _isNotificationActionLoading = true;
+      _errorMessage = null;
+    });
+    try {
+      await _apiClient.post(path, body: {'user_id': userId});
+      await _refreshDashboard();
+    } on ApiException catch (error) {
+      if (!mounted) return;
+      setState(() => _errorMessage = _apiError(error));
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _errorMessage = '알림 처리 중 오류가 발생했습니다: $error');
+    } finally {
+      if (mounted) {
+        setState(() => _isNotificationActionLoading = false);
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final medication = _asMap(_dashboard?['medication_summary']);
@@ -111,6 +138,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final risk = _asMap(_dashboard?['latest_risk']);
     final prescription = _asMap(_dashboard?['latest_prescription']);
     final event = _asMap(_dashboard?['latest_abnormal_event']);
+    final recentNotifications = _dashboard?['recent_notifications'] is List
+        ? _dashboard!['recent_notifications'] as List
+        : const <dynamic>[];
     final prescriptionMedicines = _stringList(
       prescription?['medicine_names'],
     );
@@ -138,6 +168,35 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     ? const _ButtonProgress()
                     : const Icon(Icons.refresh),
                 label: Text(_isLoading ? '불러오는 중...' : '대시보드 새로고침'),
+              ),
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: _isNotificationActionLoading
+                          ? null
+                          : () => _runNotificationAction(
+                              '/api/v1/notifications/'
+                              'generate-medication-reminders',
+                            ),
+                      icon: const Icon(Icons.notifications_active_outlined),
+                      label: const Text('알림 생성 테스트'),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: _isNotificationActionLoading
+                          ? null
+                          : () => _runNotificationAction(
+                              '/api/v1/medication-logs/mark-missed',
+                            ),
+                      icon: const Icon(Icons.timer_off_outlined),
+                      label: const Text('미복용 처리 실행'),
+                    ),
+                  ),
+                ],
               ),
               if (_errorMessage != null) ...[
                 const SizedBox(height: 16),
@@ -244,6 +303,32 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   icon: Icons.notifications_outlined,
                   color: Colors.orange,
                 ),
+                const SizedBox(height: 10),
+                Text(
+                  '최근 알림',
+                  style: const TextStyle(
+                    fontSize: 17,
+                    fontWeight: FontWeight.w800,
+                    color: kText,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                if (recentNotifications.isEmpty)
+                  const _SmallDataCard(title: '알림', value: '데이터 없음')
+                else
+                  ...recentNotifications.map((notification) {
+                    final item =
+                        _asMap(notification) ?? const <String, dynamic>{};
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 8),
+                      child: _SmallDataCard(
+                        title: _text(item['title']),
+                        value:
+                            '${_text(item['status'])}\n'
+                            '${_text(item['message'])}',
+                      ),
+                    );
+                  }),
               ],
             ],
           ),

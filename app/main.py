@@ -10,6 +10,7 @@ from app.routes import (
     dur_analysis,
     guardians,
     medication_logs,
+    notifications,
     prescription,
     users,
 )
@@ -44,6 +45,7 @@ for router in (
     drug_explain.router,
     biosignal.router,
     medication_logs.router,
+    notifications.router,
     dashboard.router,
 ):
     app.include_router(router)
