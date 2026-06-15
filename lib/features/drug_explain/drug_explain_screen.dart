@@ -34,7 +34,7 @@ class _DrugExplainScreenState extends State<DrugExplainScreen> {
     super.dispose();
   }
 
-  Future<void> _loadExplanation() async {
+  Future<void> _loadExplanation({bool forceRefresh = false}) async {
     var medicineCode = _medicineCodeController.text.trim();
     if (medicineCode.isEmpty && MvpSession.medicineCode.isNotEmpty) {
       medicineCode = MvpSession.medicineCode;
@@ -54,13 +54,20 @@ class _DrugExplainScreenState extends State<DrugExplainScreen> {
 
     try {
       final response = await _apiClient.get(
-        '/api/v1/drug-explain/${Uri.encodeComponent(medicineCode)}',
+        '/api/v1/drug-explain/${Uri.encodeComponent(medicineCode)}'
+        '?force_refresh=$forceRefresh',
       );
       final data = Map<String, dynamic>.from(response as Map);
+      final nestedMedicine = _asMap(data['medicine']);
+      final nestedExplanation = _asMap(data['explanation']);
       if (!mounted) return;
       setState(() {
-        _medicine = _asMap(data['medicine']);
-        _explanation = _asMap(data['explanation']);
+        _medicine = nestedMedicine ?? {
+          'medicine_code': data['medicine_code'],
+          'product_name': data['drug_name'],
+          'ingredient': data['ingredient'],
+        };
+        _explanation = nestedExplanation ?? data;
       });
       MvpSession.medicineCode = medicineCode;
     } on ApiException catch (error) {
@@ -92,7 +99,7 @@ class _DrugExplainScreenState extends State<DrugExplainScreen> {
             children: [
               const _FeatureBanner(
                 icon: Icons.psychology_alt_outlined,
-                text: '처방전 등록 결과의 medicine_code로 백엔드 Mock 설명을 조회합니다.',
+                text: '처방전의 medicine_code로 e약은요 공식 정보와 AI 쉬운 설명을 조회합니다.',
               ),
               const SizedBox(height: 18),
               TextField(
@@ -104,15 +111,28 @@ class _DrugExplainScreenState extends State<DrugExplainScreen> {
                 ),
               ),
               const SizedBox(height: 12),
-              SizedBox(
-                width: double.infinity,
-                child: FilledButton.icon(
-                  onPressed: _isLoading ? null : _loadExplanation,
-                  icon: _isLoading
-                      ? const _ButtonProgress()
-                      : const Icon(Icons.auto_awesome),
-                  label: Text(_isLoading ? '조회 중...' : 'AI 설명 조회'),
-                ),
+              Row(
+                children: [
+                  Expanded(
+                    child: FilledButton.icon(
+                      onPressed: _isLoading
+                          ? null
+                          : () => _loadExplanation(),
+                      icon: _isLoading
+                          ? const _ButtonProgress()
+                          : const Icon(Icons.auto_awesome),
+                      label: Text(_isLoading ? '조회 중...' : 'AI 설명 조회'),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  IconButton.filledTonal(
+                    onPressed: _isLoading
+                        ? null
+                        : () => _loadExplanation(forceRefresh: true),
+                    tooltip: '공식 정보와 AI 설명 새로 생성',
+                    icon: const Icon(Icons.refresh),
+                  ),
+                ],
               ),
               if (_errorMessage != null) ...[
                 const SizedBox(height: 18),
@@ -128,12 +148,30 @@ class _DrugExplainScreenState extends State<DrugExplainScreen> {
                   medicineCode: medicineCode,
                   productName: _text(_medicine?['product_name']),
                   ingredient: _text(_medicine?['ingredient']),
-                  summary: _text(_explanation?['summary']),
+                  summary: _text(
+                    _explanation?['easy_summary'] ??
+                        _explanation?['summary'],
+                  ),
+                  whatItDoes: _text(_explanation?['what_it_does']),
                   howToTake: _text(_explanation?['how_to_take']),
-                  cautions: _text(
+                  cautions: _stringList(
                     _explanation?['cautions'] ?? _explanation?['warnings'],
                   ),
-                  modelName: _text(_explanation?['model_name']),
+                  sideEffects: _stringList(
+                    _explanation?['possible_side_effects'] ??
+                        _explanation?['side_effects'],
+                  ),
+                  storage: _text(_explanation?['storage']),
+                  askDoctorWhen: _stringList(
+                    _explanation?['ask_doctor_when'],
+                  ),
+                  generatedBy: _text(
+                    _explanation?['generated_by'] ??
+                        _explanation?['model_name'],
+                  ),
+                  source: _text(_explanation?['source']),
+                  isVerified: _boolValue(_explanation?['is_verified']),
+                  sourceBased: _boolValue(_explanation?['source_based']),
                 ),
               ],
             ],
@@ -149,46 +187,165 @@ class _ExplanationCard extends StatelessWidget {
   final String productName;
   final String ingredient;
   final String summary;
+  final String whatItDoes;
   final String howToTake;
-  final String cautions;
-  final String modelName;
+  final List<String> cautions;
+  final List<String> sideEffects;
+  final String storage;
+  final List<String> askDoctorWhen;
+  final String generatedBy;
+  final String source;
+  final bool isVerified;
+  final bool sourceBased;
 
   const _ExplanationCard({
     required this.medicineCode,
     required this.productName,
     required this.ingredient,
     required this.summary,
+    required this.whatItDoes,
     required this.howToTake,
     required this.cautions,
-    required this.modelName,
+    required this.sideEffects,
+    required this.storage,
+    required this.askDoctorWhen,
+    required this.generatedBy,
+    required this.source,
+    required this.isVerified,
+    required this.sourceBased,
   });
 
   @override
   Widget build(BuildContext context) {
-    return _CardShell(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            productName,
-            style: const TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.w800,
-              color: kText,
+    return Column(
+      children: [
+        _CardShell(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                productName,
+                style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w800,
+                  color: kText,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                '$medicineCode · 성분 $ingredient',
+                style: const TextStyle(color: kTextSub),
+              ),
+              const SizedBox(height: 14),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  _StatusChip(
+                    label: _generatedByLabel(generatedBy),
+                    verified: generatedBy != 'mock',
+                  ),
+                  _StatusChip(
+                    label: sourceBased ? '공식 정보 기반' : '공식 정보 미확인',
+                    verified: sourceBased,
+                  ),
+                  _StatusChip(
+                    label: isVerified ? '검증됨' : 'AI 생성 · 확인 필요',
+                    verified: isVerified,
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 12),
+        _SectionCard(title: '쉬운 설명', value: summary),
+        _SectionCard(title: '어떤 약인가요?', value: whatItDoes),
+        _SectionCard(title: '복용 방법', value: howToTake),
+        _SectionCard(title: '주의사항', items: cautions),
+        _SectionCard(title: '가능한 부작용', items: sideEffects),
+        _SectionCard(title: '보관 방법', value: storage),
+        _SectionCard(
+          title: '의사/약사 상담이 필요한 경우',
+          items: askDoctorWhen,
+        ),
+        _CardShell(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _LabelValue(label: '정보 출처', value: source),
+              _LabelValue(
+                label: '생성 방식',
+                value: _generatedByLabel(generatedBy),
+              ),
+              _LabelValue(
+                label: '공식 정보 기반 여부',
+                value: sourceBased ? '예' : '아니요',
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _SectionCard extends StatelessWidget {
+  final String title;
+  final String? value;
+  final List<String>? items;
+
+  const _SectionCard({required this.title, this.value, this.items});
+
+  @override
+  Widget build(BuildContext context) {
+    final safeItems = items ?? const <String>[];
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: _CardShell(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              title,
+              style: const TextStyle(
+                fontWeight: FontWeight.w800,
+                color: kPrimary,
+              ),
             ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            '$medicineCode · 성분 $ingredient',
-            style: const TextStyle(color: kTextSub),
-          ),
-          const Divider(height: 28),
-          _LabelValue(label: '쉬운 설명', value: summary),
-          _LabelValue(label: '복용 방법', value: howToTake),
-          _LabelValue(label: '주의사항', value: cautions),
-          _LabelValue(label: '생성 방식', value: modelName),
-        ],
+            const SizedBox(height: 8),
+            if (safeItems.isNotEmpty)
+              ...safeItems.map(
+                (item) => Padding(
+                  padding: const EdgeInsets.only(bottom: 5),
+                  child: Text('• $item'),
+                ),
+              )
+            else
+              Text(value ?? '데이터 없음'),
+          ],
+        ),
       ),
+    );
+  }
+}
+
+class _StatusChip extends StatelessWidget {
+  final String label;
+  final bool verified;
+
+  const _StatusChip({required this.label, required this.verified});
+
+  @override
+  Widget build(BuildContext context) {
+    return Chip(
+      avatar: Icon(
+        verified ? Icons.verified_outlined : Icons.info_outline,
+        size: 16,
+        color: verified ? kPrimary : Colors.orange,
+      ),
+      label: Text(label),
+      visualDensity: VisualDensity.compact,
     );
   }
 }
@@ -330,6 +487,37 @@ Map<String, dynamic>? _asMap(dynamic value) {
 String _text(dynamic value, {String fallback = '데이터 없음'}) {
   final text = value?.toString().trim();
   return text == null || text.isEmpty ? fallback : text;
+}
+
+List<String> _stringList(dynamic value) {
+  if (value is List) {
+    return value
+        .map((item) => item?.toString().trim() ?? '')
+        .where((item) => item.isNotEmpty)
+        .toList();
+  }
+  final text = value?.toString().trim() ?? '';
+  return text.isEmpty
+      ? const []
+      : text
+            .split('\n')
+            .map((item) => item.trim())
+            .where((item) => item.isNotEmpty)
+            .toList();
+}
+
+bool _boolValue(dynamic value) {
+  return value == true || value == 1 || value?.toString().toLowerCase() == 'true';
+}
+
+String _generatedByLabel(String value) {
+  return switch (value) {
+    'e약은요+gemini' => '공식 정보 + AI 쉬운 설명',
+    'e약은요-fallback' => '공식 정보 기반 설명',
+    'local-cache' => '저장된 최신 설명',
+    'mock' => '테스트용 설명',
+    _ => value,
+  };
 }
 
 String _apiError(ApiException error) {

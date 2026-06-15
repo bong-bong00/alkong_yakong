@@ -1,12 +1,24 @@
 import json
 import re
 import uuid
+from datetime import date, timedelta
 from hashlib import sha1
 
 from fastapi import HTTPException
 
 from app.database import get_connection
 from app.models.schemas import OCRMedicineItem, PrescriptionOCRRequest
+
+
+DEFAULT_SCHEDULE_TIMES = {
+    1: [("08:00", "MORNING")],
+    2: [("08:00", "MORNING"), ("20:00", "EVENING")],
+    3: [
+        ("08:00", "MORNING"),
+        ("13:00", "AFTERNOON"),
+        ("20:00", "EVENING"),
+    ],
+}
 
 
 def _mock_items(request: PrescriptionOCRRequest) -> list[OCRMedicineItem]:
@@ -55,6 +67,79 @@ def _resolve_medicine(cursor, item: OCRMedicineItem) -> tuple[str, str]:
         ),
     )
     return code, "MOCK_CREATED"
+
+
+def _parse_date(value: str | None, fallback: date) -> date:
+    if not value:
+        return fallback
+    try:
+        return date.fromisoformat(value)
+    except ValueError:
+        return fallback
+
+
+def _schedule_dates(
+    prescribed_date: str | None,
+    expire_date: str | None,
+    duration_days: int | None,
+) -> list[date]:
+    start_date = _parse_date(prescribed_date, date.today())
+    if expire_date:
+        end_date = _parse_date(expire_date, start_date)
+    else:
+        end_date = start_date + timedelta(days=max(duration_days or 1, 1) - 1)
+
+    if end_date < start_date:
+        end_date = start_date
+
+    day_count = min((end_date - start_date).days + 1, 365)
+    return [start_date + timedelta(days=offset) for offset in range(day_count)]
+
+
+def _create_medication_schedules(
+    cursor,
+    *,
+    user_id: str,
+    user_medicine_id: int,
+    prescribed_date: str | None,
+    expire_date: str | None,
+    item: OCRMedicineItem,
+) -> list[dict]:
+    frequency = min(max(item.frequency_per_day or 1, 1), 3)
+    created_schedules = []
+
+    for scheduled_date in _schedule_dates(
+        prescribed_date,
+        expire_date,
+        item.duration_days,
+    ):
+        for scheduled_time, time_slot in DEFAULT_SCHEDULE_TIMES[frequency]:
+            cursor.execute(
+                """
+                INSERT OR IGNORE INTO medication_schedules (
+                    user_id, user_medicine_id, scheduled_date,
+                    scheduled_time, time_slot, status
+                ) VALUES (?, ?, ?, ?, ?, 'PENDING')
+                """,
+                (
+                    user_id,
+                    user_medicine_id,
+                    scheduled_date.isoformat(),
+                    scheduled_time,
+                    time_slot,
+                ),
+            )
+            if cursor.rowcount:
+                created_schedules.append(
+                    {
+                        "scheduled_date": scheduled_date.isoformat(),
+                        "scheduled_time": scheduled_time,
+                        "time_slot": time_slot,
+                        "status": "PENDING",
+                    }
+                )
+
+    return created_schedules
 
 
 def create_prescription_from_ocr(request: PrescriptionOCRRequest) -> dict:
@@ -130,12 +215,24 @@ def create_prescription_from_ocr(request: PrescriptionOCRRequest) -> dict:
                     json.dumps(item.administration_times, ensure_ascii=False),
                 ),
             )
+            user_medicine_id = cursor.lastrowid
+            schedules = _create_medication_schedules(
+                cursor,
+                user_id=request.user_id,
+                user_medicine_id=user_medicine_id,
+                prescribed_date=request.prescribed_date,
+                expire_date=request.expire_date,
+                item=item,
+            )
             created_items.append(
                 {
                     "id": item_id,
+                    "user_medicine_id": user_medicine_id,
                     "medicine_code": medicine_code,
                     "drug_name": item.drug_name,
                     "match_status": match_status,
+                    "frequency_per_day": item.frequency_per_day or 1,
+                    "schedules": schedules,
                 }
             )
 

@@ -69,12 +69,19 @@ class _DashboardScreenState extends State<DashboardScreen> {
   @override
   Widget build(BuildContext context) {
     final medication = _asMap(_dashboard?['medication_summary']);
-    final schedules = medication?['schedules'] is List
-        ? medication!['schedules'] as List
-        : const <dynamic>[];
+    final todayMedications = _dashboard?['today_medications'];
+    final summarySchedules = medication?['schedules'];
+    final schedules = todayMedications is List
+        ? todayMedications
+        : summarySchedules is List
+            ? summarySchedules
+            : const <dynamic>[];
     final risk = _asMap(_dashboard?['latest_risk']);
     final prescription = _asMap(_dashboard?['latest_prescription']);
     final event = _asMap(_dashboard?['latest_abnormal_event']);
+    final prescriptionMedicines = _stringList(
+      prescription?['medicine_names'],
+    );
 
     return Scaffold(
       backgroundColor: kBackground,
@@ -169,9 +176,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   title: '최근 처방전',
                   value: prescription == null
                       ? '데이터 없음'
-                      : '처방일: ${_text(prescription['prescribed_date'])}\n'
-                            '병원: ${_text(prescription['hospital_name'])}\n'
-                            '상태: ${_text(prescription['status'])}',
+                      : '${_text(prescription['display_name'], fallback: 'OCR 처방전')}\n'
+                            'ID: ${_text(prescription['id'])}\n'
+                            '등록일: ${_text(prescription['registered_at'] ?? prescription['created_at'])}\n'
+                            'OCR 상태: ${_text(prescription['ocr_status'])}\n'
+                            '약: ${prescriptionMedicines.isEmpty ? '데이터 없음' : prescriptionMedicines.take(3).join(', ')}',
                   icon: Icons.description_outlined,
                   color: const Color(0xFF4A78C2),
                 ),
@@ -301,6 +310,14 @@ class _ButtonProgress extends StatelessWidget {
 
 Map<String, dynamic>? _asMap(dynamic value) {
   return value is Map ? Map<String, dynamic>.from(value) : null;
+}
+
+List<String> _stringList(dynamic value) {
+  if (value is! List) return const [];
+  return value
+      .map((item) => item?.toString().trim() ?? '')
+      .where((item) => item.isNotEmpty)
+      .toList();
 }
 
 String _text(dynamic value, {String fallback = '데이터 없음'}) {
