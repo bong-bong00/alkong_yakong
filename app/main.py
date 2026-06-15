@@ -9,6 +9,7 @@ from app.routes import (
     drug_explain,
     dur_analysis,
     guardians,
+    medication_logs,
     prescription,
     users,
 )
@@ -42,6 +43,7 @@ for router in (
     dur_analysis.router,
     drug_explain.router,
     biosignal.router,
+    medication_logs.router,
     dashboard.router,
 ):
     app.include_router(router)

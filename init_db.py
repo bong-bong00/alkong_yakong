@@ -54,6 +54,15 @@ TABLE_DEFINITIONS = {
             severity TEXT NOT NULL DEFAULT 'CAUTION',
             description TEXT NOT NULL,
             source TEXT,
+            external_id TEXT,
+            ingredient_a_code TEXT,
+            ingredient_b_code TEXT,
+            min_age INTEGER,
+            max_age INTEGER,
+            pregnancy_grade TEXT,
+            notification_date TEXT,
+            raw_json TEXT,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
         )
     """,
@@ -154,6 +163,10 @@ TABLE_DEFINITIONS = {
             ingredient_b TEXT,
             description TEXT,
             analyzed_ingredients TEXT NOT NULL,
+            analysis_id TEXT,
+            risk_type TEXT,
+            total_matches INTEGER NOT NULL DEFAULT 0,
+            matches_json TEXT,
             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
             FOREIGN KEY (taboo_id) REFERENCES dur_taboo(id) ON DELETE SET NULL
@@ -268,6 +281,11 @@ INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_guardians_user_id ON guardians(user_id)",
     "CREATE INDEX IF NOT EXISTS idx_medicines_ingredient ON medicines(ingredient)",
     "CREATE INDEX IF NOT EXISTS idx_dur_taboo_ingredients ON dur_taboo(ingredient_a, ingredient_b)",
+    """
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_dur_taboo_source_external
+    ON dur_taboo(source, taboo_type, external_id)
+    WHERE external_id IS NOT NULL
+    """,
     "CREATE INDEX IF NOT EXISTS idx_prescriptions_user_id ON prescriptions(user_id)",
     "CREATE INDEX IF NOT EXISTS idx_prescription_items_prescription_id ON prescription_items(prescription_id)",
     "CREATE INDEX IF NOT EXISTS idx_user_medicines_user_id ON user_medicines(user_id, is_active)",
@@ -282,6 +300,23 @@ INDEXES = [
 OBSOLETE_TABLES = ("prescription_drugs",)
 
 ADDITIVE_COLUMNS = {
+    "dur_taboo": {
+        "external_id": "TEXT",
+        "ingredient_a_code": "TEXT",
+        "ingredient_b_code": "TEXT",
+        "min_age": "INTEGER",
+        "max_age": "INTEGER",
+        "pregnancy_grade": "TEXT",
+        "notification_date": "TEXT",
+        "raw_json": "TEXT",
+        "updated_at": "TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP",
+    },
+    "risk_results": {
+        "analysis_id": "TEXT",
+        "risk_type": "TEXT",
+        "total_matches": "INTEGER NOT NULL DEFAULT 0",
+        "matches_json": "TEXT",
+    },
     "ai_explanation_cards": {
         "cautions": "TEXT",
         "side_effects": "TEXT",

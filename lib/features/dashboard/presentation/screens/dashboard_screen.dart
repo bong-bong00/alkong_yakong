@@ -16,6 +16,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   late final TextEditingController _userIdController;
 
   bool _isLoading = false;
+  int? _submittingScheduleId;
   String? _errorMessage;
   Map<String, dynamic>? _dashboard;
 
@@ -63,6 +64,37 @@ class _DashboardScreenState extends State<DashboardScreen> {
       setState(() => _errorMessage = '응답 처리 중 오류가 발생했습니다: $error');
     } finally {
       if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _markTaken(Map<String, dynamic> medication) async {
+    final userId = _userIdController.text.trim();
+    final scheduleId = _intValue(
+      medication['schedule_id'] ?? medication['id'],
+    );
+    if (userId.isEmpty || scheduleId == null) {
+      setState(() => _errorMessage = '사용자 또는 복약 일정 정보가 없습니다.');
+      return;
+    }
+
+    setState(() {
+      _submittingScheduleId = scheduleId;
+      _errorMessage = null;
+    });
+    try {
+      await _apiClient.post(
+        '/api/v1/medication-logs',
+        body: {'user_id': userId, 'schedule_id': scheduleId},
+      );
+      await _refreshDashboard();
+    } on ApiException catch (error) {
+      if (!mounted) return;
+      setState(() => _errorMessage = _apiError(error));
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _errorMessage = '복약 완료 처리 중 오류가 발생했습니다: $error');
+    } finally {
+      if (mounted) setState(() => _submittingScheduleId = null);
     }
   }
 
@@ -152,11 +184,19 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     final item = _asMap(schedule) ?? const <String, dynamic>{};
                     return Padding(
                       padding: const EdgeInsets.only(bottom: 8),
-                      child: _SmallDataCard(
-                        title:
-                            '${_text(item['scheduled_time'])} · ${_text(item['product_name'])}',
-                        value:
-                            '${_text(item['ingredient'])} / ${_text(item['status'])}',
+                      child: _MedicationCard(
+                        time: _text(
+                          item['time'] ?? item['scheduled_time'],
+                        ),
+                        drugName: _text(
+                          item['drug_name'] ?? item['product_name'],
+                        ),
+                        ingredient: _text(item['ingredient']),
+                        status: _text(item['status'], fallback: 'PENDING'),
+                        isSubmitting:
+                            _submittingScheduleId ==
+                            _intValue(item['schedule_id'] ?? item['id']),
+                        onTaken: () => _markTaken(item),
                       ),
                     );
                   }),
@@ -165,7 +205,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   title: 'DUR 위험도',
                   value: risk == null
                       ? '데이터 없음'
-                      : '${_text(risk['risk_level'])}\n${_text(risk['description'])}',
+                      : '${_text(risk['risk_level'])} · '
+                            '${_text(risk['total_matches'], fallback: '0')}건\n'
+                            '대표 유형: ${_text(risk['representative_type'])}',
                   icon: Icons.health_and_safety_outlined,
                   color: _riskColor(
                     _text(risk?['risk_level'], fallback: 'LOW'),
@@ -295,6 +337,98 @@ class _SmallDataCard extends StatelessWidget {
   }
 }
 
+class _MedicationCard extends StatelessWidget {
+  final String time;
+  final String drugName;
+  final String ingredient;
+  final String status;
+  final bool isSubmitting;
+  final VoidCallback onTaken;
+
+  const _MedicationCard({
+    required this.time,
+    required this.drugName,
+    required this.ingredient,
+    required this.status,
+    required this.isSubmitting,
+    required this.onTaken,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final normalizedStatus = status.toUpperCase();
+    final isTaken = normalizedStatus == 'TAKEN';
+    return Container(
+      padding: const EdgeInsets.all(13),
+      decoration: BoxDecoration(
+        color: kPrimaryLight,
+        borderRadius: BorderRadius.circular(13),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  '$time · $drugName',
+                  style: const TextStyle(
+                    color: kText,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+              _MedicationStatus(status: normalizedStatus),
+            ],
+          ),
+          const SizedBox(height: 7),
+          Text(ingredient, style: const TextStyle(color: kTextSub)),
+          if (!isTaken) ...[
+            const SizedBox(height: 10),
+            Align(
+              alignment: Alignment.centerRight,
+              child: FilledButton.tonal(
+                onPressed: isSubmitting ? null : onTaken,
+                child: Text(isSubmitting ? '처리 중...' : '복약 완료'),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _MedicationStatus extends StatelessWidget {
+  final String status;
+
+  const _MedicationStatus({required this.status});
+
+  @override
+  Widget build(BuildContext context) {
+    final color = switch (status) {
+      'TAKEN' => kPrimary,
+      'MISSED' => Colors.red,
+      _ => Colors.orange,
+    };
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Text(
+        status,
+        style: TextStyle(
+          color: color,
+          fontSize: 12,
+          fontWeight: FontWeight.w700,
+        ),
+      ),
+    );
+  }
+}
+
 class _ButtonProgress extends StatelessWidget {
   const _ButtonProgress();
 
@@ -323,6 +457,10 @@ List<String> _stringList(dynamic value) {
 String _text(dynamic value, {String fallback = '데이터 없음'}) {
   final text = value?.toString().trim();
   return text == null || text.isEmpty ? fallback : text;
+}
+
+int? _intValue(dynamic value) {
+  return value is int ? value : int.tryParse(value?.toString() ?? '');
 }
 
 String _apiError(ApiException error) {
