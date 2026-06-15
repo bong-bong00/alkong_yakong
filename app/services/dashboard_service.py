@@ -90,10 +90,23 @@ def get_dashboard(user_id: str, target_date: str | None = None) -> dict:
         unread_notifications = conn.execute(
             """
             SELECT COUNT(*) FROM notifications
-            WHERE user_id = ? AND status = 'RECORDED'
+            WHERE user_id = ? AND status IN ('PENDING', 'STORED', 'RECORDED')
             """,
             (user_id,),
         ).fetchone()[0]
+        recent_notifications = conn.execute(
+            """
+            SELECT n.id, n.guardian_id, n.schedule_id,
+                   n.notification_type, n.title, n.message,
+                   n.status, n.created_at, g.guardian_name
+            FROM notifications n
+            LEFT JOIN guardians g ON g.id = n.guardian_id
+            WHERE n.user_id = ?
+            ORDER BY n.created_at DESC, n.id DESC
+            LIMIT 5
+            """,
+            (user_id,),
+        ).fetchall()
         schedule_data = []
         for row in schedules:
             item = dict(row)
@@ -137,6 +150,9 @@ def get_dashboard(user_id: str, target_date: str | None = None) -> dict:
             "latest_prescription": prescription_data,
             "latest_abnormal_event": dict(latest_event) if latest_event else None,
             "notification_count": unread_notifications,
+            "recent_notifications": [
+                dict(notification) for notification in recent_notifications
+            ],
         }
     finally:
         conn.close()

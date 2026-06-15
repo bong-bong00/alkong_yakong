@@ -67,6 +67,17 @@ class MedicationLogCreate(BaseModel):
     schedule_id: int = Field(gt=0)
 
 
+class MedicationReminderRequest(BaseModel):
+    user_id: str
+    target_date: Optional[str] = None
+
+
+class MarkMissedRequest(BaseModel):
+    user_id: str
+    grace_hours: int = Field(default=2, ge=0, le=24)
+    current_time: Optional[str] = None
+
+
 class HeartRateCreate(BaseModel):
     user_id: str
     bpm: int = Field(gt=0)

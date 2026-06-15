@@ -218,6 +218,8 @@ TABLE_DEFINITIONS = {
             user_id TEXT NOT NULL,
             guardian_id TEXT,
             abnormal_event_id INTEGER,
+            schedule_id INTEGER,
+            medication_log_id INTEGER,
             notification_type TEXT NOT NULL,
             title TEXT NOT NULL,
             message TEXT NOT NULL,
@@ -226,7 +228,9 @@ TABLE_DEFINITIONS = {
             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
             FOREIGN KEY (guardian_id) REFERENCES guardians(id) ON DELETE SET NULL,
-            FOREIGN KEY (abnormal_event_id) REFERENCES abnormal_events(id) ON DELETE SET NULL
+            FOREIGN KEY (abnormal_event_id) REFERENCES abnormal_events(id) ON DELETE SET NULL,
+            FOREIGN KEY (schedule_id) REFERENCES medication_schedules(id) ON DELETE SET NULL,
+            FOREIGN KEY (medication_log_id) REFERENCES medication_logs(id) ON DELETE SET NULL
         )
     """,
     "ai_explanation_cards": """
@@ -295,6 +299,7 @@ INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_heart_rate_user_measured ON heart_rate_logs(user_id, measured_at)",
     "CREATE INDEX IF NOT EXISTS idx_abnormal_events_user_occurred ON abnormal_events(user_id, occurred_at)",
     "CREATE INDEX IF NOT EXISTS idx_notifications_user_created ON notifications(user_id, created_at)",
+    "CREATE INDEX IF NOT EXISTS idx_notifications_schedule ON notifications(schedule_id, notification_type)",
 ]
 
 OBSOLETE_TABLES = ("prescription_drugs",)
@@ -316,6 +321,10 @@ ADDITIVE_COLUMNS = {
         "risk_type": "TEXT",
         "total_matches": "INTEGER NOT NULL DEFAULT 0",
         "matches_json": "TEXT",
+    },
+    "notifications": {
+        "schedule_id": "INTEGER",
+        "medication_log_id": "INTEGER",
     },
     "ai_explanation_cards": {
         "cautions": "TEXT",
