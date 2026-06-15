@@ -1,3 +1,4 @@
+import json
 from datetime import date
 
 from fastapi import HTTPException
@@ -93,10 +94,30 @@ def get_dashboard(user_id: str, target_date: str | None = None) -> dict:
             """,
             (user_id,),
         ).fetchone()[0]
-        schedule_data = [dict(row) for row in schedules]
+        schedule_data = []
+        for row in schedules:
+            item = dict(row)
+            item["schedule_id"] = item["id"]
+            item["drug_name"] = item["product_name"]
+            item["time"] = item["scheduled_time"]
+            schedule_data.append(item)
         completed_count = sum(
             row["status"].upper() == "TAKEN" for row in schedule_data
         )
+        risk_data = dict(latest_risk) if latest_risk else None
+        if risk_data:
+            risk_data["matches"] = _json_list(risk_data.get("matches_json"))
+            risk_data["total_matches"] = (
+                risk_data.get("total_matches") or len(risk_data["matches"])
+            )
+            risk_data["representative_type"] = (
+                risk_data.get("risk_type")
+                or (
+                    risk_data["matches"][0].get("type")
+                    if risk_data["matches"]
+                    else None
+                )
+            )
         return {
             "user_id": user_id,
             "date": selected_date,
@@ -112,10 +133,20 @@ def get_dashboard(user_id: str, target_date: str | None = None) -> dict:
                 ),
                 "schedules": schedule_data,
             },
-            "latest_risk": dict(latest_risk) if latest_risk else None,
+            "latest_risk": risk_data,
             "latest_prescription": prescription_data,
             "latest_abnormal_event": dict(latest_event) if latest_event else None,
             "notification_count": unread_notifications,
         }
     finally:
         conn.close()
+
+
+def _json_list(value: str | None) -> list:
+    if not value:
+        return []
+    try:
+        parsed = json.loads(value)
+        return parsed if isinstance(parsed, list) else []
+    except json.JSONDecodeError:
+        return []

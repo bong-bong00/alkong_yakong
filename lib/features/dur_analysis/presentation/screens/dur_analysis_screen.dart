@@ -84,6 +84,8 @@ class _DurAnalysisScreenState extends State<DurAnalysisScreen> {
         : const <dynamic>[];
     final riskLevel = _text(_analysis?['risk_level'] ?? _latest?['risk_level']);
     final analyzedAt = _text(_latest?['created_at']);
+    final totalMatches =
+        _analysis?['total_matches'] ?? _latest?['total_matches'] ?? matches.length;
 
     return Scaffold(
       backgroundColor: kBackground,
@@ -143,7 +145,7 @@ class _DurAnalysisScreenState extends State<DurAnalysisScreen> {
                 ),
                 const SizedBox(height: 16),
                 Text(
-                  '충돌 ${matches.length}건',
+                  'DUR 위험 $totalMatches건',
                   style: const TextStyle(
                     fontSize: 17,
                     fontWeight: FontWeight.w800,
@@ -165,10 +167,15 @@ class _DurAnalysisScreenState extends State<DurAnalysisScreen> {
                     return Padding(
                       padding: const EdgeInsets.only(bottom: 10),
                       child: _StatusCard(
-                        title:
-                            '${_text(match['ingredient_a'])} + ${_text(match['ingredient_b'])}',
-                        value: _text(match['description']),
-                        color: Colors.orange,
+                        title: _text(
+                          match['type'] ?? match['taboo_type'],
+                          fallback: '성분 주의',
+                        ),
+                        value:
+                            '${_ingredientPair(match)}\n${_text(match['reason'] ?? match['description'])}',
+                        color: _matchColor(
+                          _text(match['type'] ?? match['taboo_type']),
+                        ),
                       ),
                     );
                   }),
@@ -255,6 +262,20 @@ Color _riskColor(String riskLevel) {
   return switch (riskLevel.toUpperCase()) {
     'CRITICAL' || 'HIGH' => Colors.red,
     'WARNING' || 'CAUTION' => Colors.orange,
+    _ => kPrimary,
+  };
+}
+
+String _ingredientPair(Map<String, dynamic> match) {
+  final first = _text(match['ingredient_a']);
+  final second = _text(match['ingredient_b'], fallback: '');
+  return second.isEmpty ? first : '$first + $second';
+}
+
+Color _matchColor(String type) {
+  return switch (type) {
+    '병용금기' || '중복성분' || '효능군중복' => Colors.red,
+    '연령금기' || '임부금기' => Colors.orange,
     _ => kPrimary,
   };
 }

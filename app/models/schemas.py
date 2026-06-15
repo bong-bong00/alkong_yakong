@@ -46,6 +46,25 @@ class PrescriptionOCRRequest(BaseModel):
 class DurAnalyzeRequest(BaseModel):
     user_id: str
     medicine_codes: List[str] = Field(default_factory=list)
+    is_pregnant: Optional[bool] = None
+
+
+class DurSyncRequest(BaseModel):
+    types: List[str] = Field(
+        default_factory=lambda: [
+            "병용금기",
+            "연령금기",
+            "임부금기",
+            "효능군중복",
+        ]
+    )
+    page_size: int = Field(default=100, ge=1, le=1000)
+    max_pages: Optional[int] = Field(default=None, ge=1)
+
+
+class MedicationLogCreate(BaseModel):
+    user_id: str
+    schedule_id: int = Field(gt=0)
 
 
 class HeartRateCreate(BaseModel):
