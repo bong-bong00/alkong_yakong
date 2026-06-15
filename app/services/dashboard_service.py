@@ -16,7 +16,19 @@ def get_dashboard(user_id: str, target_date: str | None = None) -> dict:
         schedules = conn.execute(
             """
             SELECT ms.id, ms.scheduled_date, ms.scheduled_time, ms.time_slot,
-                   ms.status, um.medicine_code, m.product_name, m.ingredient
+                   COALESCE(
+                       (
+                           SELECT ml.status
+                           FROM medication_logs ml
+                           WHERE ml.schedule_id = ms.id
+                           ORDER BY ml.taken_at DESC, ml.id DESC
+                           LIMIT 1
+                       ),
+                       ms.status,
+                       'PENDING'
+                   ) AS status,
+                   um.id AS user_medicine_id, um.medicine_code,
+                   m.product_name, m.ingredient
             FROM medication_schedules ms
             JOIN user_medicines um ON um.id = ms.user_medicine_id
             JOIN medicines m ON m.medicine_code = um.medicine_code
@@ -41,15 +53,39 @@ def get_dashboard(user_id: str, target_date: str | None = None) -> dict:
         ).fetchone()
         latest_prescription = conn.execute(
             """
-            SELECT id, hospital_name, pharmacy_name, prescribed_date,
-                   status, created_at
+            SELECT id, source_type, hospital_name, pharmacy_name,
+                   prescribed_date, ocr_status, status, created_at
             FROM prescriptions
             WHERE user_id = ?
-            ORDER BY created_at DESC
+            ORDER BY created_at DESC, rowid DESC
             LIMIT 1
             """,
             (user_id,),
         ).fetchone()
+        prescription_data = dict(latest_prescription) if latest_prescription else None
+        if prescription_data:
+            items = conn.execute(
+                """
+                SELECT pi.id, pi.medicine_code, pi.ocr_drug_name,
+                       pi.dosage, pi.unit, pi.match_status,
+                       COALESCE(m.product_name, pi.ocr_drug_name) AS medicine_name
+                FROM prescription_items pi
+                LEFT JOIN medicines m ON m.medicine_code = pi.medicine_code
+                WHERE pi.prescription_id = ?
+                ORDER BY pi.id
+                """,
+                (prescription_data["id"],),
+            ).fetchall()
+            prescription_data["items"] = [dict(item) for item in items]
+            prescription_data["medicine_names"] = [
+                item["medicine_name"] for item in items
+            ]
+            prescription_data["display_name"] = (
+                prescription_data["hospital_name"]
+                or prescription_data["pharmacy_name"]
+                or "OCR 처방전"
+            )
+            prescription_data["registered_at"] = prescription_data["created_at"]
         unread_notifications = conn.execute(
             """
             SELECT COUNT(*) FROM notifications
@@ -58,18 +94,26 @@ def get_dashboard(user_id: str, target_date: str | None = None) -> dict:
             (user_id,),
         ).fetchone()[0]
         schedule_data = [dict(row) for row in schedules]
+        completed_count = sum(
+            row["status"].upper() == "TAKEN" for row in schedule_data
+        )
         return {
             "user_id": user_id,
             "date": selected_date,
+            "today_medications": schedule_data,
             "medication_summary": {
                 "total": len(schedule_data),
-                "completed": sum(row["status"] == "TAKEN" for row in schedule_data),
+                "completed": completed_count,
+                "pending": sum(
+                    row["status"].upper() == "PENDING" for row in schedule_data
+                ),
+                "missed": sum(
+                    row["status"].upper() == "MISSED" for row in schedule_data
+                ),
                 "schedules": schedule_data,
             },
             "latest_risk": dict(latest_risk) if latest_risk else None,
-            "latest_prescription": (
-                dict(latest_prescription) if latest_prescription else None
-            ),
+            "latest_prescription": prescription_data,
             "latest_abnormal_event": dict(latest_event) if latest_event else None,
             "notification_count": unread_notifications,
         }

@@ -221,10 +221,20 @@ TABLE_DEFINITIONS = {
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             medicine_code TEXT NOT NULL,
             summary TEXT NOT NULL,
+            what_it_does TEXT,
             how_to_take TEXT,
             warnings TEXT,
+            cautions TEXT,
+            side_effects TEXT,
+            storage TEXT,
+            ask_doctor_when TEXT,
+            source_based INTEGER NOT NULL DEFAULT 0,
+            official_raw_summary TEXT,
             source_document_ids TEXT,
             model_name TEXT NOT NULL DEFAULT 'mock',
+            generated_by TEXT NOT NULL DEFAULT 'mock',
+            source TEXT NOT NULL DEFAULT 'local',
+            is_verified INTEGER NOT NULL DEFAULT 0,
             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (medicine_code) REFERENCES medicines(medicine_code) ON DELETE CASCADE
         )
@@ -271,6 +281,21 @@ INDEXES = [
 
 OBSOLETE_TABLES = ("prescription_drugs",)
 
+ADDITIVE_COLUMNS = {
+    "ai_explanation_cards": {
+        "cautions": "TEXT",
+        "side_effects": "TEXT",
+        "what_it_does": "TEXT",
+        "storage": "TEXT",
+        "ask_doctor_when": "TEXT",
+        "source_based": "INTEGER NOT NULL DEFAULT 0",
+        "official_raw_summary": "TEXT",
+        "generated_by": "TEXT NOT NULL DEFAULT 'mock'",
+        "source": "TEXT NOT NULL DEFAULT 'local'",
+        "is_verified": "INTEGER NOT NULL DEFAULT 0",
+    },
+}
+
 
 def _existing_columns(cursor: sqlite3.Cursor, table: str) -> set[str]:
     return {row[1] for row in cursor.execute(f"PRAGMA table_info({table})")}
@@ -285,6 +310,14 @@ def initialize_database() -> None:
     for table in OBSOLETE_TABLES:
         if _existing_columns(cursor, table):
             cursor.execute(f"ALTER TABLE {table} RENAME TO legacy_{table}_{suffix}")
+
+    for table, columns in ADDITIVE_COLUMNS.items():
+        existing = _existing_columns(cursor, table)
+        for column, definition in columns.items():
+            if existing and column not in existing:
+                cursor.execute(
+                    f"ALTER TABLE {table} ADD COLUMN {column} {definition}"
+                )
 
     for table, definition in TABLE_DEFINITIONS.items():
         existing = _existing_columns(cursor, table)
