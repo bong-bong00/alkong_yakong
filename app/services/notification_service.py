@@ -4,7 +4,6 @@ from fastapi import HTTPException
 
 from app.database import get_connection
 from app.models.schemas import MedicationReminderRequest
-from app.services.fcm_service import send_push_notification
 
 
 def generate_medication_reminders(
@@ -14,19 +13,11 @@ def generate_medication_reminders(
     conn = get_connection()
     try:
         cursor = conn.cursor()
-        user = cursor.execute(
-            "SELECT id FROM users WHERE id = ?",
+        if not cursor.execute(
+            "SELECT 1 FROM users WHERE id = ?",
             (request.user_id,),
-        ).fetchone()
-        if not user:
+        ).fetchone():
             raise HTTPException(status_code=404, detail="사용자가 없습니다.")
-
-        # Try to get FCM token (ignore if column doesn't exist)
-        try:
-            fcm_token = cursor.execute("SELECT fcm_token FROM users WHERE id = ?", (request.user_id,)).fetchone()
-            user_fcm_token = fcm_token["fcm_token"] if fcm_token else None
-        except Exception:
-            user_fcm_token = None
 
         schedules = cursor.execute(
             """
@@ -56,8 +47,6 @@ def generate_medication_reminders(
             if existing:
                 skipped += 1
                 continue
-            title = "복약 예정 알림"
-            message_body = f"{schedule['scheduled_time']} {schedule['product_name']} 복약 예정입니다."
             cursor.execute(
                 """
                 INSERT INTO notifications (
@@ -68,12 +57,11 @@ def generate_medication_reminders(
                 (
                     request.user_id,
                     schedule["id"],
-                    title,
-                    message_body,
+                    "복약 예정 알림",
+                    f"{schedule['scheduled_time']} "
+                    f"{schedule['product_name']} 복약 예정입니다.",
                 ),
             )
-            if user_fcm_token:
-                send_push_notification(user_fcm_token, title, message_body, data={"schedule_id": str(schedule["id"])})
             created.append(
                 dict(
                     cursor.execute(

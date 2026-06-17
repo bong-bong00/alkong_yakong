@@ -29,7 +29,7 @@ class OCRMedicineItem(BaseModel):
     frequency_per_day: Optional[int] = None
     times_per_take: Optional[int] = None
     duration_days: Optional[int] = None
-    warning_note: Optional[str] = None
+
     administration_times: List[str] = Field(default_factory=list)
 
 
