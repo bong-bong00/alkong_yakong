@@ -21,28 +21,9 @@ DEFAULT_SCHEDULE_TIMES = {
 }
 
 
-def _extract_items(request: PrescriptionOCRRequest) -> list[OCRMedicineItem]:
+def _mock_items(request: PrescriptionOCRRequest) -> list[OCRMedicineItem]:
     if request.mock_items:
         return request.mock_items
-
-    if request.ocr_text:
-        from app.services.gemini_service import parse_ocr_text_to_medicines
-        parsed_data = parse_ocr_text_to_medicines(request.ocr_text)
-        if parsed_data:
-            items = []
-            for item in parsed_data:
-                # 단위 포함 문자열 변환
-                dosage_str = str(item.get("dosage", "")) if item.get("dosage") is not None else None
-                items.append(
-                    OCRMedicineItem(
-                        drug_name=item.get("drug_name"),
-                        dosage=dosage_str,
-                        frequency_per_day=item.get("frequency_per_day"),
-                        duration_days=item.get("duration_days"),
-                        warning_note=item.get("warning_note")
-                    )
-                )
-            return items
 
     names = [
         value.strip()
@@ -66,19 +47,6 @@ def _resolve_medicine(cursor, item: OCRMedicineItem) -> tuple[str, str]:
             "SELECT * FROM medicines WHERE product_name = ?",
             (item.drug_name,),
         ).fetchone()
-        
-    if not medicine:
-        # Fuzzy Matching 로직 추가 (유사도 70점 이상 매핑)
-        all_medicines = cursor.execute("SELECT medicine_code, product_name FROM medicines").fetchall()
-        if all_medicines:
-            medicine_dict = {med["product_name"]: med["medicine_code"] for med in all_medicines}
-            medicine_names = list(medicine_dict.keys())
-            
-            from thefuzz import process
-            best_match = process.extractOne(item.drug_name, medicine_names)
-            if best_match and best_match[1] >= 70:
-                return medicine_dict[best_match[0]], "FUZZY_MATCHED"
-
     if medicine:
         return medicine["medicine_code"], "MATCHED"
 
@@ -205,15 +173,15 @@ def create_prescription_from_ocr(request: PrescriptionOCRRequest) -> dict:
         )
 
         created_items = []
-        for item in _extract_items(request):
+        for item in _mock_items(request):
             medicine_code, match_status = _resolve_medicine(cursor, item)
             cursor.execute(
                 """
                 INSERT INTO prescription_items (
                     prescription_id, medicine_code, ocr_drug_name, dosage, unit,
                     frequency_per_day, times_per_take, duration_days,
-                    administration_times, warning_note, match_status
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    administration_times, match_status
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     prescription_id,
@@ -225,7 +193,6 @@ def create_prescription_from_ocr(request: PrescriptionOCRRequest) -> dict:
                     item.times_per_take,
                     item.duration_days,
                     json.dumps(item.administration_times, ensure_ascii=False),
-                    item.warning_note,
                     match_status,
                 ),
             )

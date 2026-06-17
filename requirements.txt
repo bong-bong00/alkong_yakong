@@ -4,7 +4,3 @@ pydantic
 requests
 python-dotenv
 google-genai
-thefuzz
-python-Levenshtein
-
-firebase-admin
