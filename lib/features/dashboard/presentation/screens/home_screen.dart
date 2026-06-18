@@ -1,12 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import '../../../../core/constants/app_colors.dart';
+import '../../../../core/widgets/rounded_gradient_app_bar.dart';
 import '../../../drug_explain/drug_explain_screen.dart';
 import 'dashboard_screen.dart';
+import 'guardian_home_screen.dart';
 
 /// 하단 탭바를 4개 탭 전체에서 유지하는 쉘(Shell).
-/// 탭 전환은 IndexedStack 인덱스만 바꾸고, Navigator.push 는 쓰지 않는다.
-/// (처방전·생체신호·복약안전도 같은 '상세' 화면만 push 로 연다.)
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
@@ -19,37 +19,44 @@ class _HomeScreenState extends State<HomeScreen> {
 
   void _goToTab(int index) => setState(() => _navIndex = index);
 
+  void _openGuardian() {
+    Navigator.of(context)
+        .push(MaterialPageRoute(builder: (_) => const GuardianHomeScreen()))
+        .then((_) {
+          if (mounted) _goToTab(0);
+        });
+  }
+
   @override
   Widget build(BuildContext context) {
     final pages = <Widget>[
       _HomeTab(onOpenDrugInfo: () => _goToTab(1)),
       DrugExplainScreen(),
       DashboardScreen(),
-      const _MyPageTab(),
+      _MyPageTab(onSwitchToGuardian: _openGuardian),
     ];
 
     return Scaffold(
       backgroundColor: kBackground,
-      // 4개 탭을 한 곳에 쌓아두고 인덱스만 바꾼다. push 안 함 → 하단바 항상 유지.
       body: IndexedStack(index: _navIndex, children: pages),
       bottomNavigationBar: Container(
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: const BorderRadius.only(
-            topLeft: Radius.circular(24),
-            topRight: Radius.circular(24),
+            topLeft: Radius.circular(30),
+            topRight: Radius.circular(30),
           ),
           boxShadow: [
             BoxShadow(
               color: Colors.black.withValues(alpha: 0.05),
-              blurRadius: 16,
+              blurRadius: 18,
               offset: const Offset(0, -4),
             ),
           ],
         ),
         child: SafeArea(
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 12),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceAround,
               children: [
@@ -86,10 +93,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 }
 
-/// 홈 탭 본문 (기존 HomeScreen 의 내용을 그대로 옮긴 것).
-/// 자체 Scaffold(그라데이션 헤더 포함)를 가지며 하단바는 쉘이 담당한다.
 class _HomeTab extends StatefulWidget {
-  /// '빠른 메뉴 > AI 약물 설명' 을 누르면 약정보 탭으로 전환하기 위한 콜백.
   final VoidCallback onOpenDrugInfo;
 
   const _HomeTab({required this.onOpenDrugInfo});
@@ -117,78 +121,54 @@ class _HomeTabState extends State<_HomeTab> {
     },
   ];
 
-  void _onTakeMedicine(int index) {
+  void _toggleMedicine(int index) {
+    final nowDone = !(_todayMeds[index]['done'] as bool);
     setState(() {
-      _todayMeds[index]['done'] = true;
+      _todayMeds[index]['done'] = nowDone;
     });
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: const Text('복약 완료! 폴라 센서 동기화 중...'),
-        backgroundColor: kPrimary,
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      ),
-    );
+    if (nowDone) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('복약 완료! 폴라 센서 동기화 중...'),
+          backgroundColor: kPrimary,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+        ),
+      );
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: kBackground,
-      appBar: PreferredSize(
-        preferredSize: const Size.fromHeight(80),
-        child: Container(
-          decoration: const BoxDecoration(
-            gradient: LinearGradient(colors: [kPrimary, Color(0xFF25B88A)]),
-            borderRadius: BorderRadius.only(
-              bottomLeft: Radius.circular(28),
-              bottomRight: Radius.circular(28),
-            ),
+      // 다른 모든 탭과 동일한 공용 상단바 (로고 + 알림 아이콘만 추가)
+      appBar: RoundedGradientAppBar(
+        '알콩약콩',
+        leading: Container(
+          padding: const EdgeInsets.all(6),
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.2),
+            borderRadius: BorderRadius.circular(10),
           ),
-          child: SafeArea(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(20, 12, 20, 12),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(6),
-                        decoration: BoxDecoration(
-                          color: Colors.white.withValues(alpha: 0.2),
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        child: const Text('💊', style: TextStyle(fontSize: 18)),
-                      ),
-                      const SizedBox(width: 10),
-                      const Text(
-                        '알콩약콩',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 22,
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
-                    ],
-                  ),
-                  Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.2),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: const Icon(
-                      Icons.notifications_none_rounded,
-                      color: Colors.white,
-                      size: 22,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
+          child: const Text('💊', style: TextStyle(fontSize: 18)),
         ),
+        actions: [
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.2),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: const Icon(
+              Icons.notifications_none_rounded,
+              color: Colors.white,
+              size: 22,
+            ),
+          ),
+        ],
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
@@ -210,7 +190,7 @@ class _HomeTabState extends State<_HomeTab> {
             ),
             const SizedBox(height: 20),
 
-            // 폴라 센서 상태 (생체신호 상세 화면은 push 로 연다)
+            // 폴라 센서 상태 (분홍 유지)
             GestureDetector(
               onTap: () => context.push('/biosignal'),
               child: Container(
@@ -220,9 +200,9 @@ class _HomeTabState extends State<_HomeTab> {
                   vertical: 12,
                 ),
                 decoration: BoxDecoration(
-                  color: const Color(0xFFEDE8F5),
+                  color: const Color(0xFFFFEBEE),
                   borderRadius: BorderRadius.circular(14),
-                  border: Border.all(color: const Color(0xFFC8B8E0)),
+                  border: Border.all(color: const Color(0xFFFAD4DD)),
                 ),
                 child: Row(
                   children: [
@@ -234,7 +214,7 @@ class _HomeTabState extends State<_HomeTab> {
                         style: TextStyle(
                           fontSize: 13,
                           fontWeight: FontWeight.w600,
-                          color: Color(0xFF534AB7),
+                          color: Color(0xFFC2185B),
                         ),
                       ),
                     ),
@@ -326,35 +306,36 @@ class _HomeTabState extends State<_HomeTab> {
                     ),
                     const SizedBox(width: 10),
                     done
-                        ? Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 14,
-                              vertical: 8,
-                            ),
-                            decoration: BoxDecoration(
-                              color: kPrimaryLight,
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: const Text(
-                              '완료 ✓',
-                              style: TextStyle(
-                                fontSize: 13,
-                                fontWeight: FontWeight.w700,
-                                color: kPrimary,
-                              ),
-                            ),
-                          )
-                        : GestureDetector(
-                            onTap: () => _onTakeMedicine(i),
+                        ? GestureDetector(
+                            onTap: () => _toggleMedicine(i),
                             child: Container(
                               padding: const EdgeInsets.symmetric(
                                 horizontal: 14,
                                 vertical: 8,
                               ),
                               decoration: BoxDecoration(
-                                gradient: const LinearGradient(
-                                  colors: [kPrimary, Color(0xFF25B88A)],
+                                color: kPrimaryLight,
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: const Text(
+                                '완료 ✓',
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w700,
+                                  color: kPrimary,
                                 ),
+                              ),
+                            ),
+                          )
+                        : GestureDetector(
+                            onTap: () => _toggleMedicine(i),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 14,
+                                vertical: 8,
+                              ),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF25B88A),
                                 borderRadius: BorderRadius.circular(12),
                               ),
                               child: const Text(
@@ -378,7 +359,6 @@ class _HomeTabState extends State<_HomeTab> {
               children: [
                 Expanded(
                   child: GestureDetector(
-                    // 약정보는 탭이므로 push 대신 탭 전환
                     onTap: widget.onOpenDrugInfo,
                     child: _QuickMenu(
                       emoji: '🤖',
@@ -438,27 +418,101 @@ class _HomeTabState extends State<_HomeTab> {
   }
 }
 
-/// 내 정보 탭 (아직 화면 미구현 → 자리표시자).
+/// 내 정보 탭 — 공용 상단바 + 보호자 전환 버튼(맨 아래).
 class _MyPageTab extends StatelessWidget {
-  const _MyPageTab();
+  final VoidCallback onSwitchToGuardian;
+  const _MyPageTab({required this.onSwitchToGuardian});
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: kBackground,
-      appBar: AppBar(
-        backgroundColor: kPrimary,
-        title: const Text(
-          '내 정보',
-          style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800),
-        ),
-        centerTitle: false,
-        elevation: 0,
-      ),
-      body: Center(
-        child: Text(
-          '내 정보 화면 준비 중',
-          style: TextStyle(fontSize: 15, color: Colors.grey[500]),
+      appBar: const RoundedGradientAppBar('내 정보'),
+      body: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 20, 20, 20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  color: kCard,
+                  borderRadius: BorderRadius.circular(18),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.04),
+                      blurRadius: 12,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 52,
+                      height: 52,
+                      decoration: BoxDecoration(
+                        color: kPrimaryLight,
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      child: const Center(
+                        child: Text('🧓', style: TextStyle(fontSize: 26)),
+                      ),
+                    ),
+                    const SizedBox(width: 14),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: const [
+                        Text(
+                          '김복자',
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w800,
+                            color: kText,
+                          ),
+                        ),
+                        SizedBox(height: 3),
+                        Text(
+                          '환자 · 보호자 1명 연결됨',
+                          style: TextStyle(fontSize: 13, color: kTextSub),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              const Spacer(),
+              GestureDetector(
+                onTap: onSwitchToGuardian,
+                child: Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  decoration: BoxDecoration(
+                    color: kPrimaryLight,
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: kPrimary.withValues(alpha: 0.18)),
+                  ),
+                  child: const Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.swap_horiz_rounded, color: kPrimary, size: 18),
+                      SizedBox(width: 8),
+                      Text(
+                        '보호자 화면으로 전환 (데모)',
+                        style: TextStyle(
+                          color: kPrimary,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -569,7 +623,7 @@ class _NavItem extends StatelessWidget {
         duration: const Duration(milliseconds: 200),
         padding: EdgeInsets.symmetric(
           horizontal: isSelected ? 16 : 12,
-          vertical: 8,
+          vertical: 10,
         ),
         decoration: BoxDecoration(
           color: isSelected ? kPrimaryLight : Colors.transparent,
