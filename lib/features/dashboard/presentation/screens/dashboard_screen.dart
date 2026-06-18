@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/network/api_client.dart';
 import '../../../../core/session/mvp_session.dart';
+import '../../../../core/widgets/rounded_gradient_app_bar.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -70,9 +71,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   Future<void> _markTaken(Map<String, dynamic> medication) async {
     final userId = _userIdController.text.trim();
-    final scheduleId = _intValue(
-      medication['schedule_id'] ?? medication['id'],
-    );
+    final scheduleId = _intValue(medication['schedule_id'] ?? medication['id']);
     if (userId.isEmpty || scheduleId == null) {
       setState(() => _errorMessage = '사용자 또는 복약 일정 정보가 없습니다.');
       return;
@@ -133,21 +132,19 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final schedules = todayMedications is List
         ? todayMedications
         : summarySchedules is List
-            ? summarySchedules
-            : const <dynamic>[];
+        ? summarySchedules
+        : const <dynamic>[];
     final risk = _asMap(_dashboard?['latest_risk']);
     final prescription = _asMap(_dashboard?['latest_prescription']);
     final event = _asMap(_dashboard?['latest_abnormal_event']);
     final recentNotifications = _dashboard?['recent_notifications'] is List
         ? _dashboard!['recent_notifications'] as List
         : const <dynamic>[];
-    final prescriptionMedicines = _stringList(
-      prescription?['medicine_names'],
-    );
+    final prescriptionMedicines = _stringList(prescription?['medicine_names']);
 
     return Scaffold(
       backgroundColor: kBackground,
-      appBar: AppBar(title: const Text('복약 기록'), backgroundColor: kPrimary),
+      appBar: const RoundedGradientAppBar('복약 기록'),
       body: SafeArea(
         child: RefreshIndicator(
           onRefresh: _refreshDashboard,
@@ -163,6 +160,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
               ),
               const SizedBox(height: 12),
               FilledButton.icon(
+                style: FilledButton.styleFrom(
+                  backgroundColor: const Color(0xFF25B88A),
+                  foregroundColor: Colors.white,
+                ),
                 onPressed: _isLoading ? null : _refreshDashboard,
                 icon: _isLoading
                     ? const _ButtonProgress()
@@ -244,9 +245,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     return Padding(
                       padding: const EdgeInsets.only(bottom: 8),
                       child: _MedicationCard(
-                        time: _text(
-                          item['time'] ?? item['scheduled_time'],
-                        ),
+                        time: _text(item['time'] ?? item['scheduled_time']),
                         drugName: _text(
                           item['drug_name'] ?? item['product_name'],
                         ),
@@ -304,9 +303,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   color: Colors.orange,
                 ),
                 const SizedBox(height: 10),
-                Text(
+                const Text(
                   '최근 알림',
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 17,
                     fontWeight: FontWeight.w800,
                     color: kText,

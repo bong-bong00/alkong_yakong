@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/network/api_client.dart';
 import '../../core/session/mvp_session.dart';
+import '../../core/widgets/rounded_gradient_app_bar.dart';
 
 class DrugExplainScreen extends StatefulWidget {
   const DrugExplainScreen({super.key});
@@ -62,11 +63,13 @@ class _DrugExplainScreenState extends State<DrugExplainScreen> {
       final nestedExplanation = _asMap(data['explanation']);
       if (!mounted) return;
       setState(() {
-        _medicine = nestedMedicine ?? {
-          'medicine_code': data['medicine_code'],
-          'product_name': data['drug_name'],
-          'ingredient': data['ingredient'],
-        };
+        _medicine =
+            nestedMedicine ??
+            {
+              'medicine_code': data['medicine_code'],
+              'product_name': data['drug_name'],
+              'ingredient': data['ingredient'],
+            };
         _explanation = nestedExplanation ?? data;
       });
       MvpSession.medicineCode = medicineCode;
@@ -90,7 +93,7 @@ class _DrugExplainScreenState extends State<DrugExplainScreen> {
 
     return Scaffold(
       backgroundColor: kBackground,
-      appBar: AppBar(title: const Text('AI 약물 설명'), backgroundColor: kPrimary),
+      appBar: const RoundedGradientAppBar('AI 약물 설명'),
       body: SafeArea(
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(20),
@@ -115,9 +118,11 @@ class _DrugExplainScreenState extends State<DrugExplainScreen> {
                 children: [
                   Expanded(
                     child: FilledButton.icon(
-                      onPressed: _isLoading
-                          ? null
-                          : () => _loadExplanation(),
+                      style: FilledButton.styleFrom(
+                        backgroundColor: const Color(0xFF25B88A),
+                        foregroundColor: Colors.white,
+                      ),
+                      onPressed: _isLoading ? null : () => _loadExplanation(),
                       icon: _isLoading
                           ? const _ButtonProgress()
                           : const Icon(Icons.auto_awesome),
@@ -149,8 +154,7 @@ class _DrugExplainScreenState extends State<DrugExplainScreen> {
                   productName: _text(_medicine?['product_name']),
                   ingredient: _text(_medicine?['ingredient']),
                   summary: _text(
-                    _explanation?['easy_summary'] ??
-                        _explanation?['summary'],
+                    _explanation?['easy_summary'] ?? _explanation?['summary'],
                   ),
                   whatItDoes: _text(_explanation?['what_it_does']),
                   howToTake: _text(_explanation?['how_to_take']),
@@ -162,9 +166,7 @@ class _DrugExplainScreenState extends State<DrugExplainScreen> {
                         _explanation?['side_effects'],
                   ),
                   storage: _text(_explanation?['storage']),
-                  askDoctorWhen: _stringList(
-                    _explanation?['ask_doctor_when'],
-                  ),
+                  askDoctorWhen: _stringList(_explanation?['ask_doctor_when']),
                   generatedBy: _text(
                     _explanation?['generated_by'] ??
                         _explanation?['model_name'],
@@ -265,10 +267,7 @@ class _ExplanationCard extends StatelessWidget {
         _SectionCard(title: '주의사항', items: cautions),
         _SectionCard(title: '가능한 부작용', items: sideEffects),
         _SectionCard(title: '보관 방법', value: storage),
-        _SectionCard(
-          title: '의사/약사 상담이 필요한 경우',
-          items: askDoctorWhen,
-        ),
+        _SectionCard(title: '의사/약사 상담이 필요한 경우', items: askDoctorWhen),
         _CardShell(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -507,7 +506,9 @@ List<String> _stringList(dynamic value) {
 }
 
 bool _boolValue(dynamic value) {
-  return value == true || value == 1 || value?.toString().toLowerCase() == 'true';
+  return value == true ||
+      value == 1 ||
+      value?.toString().toLowerCase() == 'true';
 }
 
 String _generatedByLabel(String value) {
