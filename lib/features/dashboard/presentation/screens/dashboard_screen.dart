@@ -14,34 +14,27 @@ class DashboardScreen extends StatefulWidget {
 
 class _DashboardScreenState extends State<DashboardScreen> {
   final _apiClient = ApiClient();
-  late final TextEditingController _userIdController;
 
   bool _isLoading = false;
-  bool _isNotificationActionLoading = false;
   int? _submittingScheduleId;
   String? _errorMessage;
   Map<String, dynamic>? _dashboard;
 
+  // 캘린더를 위한 현재 선택된 날짜
+  DateTime _selectedDate = DateTime.now();
+
   @override
   void initState() {
     super.initState();
-    _userIdController = TextEditingController(text: MvpSession.userId);
-  }
-
-  @override
-  void dispose() {
-    _userIdController.dispose();
-    super.dispose();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _refreshDashboard();
+    });
   }
 
   Future<void> _refreshDashboard() async {
-    var userId = _userIdController.text.trim();
-    if (userId.isEmpty && MvpSession.userId.isNotEmpty) {
-      userId = MvpSession.userId;
-      _userIdController.text = userId;
-    }
+    final userId = MvpSession.userId;
     if (userId.isEmpty) {
-      setState(() => _errorMessage = '사용자 ID를 입력해주세요.');
+      setState(() => _errorMessage = '로그인 정보(사용자 ID)가 없습니다.');
       return;
     }
 
@@ -49,15 +42,19 @@ class _DashboardScreenState extends State<DashboardScreen> {
       _isLoading = true;
       _errorMessage = null;
     });
+
+    // 선택된 날짜 포맷팅 (YYYY-MM-DD 형식으로 API 요청 시 활용 가능)
+    // final dateStr = "${_selectedDate.year}-${_selectedDate.month.toString().padLeft(2, '0')}-${_selectedDate.day.toString().padLeft(2, '0')}";
+
     try {
       final response = await _apiClient.get(
         '/api/v1/users/${Uri.encodeComponent(userId)}/dashboard',
+        // queryParameters: {'date': dateStr}, // API가 특정 날짜 조회를 지원한다면 추가
       );
       if (!mounted) return;
       setState(() {
         _dashboard = Map<String, dynamic>.from(response as Map);
       });
-      MvpSession.userId = userId;
     } on ApiException catch (error) {
       if (!mounted) return;
       setState(() => _errorMessage = _apiError(error));
@@ -70,7 +67,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Future<void> _markTaken(Map<String, dynamic> medication) async {
-    final userId = _userIdController.text.trim();
+    final userId = MvpSession.userId;
     final scheduleId = _intValue(medication['schedule_id'] ?? medication['id']);
     if (userId.isEmpty || scheduleId == null) {
       setState(() => _errorMessage = '사용자 또는 복약 일정 정보가 없습니다.');
@@ -95,32 +92,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
       setState(() => _errorMessage = '복약 완료 처리 중 오류가 발생했습니다: $error');
     } finally {
       if (mounted) setState(() => _submittingScheduleId = null);
-    }
-  }
-
-  Future<void> _runNotificationAction(String path) async {
-    final userId = _userIdController.text.trim();
-    if (userId.isEmpty) {
-      setState(() => _errorMessage = '사용자 ID를 입력해주세요.');
-      return;
-    }
-    setState(() {
-      _isNotificationActionLoading = true;
-      _errorMessage = null;
-    });
-    try {
-      await _apiClient.post(path, body: {'user_id': userId});
-      await _refreshDashboard();
-    } on ApiException catch (error) {
-      if (!mounted) return;
-      setState(() => _errorMessage = _apiError(error));
-    } catch (error) {
-      if (!mounted) return;
-      setState(() => _errorMessage = '알림 처리 중 오류가 발생했습니다: $error');
-    } finally {
-      if (mounted) {
-        setState(() => _isNotificationActionLoading = false);
-      }
     }
   }
 
@@ -149,189 +120,206 @@ class _DashboardScreenState extends State<DashboardScreen> {
         child: RefreshIndicator(
           onRefresh: _refreshDashboard,
           child: ListView(
-            padding: const EdgeInsets.all(20),
+            padding: const EdgeInsets.symmetric(vertical: 20),
             children: [
-              TextField(
-                controller: _userIdController,
-                decoration: const InputDecoration(
-                  labelText: '사용자 ID',
-                  border: OutlineInputBorder(),
-                ),
+              // 주간 캘린더 UI
+              _WeeklyCalendar(
+                selectedDate: _selectedDate,
+                onDateSelected: (date) {
+                  setState(() => _selectedDate = date);
+                  _refreshDashboard();
+                },
               ),
-              const SizedBox(height: 12),
-              FilledButton.icon(
-                style: FilledButton.styleFrom(
-                  backgroundColor: const Color(0xFF25B88A),
-                  foregroundColor: Colors.white,
-                ),
-                onPressed: _isLoading ? null : _refreshDashboard,
-                icon: _isLoading
-                    ? const _ButtonProgress()
-                    : const Icon(Icons.refresh),
-                label: Text(_isLoading ? '불러오는 중...' : '대시보드 새로고침'),
-              ),
-              const SizedBox(height: 10),
-              Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: _isNotificationActionLoading
-                          ? null
-                          : () => _runNotificationAction(
-                              '/api/v1/notifications/'
-                              'generate-medication-reminders',
+              const SizedBox(height: 16),
+
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (_errorMessage != null) ...[
+                      _DashboardCard(
+                        title: '조회 실패',
+                        value: _errorMessage!,
+                        icon: Icons.error_outline,
+                        color: Colors.red,
+                      ),
+                      const SizedBox(height: 16),
+                    ],
+
+                    Text(
+                      '${_selectedDate.month}월 ${_selectedDate.day}일 요약',
+                      style: const TextStyle(
+                        fontSize: 19,
+                        fontWeight: FontWeight.w800,
+                        color: kText,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    _DashboardCard(
+                      title: '이날의 복약',
+                      value:
+                          '${_text(medication?['completed'], fallback: '0')} / '
+                          '${_text(medication?['total'], fallback: '0')} 완료',
+                      icon: Icons.medication_outlined,
+                      color: kPrimary,
+                    ),
+                    const SizedBox(height: 10),
+                    if (schedules.isEmpty)
+                      const _SmallDataCard(title: '복약 일정', value: '데이터 없음')
+                    else
+                      ...schedules.map((schedule) {
+                        final item =
+                            _asMap(schedule) ?? const <String, dynamic>{};
+                        return Padding(
+                          padding: const EdgeInsets.only(bottom: 8),
+                          child: _MedicationCard(
+                            time: _text(item['time'] ?? item['scheduled_time']),
+                            drugName: _text(
+                              item['drug_name'] ?? item['product_name'],
                             ),
-                      icon: const Icon(Icons.notifications_active_outlined),
-                      label: const Text('알림 생성 테스트'),
+                            ingredient: _text(item['ingredient']),
+                            status: _text(item['status'], fallback: 'PENDING'),
+                            isSubmitting:
+                                _submittingScheduleId ==
+                                _intValue(item['schedule_id'] ?? item['id']),
+                            onTaken: () => _markTaken(item),
+                          ),
+                        );
+                      }),
+                    const SizedBox(height: 4),
+                    _DashboardCard(
+                      title: 'DUR 위험도',
+                      value: risk == null
+                          ? '데이터 없음'
+                          : '${_text(risk['risk_level'])} · '
+                                '${_text(risk['total_matches'], fallback: '0')}건\n'
+                                '대표 유형: ${_text(risk['representative_type'])}',
+                      icon: Icons.health_and_safety_outlined,
+                      color: _riskColor(
+                        _text(risk?['risk_level'], fallback: 'LOW'),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    _DashboardCard(
+                      title: '최근 처방전',
+                      value: prescription == null
+                          ? '데이터 없음'
+                          : '${_text(prescription['display_name'], fallback: 'OCR 처방전')}\n'
+                                '등록일: ${_text(prescription['registered_at'] ?? prescription['created_at'])}\n'
+                                '약: ${prescriptionMedicines.isEmpty ? '데이터 없음' : prescriptionMedicines.take(3).join(', ')}',
+                      icon: Icons.description_outlined,
+                      color: const Color(0xFF4A78C2),
+                    ),
+                    const SizedBox(height: 10),
+                    _DashboardCard(
+                      title: '최근 생체신호 이벤트',
+                      value: event == null
+                          ? '데이터 없음'
+                          : '${_text(event['event_type'])} · ${_text(event['bpm'])} BPM\n'
+                                '${_text(event['occurred_at'])}',
+                      icon: Icons.monitor_heart_outlined,
+                      color: Colors.redAccent,
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// 주간 캘린더 위젯
+class _WeeklyCalendar extends StatelessWidget {
+  final DateTime selectedDate;
+  final Function(DateTime) onDateSelected;
+
+  const _WeeklyCalendar({
+    required this.selectedDate,
+    required this.onDateSelected,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    // 오늘 기준으로 앞뒤 3일씩 (총 7일)을 생성하여 보여줍니다.
+    final today = DateTime.now();
+    final List<DateTime> weekDays = List.generate(
+      7,
+      (index) => today.subtract(Duration(days: 3 - index)),
+    );
+
+    return SizedBox(
+      height: 90,
+      child: ListView.builder(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        itemCount: weekDays.length,
+        itemBuilder: (context, index) {
+          final date = weekDays[index];
+          final isSelected =
+              date.year == selectedDate.year &&
+              date.month == selectedDate.month &&
+              date.day == selectedDate.day;
+
+          final dayName = const [
+            '월',
+            '화',
+            '수',
+            '목',
+            '금',
+            '토',
+            '일',
+          ][date.weekday - 1];
+
+          return GestureDetector(
+            onTap: () => onDateSelected(date),
+            child: Container(
+              width: 60,
+              margin: const EdgeInsets.symmetric(horizontal: 4),
+              decoration: BoxDecoration(
+                color: isSelected ? kPrimary : Colors.white,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(
+                  color: isSelected ? kPrimary : Colors.grey[300]!,
+                ),
+                boxShadow: isSelected
+                    ? [
+                        BoxShadow(
+                          color: kPrimary.withValues(alpha: 0.3),
+                          blurRadius: 8,
+                          offset: const Offset(0, 4),
+                        ),
+                      ]
+                    : null,
+              ),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text(
+                    dayName,
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: isSelected ? Colors.white : Colors.grey[500],
                     ),
                   ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: _isNotificationActionLoading
-                          ? null
-                          : () => _runNotificationAction(
-                              '/api/v1/medication-logs/mark-missed',
-                            ),
-                      icon: const Icon(Icons.timer_off_outlined),
-                      label: const Text('미복용 처리 실행'),
+                  const SizedBox(height: 8),
+                  Text(
+                    '${date.day}',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w800,
+                      color: isSelected ? Colors.white : kText,
                     ),
                   ),
                 ],
               ),
-              if (_errorMessage != null) ...[
-                const SizedBox(height: 16),
-                _DashboardCard(
-                  title: '조회 실패',
-                  value: _errorMessage!,
-                  icon: Icons.error_outline,
-                  color: Colors.red,
-                ),
-              ],
-              if (_dashboard == null && _errorMessage == null) ...[
-                const SizedBox(height: 16),
-                const _DashboardCard(
-                  title: '대시보드',
-                  value: '사용자 ID를 입력하고 새로고침을 눌러주세요.',
-                  icon: Icons.dashboard_outlined,
-                  color: kPrimary,
-                ),
-              ],
-              if (_dashboard != null) ...[
-                const SizedBox(height: 18),
-                Text(
-                  '${_text(_dashboard?['date'])} 요약',
-                  style: const TextStyle(
-                    fontSize: 19,
-                    fontWeight: FontWeight.w800,
-                    color: kText,
-                  ),
-                ),
-                const SizedBox(height: 12),
-                _DashboardCard(
-                  title: '오늘 복약',
-                  value:
-                      '${_text(medication?['completed'], fallback: '0')} / '
-                      '${_text(medication?['total'], fallback: '0')} 완료',
-                  icon: Icons.medication_outlined,
-                  color: kPrimary,
-                ),
-                const SizedBox(height: 10),
-                if (schedules.isEmpty)
-                  const _SmallDataCard(title: '복약 일정', value: '데이터 없음')
-                else
-                  ...schedules.map((schedule) {
-                    final item = _asMap(schedule) ?? const <String, dynamic>{};
-                    return Padding(
-                      padding: const EdgeInsets.only(bottom: 8),
-                      child: _MedicationCard(
-                        time: _text(item['time'] ?? item['scheduled_time']),
-                        drugName: _text(
-                          item['drug_name'] ?? item['product_name'],
-                        ),
-                        ingredient: _text(item['ingredient']),
-                        status: _text(item['status'], fallback: 'PENDING'),
-                        isSubmitting:
-                            _submittingScheduleId ==
-                            _intValue(item['schedule_id'] ?? item['id']),
-                        onTaken: () => _markTaken(item),
-                      ),
-                    );
-                  }),
-                const SizedBox(height: 4),
-                _DashboardCard(
-                  title: 'DUR 위험도',
-                  value: risk == null
-                      ? '데이터 없음'
-                      : '${_text(risk['risk_level'])} · '
-                            '${_text(risk['total_matches'], fallback: '0')}건\n'
-                            '대표 유형: ${_text(risk['representative_type'])}',
-                  icon: Icons.health_and_safety_outlined,
-                  color: _riskColor(
-                    _text(risk?['risk_level'], fallback: 'LOW'),
-                  ),
-                ),
-                const SizedBox(height: 10),
-                _DashboardCard(
-                  title: '최근 처방전',
-                  value: prescription == null
-                      ? '데이터 없음'
-                      : '${_text(prescription['display_name'], fallback: 'OCR 처방전')}\n'
-                            'ID: ${_text(prescription['id'])}\n'
-                            '등록일: ${_text(prescription['registered_at'] ?? prescription['created_at'])}\n'
-                            'OCR 상태: ${_text(prescription['ocr_status'])}\n'
-                            '약: ${prescriptionMedicines.isEmpty ? '데이터 없음' : prescriptionMedicines.take(3).join(', ')}',
-                  icon: Icons.description_outlined,
-                  color: const Color(0xFF4A78C2),
-                ),
-                const SizedBox(height: 10),
-                _DashboardCard(
-                  title: '최근 생체신호 이벤트',
-                  value: event == null
-                      ? '데이터 없음'
-                      : '${_text(event['event_type'])} · ${_text(event['bpm'])} BPM\n'
-                            '${_text(event['occurred_at'])}',
-                  icon: Icons.monitor_heart_outlined,
-                  color: Colors.redAccent,
-                ),
-                const SizedBox(height: 10),
-                _DashboardCard(
-                  title: '보호자 알림',
-                  value:
-                      '${_text(_dashboard?['notification_count'], fallback: '0')}건',
-                  icon: Icons.notifications_outlined,
-                  color: Colors.orange,
-                ),
-                const SizedBox(height: 10),
-                const Text(
-                  '최근 알림',
-                  style: TextStyle(
-                    fontSize: 17,
-                    fontWeight: FontWeight.w800,
-                    color: kText,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                if (recentNotifications.isEmpty)
-                  const _SmallDataCard(title: '알림', value: '데이터 없음')
-                else
-                  ...recentNotifications.map((notification) {
-                    final item =
-                        _asMap(notification) ?? const <String, dynamic>{};
-                    return Padding(
-                      padding: const EdgeInsets.only(bottom: 8),
-                      child: _SmallDataCard(
-                        title: _text(item['title']),
-                        value:
-                            '${_text(item['status'])}\n'
-                            '${_text(item['message'])}',
-                      ),
-                    );
-                  }),
-              ],
-            ],
-          ),
-        ),
+            ),
+          );
+        },
       ),
     );
   }
@@ -509,19 +497,6 @@ class _MedicationStatus extends StatelessWidget {
           fontWeight: FontWeight.w700,
         ),
       ),
-    );
-  }
-}
-
-class _ButtonProgress extends StatelessWidget {
-  const _ButtonProgress();
-
-  @override
-  Widget build(BuildContext context) {
-    return const SizedBox(
-      width: 18,
-      height: 18,
-      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
     );
   }
 }

@@ -305,308 +305,319 @@ class _SignupScreenState extends State<SignupScreen> {
           ],
         ),
       ),
-      _StepDef(
-        title: '생년월일과 성별을 알려주세요',
-        validate: () {
-          if (_birth == null) return '생년월일을 선택해주세요';
-          if (_gender == null) return '성별을 선택해주세요';
-          return null;
-        },
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            GestureDetector(
-              onTap: _pickBirth,
-              child: Container(
-                height: 54,
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                alignment: Alignment.centerLeft,
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(14),
-                  border: Border.all(color: Colors.grey[300]!),
-                ),
-                child: Row(
-                  children: [
-                    Icon(
-                      Icons.calendar_today_rounded,
-                      size: 18,
-                      color: Colors.grey[500],
-                    ),
-                    const SizedBox(width: 10),
-                    Text(
-                      _birth == null
-                          ? '생년월일 선택'
-                          : '${_birth!.year}년 ${_birth!.month}월 ${_birth!.day}일',
-                      style: TextStyle(
-                        fontSize: 15,
-                        color: _birth == null ? Colors.grey[500] : kText,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            const SizedBox(height: 14),
-            Row(
-              children: [
-                Expanded(
-                  child: _pill(
-                    '남성',
-                    _gender == 'M',
-                    () => setState(() => _gender = 'M'),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: _pill(
-                    '여성',
-                    _gender == 'F',
-                    () => setState(() => _gender = 'F'),
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
-      _StepDef(
-        title: '키, 몸무게, 혈액형',
-        subtitle: '모르면 비워두고 넘어가도 돼요 (선택)',
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Row(
-              children: [
-                Expanded(
-                  child: _field(
-                    _height,
-                    hint: '키',
-                    keyboard: TextInputType.number,
-                    suffixText: 'cm',
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: _field(
-                    _weight,
-                    hint: '몸무게',
-                    keyboard: TextInputType.number,
-                    suffixText: 'kg',
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            const Align(
-              alignment: Alignment.centerLeft,
-              child: Text(
-                '혈액형',
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w700,
-                  color: kText,
-                ),
-              ),
-            ),
-            const SizedBox(height: 8),
-            _grid(
-              const [
-                'RH+ A',
-                'RH- A',
-                'RH+ B',
-                'RH- B',
-                'RH+ O',
-                'RH- O',
-                'RH+ AB',
-                'RH- AB',
-              ],
-              _blood,
-              (v) => setState(() => _blood = v),
-            ),
-          ],
-        ),
-      ),
     ];
 
-    if (_gender == 'F') {
-      steps.add(
+    // 환자만 건강정보 단계를 받는다 (보호자는 환자 모니터링 전용이라 불필요)
+    if (_role == 'patient') {
+      steps.addAll([
         _StepDef(
-          title: '임신 계획이 있으신가요?',
-          subtitle: '임신 상황에 따라 주의 약물이 달라요',
-          validate: () => _pregnancy == null ? '하나를 선택해주세요' : null,
-          child: _grid(
-            const ['계획 없음', '임신 준비중', '임신 중', '수유 중'],
-            _pregnancy,
-            (v) => setState(() => _pregnancy = v),
+          title: '생년월일과 성별을 알려주세요',
+          validate: () {
+            if (_birth == null) return '생년월일을 선택해주세요';
+            if (_gender == null) return '성별을 선택해주세요';
+            return null;
+          },
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              GestureDetector(
+                onTap: _pickBirth,
+                child: Container(
+                  height: 54,
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  alignment: Alignment.centerLeft,
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: Colors.grey[300]!),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(
+                        Icons.calendar_today_rounded,
+                        size: 18,
+                        color: Colors.grey[500],
+                      ),
+                      const SizedBox(width: 10),
+                      Text(
+                        _birth == null
+                            ? '생년월일 선택'
+                            : '${_birth!.year}년 ${_birth!.month}월 ${_birth!.day}일',
+                        style: TextStyle(
+                          fontSize: 15,
+                          color: _birth == null ? Colors.grey[500] : kText,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 14),
+              Row(
+                children: [
+                  Expanded(
+                    child: _pill(
+                      '남성',
+                      _gender == 'M',
+                      () => setState(() => _gender = 'M'),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: _pill(
+                      '여성',
+                      _gender == 'F',
+                      () => setState(() => _gender = 'F'),
+                    ),
+                  ),
+                ],
+              ),
+            ],
           ),
         ),
-      );
-    }
+        _StepDef(
+          title: '키, 몸무게, 혈액형',
+          subtitle: '모르면 비워두고 넘어가도 돼요 (선택)',
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: _field(
+                      _height,
+                      hint: '키',
+                      keyboard: TextInputType.number,
+                      suffixText: 'cm',
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: _field(
+                      _weight,
+                      hint: '몸무게',
+                      keyboard: TextInputType.number,
+                      suffixText: 'kg',
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              const Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  '혈액형',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                    color: kText,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 8),
+              _grid(
+                const [
+                  'RH+ A',
+                  'RH- A',
+                  'RH+ B',
+                  'RH- B',
+                  'RH+ O',
+                  'RH- O',
+                  'RH+ AB',
+                  'RH- AB',
+                ],
+                _blood,
+                (v) => setState(() => _blood = v),
+              ),
+            ],
+          ),
+        ),
+      ]);
 
+      if (_gender == 'F') {
+        steps.add(
+          _StepDef(
+            title: '임신 계획이 있으신가요?',
+            subtitle: '임신 상황에 따라 주의 약물이 달라요',
+            validate: () => _pregnancy == null ? '하나를 선택해주세요' : null,
+            child: _grid(
+              const ['계획 없음', '임신 준비중', '임신 중', '수유 중'],
+              _pregnancy,
+              (v) => setState(() => _pregnancy = v),
+            ),
+          ),
+        );
+      }
+
+      steps.addAll([
+        _StepDef(
+          title: '흡연과 음주를 알려주세요',
+          validate: () {
+            if (_smoking == null) return '흡연 여부를 선택해주세요';
+            if (_drinking == null) return '음주 여부를 선택해주세요';
+            return null;
+          },
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  '담배를 피우시나요?',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                    color: kText,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 8),
+              _vlist(
+                const ['아니요', '예', '과거에 폈지만 끊었어요'],
+                _smoking,
+                (v) => setState(() => _smoking = v),
+              ),
+              const SizedBox(height: 18),
+              const Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  '술을 일주일에 얼마나 마시나요?',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                    color: kText,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 8),
+              _grid(
+                const ['거의 안 마심', '주 1~2일', '주 3~4일', '주 5~7일'],
+                _drinking,
+                (v) => setState(() => _drinking = v),
+              ),
+            ],
+          ),
+        ),
+        _StepDef(
+          title: '약물 알레르기가 있으신가요?',
+          subtitle: '약물 알레르기 안전을 위해 꼭 필요해요',
+          validate: () {
+            if (_allergyYes == null) return '하나를 선택해주세요';
+            if (_allergyYes == true && _allergens.isEmpty) {
+              return '해당하는 약물 알레르기를 선택해주세요';
+            }
+            if (_allergens.contains('기타') &&
+                _allergyOther.text.trim().isEmpty) {
+              return '기타 약물 알레르기를 입력해주세요';
+            }
+            return null;
+          },
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _yesNo(_allergyYes, (v) => setState(() => _allergyYes = v)),
+              if (_allergyYes == true) ...[
+                const SizedBox(height: 16),
+                Text(
+                  '해당하는 것을 모두 선택해주세요',
+                  style: TextStyle(fontSize: 13, color: Colors.grey[500]),
+                ),
+                const SizedBox(height: 10),
+                _multiChips(
+                  _allergyOptions,
+                  _allergens,
+                  (o) => _toggle(_allergens, o),
+                ),
+                if (_allergens.contains('기타')) ...[
+                  const SizedBox(height: 12),
+                  _field(_allergyOther, hint: '기타 약물 알레르기를 입력해주세요'),
+                ],
+              ],
+            ],
+          ),
+        ),
+        _StepDef(
+          title: '현재 앓고 있는 질환이 있으신가요?',
+          subtitle: '복약 안전도 판단에 사용돼요',
+          validate: () {
+            if (_chronicYes == null) return '하나를 선택해주세요';
+            if (_chronicYes == true && _diseases.isEmpty) {
+              return '해당하는 질환을 선택해주세요';
+            }
+            if (_diseases.contains('기타') && _diseaseOther.text.trim().isEmpty) {
+              return '기타 질환을 입력해주세요';
+            }
+            return null;
+          },
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _yesNo(_chronicYes, (v) => setState(() => _chronicYes = v)),
+              if (_chronicYes == true) ...[
+                const SizedBox(height: 16),
+                Text(
+                  '해당하는 것을 모두 선택해주세요',
+                  style: TextStyle(fontSize: 13, color: Colors.grey[500]),
+                ),
+                const SizedBox(height: 10),
+                _multiChips(
+                  _diseaseOptions,
+                  _diseases,
+                  (o) => _toggle(_diseases, o),
+                ),
+                if (_diseases.contains('기타')) ...[
+                  const SizedBox(height: 12),
+                  _field(_diseaseOther, hint: '기타 질환을 입력해주세요'),
+                ],
+              ],
+            ],
+          ),
+        ),
+        _StepDef(
+          title: '과거력과 가족력',
+          validate: () {
+            if (_pastYes == null) return '과거력을 선택해주세요';
+            if (_familyYes == null) return '가족력을 선택해주세요';
+            return null;
+          },
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  '과거에 앓았던 질환이 있나요?',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                    color: kText,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 8),
+              _yesNo(_pastYes, (v) => setState(() => _pastYes = v)),
+              const SizedBox(height: 18),
+              const Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  '가족력이 있나요?',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                    color: kText,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 8),
+              _yesNo(_familyYes, (v) => setState(() => _familyYes = v)),
+            ],
+          ),
+        ),
+      ]);
+    } // 환자 전용 건강정보 단계 끝
+
+    // 동의는 환자·보호자 공통
     steps.addAll([
-      _StepDef(
-        title: '흡연과 음주를 알려주세요',
-        validate: () {
-          if (_smoking == null) return '흡연 여부를 선택해주세요';
-          if (_drinking == null) return '음주 여부를 선택해주세요';
-          return null;
-        },
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            const Align(
-              alignment: Alignment.centerLeft,
-              child: Text(
-                '담배를 피우시나요?',
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w700,
-                  color: kText,
-                ),
-              ),
-            ),
-            const SizedBox(height: 8),
-            _vlist(
-              const ['아니요', '예', '과거에 폈지만 끊었어요'],
-              _smoking,
-              (v) => setState(() => _smoking = v),
-            ),
-            const SizedBox(height: 18),
-            const Align(
-              alignment: Alignment.centerLeft,
-              child: Text(
-                '술을 일주일에 얼마나 마시나요?',
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w700,
-                  color: kText,
-                ),
-              ),
-            ),
-            const SizedBox(height: 8),
-            _grid(
-              const ['거의 안 마심', '주 1~2일', '주 3~4일', '주 5~7일'],
-              _drinking,
-              (v) => setState(() => _drinking = v),
-            ),
-          ],
-        ),
-      ),
-      _StepDef(
-        title: '약물 알레르기가 있으신가요?',
-        subtitle: '약물 알레르기 안전을 위해 꼭 필요해요',
-        validate: () {
-          if (_allergyYes == null) return '하나를 선택해주세요';
-          if (_allergyYes == true && _allergens.isEmpty) {
-            return '해당하는 약물 알레르기를 선택해주세요';
-          }
-          if (_allergens.contains('기타') && _allergyOther.text.trim().isEmpty) {
-            return '기타 약물 알레르기를 입력해주세요';
-          }
-          return null;
-        },
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            _yesNo(_allergyYes, (v) => setState(() => _allergyYes = v)),
-            if (_allergyYes == true) ...[
-              const SizedBox(height: 16),
-              Text(
-                '해당하는 것을 모두 선택해주세요',
-                style: TextStyle(fontSize: 13, color: Colors.grey[500]),
-              ),
-              const SizedBox(height: 10),
-              _multiChips(
-                _allergyOptions,
-                _allergens,
-                (o) => _toggle(_allergens, o),
-              ),
-              if (_allergens.contains('기타')) ...[
-                const SizedBox(height: 12),
-                _field(_allergyOther, hint: '기타 약물 알레르기를 입력해주세요'),
-              ],
-            ],
-          ],
-        ),
-      ),
-      _StepDef(
-        title: '현재 앓고 있는 질환이 있으신가요?',
-        subtitle: '복약 안전도 판단에 사용돼요',
-        validate: () {
-          if (_chronicYes == null) return '하나를 선택해주세요';
-          if (_chronicYes == true && _diseases.isEmpty) {
-            return '해당하는 질환을 선택해주세요';
-          }
-          if (_diseases.contains('기타') && _diseaseOther.text.trim().isEmpty) {
-            return '기타 질환을 입력해주세요';
-          }
-          return null;
-        },
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            _yesNo(_chronicYes, (v) => setState(() => _chronicYes = v)),
-            if (_chronicYes == true) ...[
-              const SizedBox(height: 16),
-              Text(
-                '해당하는 것을 모두 선택해주세요',
-                style: TextStyle(fontSize: 13, color: Colors.grey[500]),
-              ),
-              const SizedBox(height: 10),
-              _multiChips(
-                _diseaseOptions,
-                _diseases,
-                (o) => _toggle(_diseases, o),
-              ),
-              if (_diseases.contains('기타')) ...[
-                const SizedBox(height: 12),
-                _field(_diseaseOther, hint: '기타 질환을 입력해주세요'),
-              ],
-            ],
-          ],
-        ),
-      ),
-      _StepDef(
-        title: '과거력과 가족력',
-        validate: () {
-          if (_pastYes == null) return '과거력을 선택해주세요';
-          if (_familyYes == null) return '가족력을 선택해주세요';
-          return null;
-        },
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            const Align(
-              alignment: Alignment.centerLeft,
-              child: Text(
-                '과거에 앓았던 질환이 있나요?',
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w700,
-                  color: kText,
-                ),
-              ),
-            ),
-            const SizedBox(height: 8),
-            _yesNo(_pastYes, (v) => setState(() => _pastYes = v)),
-            const SizedBox(height: 18),
-            const Align(
-              alignment: Alignment.centerLeft,
-              child: Text(
-                '가족력이 있나요?',
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w700,
-                  color: kText,
-                ),
-              ),
-            ),
-            const SizedBox(height: 8),
-            _yesNo(_familyYes, (v) => setState(() => _familyYes = v)),
-          ],
-        ),
-      ),
       _StepDef(
         title: '약관에 동의해주세요',
         validate: () => _allRequired ? null : '필수 약관에 동의해주세요',

@@ -4,6 +4,7 @@ import '../../../../core/constants/app_colors.dart';
 import '../../../../core/session/auth_session.dart';
 import '../../../../core/widgets/rounded_gradient_app_bar.dart';
 import 'profile_edit_screen.dart';
+import 'patient_link_screen.dart';
 
 // ════════════════════════════════════════════════════════════════
 //  [보호자홈] 실시간 복약 모니터링 (보호자 색: kGuardian)
@@ -474,24 +475,73 @@ class _GuardianMyPage extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 14),
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: _card(),
-                child: const Row(
-                  children: [
-                    Text('🧓', style: TextStyle(fontSize: 18)),
-                    SizedBox(width: 12),
-                    Expanded(
-                      child: Text(
-                        '연결된 환자: 김복자 (어머니)',
-                        style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w700,
-                          color: kText,
+              GestureDetector(
+                onTap: onSwitchToPatient,
+                child: Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: _card(),
+                  child: const Row(
+                    children: [
+                      Text('🧓', style: TextStyle(fontSize: 18)),
+                      SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          '연결된 환자: 김복자 (어머니)',
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w700,
+                            color: kText,
+                          ),
                         ),
                       ),
+                      Icon(
+                        Icons.arrow_forward_ios_rounded,
+                        size: 14,
+                        color: kGuardian,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 10),
+              GestureDetector(
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const PatientLinkScreen()),
+                ),
+                child: Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: kGuardianLight,
+                    borderRadius: BorderRadius.circular(18),
+                    border: Border.all(
+                      color: kGuardian.withValues(alpha: 0.18),
                     ),
-                  ],
+                  ),
+                  child: const Row(
+                    children: [
+                      Icon(
+                        Icons.add_circle_outline_rounded,
+                        color: kGuardian,
+                        size: 20,
+                      ),
+                      SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          '환자 연결하기',
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w700,
+                            color: kGuardian,
+                          ),
+                        ),
+                      ),
+                      Icon(
+                        Icons.arrow_forward_ios_rounded,
+                        size: 14,
+                        color: kGuardian,
+                      ),
+                    ],
+                  ),
                 ),
               ),
               const Spacer(),
