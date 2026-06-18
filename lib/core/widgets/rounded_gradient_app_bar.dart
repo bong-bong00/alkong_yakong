@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
 import '../constants/app_colors.dart';
 
-/// 앱 전체에서 쓰는 단 하나의 상단바.
-/// 모든 화면이 이 위젯을 쓰므로 높이(104)가 물리적으로 동일하게 통일된다.
-/// - [color] 로 환자(kPrimary) / 보호자(kGuardian) 색만 구분
-/// - [leading] 로 좌측 로고 등, [actions] 로 우측 아이콘 배치
+/// 앱 전체 공용 상단바.
+/// 핵심: 안쪽 콘텐츠를 [_contentHeight] 로 고정해서, 로고/아이콘이 있든
+/// 제목만 있든 **모든 화면에서 높이가 100% 동일**하게 만든다.
+/// (Scaffold 는 커스텀 상단바를 내용물 크기에 맞춰 그리기 때문에,
+///  고정 높이 박스로 잠가주지 않으면 탭마다 길이가 달라진다.)
 class RoundedGradientAppBar extends StatelessWidget
     implements PreferredSizeWidget {
   final String title;
@@ -20,8 +21,14 @@ class RoundedGradientAppBar extends StatelessWidget
     this.actions = const [],
   });
 
+  // 상태바 아래 콘텐츠 영역 높이 (환자 홈의 로고/종 아이콘이 들어가는 크기)
+  static const double _contentHeight = 40;
+  static const double _topPad = 16;
+  static const double _bottomPad = 18;
+
   @override
-  Size get preferredSize => const Size.fromHeight(104);
+  Size get preferredSize =>
+      const Size.fromHeight(_contentHeight + _topPad + _bottomPad);
 
   @override
   Widget build(BuildContext context) {
@@ -36,21 +43,25 @@ class RoundedGradientAppBar extends StatelessWidget
       child: SafeArea(
         bottom: false,
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 16, 20, 18),
-          child: Row(
-            children: [
-              if (leading != null) ...[leading!, const SizedBox(width: 10)],
-              Text(
-                title,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 22,
-                  fontWeight: FontWeight.w800,
+          padding: const EdgeInsets.fromLTRB(20, _topPad, 20, _bottomPad),
+          child: SizedBox(
+            // ← 이 고정 높이가 핵심. 콘텐츠 유무와 상관없이 항상 동일.
+            height: _contentHeight,
+            child: Row(
+              children: [
+                if (leading != null) ...[leading!, const SizedBox(width: 10)],
+                Text(
+                  title,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 22,
+                    fontWeight: FontWeight.w800,
+                  ),
                 ),
-              ),
-              const Spacer(),
-              ...actions,
-            ],
+                const Spacer(),
+                ...actions,
+              ],
+            ),
           ),
         ),
       ),
