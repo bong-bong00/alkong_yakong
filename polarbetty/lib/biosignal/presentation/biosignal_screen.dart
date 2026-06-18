@@ -4,7 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'biosignal_notifier.dart';
 
 class BiosignalScreen extends ConsumerWidget {
-  const BiosignalScreen({Key? key}) : super(key: key);
+  const BiosignalScreen({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -17,13 +17,19 @@ class BiosignalScreen extends ConsumerWidget {
           context: context,
           barrierDismissible: false,
           builder: (context) => AlertDialog(
-            title: const Text("⚠️ 약물 이상 반응 경고", style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
+            title: const Text(
+              "⚠️ 약물 이상 반응 경고",
+              style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold),
+            ),
             content: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text("안정 상태에서 고심박수 증상이 지속되었습니다.\n", style: TextStyle(fontWeight: FontWeight.bold)),
-                state.isAnalyzing 
+                const Text(
+                  "안정 상태에서 고심박수 증상이 지속되었습니다.\n",
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
+                state.isAnalyzing
                     ? const Center(child: CircularProgressIndicator())
                     : Text("임상적 분석 결과:\n${state.aiReport}"),
               ],
@@ -35,7 +41,7 @@ class BiosignalScreen extends ConsumerWidget {
                   Navigator.of(context).pop();
                 },
                 child: const Text("확인"),
-              )
+              ),
             ],
           ),
         );
@@ -51,13 +57,18 @@ class BiosignalScreen extends ConsumerWidget {
           children: [
             Card(
               elevation: 4,
-              color: state.isMoving ? Colors.orange.shade50 : Colors.green.shade50,
+              color: state.isMoving
+                  ? Colors.orange.shade50
+                  : Colors.green.shade50,
               child: ListTile(
                 leading: const Icon(Icons.directions_run),
                 title: const Text("현재 신체 활동 상태"),
                 trailing: Text(
                   state.isMoving ? "운동/움직임 중" : "안정 상태 (모니터링 유효)",
-                  style: TextStyle(fontWeight: FontWeight.bold, color: state.isMoving ? Colors.orange : Colors.green),
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    color: state.isMoving ? Colors.orange : Colors.green,
+                  ),
                 ),
               ),
             ),
@@ -71,7 +82,13 @@ class BiosignalScreen extends ConsumerWidget {
                       child: Column(
                         children: [
                           const Text("실시간 심박수"),
-                          Text("${state.currentHr} BPM", style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold)),
+                          Text(
+                            "${state.currentHr} BPM",
+                            style: const TextStyle(
+                              fontSize: 28,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
                         ],
                       ),
                     ),
@@ -84,7 +101,13 @@ class BiosignalScreen extends ConsumerWidget {
                       child: Column(
                         children: [
                           const Text("HRV (RMSSD)"),
-                          Text("${state.currentRmssd.toStringAsFixed(1)} ms", style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold)),
+                          Text(
+                            "${state.currentRmssd.toStringAsFixed(1)} ms",
+                            style: const TextStyle(
+                              fontSize: 28,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
                         ],
                       ),
                     ),
@@ -97,18 +120,23 @@ class BiosignalScreen extends ConsumerWidget {
               mainAxisAlignment: MainAxisAlignment.spaceEvenly,
               children: [
                 ElevatedButton.icon(
-                  onPressed: () => ref.read(biosignalProvider.notifier).startMonitoring("SAMPLE_ID_123"),
+                  onPressed: () => ref
+                      .read(biosignalProvider.notifier)
+                      .startMonitoring("SAMPLE_ID_123"),
                   icon: const Icon(Icons.play_arrow),
                   label: const Text("모니터링 시작"),
                 ),
                 ElevatedButton.icon(
-                  onPressed: () => ref.read(biosignalProvider.notifier).stopMonitoring(),
+                  onPressed: () =>
+                      ref.read(biosignalProvider.notifier).stopMonitoring(),
                   icon: const Icon(Icons.stop),
                   label: const Text("종료"),
-                  style: ElevatedButton.styleFrom(backgroundColor: Colors.grey.shade300),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.grey.shade300,
+                  ),
                 ),
               ],
-            )
+            ),
           ],
         ),
       ),

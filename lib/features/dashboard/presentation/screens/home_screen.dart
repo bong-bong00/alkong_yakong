@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import '../../../../core/constants/app_colors.dart';
+import '../../../../core/session/auth_session.dart';
 import '../../../../core/widgets/rounded_gradient_app_bar.dart';
 import '../../../drug_explain/drug_explain_screen.dart';
 import 'dashboard_screen.dart';
 import 'guardian_home_screen.dart';
+import 'profile_edit_screen.dart';
 
 /// 하단 탭바를 4개 탭 전체에서 유지하는 쉘(Shell).
 class HomeScreen extends StatefulWidget {
@@ -144,7 +146,6 @@ class _HomeTabState extends State<_HomeTab> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: kBackground,
-      // 다른 모든 탭과 동일한 공용 상단바 (로고 + 알림 아이콘만 추가)
       appBar: RoundedGradientAppBar(
         '알콩약콩',
         leading: Container(
@@ -190,7 +191,6 @@ class _HomeTabState extends State<_HomeTab> {
             ),
             const SizedBox(height: 20),
 
-            // 폴라 센서 상태 (분홍 유지)
             GestureDetector(
               onTap: () => context.push('/biosignal'),
               child: Container(
@@ -232,7 +232,6 @@ class _HomeTabState extends State<_HomeTab> {
             ),
             const SizedBox(height: 20),
 
-            // 오늘의 복약
             Row(
               children: [
                 const Text('💊', style: TextStyle(fontSize: 18)),
@@ -354,7 +353,6 @@ class _HomeTabState extends State<_HomeTab> {
             }),
             const SizedBox(height: 20),
 
-            // 빠른 메뉴
             Row(
               children: [
                 Expanded(
@@ -418,7 +416,7 @@ class _HomeTabState extends State<_HomeTab> {
   }
 }
 
-/// 내 정보 탭 — 공용 상단바 + 보호자 전환 버튼(맨 아래).
+/// 내 정보 탭 — 이름 박스(누르면 내 정보 화면) + 보호자 전환 버튼.
 class _MyPageTab extends StatelessWidget {
   final VoidCallback onSwitchToGuardian;
   const _MyPageTab({required this.onSwitchToGuardian});
@@ -434,38 +432,42 @@ class _MyPageTab extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(20),
-                decoration: BoxDecoration(
-                  color: kCard,
-                  borderRadius: BorderRadius.circular(18),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.04),
-                      blurRadius: 12,
-                      offset: const Offset(0, 4),
-                    ),
-                  ],
+              // ── 이름 박스 (누르면 내 정보 상세·수정 화면) ──
+              GestureDetector(
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const ProfileEditScreen()),
                 ),
-                child: Row(
-                  children: [
-                    Container(
-                      width: 52,
-                      height: 52,
-                      decoration: BoxDecoration(
-                        color: kPrimaryLight,
-                        borderRadius: BorderRadius.circular(16),
+                child: Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(20),
+                  decoration: BoxDecoration(
+                    color: kCard,
+                    borderRadius: BorderRadius.circular(18),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.04),
+                        blurRadius: 12,
+                        offset: const Offset(0, 4),
                       ),
-                      child: const Center(
-                        child: Text('🧓', style: TextStyle(fontSize: 26)),
+                    ],
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 52,
+                        height: 52,
+                        decoration: BoxDecoration(
+                          color: kPrimaryLight,
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        child: const Center(
+                          child: Text('🧓', style: TextStyle(fontSize: 26)),
+                        ),
                       ),
-                    ),
-                    const SizedBox(width: 14),
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: const [
-                        Text(
+                      const SizedBox(width: 14),
+                      // TODO: 로그인 세션의 실제 이름으로 교체
+                      const Expanded(
+                        child: Text(
                           '김복자',
                           style: TextStyle(
                             fontSize: 18,
@@ -473,14 +475,14 @@ class _MyPageTab extends StatelessWidget {
                             color: kText,
                           ),
                         ),
-                        SizedBox(height: 3),
-                        Text(
-                          '환자 · 보호자 1명 연결됨',
-                          style: TextStyle(fontSize: 13, color: kTextSub),
-                        ),
-                      ],
-                    ),
-                  ],
+                      ),
+                      Icon(
+                        Icons.arrow_forward_ios_rounded,
+                        size: 16,
+                        color: Colors.grey[400],
+                      ),
+                    ],
+                  ),
                 ),
               ),
               const Spacer(),
@@ -500,7 +502,7 @@ class _MyPageTab extends StatelessWidget {
                       Icon(Icons.swap_horiz_rounded, color: kPrimary, size: 18),
                       SizedBox(width: 8),
                       Text(
-                        '보호자 화면으로 전환 (데모)',
+                        '보호자 화면으로 전환',
                         style: TextStyle(
                           color: kPrimary,
                           fontSize: 14,
@@ -511,9 +513,89 @@ class _MyPageTab extends StatelessWidget {
                   ),
                 ),
               ),
+              const SizedBox(height: 10),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Expanded(
+                    child: TextButton(
+                      onPressed: () => _confirmWithdraw(context),
+                      child: Text(
+                        '탈퇴하기',
+                        style: TextStyle(
+                          color: Colors.grey[500],
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ),
+                  Container(width: 0.5, height: 14, color: Colors.grey[400]),
+                  Expanded(
+                    child: TextButton(
+                      onPressed: () async {
+                        await AuthSession.logout();
+                        if (context.mounted) context.go('/login');
+                      },
+                      child: Text(
+                        '로그아웃',
+                        style: TextStyle(
+                          color: Colors.grey[500],
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  void _confirmWithdraw(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+        title: const Text(
+          '정말 탈퇴하시겠어요?',
+          style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800),
+        ),
+        content: const Text(
+          '탈퇴하면 복약 기록과 등록한 정보가 모두 삭제되고\n되돌릴 수 없어요.',
+          style: TextStyle(fontSize: 14, height: 1.5),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: Text(
+              '취소',
+              style: TextStyle(
+                color: Colors.grey[600],
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+          TextButton(
+            onPressed: () async {
+              Navigator.pop(ctx);
+              // TODO: 백엔드 회원 탈퇴 API 연동.
+              await AuthSession.logout();
+              if (context.mounted) context.go('/login');
+            },
+            child: const Text(
+              '탈퇴하기',
+              style: TextStyle(
+                color: Color(0xFFE24B4A),
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
