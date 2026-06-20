@@ -29,6 +29,7 @@ class OCRMedicineItem(BaseModel):
     frequency_per_day: Optional[int] = None
     times_per_take: Optional[int] = None
     duration_days: Optional[int] = None
+    easy_explanation: Optional[str] = None
 
     administration_times: List[str] = Field(default_factory=list)
 
@@ -36,6 +37,7 @@ class OCRMedicineItem(BaseModel):
 class PrescriptionOCRRequest(BaseModel):
     user_id: str
     image_path: Optional[str] = None
+    image_data: Optional[str] = None  # Base64 encoded image string
     ocr_text: Optional[str] = None
     hospital_name: Optional[str] = None
     pharmacy_name: Optional[str] = None
@@ -85,3 +87,8 @@ class HeartRateCreate(BaseModel):
     measured_at: Optional[str] = None
     device_id: Optional[str] = None
     source: str = "POLAR"
+
+
+class DrugExplainChatRequest(BaseModel):
+    user_id: str
+    message: str

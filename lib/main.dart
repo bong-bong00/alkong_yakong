@@ -15,18 +15,18 @@ import 'features/drug_explain/drug_explain_screen.dart';
 
 final _router = GoRouter(
   initialLocation: '/login',
-  redirect: (context, state) {
-    final loggedIn = AuthSession.isLoggedIn;
-    final loc = state.matchedLocation;
-    final atAuth = loc == '/login' || loc == '/signup';
-    // 로그인 안 했는데 보호 화면 접근 → 로그인으로
-    if (!loggedIn && !atAuth) return '/login';
-    // 로그인 했는데 로그인 화면이면 → 역할별 홈으로
-    if (loggedIn && loc == '/login') {
-      return AuthSession.role == 'guardian' ? '/guardian' : '/';
-    }
-    return null;
-  },
+  // redirect: (context, state) {
+  //   final loggedIn = AuthSession.isLoggedIn;
+  //   final loc = state.matchedLocation;
+  //   final atAuth = loc == '/login' || loc == '/signup';
+  //   // 로그인 안 했는데 보호 화면 접근 → 로그인으로
+  //   if (!loggedIn && !atAuth) return '/login';
+  //   // 로그인 했는데 로그인 화면이면 → 역할별 홈으로
+  //   if (loggedIn && loc == '/login') {
+  //     return AuthSession.role == 'guardian' ? '/guardian' : '/';
+  //   }
+  //   return null;
+  // },
   routes: [
     GoRoute(path: '/login', builder: (context, state) => const LoginScreen()),
     GoRoute(path: '/signup', builder: (context, state) => const SignupScreen()),

@@ -8,6 +8,7 @@ from fastapi import HTTPException
 
 from app.database import get_connection
 from app.models.schemas import OCRMedicineItem, PrescriptionOCRRequest
+from app.services.gemini_service import analyze_prescription_image
 
 
 DEFAULT_SCHEDULE_TIMES = {
@@ -21,7 +22,26 @@ DEFAULT_SCHEDULE_TIMES = {
 }
 
 
-def _mock_items(request: PrescriptionOCRRequest) -> list[OCRMedicineItem]:
+def _extract_items(request: PrescriptionOCRRequest) -> list[OCRMedicineItem]:
+    if request.image_data:
+        parsed_data = analyze_prescription_image(request.image_data)
+        if parsed_data and "items" in parsed_data:
+            results = []
+            for item in parsed_data["items"]:
+                if not item.get("drug_name"):
+                    continue
+                results.append(OCRMedicineItem(
+                    drug_name=item["drug_name"],
+                    dosage=str(item.get("dosage") or "1"),
+                    unit=str(item.get("unit") or "정"),
+                    frequency_per_day=int(item.get("frequency_per_day") or 1),
+                    times_per_take=int(item.get("times_per_take") or 1),
+                    duration_days=int(item.get("duration_days") or 1),
+                    easy_explanation=item.get("easy_explanation")
+                ))
+            if results:
+                return results
+
     if request.mock_items:
         return request.mock_items
 
@@ -150,7 +170,10 @@ def create_prescription_from_ocr(request: PrescriptionOCRRequest) -> dict:
             "SELECT id FROM users WHERE id = ?", (request.user_id,)
         ).fetchone()
         if not user:
-            raise HTTPException(status_code=404, detail="사용자가 없습니다.")
+            cursor.execute(
+                "INSERT INTO users (id, name, role) VALUES (?, ?, ?)",
+                (request.user_id, "테스트유저", "PATIENT")
+            )
 
         prescription_id = str(uuid.uuid4())
         cursor.execute(
@@ -173,15 +196,15 @@ def create_prescription_from_ocr(request: PrescriptionOCRRequest) -> dict:
         )
 
         created_items = []
-        for item in _mock_items(request):
+        for item in _extract_items(request):
             medicine_code, match_status = _resolve_medicine(cursor, item)
             cursor.execute(
                 """
                 INSERT INTO prescription_items (
                     prescription_id, medicine_code, ocr_drug_name, dosage, unit,
                     frequency_per_day, times_per_take, duration_days,
-                    administration_times, match_status
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    administration_times, match_status, easy_explanation
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     prescription_id,
@@ -194,6 +217,7 @@ def create_prescription_from_ocr(request: PrescriptionOCRRequest) -> dict:
                     item.duration_days,
                     json.dumps(item.administration_times, ensure_ascii=False),
                     match_status,
+                    item.easy_explanation,
                 ),
             )
             item_id = cursor.lastrowid
@@ -232,6 +256,7 @@ def create_prescription_from_ocr(request: PrescriptionOCRRequest) -> dict:
                     "drug_name": item.drug_name,
                     "match_status": match_status,
                     "frequency_per_day": item.frequency_per_day or 1,
+                    "easy_explanation": item.easy_explanation,
                     "schedules": schedules,
                 }
             )

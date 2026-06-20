@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import '../../../../core/constants/app_colors.dart';
+import '../../../../core/session/auth_session.dart';
 import '../../../dashboard/presentation/screens/home_screen.dart';
 import 'signup_screen.dart';
 
@@ -28,15 +30,17 @@ class _LoginScreenState extends State<LoginScreen> {
     SnackBar(content: Text(m), behavior: SnackBarBehavior.floating),
   );
 
-  void _login() {
+  void _login() async {
     if (_phone.text.trim().isEmpty || _pw.text.isEmpty) {
       _toast('휴대폰번호와 비밀번호를 입력해주세요');
       return;
     }
-    // TODO: 백엔드 로그인 API 연동 (ApiClient). 성공 시 토큰/세션 저장.
-    Navigator.of(
-      context,
-    ).pushReplacement(MaterialPageRoute(builder: (_) => const HomeScreen()));
+    // 백엔드 연결 전 임시 세션 발급 처리 (이 부분이 없어서 라우터가 튕김)
+    await AuthSession.setLoggedIn('patient');
+    
+    if (mounted) {
+      context.go('/');
+    }
   }
 
   @override
