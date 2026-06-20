@@ -4,11 +4,15 @@ import '../../../../core/constants/app_colors.dart';
 import '../../../../core/session/auth_session.dart';
 import '../../../../core/widgets/rounded_gradient_app_bar.dart';
 import 'profile_edit_screen.dart';
-import 'patient_link_screen.dart';
+import 'medication_record_screen.dart';
+import 'settings_menu.dart';
+import 'biosignal_event_screen.dart';
+import 'biosignal_live_screen.dart';
+import 'patient_data.dart';
 
 // ════════════════════════════════════════════════════════════════
-//  [보호자홈] 실시간 복약 모니터링 (보호자 색: kGuardian)
-//  4개 탭 모두 동일한 공용 상단바(RoundedGradientAppBar)를 쓴다.
+//  [보호자홈] 환자 선택 → 현황·기록·알림 탭이 모두 그 환자로 전환된다.
+//  선택된 환자(_patientIndex)를 이 위젯이 들고, 탭들에 넘긴다.
 // ════════════════════════════════════════════════════════════════
 class GuardianHomeScreen extends StatefulWidget {
   const GuardianHomeScreen({super.key});
@@ -18,24 +22,30 @@ class GuardianHomeScreen extends StatefulWidget {
 }
 
 class _GuardianHomeScreenState extends State<GuardianHomeScreen> {
-  int _index = 0;
+  int _index = 0; // 하단 탭
+  int _patientIndex = 0; // 선택된 환자
 
-  void _handleSwitchToPatient() {
-    // 환자 데모에서 push로 들어온 경우 pop, 보호자 계정으로 바로 진입한 경우 환자 홈으로.
-    if (Navigator.of(context).canPop()) {
-      Navigator.of(context).pop();
-    } else {
-      context.go('/');
-    }
-  }
+  List<PatientData> get _patients => DemoPatients.all;
+  PatientData get _patient => _patients[_patientIndex];
+
+  void _selectPatient(int i) => setState(() => _patientIndex = i);
 
   @override
   Widget build(BuildContext context) {
     final tabs = [
-      const _PatientStatusTab(),
-      const _PatientRecordTab(),
-      const _AlertsTab(),
-      _GuardianMyPage(onSwitchToPatient: _handleSwitchToPatient),
+      _PatientStatusTab(
+        patient: _patient,
+        patients: _patients,
+        selectedIndex: _patientIndex,
+        onSelect: _selectPatient,
+      ),
+      MedicationRecordScreen(
+        accent: kGuardian,
+        patientName: _patient.name,
+        records: _patient.records,
+      ),
+      _AlertsTab(patient: _patient),
+      _GuardianMyPage(patients: _patients),
     ];
 
     return Scaffold(
@@ -97,7 +107,67 @@ class _GuardianHomeScreenState extends State<GuardianHomeScreen> {
 
 // ── 환자 현황 ────────────────────────────────────────────────
 class _PatientStatusTab extends StatelessWidget {
-  const _PatientStatusTab();
+  final PatientData patient;
+  final List<PatientData> patients;
+  final int selectedIndex;
+  final ValueChanged<int> onSelect;
+
+  const _PatientStatusTab({
+    required this.patient,
+    required this.patients,
+    required this.selectedIndex,
+    required this.onSelect,
+  });
+
+  // 환자 선택 바텀시트
+  void _openPicker(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(height: 14),
+            const Text(
+              '환자 선택',
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w800,
+                color: kText,
+              ),
+            ),
+            const SizedBox(height: 8),
+            for (int i = 0; i < patients.length; i++)
+              ListTile(
+                leading: Text(
+                  patients[i].emoji,
+                  style: const TextStyle(fontSize: 24),
+                ),
+                title: Text(
+                  '${patients[i].name} · ${patients[i].relation}',
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w700,
+                    color: kText,
+                  ),
+                ),
+                trailing: i == selectedIndex
+                    ? const Icon(Icons.check_circle_rounded, color: kGuardian)
+                    : null,
+                onTap: () {
+                  onSelect(i);
+                  Navigator.pop(ctx);
+                },
+              ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -109,6 +179,49 @@ class _PatientStatusTab extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // ── 환자 선택 칩 ("보는 중: 김복자 ▾") ──
+            GestureDetector(
+              onTap: () => _openPicker(context),
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 12,
+                ),
+                decoration: BoxDecoration(
+                  color: kGuardianLight,
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: kGuardian.withValues(alpha: 0.20)),
+                ),
+                child: Row(
+                  children: [
+                    Text(patient.emoji, style: const TextStyle(fontSize: 18)),
+                    const SizedBox(width: 8),
+                    Text(
+                      '보는 중: ${patient.name}',
+                      style: const TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w800,
+                        color: kGuardian,
+                      ),
+                    ),
+                    const SizedBox(width: 4),
+                    const Icon(
+                      Icons.keyboard_arrow_down_rounded,
+                      color: kGuardian,
+                      size: 20,
+                    ),
+                    const Spacer(),
+                    Text(
+                      '환자 ${patients.length}명',
+                      style: const TextStyle(fontSize: 12, color: kGuardian),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+
+            // ── 환자 요약 카드 ──
             Container(
               width: double.infinity,
               padding: const EdgeInsets.all(20),
@@ -124,26 +237,32 @@ class _PatientStatusTab extends StatelessWidget {
                           color: kGuardianLight,
                           borderRadius: BorderRadius.circular(16),
                         ),
-                        child: const Center(
-                          child: Text('🧓', style: TextStyle(fontSize: 26)),
+                        child: Center(
+                          child: Text(
+                            patient.emoji,
+                            style: const TextStyle(fontSize: 26),
+                          ),
                         ),
                       ),
                       const SizedBox(width: 14),
                       Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
-                        children: const [
+                        children: [
                           Text(
-                            '김복자 (어머니)',
-                            style: TextStyle(
+                            '${patient.name} (${patient.relation})',
+                            style: const TextStyle(
                               fontSize: 17,
                               fontWeight: FontWeight.w800,
                               color: kText,
                             ),
                           ),
-                          SizedBox(height: 3),
+                          const SizedBox(height: 3),
                           Text(
-                            '72세 · 마지막 동기화 방금 전',
-                            style: TextStyle(fontSize: 12, color: kTextSub),
+                            '${patient.age}세 · 마지막 동기화 ${patient.syncedAgo}',
+                            style: const TextStyle(
+                              fontSize: 12,
+                              color: kTextSub,
+                            ),
                           ),
                         ],
                       ),
@@ -151,8 +270,10 @@ class _PatientStatusTab extends StatelessWidget {
                       Container(
                         width: 10,
                         height: 10,
-                        decoration: const BoxDecoration(
-                          color: Color(0xFF4CAF50),
+                        decoration: BoxDecoration(
+                          color: patient.okToday
+                              ? const Color(0xFF4CAF50)
+                              : const Color(0xFFE6A100),
                           shape: BoxShape.circle,
                         ),
                       ),
@@ -162,20 +283,29 @@ class _PatientStatusTab extends StatelessWidget {
                   Container(
                     padding: const EdgeInsets.all(14),
                     decoration: BoxDecoration(
-                      color: const Color(0xFFE8F5E9),
+                      color: patient.okToday
+                          ? const Color(0xFFE8F5E9)
+                          : const Color(0xFFFFF6E5),
                       borderRadius: BorderRadius.circular(12),
                     ),
-                    child: const Row(
+                    child: Row(
                       children: [
-                        Text('✅', style: TextStyle(fontSize: 16)),
-                        SizedBox(width: 8),
+                        Text(
+                          patient.okToday ? '✅' : '⚠️',
+                          style: const TextStyle(fontSize: 16),
+                        ),
+                        const SizedBox(width: 8),
                         Expanded(
                           child: Text(
-                            '오늘 이상 없음 · 심박 정상',
+                            patient.okToday
+                                ? '오늘 이상 없음 · 심박 정상'
+                                : '오늘 확인이 필요해요',
                             style: TextStyle(
                               fontSize: 13,
                               fontWeight: FontWeight.w700,
-                              color: Color(0xFF2E7D32),
+                              color: patient.okToday
+                                  ? const Color(0xFF2E7D32)
+                                  : const Color(0xFF8A6100),
                             ),
                           ),
                         ),
@@ -186,23 +316,36 @@ class _PatientStatusTab extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 16),
+
+            // ── 복약 / 심박 카드 ──
             Row(
-              children: const [
+              children: [
                 Expanded(
                   child: _StatCard(
                     emoji: '💊',
                     label: '오늘 복약',
-                    value: '2/3',
-                    sub: '저녁 18:00 예정',
+                    value: '${patient.takenCount}/${patient.totalCount}',
+                    sub: patient.nextDose,
                   ),
                 ),
-                SizedBox(width: 12),
+                const SizedBox(width: 12),
                 Expanded(
-                  child: _StatCard(
-                    emoji: '💓',
-                    label: '현재 심박',
-                    value: '78',
-                    sub: '정상 범위',
+                  child: GestureDetector(
+                    onTap: () => Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => BiosignalLiveScreen(
+                          accent: kGuardian,
+                          patientName: patient.name,
+                          baseHr: patient.currentHr,
+                        ),
+                      ),
+                    ),
+                    child: _StatCard(
+                      emoji: '💓',
+                      label: '현재 심박',
+                      value: '${patient.currentHr}',
+                      sub: '실시간 보기 ›',
+                    ),
                   ),
                 ),
               ],
@@ -220,16 +363,16 @@ class _PatientStatusTab extends StatelessWidget {
             Container(
               decoration: _card(),
               child: Column(
-                children: const [
-                  _ActivityRow(emoji: '✅', text: '점심 약 복용 완료', time: '12:04'),
-                  Divider(height: 1, indent: 16, endIndent: 16),
-                  _ActivityRow(
-                    emoji: '💓',
-                    text: '복약 후 심박 정상 (80 bpm)',
-                    time: '12:14',
-                  ),
-                  Divider(height: 1, indent: 16, endIndent: 16),
-                  _ActivityRow(emoji: '✅', text: '아침 약 복용 완료', time: '08:10'),
+                children: [
+                  for (int i = 0; i < patient.activities.length; i++) ...[
+                    _ActivityRow(
+                      emoji: patient.activities[i].emoji,
+                      text: patient.activities[i].text,
+                      time: patient.activities[i].time,
+                    ),
+                    if (i != patient.activities.length - 1)
+                      const Divider(height: 1, indent: 16, endIndent: 16),
+                  ],
                 ],
               ),
             ),
@@ -240,176 +383,137 @@ class _PatientStatusTab extends StatelessWidget {
   }
 }
 
-// ── 복약 기록 ────────────────────────────────────────────────
-class _PatientRecordTab extends StatelessWidget {
-  const _PatientRecordTab();
-
-  @override
-  Widget build(BuildContext context) {
-    final days = [
-      {'date': '6월 5일 (오늘)', 'status': '진행 중 2/3', 'ok': true},
-      {'date': '6월 4일', 'status': '복약 완료', 'ok': true},
-      {'date': '6월 3일', 'status': '저녁 미복약', 'ok': false},
-      {'date': '6월 2일', 'status': '복약 완료', 'ok': true},
-      {'date': '6월 1일', 'status': '복약 완료', 'ok': true},
-    ];
-    return Scaffold(
-      backgroundColor: kBackground,
-      appBar: _gAppBar('복약 기록'),
-      body: ListView.separated(
-        padding: const EdgeInsets.fromLTRB(20, 20, 20, 28),
-        itemCount: days.length,
-        separatorBuilder: (_, _) => const SizedBox(height: 10),
-        itemBuilder: (_, i) {
-          final d = days[i];
-          final ok = d['ok'] as bool;
-          return Container(
-            padding: const EdgeInsets.all(16),
-            decoration: _card(),
-            child: Row(
-              children: [
-                Icon(
-                  ok ? Icons.check_circle_rounded : Icons.error_rounded,
-                  color: ok ? kGuardian : const Color(0xFFE6A100),
-                  size: 22,
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    d['date'] as String,
-                    style: const TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w700,
-                      color: kText,
-                    ),
-                  ),
-                ),
-                Text(
-                  d['status'] as String,
-                  style: TextStyle(
-                    fontSize: 12.5,
-                    color: ok ? Colors.grey[600] : const Color(0xFFE6A100),
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ],
-            ),
-          );
-        },
-      ),
-    );
-  }
-}
-
 // ── 알림 ─────────────────────────────────────────────────────
 class _AlertsTab extends StatelessWidget {
-  const _AlertsTab();
+  final PatientData patient;
+  const _AlertsTab({required this.patient});
 
   @override
   Widget build(BuildContext context) {
-    final alerts = [
-      {
-        'type': 'done',
-        'title': '복약 완료',
-        'desc': '김복자님이 점심 약을 복용했어요 (심박 80)',
-        'time': '12:04',
-      },
-      {
-        'type': 'done',
-        'title': '복약 완료',
-        'desc': '김복자님이 아침 약을 복용했어요',
-        'time': '08:10',
-      },
-      {
-        'type': 'miss',
-        'title': '미복약 알림',
-        'desc': '6/3 저녁 약을 복용하지 않았어요',
-        'time': '어제',
-      },
-    ];
+    final alerts = patient.alerts;
     return Scaffold(
       backgroundColor: kBackground,
       appBar: _gAppBar('알림'),
-      body: ListView.separated(
-        padding: const EdgeInsets.fromLTRB(20, 20, 20, 28),
-        itemCount: alerts.length,
-        separatorBuilder: (_, _) => const SizedBox(height: 10),
-        itemBuilder: (_, i) {
-          final a = alerts[i];
-          final type = a['type'];
-          Color c;
-          IconData icon;
-          switch (type) {
-            case 'miss':
-              c = const Color(0xFFE6A100);
-              icon = Icons.warning_amber_rounded;
-              break;
-            case 'alert':
-              c = const Color(0xFFE24B4A);
-              icon = Icons.priority_high_rounded;
-              break;
-            default:
-              c = kGuardian;
-              icon = Icons.check_circle_rounded;
-          }
-          return Container(
-            padding: const EdgeInsets.all(16),
-            decoration: _card(),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Container(
-                  width: 38,
-                  height: 38,
-                  decoration: BoxDecoration(
-                    color: c.withValues(alpha: 0.12),
-                    borderRadius: BorderRadius.circular(11),
-                  ),
-                  child: Icon(icon, color: c, size: 20),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
+      body: alerts.isEmpty
+          ? const Center(
+              child: Text(
+                '알림이 없어요',
+                style: TextStyle(color: kTextSub, fontSize: 14),
+              ),
+            )
+          : ListView.separated(
+              padding: const EdgeInsets.fromLTRB(20, 20, 20, 28),
+              itemCount: alerts.length,
+              separatorBuilder: (_, _) => const SizedBox(height: 10),
+              itemBuilder: (_, i) {
+                final a = alerts[i];
+                Color c;
+                IconData icon;
+                switch (a.type) {
+                  case 'miss':
+                    c = const Color(0xFFE6A100);
+                    icon = Icons.warning_amber_rounded;
+                    break;
+                  case 'alert':
+                    c = const Color(0xFFE24B4A);
+                    icon = Icons.priority_high_rounded;
+                    break;
+                  default:
+                    c = kGuardian;
+                    icon = Icons.check_circle_rounded;
+                }
+                final card = Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: _card(),
+                  child: Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        a['title'] as String,
-                        style: const TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w700,
-                          color: kText,
+                      Container(
+                        width: 38,
+                        height: 38,
+                        decoration: BoxDecoration(
+                          color: c.withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(11),
+                        ),
+                        child: Icon(icon, color: c, size: 20),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              a.title,
+                              style: const TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w700,
+                                color: kText,
+                              ),
+                            ),
+                            const SizedBox(height: 3),
+                            Text(
+                              a.desc,
+                              style: TextStyle(
+                                fontSize: 12.5,
+                                color: Colors.grey[600],
+                                height: 1.4,
+                              ),
+                            ),
+                            if (a.tappable) ...[
+                              const SizedBox(height: 6),
+                              Row(
+                                children: [
+                                  Text(
+                                    '심박 추이 보기',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w700,
+                                      color: c,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 2),
+                                  Icon(
+                                    Icons.arrow_forward_ios_rounded,
+                                    size: 11,
+                                    color: c,
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ],
                         ),
                       ),
-                      const SizedBox(height: 3),
+                      const SizedBox(width: 8),
                       Text(
-                        a['desc'] as String,
-                        style: TextStyle(
-                          fontSize: 12.5,
-                          color: Colors.grey[600],
-                          height: 1.4,
-                        ),
+                        a.time,
+                        style: TextStyle(fontSize: 11, color: Colors.grey[400]),
                       ),
                     ],
                   ),
-                ),
-                const SizedBox(width: 8),
-                Text(
-                  a['time'] as String,
-                  style: TextStyle(fontSize: 11, color: Colors.grey[400]),
-                ),
-              ],
+                );
+                if (!a.tappable) return card;
+                return GestureDetector(
+                  onTap: () => Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => BiosignalEventScreen(
+                        accent: kGuardian,
+                        patientName: patient.name,
+                      ),
+                    ),
+                  ),
+                  child: card,
+                );
+              },
             ),
-          );
-        },
-      ),
     );
   }
 }
 
 // ── 내 정보 ──────────────────────────────────────────────────
 class _GuardianMyPage extends StatelessWidget {
-  final VoidCallback onSwitchToPatient;
-  const _GuardianMyPage({required this.onSwitchToPatient});
+  final List<PatientData> patients;
+
+  const _GuardianMyPage({required this.patients});
 
   @override
   Widget build(BuildContext context) {
@@ -417,204 +521,125 @@ class _GuardianMyPage extends StatelessWidget {
       backgroundColor: kBackground,
       appBar: _gAppBar('내 정보'),
       body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 20, 20, 20),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // 보호자 본인 정보 — 누르면 정보 수정 화면
-              GestureDetector(
-                onTap: () => Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => const ProfileEditScreen()),
-                ),
-                child: Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(20),
-                  decoration: _card(),
-                  child: Row(
+        child: LayoutBuilder(
+          builder: (context, constraints) => SingleChildScrollView(
+            child: ConstrainedBox(
+              constraints: BoxConstraints(minHeight: constraints.maxHeight),
+              child: IntrinsicHeight(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 20, 20, 20),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Container(
-                        width: 52,
-                        height: 52,
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFFFF3E0),
-                          borderRadius: BorderRadius.circular(16),
+                      // 보호자 본인 — 누르면 정보 수정 화면
+                      GestureDetector(
+                        onTap: () => Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) =>
+                                const ProfileEditScreen(isGuardian: true),
+                          ),
                         ),
-                        child: const Center(
-                          child: Text('👩', style: TextStyle(fontSize: 26)),
+                        child: Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.all(20),
+                          decoration: _card(),
+                          child: Row(
+                            children: [
+                              Container(
+                                width: 52,
+                                height: 52,
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFFFF3E0),
+                                  borderRadius: BorderRadius.circular(16),
+                                ),
+                                child: const Center(
+                                  child: Text(
+                                    '👩',
+                                    style: TextStyle(fontSize: 26),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 14),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    const Text(
+                                      '김지안',
+                                      style: TextStyle(
+                                        fontSize: 18,
+                                        fontWeight: FontWeight.w800,
+                                        color: kText,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 3),
+                                    Text(
+                                      '보호자 · 연결된 환자 ${patients.length}명',
+                                      style: const TextStyle(
+                                        fontSize: 13,
+                                        color: kTextSub,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              Icon(
+                                Icons.arrow_forward_ios_rounded,
+                                size: 16,
+                                color: Colors.grey[400],
+                              ),
+                            ],
+                          ),
                         ),
                       ),
-                      const SizedBox(width: 14),
-                      const Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              '김지안',
-                              style: TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.w800,
-                                color: kText,
+                      const SizedBox(height: 20),
+                      const SettingsMenu(accent: kGuardian),
+                      const Spacer(),
+                      const SizedBox(height: 20),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Expanded(
+                            child: TextButton(
+                              onPressed: () => _confirmWithdraw(context),
+                              child: Text(
+                                '탈퇴하기',
+                                style: TextStyle(
+                                  color: Colors.grey[500],
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w600,
+                                ),
                               ),
                             ),
-                            SizedBox(height: 3),
-                            Text(
-                              '보호자 · 연결된 환자 1명',
-                              style: TextStyle(fontSize: 13, color: kTextSub),
+                          ),
+                          Container(
+                            width: 0.5,
+                            height: 14,
+                            color: Colors.grey[400],
+                          ),
+                          Expanded(
+                            child: TextButton(
+                              onPressed: () async {
+                                await AuthSession.logout();
+                                if (context.mounted) context.go('/login');
+                              },
+                              child: Text(
+                                '로그아웃',
+                                style: TextStyle(
+                                  color: Colors.grey[500],
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
                             ),
-                          ],
-                        ),
-                      ),
-                      Icon(
-                        Icons.arrow_forward_ios_rounded,
-                        size: 16,
-                        color: Colors.grey[400],
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              const SizedBox(height: 14),
-              GestureDetector(
-                onTap: onSwitchToPatient,
-                child: Container(
-                  padding: const EdgeInsets.all(16),
-                  decoration: _card(),
-                  child: const Row(
-                    children: [
-                      Text('🧓', style: TextStyle(fontSize: 18)),
-                      SizedBox(width: 12),
-                      Expanded(
-                        child: Text(
-                          '연결된 환자: 김복자 (어머니)',
-                          style: TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w700,
-                            color: kText,
                           ),
-                        ),
-                      ),
-                      Icon(
-                        Icons.arrow_forward_ios_rounded,
-                        size: 14,
-                        color: kGuardian,
+                        ],
                       ),
                     ],
                   ),
                 ),
               ),
-              const SizedBox(height: 10),
-              GestureDetector(
-                onTap: () => Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => const PatientLinkScreen()),
-                ),
-                child: Container(
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: kGuardianLight,
-                    borderRadius: BorderRadius.circular(18),
-                    border: Border.all(
-                      color: kGuardian.withValues(alpha: 0.18),
-                    ),
-                  ),
-                  child: const Row(
-                    children: [
-                      Icon(
-                        Icons.add_circle_outline_rounded,
-                        color: kGuardian,
-                        size: 20,
-                      ),
-                      SizedBox(width: 10),
-                      Expanded(
-                        child: Text(
-                          '환자 연결하기',
-                          style: TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w700,
-                            color: kGuardian,
-                          ),
-                        ),
-                      ),
-                      Icon(
-                        Icons.arrow_forward_ios_rounded,
-                        size: 14,
-                        color: kGuardian,
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              const Spacer(),
-              GestureDetector(
-                onTap: onSwitchToPatient,
-                child: Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                  decoration: BoxDecoration(
-                    color: kGuardianLight,
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(
-                      color: kGuardian.withValues(alpha: 0.18),
-                    ),
-                  ),
-                  child: const Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(
-                        Icons.swap_horiz_rounded,
-                        color: kGuardian,
-                        size: 18,
-                      ),
-                      SizedBox(width: 8),
-                      Text(
-                        '환자 화면으로 전환',
-                        style: TextStyle(
-                          color: kGuardian,
-                          fontSize: 14,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              const SizedBox(height: 10),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Expanded(
-                    child: TextButton(
-                      onPressed: () => _confirmWithdraw(context),
-                      child: Text(
-                        '탈퇴하기',
-                        style: TextStyle(
-                          color: Colors.grey[500],
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ),
-                  ),
-                  Container(width: 0.5, height: 14, color: Colors.grey[400]),
-                  Expanded(
-                    child: TextButton(
-                      onPressed: () async {
-                        await AuthSession.logout();
-                        if (context.mounted) context.go('/login');
-                      },
-                      child: Text(
-                        '로그아웃',
-                        style: TextStyle(
-                          color: Colors.grey[500],
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ],
+            ),
           ),
         ),
       ),
@@ -667,7 +692,6 @@ class _GuardianMyPage extends StatelessWidget {
 }
 
 // ── 공용 위젯 ────────────────────────────────────────────────
-// 환자 화면과 100% 동일한 공용 상단바. 색만 보호자 색(kGuardian)으로.
 PreferredSizeWidget _gAppBar(String title) =>
     RoundedGradientAppBar(title, color: kGuardian);
 

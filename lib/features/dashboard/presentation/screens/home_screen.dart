@@ -5,8 +5,9 @@ import '../../../../core/session/auth_session.dart';
 import '../../../../core/widgets/rounded_gradient_app_bar.dart';
 import '../../../drug_explain/drug_explain_screen.dart';
 import 'dashboard_screen.dart';
-import 'guardian_home_screen.dart';
+import 'biosignal_live_screen.dart';
 import 'profile_edit_screen.dart';
+import 'settings_menu.dart';
 
 /// 하단 탭바를 4개 탭 전체에서 유지하는 쉘(Shell).
 class HomeScreen extends StatefulWidget {
@@ -21,21 +22,13 @@ class _HomeScreenState extends State<HomeScreen> {
 
   void _goToTab(int index) => setState(() => _navIndex = index);
 
-  void _openGuardian() {
-    Navigator.of(context)
-        .push(MaterialPageRoute(builder: (_) => const GuardianHomeScreen()))
-        .then((_) {
-          if (mounted) _goToTab(0);
-        });
-  }
-
   @override
   Widget build(BuildContext context) {
     final pages = <Widget>[
       _HomeTab(onOpenDrugInfo: () => _goToTab(1)),
       DrugExplainScreen(),
-      DashboardScreen(),
-      _MyPageTab(onSwitchToGuardian: _openGuardian),
+      const DashboardScreen(),
+      const _MyPageTab(),
     ];
 
     return Scaffold(
@@ -192,7 +185,11 @@ class _HomeTabState extends State<_HomeTab> {
             const SizedBox(height: 20),
 
             GestureDetector(
-              onTap: () => context.push('/biosignal'),
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => const BiosignalLiveScreen(accent: kPrimary),
+                ),
+              ),
               child: Container(
                 width: double.infinity,
                 padding: const EdgeInsets.symmetric(
@@ -398,7 +395,12 @@ class _HomeTabState extends State<_HomeTab> {
                 const SizedBox(width: 12),
                 Expanded(
                   child: GestureDetector(
-                    onTap: () => context.push('/biosignal'),
+                    onTap: () => Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) =>
+                            const BiosignalLiveScreen(accent: kPrimary),
+                      ),
+                    ),
                     child: _QuickMenu(
                       emoji: '💓',
                       title: '생체 신호',
@@ -418,8 +420,7 @@ class _HomeTabState extends State<_HomeTab> {
 
 /// 내 정보 탭 — 이름 박스(누르면 내 정보 화면) + 보호자 전환 버튼.
 class _MyPageTab extends StatelessWidget {
-  final VoidCallback onSwitchToGuardian;
-  const _MyPageTab({required this.onSwitchToGuardian});
+  const _MyPageTab();
 
   @override
   Widget build(BuildContext context) {
@@ -427,129 +428,181 @@ class _MyPageTab extends StatelessWidget {
       backgroundColor: kBackground,
       appBar: const RoundedGradientAppBar('내 정보'),
       body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 20, 20, 20),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // ── 이름 박스 (누르면 내 정보 상세·수정 화면) ──
-              GestureDetector(
-                onTap: () => Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => const ProfileEditScreen()),
-                ),
-                child: Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(20),
-                  decoration: BoxDecoration(
-                    color: kCard,
-                    borderRadius: BorderRadius.circular(18),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.04),
-                        blurRadius: 12,
-                        offset: const Offset(0, 4),
-                      ),
-                    ],
-                  ),
-                  child: Row(
+        child: LayoutBuilder(
+          builder: (context, constraints) => SingleChildScrollView(
+            child: ConstrainedBox(
+              constraints: BoxConstraints(minHeight: constraints.maxHeight),
+              child: IntrinsicHeight(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 20, 20, 20),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Container(
-                        width: 52,
-                        height: 52,
-                        decoration: BoxDecoration(
-                          color: kPrimaryLight,
-                          borderRadius: BorderRadius.circular(16),
+                      // ── 이름 박스 (누르면 내 정보 상세·수정 화면) ──
+                      GestureDetector(
+                        onTap: () => Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => const ProfileEditScreen(),
+                          ),
                         ),
-                        child: const Center(
-                          child: Text('🧓', style: TextStyle(fontSize: 26)),
-                        ),
-                      ),
-                      const SizedBox(width: 14),
-                      // TODO: 로그인 세션의 실제 이름으로 교체
-                      const Expanded(
-                        child: Text(
-                          '김복자',
-                          style: TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.w800,
-                            color: kText,
+                        child: Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.all(20),
+                          decoration: BoxDecoration(
+                            color: kCard,
+                            borderRadius: BorderRadius.circular(18),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withValues(alpha: 0.04),
+                                blurRadius: 12,
+                                offset: const Offset(0, 4),
+                              ),
+                            ],
+                          ),
+                          child: Row(
+                            children: [
+                              Container(
+                                width: 52,
+                                height: 52,
+                                decoration: BoxDecoration(
+                                  color: kPrimaryLight,
+                                  borderRadius: BorderRadius.circular(16),
+                                ),
+                                child: const Center(
+                                  child: Text(
+                                    '🧓',
+                                    style: TextStyle(fontSize: 26),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 14),
+                              // TODO: 로그인 세션의 실제 이름으로 교체
+                              const Expanded(
+                                child: Text(
+                                  '김복자',
+                                  style: TextStyle(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.w800,
+                                    color: kText,
+                                  ),
+                                ),
+                              ),
+                              Icon(
+                                Icons.arrow_forward_ios_rounded,
+                                size: 16,
+                                color: Colors.grey[400],
+                              ),
+                            ],
                           ),
                         ),
                       ),
-                      Icon(
-                        Icons.arrow_forward_ios_rounded,
-                        size: 16,
-                        color: Colors.grey[400],
+                      const SizedBox(height: 14),
+                      // ── 연결된 보호자 (정보 표시만) ──
+                      Container(
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: kCard,
+                          borderRadius: BorderRadius.circular(18),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withValues(alpha: 0.04),
+                              blurRadius: 12,
+                              offset: const Offset(0, 4),
+                            ),
+                          ],
+                        ),
+                        child: Row(
+                          children: [
+                            Container(
+                              width: 44,
+                              height: 44,
+                              decoration: BoxDecoration(
+                                color: kPrimaryLight,
+                                borderRadius: BorderRadius.circular(14),
+                              ),
+                              child: const Center(
+                                child: Text(
+                                  '👩',
+                                  style: TextStyle(fontSize: 22),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 14),
+                            // TODO: 실제 연결된 보호자 정보로 교체
+                            const Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    '김지안 · 자녀',
+                                    style: TextStyle(
+                                      fontSize: 15,
+                                      fontWeight: FontWeight.w800,
+                                      color: kText,
+                                    ),
+                                  ),
+                                  SizedBox(height: 2),
+                                  Text(
+                                    '연결된 보호자',
+                                    style: TextStyle(
+                                      fontSize: 12.5,
+                                      color: kTextSub,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 20),
+                      const SettingsMenu(accent: kPrimary),
+                      const Spacer(),
+                      const SizedBox(height: 20),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Expanded(
+                            child: TextButton(
+                              onPressed: () => _confirmWithdraw(context),
+                              child: Text(
+                                '탈퇴하기',
+                                style: TextStyle(
+                                  color: Colors.grey[500],
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                          ),
+                          Container(
+                            width: 0.5,
+                            height: 14,
+                            color: Colors.grey[400],
+                          ),
+                          Expanded(
+                            child: TextButton(
+                              onPressed: () async {
+                                await AuthSession.logout();
+                                if (context.mounted) context.go('/login');
+                              },
+                              child: Text(
+                                '로그아웃',
+                                style: TextStyle(
+                                  color: Colors.grey[500],
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                     ],
                   ),
                 ),
               ),
-              const Spacer(),
-              GestureDetector(
-                onTap: onSwitchToGuardian,
-                child: Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                  decoration: BoxDecoration(
-                    color: kPrimaryLight,
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: kPrimary.withValues(alpha: 0.18)),
-                  ),
-                  child: const Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(Icons.swap_horiz_rounded, color: kPrimary, size: 18),
-                      SizedBox(width: 8),
-                      Text(
-                        '보호자 화면으로 전환',
-                        style: TextStyle(
-                          color: kPrimary,
-                          fontSize: 14,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              const SizedBox(height: 10),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Expanded(
-                    child: TextButton(
-                      onPressed: () => _confirmWithdraw(context),
-                      child: Text(
-                        '탈퇴하기',
-                        style: TextStyle(
-                          color: Colors.grey[500],
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ),
-                  ),
-                  Container(width: 0.5, height: 14, color: Colors.grey[400]),
-                  Expanded(
-                    child: TextButton(
-                      onPressed: () async {
-                        await AuthSession.logout();
-                        if (context.mounted) context.go('/login');
-                      },
-                      child: Text(
-                        '로그아웃',
-                        style: TextStyle(
-                          color: Colors.grey[500],
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ],
+            ),
           ),
         ),
       ),
