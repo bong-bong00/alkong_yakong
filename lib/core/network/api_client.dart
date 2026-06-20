@@ -23,7 +23,7 @@ class ApiClient {
     try {
       final response = await _client
           .get(_uri(path), headers: _headers)
-          .timeout(const Duration(seconds: 15));
+          .timeout(const Duration(seconds: 45));
       return _decodeResponse(response);
     } on ApiException {
       rethrow;
@@ -39,7 +39,7 @@ class ApiClient {
     try {
       final response = await _client
           .post(_uri(path), headers: _headers, body: jsonEncode(body))
-          .timeout(const Duration(seconds: 15));
+          .timeout(const Duration(seconds: 45));
       return _decodeResponse(response);
     } on ApiException {
       rethrow;

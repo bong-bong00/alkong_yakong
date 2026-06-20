@@ -96,6 +96,7 @@ TABLE_DEFINITIONS = {
             duration_days INTEGER,
             administration_times TEXT,
             warning_note TEXT,
+            easy_explanation TEXT,
             match_status TEXT NOT NULL DEFAULT 'UNMATCHED',
             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (prescription_id) REFERENCES prescriptions(id) ON DELETE CASCADE,
@@ -337,6 +338,9 @@ ADDITIVE_COLUMNS = {
         "generated_by": "TEXT NOT NULL DEFAULT 'mock'",
         "source": "TEXT NOT NULL DEFAULT 'local'",
         "is_verified": "INTEGER NOT NULL DEFAULT 0",
+    },
+    "prescription_items": {
+        "easy_explanation": "TEXT",
     },
 }
 
