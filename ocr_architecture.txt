@@ -1,0 +1,92 @@
+[알콩약콩 OCR 처방전 분석 및 DB 설계도]
+
+알콩약콩 앱에서 사용자가 처방전 사진을 찍어 보냈을 때, 백엔드 서버가 이를 어떻게 처리하고 데이터베이스(SQLite)의 어떤 테이블에 어떤 쿼리(SQL)로 쏘는지 상세하게 분해한 설계 도면입니다.
+
+================================================================================
+1. 전체 파이프라인 (Data Flow)
+================================================================================
+[사용자/앱] 
+  1) 플러터 앱에서 처방전 사진 촬영 후 Base64 이미지 변환
+  2) POST /api/v1/prescriptions/ocr API 호출 (백엔드로 전송)
+
+[백엔드/AI] 
+  3) 백엔드가 이미지를 제미나이(AI)에게 전달 (엄격한 OCR_SCHEMA 적용)
+  4) 제미나이가 약품명, 투약량, 횟수, 쉬운 해설 등을 JSON으로 반환
+
+[백엔드/DB] 
+  5) 유저 확인 및 생성 (users 테이블)
+  6) 처방전 헤더 등록 (prescriptions 테이블)
+  7) 각 약품마다 루프(Loop)를 돌며 아래 과정 수행:
+      - 식약처 DB에서 약품명 매칭 (medicines 테이블)
+      - 처방전 약품 상세 내역 등록 (prescription_items 테이블)
+      - 유저의 개인 약품 목록에 등록 (user_medicines 테이블)
+      - 복약 알람 스케줄 자동 생성 (medication_schedules 테이블)
+
+[결과 반환]
+  8) 최종 완성된 데이터를 플러터 앱으로 반환하여 화면에 카드 형태로 렌더링
+
+
+================================================================================
+2. 핵심 테이블 관계 (ERD 구조)
+================================================================================
+* users (사용자)
+  - 1명의 사용자는 여러 장의 prescriptions(처방전)를 가짐.
+  - 1명의 사용자는 여러 개의 user_medicines(복용중인 약)를 가짐.
+  - 1명의 사용자는 여러 개의 medication_schedules(알람)를 가짐.
+
+* prescriptions (처방전 헤더)
+  - 1장의 처방전은 여러 개의 prescription_items(처방된 약품들)를 가짐.
+
+* medicines (식약처 공식 약품 DB)
+  - prescription_items 와 user_medicines 에서 이 테이블의 약품 코드를 참조함.
+
+* user_medicines (유저 개인 약품함)
+  - 1개의 처방전 약품(prescription_items)은 1개의 개인 약품(user_medicines)과 1:1 매핑됨.
+  - 1개의 개인 약품은 복약 기간과 횟수에 따라 여러 개의 medication_schedules(알람)를 생성함.
+
+
+================================================================================
+3. 핵심 SQL 쿼리 흐름 상세
+================================================================================
+앱에서 처방전 1장을 보낼 때 백엔드 내부에서는 아래의 쿼리들을 순차적으로 폭격(INSERT)합니다.
+
+[① 처방전 헤더 등록]
+전체 처방전의 껍데기를 만들고 고유 ID(UUID)를 발급합니다.
+> INSERT INTO prescriptions (
+>     id, user_id, source_type, hospital_name, pharmacy_name,
+>     prescribed_date, expire_date, original_image_path, ocr_text
+> ) VALUES (?, ?, 'OCR', ?, ?, ?, ?, ?, ?)
+
+
+[② 식약처 약품 원본 대조 (Loop 반복작업)]
+제미나이가 뽑은 약 이름이 진짜 식약처 DB에 있는지 찾습니다.
+> SELECT * FROM medicines WHERE product_name = ?
+(없으면 임시 약품 코드 MOCK-XXX를 만들어 새로 INSERT 합니다.)
+
+
+[③ 처방전 약품 상세 내역 저장]
+약 봉투에 적힌 용량, 횟수, 그리고 제미나이가 만든 '어르신용 쉬운 해설(easy_explanation)'을 저장합니다.
+> INSERT INTO prescription_items (
+>     prescription_id, medicine_code, ocr_drug_name, dosage, unit,
+>     frequency_per_day, times_per_take, duration_days,
+>     administration_times, match_status, easy_explanation
+> ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+
+
+[④ 유저 개인 약품함 등록]
+환자가 실제로 먹어야 할 약으로 등록합니다. 알람을 울릴 근거 자료가 됩니다.
+> INSERT INTO user_medicines (
+>     user_id, medicine_code, prescription_item_id, start_date,
+>     end_date, dosage, frequency_per_day, administration_times
+> ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+
+
+[⑤ 알람 스케줄 일괄 생성] (★핵심 로직)
+제미나이가 찾아낸 투약일수(duration_days)와 1일 투여 횟수(frequency_per_day)를 곱해서, 환자가 약을 먹어야 할 날짜와 시간별로 레코드를 미리 쫙 깔아둡니다.
+(예: 하루 3번 먹는 3일치 약이면 총 9개의 알람 row가 한 방에 INSERT 됩니다.)
+> INSERT OR IGNORE INTO medication_schedules (
+>     user_id, user_medicine_id, scheduled_date,
+>     scheduled_time, time_slot, status
+> ) VALUES (?, ?, ?, ?, ?, 'PENDING')
+
+이곳에 들어간 status = 'PENDING' 데이터들이 나중에 환자 폰에 알람으로 울리게 됩니다.
