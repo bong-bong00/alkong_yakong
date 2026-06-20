@@ -125,7 +125,7 @@ class _DrugExplainScreenState extends State<DrugExplainScreen> {
                   style: TextStyle(fontSize: 12, color: kTextSub),
                 ),
               ),
-            // 하단 입력창 (플로팅 스타일로 변경)
+            // 하단 입력창 (플로팅 스타일)
             Padding(
               // 하단바와 겹치지 않도록 좌, 우, 아래에 여백을 주어 띄웁니다.
               padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
@@ -160,7 +160,8 @@ class _DrugExplainScreenState extends State<DrugExplainScreen> {
                             fontSize: 14,
                           ),
                           filled: true,
-                          fillColor: kBackground,
+                          // 캡슐(흰색)과 구분되도록 입력칸은 연한 연두색으로.
+                          fillColor: kPrimaryLight,
                           contentPadding: const EdgeInsets.symmetric(
                             horizontal: 20,
                             vertical: 12,
