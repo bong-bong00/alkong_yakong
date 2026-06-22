@@ -1,19 +1,20 @@
 import 'dart:async';
-import 'dart:math';
+
 import 'package:flutter/material.dart';
+import 'package:permission_handler/permission_handler.dart';
+
 import '../../../../core/constants/app_colors.dart';
+import '../../../../core/network/api_client.dart';
+import '../../../../core/session/mvp_session.dart';
+import '../../../biosignal/data/polar_service.dart';
 
 /// 실시간 심박 모니터링 화면 (흐르는 애니메이션 버전).
 /// 보호자 현황 탭의 "현재 심박" 카드를 누르면 진입.
 ///
-/// ▸ 지금은 데모: 1초마다 새 심박값이 들어오고, 그래프는 매 프레임 다시 그려
-///   왼쪽으로 매끄럽게 흐른다(응급실 모니터 느낌).
-/// ▸ 실제 연동: 팀원의 biosignalProvider(BiosignalState)를 watch 하도록
-///   _demoTick() 부분만 교체. 필드명(currentHr, currentRmssd, isMoving,
-///   isAnomalyDetected, isAnalyzing, aiReport)을 그대로 맞춰뒀다.
+/// PolarService의 HR 스트림으로 현재 심박과 그래프를 갱신한다.
 ///
 /// 부담 최소화: 최근 _maxPoints 개만 메모리에 유지하고, 화면을 벗어나면
-/// dispose()에서 타이머·애니메이션을 정리해 배터리/리소스 낭비를 막는다.
+/// dispose()에서 스트림·애니메이션을 정리해 배터리/리소스 낭비를 막는다.
 /// 위치: lib/features/dashboard/presentation/screens/biosignal_live_screen.dart
 class BiosignalLiveScreen extends StatefulWidget {
   final Color accent;
@@ -36,64 +37,283 @@ class _BiosignalLiveScreenState extends State<BiosignalLiveScreen>
   static const int _maxPoints = 60; // 그래프에 유지할 최근 심박 개수
   static const Duration _interval = Duration(seconds: 1); // 새 값 주기
   static const Color _danger = Color(0xFFE24B4A);
+  static const String _targetDeviceId = '115F4138';
+  static const String _targetDeviceName = 'Polar Sense 115F4138';
 
-  // ── BiosignalState 와 1:1 대응되는 데모 상태 ──
-  int _currentHr = 78;
-  double _currentRmssd = 42.0;
-  bool _isMoving = false;
+  // ── Polar 실측 상태 ──
+  int? _currentHr;
   bool _isAnomalyDetected = false;
+  bool _isConnected = false;
+  bool _isStreaming = false;
+  String? _connectionError;
+  String? _activeDeviceId;
+  bool _isDisposed = false;
+  bool _hasAttemptedReconnect = false;
   // ignore: unused_field  (연동 시 사용: AI 분석 중 표시)
   final bool _isAnalyzing = false;
   // ignore: unused_field  (연동 시 사용: AI 분석 리포트)
   final String _aiReport = '';
 
-  // 흐름 구현용: 값 리스트 + 직전 값(보간으로 부드럽게 흐르게)
+  // 흐름 구현용 실측값 리스트
   final List<double> _hr = [];
-  double _prevHr = 78;
-  Timer? _timer;
   late final AnimationController _anim; // 매 프레임 다시 그리기 + 흐름 진행도(0~1)
-  final _rand = Random();
+  final PolarService _polarService = PolarService();
+  final ApiClient _apiClient = ApiClient();
+  StreamSubscription<int?>? _currentBpmSub;
+  StreamSubscription<double?>? _averageBpmSub;
+  StreamSubscription<String>? _errorSub;
+  StreamSubscription<String>? _deviceDisconnectedSub;
 
   @override
   void initState() {
     super.initState();
-    _currentHr = widget.baseHr;
-    for (int i = 0; i < _maxPoints; i++) {
-      _hr.add((widget.baseHr - 2 + _rand.nextInt(6)).toDouble());
-    }
-    _prevHr = _hr.last;
-
-    // 매 프레임 화면을 다시 그려 라인이 흐르게 한다. 주기(_interval)에 맞춰 0→1 반복.
-    _anim = AnimationController(vsync: this, duration: _interval)..repeat();
-
-    _timer = Timer.periodic(_interval, (_) => _demoTick());
+    _anim = AnimationController(vsync: this, duration: _interval);
+    _subscribeToPolarStreams();
+    unawaited(_connectAndStartStreaming());
   }
 
   @override
   void dispose() {
-    _timer?.cancel(); // 화면 벗어나면 데이터 갱신 중단
+    debugPrint('[POLAR_UI] dispose called');
+    _isDisposed = true;
+    unawaited(_disposePolarResources());
     _anim.dispose(); // 애니메이션 정리 (배터리/리소스 절약)
     super.dispose();
   }
 
-  // 데모용: 새 심박값 한 개를 만들어 리스트에 넣는다.
-  void _demoTick() {
-    final last = _hr.isEmpty ? 78.0 : _hr.last;
-    double next = last + (_rand.nextInt(7) - 3); // -3 ~ +3
-    if (_rand.nextInt(100) < 8) next += 20 + _rand.nextInt(15); // 가끔 빈맥
-    next = next.clamp(58, 140);
+  Future<void> _disposePolarResources() async {
+    await _currentBpmSub?.cancel();
+    await _averageBpmSub?.cancel();
+    await _errorSub?.cancel();
+    await _deviceDisconnectedSub?.cancel();
+    _currentBpmSub = null;
+    _averageBpmSub = null;
+    _errorSub = null;
+    _deviceDisconnectedSub = null;
+    debugPrint('[POLAR_UI] stream subscriptions cancelled');
+    await _shutdownPolar();
+    debugPrint('[POLAR_UI] dispose cleanup completed');
+  }
 
-    setState(() {
-      _prevHr = _hr.isEmpty ? next : _hr.last;
-      _hr.add(next);
-      if (_hr.length > _maxPoints + 1) _hr.removeAt(0);
-
-      _currentHr = next.round();
-      _currentRmssd = (35 + _rand.nextInt(20)).toDouble();
-      _isMoving = _rand.nextInt(100) < 15;
-      _isAnomalyDetected = !_isMoving && next > 100;
+  void _subscribeToPolarStreams() {
+    _currentBpmSub = _polarService.currentBpmStream.listen(_handleCurrentBpm);
+    _averageBpmSub = _polarService.averageBpmStream.listen((average) {
+      if (average != null) {
+        unawaited(_sendAverageBpm(average));
+      }
     });
-    _anim.forward(from: 0); // 새 값마다 흐름 0부터 다시
+    _errorSub = _polarService.errorStream.listen(_handlePolarError);
+    _deviceDisconnectedSub = _polarService.deviceDisconnectedStream.listen(
+      _handleDeviceDisconnected,
+    );
+  }
+
+  Future<void> _connectAndStartStreaming() async {
+    debugPrint('[POLAR_UI] connect requested');
+    try {
+      final permissionLabels = <Permission, String>{
+        Permission.bluetoothScan: '블루투스 검색',
+        Permission.bluetoothConnect: '블루투스 연결',
+        Permission.locationWhenInUse: '위치',
+      };
+      debugPrint('[POLAR_UI] requesting permissions');
+      final permissionStatuses = await permissionLabels.keys.toList().request();
+      debugPrint(
+        '[POLAR_UI] permission results: ${permissionStatuses.entries.map((entry) => '${permissionLabels[entry.key]}=${entry.value.name}').join(', ')}',
+      );
+
+      final rejectedPermissions = permissionStatuses.entries
+          .where((entry) => !entry.value.isGranted)
+          .map(
+            (entry) =>
+                '${permissionLabels[entry.key]}(${entry.value.isPermanentlyDenied ? '영구 거부' : '거부'})',
+          )
+          .toList();
+      if (rejectedPermissions.isNotEmpty) {
+        debugPrint('[POLAR_UI] permission denied');
+        _handlePolarError('권한 거부: ${rejectedPermissions.join(', ')}');
+        return;
+      }
+
+      debugPrint('[POLAR_UI] searching for Polar device');
+      final deviceId = await _polarService.findDeviceId(
+        targetName: _targetDeviceName,
+        targetDeviceId: _targetDeviceId,
+      );
+      _activeDeviceId = deviceId;
+
+      debugPrint('[POLAR_UI] connectToDevice($deviceId)');
+      await _polarService.connectToDevice(deviceId);
+      debugPrint('[POLAR_UI] connect success');
+      if (_isDisposed) {
+        await _polarService.disconnectFromDevice(deviceId);
+        return;
+      }
+      if (mounted) {
+        setState(() {
+          _isConnected = true;
+          _connectionError = null;
+        });
+      }
+      await Future<void>.delayed(const Duration(seconds: 2));
+      if (_isDisposed) return;
+      debugPrint('[POLAR_UI] startHrStreaming($deviceId)');
+      await _polarService.startHrStreaming(deviceId);
+      debugPrint('[POLAR_UI] stream started');
+    } catch (error) {
+      _handlePolarError(error.toString());
+    }
+  }
+
+  void _handleDeviceDisconnected(String deviceId) {
+    debugPrint('[POLAR_UI] device disconnected: $deviceId');
+    if (_isDisposed || deviceId != _activeDeviceId) return;
+    if (mounted) {
+      setState(() {
+        _isConnected = false;
+        _isStreaming = false;
+        _connectionError = 'Polar 기기 연결이 끊어졌습니다.';
+      });
+    }
+    _startReconnectOnce();
+  }
+
+  void _startReconnectOnce() {
+    if (_hasAttemptedReconnect) {
+      debugPrint('[POLAR_UI] reconnect already attempted');
+      return;
+    }
+    _hasAttemptedReconnect = true;
+    unawaited(_reconnectOnce());
+  }
+
+  Future<void> _reconnectOnce() async {
+    try {
+      debugPrint('[POLAR_UI] retry start');
+      await _polarService.stopStreaming();
+      final previousDeviceId = _activeDeviceId;
+      if (previousDeviceId != null) {
+        try {
+          await _polarService.disconnectFromDevice(previousDeviceId);
+        } catch (error) {
+          debugPrint('[POLAR_UI] retry disconnect ignored: $error');
+        }
+      }
+      await Future<void>.delayed(const Duration(seconds: 1));
+      if (_isDisposed) return;
+
+      final deviceId = await _polarService.findDeviceId(
+        targetName: _targetDeviceName,
+        targetDeviceId: _targetDeviceId,
+      );
+      debugPrint('[POLAR_UI] retry search success: $deviceId');
+      if (_isDisposed) return;
+      _activeDeviceId = deviceId;
+
+      await _polarService.connectToDevice(deviceId);
+      debugPrint('[POLAR_UI] retry connect success');
+      if (_isDisposed) {
+        await _polarService.disconnectFromDevice(deviceId);
+        return;
+      }
+      if (mounted) {
+        setState(() {
+          _isConnected = true;
+          _connectionError = null;
+        });
+      }
+
+      await Future<void>.delayed(const Duration(seconds: 2));
+      if (_isDisposed) return;
+      await _polarService.startHrStreaming(deviceId);
+      debugPrint('[POLAR_UI] retry stream start');
+    } catch (error) {
+      debugPrint('[POLAR_UI] retry failed: $error');
+      _handlePolarError(error.toString());
+    }
+  }
+
+  void _handleCurrentBpm(int? bpm) {
+    if (!mounted || _isDisposed) return;
+    if (bpm == null) {
+      setState(() {
+        _currentHr = null;
+        _isStreaming = false;
+        _isAnomalyDetected = false;
+        _hr.clear();
+      });
+      _anim
+        ..stop()
+        ..reset();
+      debugPrint('[POLAR_UI] bpm cleared');
+      return;
+    }
+    debugPrint('[POLAR_UI] bpm received: $bpm');
+    setState(() {
+      if (_hr.isEmpty) {
+        _hr.addAll(List<double>.filled(2, bpm.toDouble()));
+      }
+      _hr.add(bpm.toDouble());
+      if (_hr.length > _maxPoints + 1) _hr.removeAt(0);
+      _currentHr = bpm;
+      _isConnected = true;
+      _isStreaming = true;
+      _connectionError = null;
+      _isAnomalyDetected = bpm > 100;
+    });
+    _anim.forward(from: 0);
+  }
+
+  void _handlePolarError(String error) {
+    debugPrint('[POLAR_UI] error: $error');
+    if (!mounted || _isDisposed) return;
+    setState(() {
+      _connectionError = error;
+      _isConnected = false;
+      _isStreaming = false;
+    });
+    if (error.contains('PolarDeviceDisconnected')) {
+      _startReconnectOnce();
+    }
+  }
+
+  Future<void> _sendAverageBpm(double average) async {
+    final userId = MvpSession.userId.trim();
+    if (userId.isEmpty) {
+      debugPrint('Skipping average BPM upload: user ID is empty.');
+      return;
+    }
+    debugPrint('[POLAR_UI] sending 30s avg: $average');
+    try {
+      await _apiClient.post(
+        '/api/v1/biosignal/heart-rate',
+        body: {
+          'user_id': userId,
+          'bpm': average.round(),
+          'device_id': _activeDeviceId ?? _targetDeviceId,
+          'source': 'POLAR_30S_AVERAGE',
+        },
+      );
+      debugPrint('[POLAR_UI] avg upload success');
+    } on ApiException catch (error) {
+      debugPrint('[POLAR_UI] avg upload failed: $error');
+    } catch (error) {
+      debugPrint('[POLAR_UI] avg upload failed: $error');
+    }
+  }
+
+  Future<void> _shutdownPolar() async {
+    try {
+      await _polarService.stopStreaming();
+      final deviceId = _activeDeviceId;
+      if (deviceId != null) {
+        await _polarService.disconnectFromDevice(deviceId);
+      }
+    } catch (error) {
+      debugPrint('Unable to disconnect Polar device: $error');
+    } finally {
+      await _polarService.dispose();
+    }
   }
 
   bool get _normal => !_isAnomalyDetected;
@@ -144,7 +364,9 @@ class _BiosignalLiveScreenState extends State<BiosignalLiveScreen>
                       const Text('💓', style: TextStyle(fontSize: 30)),
                       const SizedBox(width: 8),
                       Text(
-                        '$_currentHr',
+                        _isStreaming && _currentHr != null
+                            ? '$_currentHr'
+                            : '--',
                         style: TextStyle(
                           fontSize: 56,
                           fontWeight: FontWeight.w900,
@@ -213,19 +435,9 @@ class _BiosignalLiveScreenState extends State<BiosignalLiveScreen>
             // ── 보조 지표 ──
             Row(
               children: [
-                _metric(
-                  'HRV (RMSSD)',
-                  _currentRmssd.toStringAsFixed(0),
-                  'ms',
-                  accent,
-                ),
+                _metric('HRV (RMSSD)', '--', '', accent),
                 const SizedBox(width: 12),
-                _metric(
-                  '상태',
-                  _isMoving ? '움직임 중' : '안정',
-                  '',
-                  _isMoving ? const Color(0xFFE6A100) : accent,
-                ),
+                _metric('상태', _sensorStatusLabel, '', accent),
               ],
             ),
             const SizedBox(height: 18),
@@ -238,11 +450,14 @@ class _BiosignalLiveScreenState extends State<BiosignalLiveScreen>
   }
 
   Widget _statusChip() {
-    final Color c = _isAnomalyDetected ? _danger : const Color(0xFF2E7D32);
-    final String label = _isAnomalyDetected
+    final hasError = _connectionError != null;
+    final Color c = hasError || _isAnomalyDetected
+        ? _danger
+        : const Color(0xFF2E7D32);
+    final String label = _isAnomalyDetected && _isStreaming
         ? '심박 이상 감지'
-        : (_isMoving ? '활동 중 · 정상' : '안정 · 정상');
-    final IconData icon = _isAnomalyDetected
+        : _sensorStatusLabel;
+    final IconData icon = hasError || _isAnomalyDetected
         ? Icons.warning_amber_rounded
         : Icons.check_circle;
     return Container(
@@ -267,6 +482,13 @@ class _BiosignalLiveScreenState extends State<BiosignalLiveScreen>
         ],
       ),
     );
+  }
+
+  String get _sensorStatusLabel {
+    if (_connectionError != null) return '연결 오류';
+    if (!_isConnected) return '연결 대기';
+    if (!_isStreaming) return '연결됨';
+    return '측정 중';
   }
 
   Widget _anomalyCard() {
