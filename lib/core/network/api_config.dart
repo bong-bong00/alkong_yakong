@@ -13,7 +13,7 @@ abstract final class ApiConfig {
     }
 
     return switch (defaultTargetPlatform) {
-      TargetPlatform.android => 'http://10.0.2.2:8000',
+      TargetPlatform.android => 'http://172.16.42.121:8000',
       _ => 'http://localhost:8000',
     };
   }
