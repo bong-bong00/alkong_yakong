@@ -10,7 +10,7 @@ import 'features/dashboard/presentation/screens/guardian_home_screen.dart';
 import 'features/dashboard/presentation/screens/dashboard_screen.dart';
 import 'features/prescription/presentation/screens/prescription_screen.dart';
 import 'features/dur_analysis/presentation/screens/dur_analysis_screen.dart';
-import 'features/biosignal/presentation/screens/biosignal_screen.dart';
+import 'features/dashboard/presentation/screens/biosignal_live_screen.dart';
 import 'features/drug_explain/drug_explain_screen.dart';
 
 final _router = GoRouter(
@@ -45,7 +45,7 @@ final _router = GoRouter(
     ),
     GoRoute(
       path: '/biosignal',
-      builder: (context, state) => const BiosignalScreen(),
+      builder: (context, state) => const BiosignalLiveScreen(),
     ),
     GoRoute(
       path: '/dashboard',
