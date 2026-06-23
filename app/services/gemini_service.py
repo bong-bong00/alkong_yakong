@@ -1,6 +1,5 @@
 import json
 import logging
-import time
 from typing import Any
 
 from app.core.config import GEMINI_API_KEY, GEMINI_MODEL
@@ -214,94 +213,6 @@ def _build_prompt(official_info: dict[str, Any]) -> str:
 """.strip()
 
 
-def _is_gemini_unavailable(error: Exception) -> bool:
-    status_code = getattr(error, "status_code", None)
-    code = getattr(error, "code", None)
-    message = str(error).upper()
-    return (
-        status_code == 503
-        or code == 503
-        or ("503" in message and "UNAVAILABLE" in message)
-    )
-
-
-def _generate_content_with_retry(client, **kwargs):
-    retry_delays = (1, 2)
-    for attempt in range(len(retry_delays) + 1):
-        try:
-            return client.models.generate_content(**kwargs)
-        except Exception as error:
-            if not _is_gemini_unavailable(error) or attempt >= len(retry_delays):
-                raise
-            delay = retry_delays[attempt]
-            logger.warning(
-                "Gemini unavailable; retrying in %s second(s) (%s/2).",
-                delay,
-                attempt + 1,
-            )
-            time.sleep(delay)
-
-
-def _read_response_text(response) -> str:
-    try:
-        return str(getattr(response, "text", None) or "")
-    except Exception as error:
-        logger.debug("Unable to read Gemini response.text: %s", error)
-        return ""
-
-
-def _complete_response_text(response, *, response_text: str | None = None) -> str:
-    primary_text = (
-        _read_response_text(response) if response_text is None else response_text
-    )
-    if primary_text:
-        return primary_text.strip()
-
-    completed_parts = []
-    for candidate in getattr(response, "candidates", None) or []:
-        content = getattr(candidate, "content", None)
-        for part in getattr(content, "parts", None) or []:
-            part_text = getattr(part, "text", None)
-            if part_text:
-                completed_parts.append(str(part_text))
-    return "".join(completed_parts).strip()
-
-
-def _finish_reasons(response) -> list[str]:
-    reasons = []
-    direct_reason = getattr(response, "finish_reason", None)
-    if direct_reason is not None:
-        reasons.append(str(direct_reason))
-    for candidate in getattr(response, "candidates", None) or []:
-        reason = getattr(candidate, "finish_reason", None)
-        if reason is not None:
-            reasons.append(str(reason))
-    return reasons
-
-
-def _finalize_chat_response(response) -> str:
-    response_text = _read_response_text(response)
-    logger.debug("Gemini response.text length: %d", len(response_text))
-
-    reasons = _finish_reasons(response)
-    if reasons:
-        logger.debug("Gemini finish_reason: %s", ", ".join(reasons))
-
-    reply = _complete_response_text(response, response_text=response_text)
-    logger.debug("Gemini final reply length: %d", len(reply))
-
-    has_valid_ending = reply.endswith((".", "요", "다", "니다"))
-    if len(reply) < 20 or not has_valid_ending:
-        logger.warning(
-            "Gemini response may be incomplete: length=%d valid_ending=%s",
-            len(reply),
-            has_valid_ending,
-        )
-    if len(reply) < 20:
-        return "응답 생성이 불완전했습니다. 다시 질문해주세요."
-    return reply
-
-
 def generate_chat_response(message: str) -> str:
     if not GEMINI_API_KEY:
         return "죄송합니다. AI 약사가 설정되지 않았습니다."
@@ -323,13 +234,11 @@ def generate_chat_response(message: str) -> str:
                 "3단계 검증을 모두 마친 최종 확정된 약품명들만 'drug_names' 배열에 담아 JSON으로 반환하세요. 없으면 빈 배열을 반환하세요.\n\n"
                 f"질문: {message}"
             )
-            extract_response = _generate_content_with_retry(
-                client,
+            extract_response = client.models.generate_content(
                 model=GEMINI_MODEL,
                 contents=extract_prompt,
                 config={
-                    "temperature": 0.2,
-                    "max_output_tokens": 256,
+                    "temperature": 0.0,
                     "response_mime_type": "application/json",
                     "response_json_schema": CHAT_EXTRACTION_SCHEMA,
                 },
@@ -353,11 +262,7 @@ def generate_chat_response(message: str) -> str:
                 try:
                     search_result = search_drug_info_by_name(name)
                     if search_result and search_result.get("items"):
-                        found_data = {
-                            "검색된_약품명": name,
-                            "match_type": search_result.get("match_type"),
-                            "식약처_공식정보": search_result["items"][0],
-                        }
+                        found_data = {"검색된_약품명": name, "식약처_공식정보": search_result["items"][0]}
                 except Exception as e:
                     logger.warning("식약처 API 검색 실패 (%s): %s", name, e)
                 
@@ -379,55 +284,36 @@ def generate_chat_response(message: str) -> str:
                 if found_data:
                     official_data_list.append(found_data)
 
-            # 3. 식약처 검색 성공 시 요약 전용, 실패 시 기존 full fallback
-            mfds_data_list = [
-                item
-                for item in official_data_list
-                if item.get("match_type") in {"exact", "partial"}
-                and item.get("식약처_공식정보")
-            ]
-            if mfds_data_list:
-                prompt = (
-                    "당신은 식약처 공식 의약품 정보를 고령자도 이해하기 쉽게 "
-                    "풀어쓰는 요약 도우미입니다.\n"
-                    "- 쉬운 단어만 사용하세요.\n"
-                    "- 3~5문장으로 작성하세요.\n"
-                    "- 공식 정보 외 새로운 사실을 만들거나 추측하지 마세요.\n"
-                    "- 효능, 복용법, 주의사항을 중심으로 설명하세요.\n"
-                    "- 정보가 없는 항목은 만들어내지 마세요.\n\n"
-                    f"[식약처 공식 정보]\n{json.dumps(mfds_data_list, ensure_ascii=False, indent=2)}\n\n"
-                    f"사용자 질문: {message}"
-                )
-            else:
-                prompt = (
-                    "당신은 어르신들을 위한 다정하고 친절한 AI 약사 '알콩약콩'입니다. "
-                    "사용자의 다음 질문이나 인사에 쉽고 따뜻한 말투로 대답해주세요. "
-                    "어려운 의학 용어는 피하고 친근하게 답변해주세요.\n"
-                    "중요: 모바일 화면에서 읽기 편하도록, 답변은 핵심만 요약해서 반드시 3~4문장 이내로 아주 짧고 간결하게 작성하세요.\n\n"
-                )
-
-            if not mfds_data_list and official_data_list:
+            # 3. 최종 답변 생성
+            prompt = (
+                "당신은 어르신들을 위한 다정하고 친절한 AI 약사 '알콩약콩'입니다. "
+                "사용자의 다음 질문이나 인사에 쉽고 따뜻한 말투로 대답해주세요. "
+                "어려운 의학 용어는 피하고 친근하게 답변해주세요.\n"
+                "중요: 모바일 화면에서 읽기 편하도록, 답변은 핵심만 요약해서 반드시 3~4문장 이내로 아주 짧고 간결하게 작성하세요.\n\n"
+            )
+            
+            if official_data_list:
                 prompt += (
-                    "아래 로컬 의약품 정보를 참고해 답변하세요.\n\n"
-                    f"[로컬 참고 데이터]\n{json.dumps(official_data_list, ensure_ascii=False, indent=2)}\n\n"
+                    "중요: 아래 식약처 공식 데이터가 검색되었습니다. 반드시 아래 데이터를 기반으로 "
+                    "정확하게 대답하세요. 공식 데이터에 없는 내용은 함부로 유추하거나 일반적인 지식으로 덧붙이지 마세요. "
+                    "대답의 앞이나 뒤에 '식약처 공식 정보에 따르면~' 이라는 뉘앙스를 자연스럽게 포함하세요.\n\n"
+                    f"[식약처 공식 데이터]\n{json.dumps(official_data_list, ensure_ascii=False, indent=2)}\n\n"
                 )
-            elif not mfds_data_list and drug_names:
+            elif drug_names:
                 prompt += (
                     "참고: 사용자가 특정 약품명을 언급했으나, 식약처 공식 DB에서 데이터를 찾지 못했습니다. "
                     "답변 시 '정확한 제품 정보는 식약처 DB에서 찾을 수 없지만, 일반적인 성분 정보로 안내해 드릴게요' "
                     "라고 부드럽게 안내한 뒤 일반적인 지식 내에서 답변해주세요.\n\n"
                 )
                 
-            if not mfds_data_list:
-                prompt += f"사용자: {message}"
+            prompt += f"사용자: {message}"
 
-            response = _generate_content_with_retry(
-                client,
+            response = client.models.generate_content(
                 model=GEMINI_MODEL,
                 contents=prompt,
-                config={"temperature": 0.2, "max_output_tokens": 512},
+                config={"temperature": 0.3},
             )
-            return _finalize_chat_response(response)
+            return response.text.strip()
     except Exception as error:
         logger.warning("Gemini chat failed: %s", error, exc_info=True)
         return "죄송합니다. 지금은 AI 약사가 너무 바빠서 대답할 수 없어요. 잠시 후 다시 시도해주세요."
