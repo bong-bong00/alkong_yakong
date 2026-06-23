@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
 import 'package:polar/polar.dart';
@@ -15,10 +16,13 @@ class PolarService {
       StreamController<int?>.broadcast();
   final StreamController<double?> _averageBpmController =
       StreamController<double?>.broadcast();
+  final StreamController<double?> _hrvRmssdController =
+      StreamController<double?>.broadcast();
   final StreamController<String> _errorController =
       StreamController<String>.broadcast();
 
   final List<int> _bpmSamples = <int>[];
+  final List<int> _rrIntervalsMs = <int>[];
   final Map<String, Set<PolarSdkFeature>> _availableFeatures =
       <String, Set<PolarSdkFeature>>{};
   StreamSubscription<PolarHrData>? _hrSubscription;
@@ -28,6 +32,7 @@ class PolarService {
 
   Stream<int?> get currentBpmStream => _currentBpmController.stream;
   Stream<double?> get averageBpmStream => _averageBpmController.stream;
+  Stream<double?> get hrvRmssdStream => _hrvRmssdController.stream;
   Stream<String> get errorStream => _errorController.stream;
   Stream<String> get deviceDisconnectedStream =>
       _polar.deviceDisconnected.map((event) => event.info.deviceId);
@@ -119,6 +124,7 @@ class PolarService {
     debugPrint('[POLAR_SERVICE] HR feature available');
     await stopStreaming();
     _bpmSamples.clear();
+    _rrIntervalsMs.clear();
     _acceptBpmEvents = true;
     debugPrint('[POLAR_SERVICE] hr stream start');
 
@@ -141,6 +147,7 @@ class PolarService {
               }
               debugPrint('[POLAR_SERVICE] hr sample: $bpm');
               _bpmSamples.add(bpm);
+              _addRrIntervals(sample.rrsMs);
               if (!_currentBpmController.isClosed) {
                 _currentBpmController.add(bpm);
               }
@@ -152,6 +159,7 @@ class PolarService {
             _averageTimer?.cancel();
             _averageTimer = null;
             _bpmSamples.clear();
+            _rrIntervalsMs.clear();
             _emitMeasurementReset();
             _emitError(error);
           },
@@ -161,6 +169,7 @@ class PolarService {
             _averageTimer?.cancel();
             _averageTimer = null;
             _bpmSamples.clear();
+            _rrIntervalsMs.clear();
             _emitMeasurementReset();
           },
           cancelOnError: false,
@@ -176,6 +185,7 @@ class PolarService {
     _hrSubscription = null;
     await subscription?.cancel();
     _bpmSamples.clear();
+    _rrIntervalsMs.clear();
     _emitMeasurementReset();
     debugPrint('[POLAR_SERVICE] stopStreaming completed');
   }
@@ -187,6 +197,9 @@ class PolarService {
     if (!_averageBpmController.isClosed) {
       _averageBpmController.add(null);
     }
+    if (!_hrvRmssdController.isClosed) {
+      _hrvRmssdController.add(null);
+    }
   }
 
   Future<void> dispose() async {
@@ -197,6 +210,7 @@ class PolarService {
     await Future.wait<void>(<Future<void>>[
       _currentBpmController.close(),
       _averageBpmController.close(),
+      _hrvRmssdController.close(),
       _errorController.close(),
     ]);
     debugPrint('[POLAR_SERVICE] dispose completed');
@@ -210,6 +224,37 @@ class PolarService {
     if (!_averageBpmController.isClosed) {
       _averageBpmController.add(average);
     }
+  }
+
+  void _addRrIntervals(List<int> rrsMs) {
+    final validRrs = rrsMs
+        .where((rr) => rr >= 300 && rr <= 2000)
+        .toList(growable: false);
+    if (validRrs.isEmpty) return;
+
+    _rrIntervalsMs.addAll(validRrs);
+    const maxRrWindow = 60;
+    if (_rrIntervalsMs.length > maxRrWindow) {
+      _rrIntervalsMs.removeRange(0, _rrIntervalsMs.length - maxRrWindow);
+    }
+
+    if (_rrIntervalsMs.length < 3) return;
+    final rmssd = _calculateRmssd(_rrIntervalsMs);
+    debugPrint('[POLAR_SERVICE] hrv rmssd: $rmssd ms');
+    if (!_hrvRmssdController.isClosed) {
+      _hrvRmssdController.add(rmssd);
+    }
+  }
+
+  double _calculateRmssd(List<int> rrIntervalsMs) {
+    var squaredDiffTotal = 0.0;
+    var diffCount = 0;
+    for (var index = 1; index < rrIntervalsMs.length; index++) {
+      final diff = rrIntervalsMs[index] - rrIntervalsMs[index - 1];
+      squaredDiffTotal += diff * diff;
+      diffCount++;
+    }
+    return math.sqrt(squaredDiffTotal / diffCount);
   }
 
   void _emitError(Object error) {

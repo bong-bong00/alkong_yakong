@@ -42,6 +42,7 @@ class _BiosignalLiveScreenState extends State<BiosignalLiveScreen>
 
   // ── Polar 실측 상태 ──
   int? _currentHr;
+  double? _hrvRmssd;
   bool _isAnomalyDetected = false;
   bool _isConnected = false;
   bool _isStreaming = false;
@@ -61,6 +62,7 @@ class _BiosignalLiveScreenState extends State<BiosignalLiveScreen>
   final ApiClient _apiClient = ApiClient();
   StreamSubscription<int?>? _currentBpmSub;
   StreamSubscription<double?>? _averageBpmSub;
+  StreamSubscription<double?>? _hrvRmssdSub;
   StreamSubscription<String>? _errorSub;
   StreamSubscription<String>? _deviceDisconnectedSub;
 
@@ -84,10 +86,12 @@ class _BiosignalLiveScreenState extends State<BiosignalLiveScreen>
   Future<void> _disposePolarResources() async {
     await _currentBpmSub?.cancel();
     await _averageBpmSub?.cancel();
+    await _hrvRmssdSub?.cancel();
     await _errorSub?.cancel();
     await _deviceDisconnectedSub?.cancel();
     _currentBpmSub = null;
     _averageBpmSub = null;
+    _hrvRmssdSub = null;
     _errorSub = null;
     _deviceDisconnectedSub = null;
     debugPrint('[POLAR_UI] stream subscriptions cancelled');
@@ -102,6 +106,7 @@ class _BiosignalLiveScreenState extends State<BiosignalLiveScreen>
         unawaited(_sendAverageBpm(average));
       }
     });
+    _hrvRmssdSub = _polarService.hrvRmssdStream.listen(_handleHrvRmssd);
     _errorSub = _polarService.errorStream.listen(_handlePolarError);
     _deviceDisconnectedSub = _polarService.deviceDisconnectedStream.listen(
       _handleDeviceDisconnected,
@@ -238,6 +243,7 @@ class _BiosignalLiveScreenState extends State<BiosignalLiveScreen>
     if (bpm == null) {
       setState(() {
         _currentHr = null;
+        _hrvRmssd = null;
         _isStreaming = false;
         _isAnomalyDetected = false;
         _hr.clear();
@@ -264,6 +270,14 @@ class _BiosignalLiveScreenState extends State<BiosignalLiveScreen>
     _anim.forward(from: 0);
   }
 
+  void _handleHrvRmssd(double? rmssd) {
+    if (!mounted || _isDisposed) return;
+    debugPrint('[POLAR_UI] hrv rmssd received: $rmssd');
+    setState(() {
+      _hrvRmssd = rmssd;
+    });
+  }
+
   void _handlePolarError(String error) {
     debugPrint('[POLAR_UI] error: $error');
     if (!mounted || _isDisposed) return;
@@ -271,6 +285,7 @@ class _BiosignalLiveScreenState extends State<BiosignalLiveScreen>
       _connectionError = error;
       _isConnected = false;
       _isStreaming = false;
+      _hrvRmssd = null;
     });
     if (error.contains('PolarDeviceDisconnected')) {
       _startReconnectOnce();
@@ -435,7 +450,12 @@ class _BiosignalLiveScreenState extends State<BiosignalLiveScreen>
             // ── 보조 지표 ──
             Row(
               children: [
-                _metric('HRV (RMSSD)', '--', '', accent),
+                _metric(
+                  'HRV (RMSSD)',
+                  _hrvRmssd == null ? '--' : _hrvRmssd!.round().toString(),
+                  'ms',
+                  accent,
+                ),
                 const SizedBox(width: 12),
                 _metric('상태', _sensorStatusLabel, '', accent),
               ],
