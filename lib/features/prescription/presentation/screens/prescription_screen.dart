@@ -212,7 +212,7 @@ class _PrescriptionScreenState extends State<PrescriptionScreen> {
                 Expanded(
                   child: ListView.separated(
                     itemCount: _resultData?['items']?.length ?? 2,
-                    separatorBuilder: (_, __) => const SizedBox(height: 12),
+                    separatorBuilder: (_, _) => const SizedBox(height: 12),
                     itemBuilder: (context, index) {
                       final item = _resultData?['items']?[index] ?? {};
                       final name = item['drug_name'] ?? (index == 0 ? '모사피아정' : '넥시움정');

@@ -47,8 +47,5 @@ app.*.map.json
 
 alkongyakong.db
 __pycache__/
-.env
-all_code.txt
 all_code.txt
 all_code2.txt
-.env
