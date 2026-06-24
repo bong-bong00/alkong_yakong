@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:go_router/go_router.dart';
 import '../../../../core/constants/app_colors.dart';
+import '../../../../core/network/api_client.dart';
 import '../../../../core/session/auth_session.dart';
+import '../../../../core/session/mvp_session.dart';
 
 /// 단계형 회원가입 (위저드).
 /// 위치: lib/features/auth/presentation/screens/signup_screen.dart
@@ -16,6 +18,7 @@ class SignupScreen extends StatefulWidget {
 class _SignupScreenState extends State<SignupScreen> {
   int _step = 0;
   String? _error; // 질문 바로 아래에 크게 표시
+  final ApiClient _apiClient = ApiClient();
 
   String _role = 'patient';
   final _name = TextEditingController();
@@ -243,10 +246,49 @@ class _SignupScreenState extends State<SignupScreen> {
     }
   }
 
+  String? _optionalTrimmed(String value) {
+    final trimmed = value.trim();
+    return trimmed.isEmpty ? null : trimmed;
+  }
+
+  String? _birthDateForApi() {
+    final birth = _birth;
+    if (birth == null) return null;
+    final month = birth.month.toString().padLeft(2, '0');
+    final day = birth.day.toString().padLeft(2, '0');
+    return '${birth.year}-$month-$day';
+  }
+
   Future<void> _submit() async {
     // TODO: 백엔드 회원가입 API 연동.
-    await AuthSession.setLoggedIn(_role);
-    if (mounted) context.go(_role == 'guardian' ? '/guardian' : '/');
+    setState(() => _error = null);
+
+    try {
+      final birthDate = _birthDateForApi();
+      final phone = _optionalTrimmed(_phone.text);
+      final body = <String, dynamic>{
+        'name': _name.text.trim(),
+        'role': _role,
+      };
+      if (birthDate != null) body['birth_date'] = birthDate;
+      if (_gender != null) body['gender'] = _gender;
+      if (phone != null) body['phone'] = phone;
+
+      final response = await _apiClient.post('/api/v1/users', body: body);
+      final userId = response is Map<String, dynamic>
+          ? response['id']?.toString()
+          : null;
+      if (userId == null || userId.isEmpty) {
+        throw const ApiException('회원가입 응답에 사용자 ID가 없습니다.');
+      }
+
+      MvpSession.userId = userId;
+      await AuthSession.setLoggedIn(_role);
+      if (mounted) context.go(_role == 'guardian' ? '/guardian' : '/');
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _error = error.toString());
+    }
   }
 
   List<_StepDef> _buildSteps() {
