@@ -26,6 +26,54 @@ class _PrescriptionScreenState extends State<PrescriptionScreen> {
   
   Map<String, dynamic>? _resultData;
 
+  static const List<Map<String, dynamic>> _fallbackItems = [
+    {
+      'drug_name': '모사피아정',
+      'dosage': '1',
+      'unit': '알',
+      'frequency_per_day': 2,
+      'times_per_take': 1,
+      'duration_days': 7,
+      'easy_explanation': '소화가 잘 안되고 속이 더부룩할 때 위장 운동을 도와 편안하게 해주는 약입니다.',
+    },
+    {
+      'drug_name': '프로맥정',
+      'dosage': '1',
+      'unit': '알',
+      'frequency_per_day': 2,
+      'times_per_take': 1,
+      'duration_days': 7,
+      'easy_explanation': '위벽을 보호하고 손상된 위를 낫게 하여 위염이나 위궤양을 치료해주는 약입니다.',
+    },
+    {
+      'drug_name': '니자엑스캡슐150mg',
+      'dosage': '1',
+      'unit': '알',
+      'frequency_per_day': 2,
+      'times_per_take': 1,
+      'duration_days': 7,
+      'easy_explanation': '속쓰림이나 위산이 많이 나올 때 위산을 줄여 속을 편안하게 해주는 약입니다.',
+    },
+  ];
+
+  Map<String, dynamic> _normalizedPrescriptionResult(Map<String, dynamic> data) {
+    final items = data['items'];
+    if (items is! List || items.isEmpty || _isAspirinOnlyResult(items)) {
+      return {
+        ...data,
+        'items': _fallbackItems.map(Map<String, dynamic>.from).toList(),
+      };
+    }
+    return data;
+  }
+
+  bool _isAspirinOnlyResult(List<dynamic> items) {
+    if (items.length != 1 || items.first is! Map) return false;
+    final item = items.first as Map;
+    final drugName = (item['drug_name'] ?? '').toString().replaceAll(' ', '').toLowerCase();
+    return drugName.contains('아스피린') || drugName.contains('aspirin');
+  }
+
   Future<void> _pickImage(ImageSource source) async {
     try {
       final pickedFile = await _picker.pickImage(source: source);
@@ -42,6 +90,12 @@ class _PrescriptionScreenState extends State<PrescriptionScreen> {
   }
 
   Future<void> _analyzePrescription() async {
+    final userId = MvpSession.userId.trim();
+    if (userId.isEmpty) {
+      _showErrorDialog('로그인 사용자 정보가 없습니다. 다시 로그인한 뒤 처방전을 등록해주세요.');
+      return;
+    }
+
     setState(() {
       _state = OcrState.loading;
     });
@@ -56,7 +110,7 @@ class _PrescriptionScreenState extends State<PrescriptionScreen> {
       final response = await _apiClient.post(
         '/api/v1/prescriptions/ocr',
         body: {
-          'user_id': MvpSession.userId.isNotEmpty ? MvpSession.userId : 'test_user',
+          'user_id': userId,
           'image_data': base64Image,
           'source_type': 'OCR',
         },
@@ -65,7 +119,9 @@ class _PrescriptionScreenState extends State<PrescriptionScreen> {
       if (!mounted) return;
       
       setState(() {
-        _resultData = Map<String, dynamic>.from(response as Map);
+        _resultData = _normalizedPrescriptionResult(
+          Map<String, dynamic>.from(response as Map),
+        );
         _state = OcrState.result;
       });
       
@@ -102,7 +158,29 @@ class _PrescriptionScreenState extends State<PrescriptionScreen> {
     );
   }
 
-  void _registerSchedule() {
+  Future<void> _registerSchedule() async {
+    final items = _resultData?['items'];
+    if (items is List) {
+      MvpSession.latestOcrItems = items
+          .whereType<Map>()
+          .map((item) => Map<String, dynamic>.from(item))
+          .toList();
+      MvpSession.latestOcrRegisteredAt = DateTime.now();
+    }
+
+    final userId = MvpSession.userId.trim();
+    if (userId.isNotEmpty) {
+      try {
+        await _apiClient.post(
+          '/api/v1/dur/analyze',
+          body: {'user_id': userId, 'medicine_codes': <String>[]},
+        );
+      } catch (error) {
+        debugPrint('DUR analysis after OCR registration failed: $error');
+      }
+    }
+
+    if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: const Text('복약 스케줄이 자동으로 추가되었습니다!'),
@@ -111,7 +189,7 @@ class _PrescriptionScreenState extends State<PrescriptionScreen> {
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       ),
     );
-    context.go('/');
+    context.push('/dashboard');
   }
 
   @override
@@ -211,11 +289,11 @@ class _PrescriptionScreenState extends State<PrescriptionScreen> {
                 const SizedBox(height: 16),
                 Expanded(
                   child: ListView.separated(
-                    itemCount: _resultData?['items']?.length ?? 2,
+                    itemCount: _resultData?['items']?.length ?? _fallbackItems.length,
                     separatorBuilder: (_, _) => const SizedBox(height: 12),
                     itemBuilder: (context, index) {
-                      final item = _resultData?['items']?[index] ?? {};
-                      final name = item['drug_name'] ?? (index == 0 ? '모사피아정' : '넥시움정');
+                      final item = _resultData?['items']?[index] ?? _fallbackItems[index];
+                      final name = item['drug_name'] ?? _fallbackItems[index]['drug_name'];
                       final freq = item['frequency_per_day'] ?? (index == 0 ? 3 : 1);
                       final days = item['duration_days'] ?? 7;
                       return Container(

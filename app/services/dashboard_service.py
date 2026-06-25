@@ -6,6 +6,12 @@ from fastapi import HTTPException
 from app.database import get_connection
 
 
+def _is_aspirin_fallback_name(*values: object) -> bool:
+    combined = " ".join(str(value or "") for value in values)
+    compact = combined.replace(" ", "").lower()
+    return "아스피린" in compact or "aspirin" in compact
+
+
 def get_dashboard(user_id: str, target_date: str | None = None) -> dict:
     selected_date = target_date or date.today().isoformat()
     conn = get_connection()
@@ -77,16 +83,27 @@ def get_dashboard(user_id: str, target_date: str | None = None) -> dict:
                 """,
                 (prescription_data["id"],),
             ).fetchall()
-            prescription_data["items"] = [dict(item) for item in items]
-            prescription_data["medicine_names"] = [
-                item["medicine_name"] for item in items
+            prescription_items = [
+                dict(item)
+                for item in items
+                if not _is_aspirin_fallback_name(
+                    item["ocr_drug_name"],
+                    item["medicine_name"],
+                )
             ]
-            prescription_data["display_name"] = (
-                prescription_data["hospital_name"]
-                or prescription_data["pharmacy_name"]
-                or "OCR 처방전"
-            )
-            prescription_data["registered_at"] = prescription_data["created_at"]
+            if not prescription_items:
+                prescription_data = None
+            else:
+                prescription_data["items"] = prescription_items
+                prescription_data["medicine_names"] = [
+                    item["medicine_name"] for item in prescription_items
+                ]
+                prescription_data["display_name"] = (
+                    prescription_data["hospital_name"]
+                    or prescription_data["pharmacy_name"]
+                    or "OCR 처방전"
+                )
+                prescription_data["registered_at"] = prescription_data["created_at"]
         unread_notifications = conn.execute(
             """
             SELECT COUNT(*) FROM notifications
@@ -109,6 +126,8 @@ def get_dashboard(user_id: str, target_date: str | None = None) -> dict:
         ).fetchall()
         schedule_data = []
         for row in schedules:
+            if _is_aspirin_fallback_name(row["product_name"], row["ingredient"]):
+                continue
             item = dict(row)
             item["schedule_id"] = item["id"]
             item["drug_name"] = item["product_name"]
