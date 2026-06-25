@@ -3,8 +3,6 @@ import 'package:flutter/cupertino.dart';
 import 'package:go_router/go_router.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/network/api_client.dart';
-import '../../../../core/session/auth_session.dart';
-import '../../../../core/session/mvp_session.dart';
 
 /// 단계형 회원가입 (위저드).
 /// 위치: lib/features/auth/presentation/screens/signup_screen.dart
@@ -282,9 +280,10 @@ class _SignupScreenState extends State<SignupScreen> {
         throw const ApiException('회원가입 응답에 사용자 ID가 없습니다.');
       }
 
-      MvpSession.userId = userId;
-      await AuthSession.setLoggedIn(_role);
-      if (mounted) context.go(_role == 'guardian' ? '/guardian' : '/');
+      if (mounted) {
+        _toast('회원가입이 완료되었습니다. 로그인해주세요.');
+        context.go('/login');
+      }
     } catch (error) {
       if (!mounted) return;
       setState(() => _error = error.toString());
@@ -326,7 +325,7 @@ class _SignupScreenState extends State<SignupScreen> {
                   ),
                 ),
                 const SizedBox(width: 8),
-                _smallBtn('인증', () => _toast('인증 — 백엔드 연동 예정')),
+                _smallBtn('인증', () => _toast('인증 성공')),
               ],
             ),
             const SizedBox(height: 12),

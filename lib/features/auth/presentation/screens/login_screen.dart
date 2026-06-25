@@ -2,8 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/session/auth_session.dart';
-import '../../../dashboard/presentation/screens/home_screen.dart';
-import 'signup_screen.dart';
+
 
 /// 로그인 화면 — 휴대폰번호 + 비밀번호 (소셜로그인 없음).
 /// 위치: lib/features/auth/presentation/screens/login_screen.dart
@@ -126,9 +125,7 @@ class _LoginScreenState extends State<LoginScreen> {
               const SizedBox(height: 28),
               Center(
                 child: GestureDetector(
-                  onTap: () => Navigator.of(context).push(
-                    MaterialPageRoute(builder: (_) => const SignupScreen()),
-                  ),
+                  onTap: () => context.push('/signup'),
                   child: Text.rich(
                     TextSpan(
                       style: TextStyle(fontSize: 14, color: Colors.grey[600]),
