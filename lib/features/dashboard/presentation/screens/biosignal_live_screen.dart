@@ -19,7 +19,7 @@ import '../../../biosignal/data/polar_service.dart';
 class BiosignalLiveScreen extends StatefulWidget {
   final Color accent;
   final String? patientName; // 보호자가 볼 때 환자 이름. 환자 본인은 null.
-  final int baseHr; // 환자별 평상시 기준 심박
+  final int baseHr; // 환자별 평상시 심박
 
   const BiosignalLiveScreen({
     super.key,
@@ -42,7 +42,9 @@ class _BiosignalLiveScreenState extends State<BiosignalLiveScreen>
 
   // ── Polar 실측 상태 ──
   int? _currentHr;
-  double? _hrvRmssd;
+  double? _usualHrBpm;
+  bool _isUsualHrMeasuring = false;
+  int _usualHrRemainingSeconds = 0;
   bool _isAnomalyDetected = false;
   bool _isConnected = false;
   bool _isStreaming = false;
@@ -57,12 +59,13 @@ class _BiosignalLiveScreenState extends State<BiosignalLiveScreen>
 
   // 흐름 구현용 실측값 리스트
   final List<double> _hr = [];
+  final List<int> _usualHrSamples = [];
+  Timer? _usualHrTimer;
   late final AnimationController _anim; // 매 프레임 다시 그리기 + 흐름 진행도(0~1)
   final PolarService _polarService = PolarService();
   final ApiClient _apiClient = ApiClient();
   StreamSubscription<int?>? _currentBpmSub;
   StreamSubscription<double?>? _averageBpmSub;
-  StreamSubscription<double?>? _hrvRmssdSub;
   StreamSubscription<String>? _errorSub;
   StreamSubscription<String>? _deviceDisconnectedSub;
 
@@ -78,6 +81,7 @@ class _BiosignalLiveScreenState extends State<BiosignalLiveScreen>
   void dispose() {
     debugPrint('[POLAR_UI] dispose called');
     _isDisposed = true;
+    _usualHrTimer?.cancel();
     unawaited(_disposePolarResources());
     _anim.dispose(); // 애니메이션 정리 (배터리/리소스 절약)
     super.dispose();
@@ -86,12 +90,10 @@ class _BiosignalLiveScreenState extends State<BiosignalLiveScreen>
   Future<void> _disposePolarResources() async {
     await _currentBpmSub?.cancel();
     await _averageBpmSub?.cancel();
-    await _hrvRmssdSub?.cancel();
     await _errorSub?.cancel();
     await _deviceDisconnectedSub?.cancel();
     _currentBpmSub = null;
     _averageBpmSub = null;
-    _hrvRmssdSub = null;
     _errorSub = null;
     _deviceDisconnectedSub = null;
     debugPrint('[POLAR_UI] stream subscriptions cancelled');
@@ -106,7 +108,6 @@ class _BiosignalLiveScreenState extends State<BiosignalLiveScreen>
         unawaited(_sendAverageBpm(average));
       }
     });
-    _hrvRmssdSub = _polarService.hrvRmssdStream.listen(_handleHrvRmssd);
     _errorSub = _polarService.errorStream.listen(_handlePolarError);
     _deviceDisconnectedSub = _polarService.deviceDisconnectedStream.listen(
       _handleDeviceDisconnected,
@@ -241,9 +242,12 @@ class _BiosignalLiveScreenState extends State<BiosignalLiveScreen>
   void _handleCurrentBpm(int? bpm) {
     if (!mounted || _isDisposed) return;
     if (bpm == null) {
+      _usualHrTimer?.cancel();
       setState(() {
         _currentHr = null;
-        _hrvRmssd = null;
+        _isUsualHrMeasuring = false;
+        _usualHrRemainingSeconds = 0;
+        _usualHrSamples.clear();
         _isStreaming = false;
         _isAnomalyDetected = false;
         _hr.clear();
@@ -266,16 +270,72 @@ class _BiosignalLiveScreenState extends State<BiosignalLiveScreen>
       _isStreaming = true;
       _connectionError = null;
       _isAnomalyDetected = bpm > 100;
+      if (_isUsualHrMeasuring) {
+        _usualHrSamples.add(bpm);
+      }
     });
     _anim.forward(from: 0);
   }
 
-  void _handleHrvRmssd(double? rmssd) {
-    if (!mounted || _isDisposed) return;
-    debugPrint('[POLAR_UI] hrv rmssd received: $rmssd');
+  void _startUsualHrMeasurement() {
+    if (_isUsualHrMeasuring || _currentHr == null) return;
+    _usualHrTimer?.cancel();
     setState(() {
-      _hrvRmssd = rmssd;
+      _isUsualHrMeasuring = true;
+      _usualHrRemainingSeconds = 15;
+      _usualHrSamples
+        ..clear()
+        ..add(_currentHr!);
     });
+
+    _usualHrTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (!mounted || _isDisposed) {
+        timer.cancel();
+        return;
+      }
+
+      if (_usualHrRemainingSeconds <= 1) {
+        timer.cancel();
+        _completeUsualHrMeasurement();
+        return;
+      }
+
+      setState(() {
+        _usualHrRemainingSeconds--;
+      });
+    });
+  }
+
+  void _completeUsualHrMeasurement() {
+    if (_usualHrSamples.isEmpty) {
+      setState(() {
+        _isUsualHrMeasuring = false;
+        _usualHrRemainingSeconds = 0;
+        _usualHrBpm = null;
+      });
+      return;
+    }
+
+    final total = _usualHrSamples.fold<int>(0, (sum, bpm) => sum + bpm);
+    setState(() {
+      _usualHrBpm = total / _usualHrSamples.length;
+      _isUsualHrMeasuring = false;
+      _usualHrRemainingSeconds = 0;
+    });
+  }
+
+  String get _usualHrValueText =>
+      _usualHrBpm == null ? '--' : _usualHrBpm!.round().toString();
+
+  String get _hrChangeText {
+    final currentHr = _currentHr;
+    final usualHr = _usualHrBpm;
+    if (currentHr == null || usualHr == null || usualHr <= 0) {
+      return '--';
+    }
+    final changeRate = (currentHr - usualHr) / usualHr * 100;
+    final sign = changeRate > 0 ? '+' : '';
+    return '$sign${changeRate.toStringAsFixed(1)}';
   }
 
   void _handlePolarError(String error) {
@@ -285,7 +345,6 @@ class _BiosignalLiveScreenState extends State<BiosignalLiveScreen>
       _connectionError = error;
       _isConnected = false;
       _isStreaming = false;
-      _hrvRmssd = null;
     });
     if (error.contains('PolarDeviceDisconnected')) {
       _startReconnectOnce();
@@ -373,8 +432,7 @@ class _BiosignalLiveScreenState extends State<BiosignalLiveScreen>
                   const SizedBox(height: 8),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.center,
-                    crossAxisAlignment: CrossAxisAlignment.baseline,
-                    textBaseline: TextBaseline.alphabetic,
+                    crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
                       const Text('💓', style: TextStyle(fontSize: 30)),
                       const SizedBox(width: 8),
@@ -451,15 +509,17 @@ class _BiosignalLiveScreenState extends State<BiosignalLiveScreen>
             Row(
               children: [
                 _metric(
-                  'HRV (RMSSD)',
-                  _hrvRmssd == null ? '--' : _hrvRmssd!.round().toString(),
-                  'ms',
+                  '평소 심박',
+                  _usualHrValueText,
+                  'bpm',
                   accent,
                 ),
                 const SizedBox(width: 12),
-                _metric('상태', _sensorStatusLabel, '', accent),
+                _metric('심박 변화', _hrChangeText, '%', accent),
               ],
             ),
+            const SizedBox(height: 12),
+            _usualHrButton(accent),
             const SizedBox(height: 18),
 
             if (_isAnomalyDetected) _anomalyCard(),
@@ -508,7 +568,7 @@ class _BiosignalLiveScreenState extends State<BiosignalLiveScreen>
     if (_connectionError != null) return '연결 오류';
     if (!_isConnected) return '연결 대기';
     if (!_isStreaming) return '연결됨';
-    return '측정 중';
+    return '실시간 측정';
   }
 
   Widget _anomalyCard() {
@@ -552,6 +612,32 @@ class _BiosignalLiveScreenState extends State<BiosignalLiveScreen>
     );
   }
 
+  Widget _usualHrButton(Color color) {
+    final isEnabled =
+        _isStreaming && _currentHr != null && !_isUsualHrMeasuring;
+    return SizedBox(
+      width: double.infinity,
+      child: OutlinedButton.icon(
+        onPressed: isEnabled ? _startUsualHrMeasurement : null,
+        icon: const Icon(Icons.monitor_heart_rounded, size: 18),
+        label: Text(
+          _isUsualHrMeasuring
+              ? '15초 측정 중... $_usualHrRemainingSeconds초'
+              : '평소 심박 측정',
+          style: const TextStyle(fontWeight: FontWeight.w700),
+        ),
+        style: OutlinedButton.styleFrom(
+          foregroundColor: color,
+          side: BorderSide(color: color.withValues(alpha: 0.45)),
+          padding: const EdgeInsets.symmetric(vertical: 12),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(14),
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _metric(String label, String value, String unit, Color color) {
     return Expanded(
       child: Container(
@@ -566,8 +652,7 @@ class _BiosignalLiveScreenState extends State<BiosignalLiveScreen>
             ),
             const SizedBox(height: 6),
             Row(
-              crossAxisAlignment: CrossAxisAlignment.baseline,
-              textBaseline: TextBaseline.alphabetic,
+              crossAxisAlignment: CrossAxisAlignment.center,
               children: [
                 Text(
                   value,

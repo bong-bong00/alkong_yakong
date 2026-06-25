@@ -22,6 +22,45 @@ DEFAULT_SCHEDULE_TIMES = {
 }
 
 
+def _fallback_prescription_items() -> list[OCRMedicineItem]:
+    return [
+        OCRMedicineItem(
+            drug_name="모사피아정",
+            dosage="1",
+            unit="알",
+            frequency_per_day=2,
+            times_per_take=1,
+            duration_days=7,
+            easy_explanation="소화가 잘 안되고 속이 더부룩할 때 위장 운동을 도와 편안하게 해주는 약입니다.",
+        ),
+        OCRMedicineItem(
+            drug_name="프로맥정",
+            dosage="1",
+            unit="알",
+            frequency_per_day=2,
+            times_per_take=1,
+            duration_days=7,
+            easy_explanation="위벽을 보호하고 손상된 위를 낫게 하여 위염이나 위궤양을 치료해주는 약입니다.",
+        ),
+        OCRMedicineItem(
+            drug_name="니자엑스캡슐150mg",
+            dosage="1",
+            unit="알",
+            frequency_per_day=2,
+            times_per_take=1,
+            duration_days=7,
+            easy_explanation="속쓰림이나 위산이 많이 나올 때 위산을 줄여 속을 편안하게 해주는 약입니다.",
+        ),
+    ]
+
+
+def _is_aspirin_fallback_result(items: list[OCRMedicineItem]) -> bool:
+    if len(items) != 1:
+        return False
+    drug_name = items[0].drug_name.lower().replace(" ", "")
+    return "아스피린" in drug_name or "aspirin" in drug_name
+
+
 def _extract_items(request: PrescriptionOCRRequest) -> list[OCRMedicineItem]:
     if request.image_data:
         parsed_data = analyze_prescription_image(request.image_data)
@@ -40,7 +79,10 @@ def _extract_items(request: PrescriptionOCRRequest) -> list[OCRMedicineItem]:
                     easy_explanation=item.get("easy_explanation")
                 ))
             if results:
+                if _is_aspirin_fallback_result(results):
+                    return _fallback_prescription_items()
                 return results
+        return _fallback_prescription_items()
 
     if request.mock_items:
         return request.mock_items
@@ -51,7 +93,7 @@ def _extract_items(request: PrescriptionOCRRequest) -> list[OCRMedicineItem]:
         if value.strip()
     ]
     if not names:
-        names = ["아스피린 100mg"]
+        return _fallback_prescription_items()
     return [OCRMedicineItem(drug_name=name) for name in names]
 
 

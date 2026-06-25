@@ -3,7 +3,6 @@ import 'package:flutter/cupertino.dart';
 import 'package:go_router/go_router.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/network/api_client.dart';
-import '../../../../core/session/auth_session.dart';
 import '../../../../core/session/mvp_session.dart';
 
 /// 단계형 회원가입 (위저드).
@@ -18,6 +17,7 @@ class SignupScreen extends StatefulWidget {
 class _SignupScreenState extends State<SignupScreen> {
   int _step = 0;
   String? _error; // 질문 바로 아래에 크게 표시
+  bool _isSubmitting = false;
   final ApiClient _apiClient = ApiClient();
 
   String _role = 'patient';
@@ -261,7 +261,11 @@ class _SignupScreenState extends State<SignupScreen> {
 
   Future<void> _submit() async {
     // TODO: 백엔드 회원가입 API 연동.
-    setState(() => _error = null);
+    if (_isSubmitting) return;
+    setState(() {
+      _error = null;
+      _isSubmitting = true;
+    });
 
     try {
       final birthDate = _birthDateForApi();
@@ -274,7 +278,9 @@ class _SignupScreenState extends State<SignupScreen> {
       if (_gender != null) body['gender'] = _gender;
       if (phone != null) body['phone'] = phone;
 
-      final response = await _apiClient.post('/api/v1/users', body: body);
+      final response = await _apiClient
+          .post('/api/v1/users', body: body)
+          .timeout(const Duration(seconds: 10));
       final userId = response is Map<String, dynamic>
           ? response['id']?.toString()
           : null;
@@ -283,12 +289,49 @@ class _SignupScreenState extends State<SignupScreen> {
       }
 
       MvpSession.userId = userId;
-      await AuthSession.setLoggedIn(_role);
-      if (mounted) context.go(_role == 'guardian' ? '/guardian' : '/');
+      if (!mounted) return;
+      await _showSignupCompleteDialog();
+      if (!mounted) return;
+      if (Navigator.of(context).canPop()) {
+        Navigator.of(context).pop();
+      } else {
+        context.go('/login');
+      }
     } catch (error) {
       if (!mounted) return;
       setState(() => _error = error.toString());
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('회원가입에 실패했습니다: $error'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _isSubmitting = false);
+      }
     }
+  }
+
+  Future<void> _showSignupCompleteDialog() {
+    return showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text(
+          '가입이 완료되었습니다',
+          style: TextStyle(fontWeight: FontWeight.w800),
+        ),
+        content: const Text('로그인 화면으로 이동합니다.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('확인', style: TextStyle(color: kPrimary)),
+          ),
+        ],
+      ),
+    );
   }
 
   List<_StepDef> _buildSteps() {
@@ -884,9 +927,13 @@ class _SignupScreenState extends State<SignupScreen> {
                             borderRadius: BorderRadius.circular(16),
                           ),
                         ),
-                        onPressed: () => _next(steps),
+                        onPressed: _isSubmitting ? null : () => _next(steps),
                         child: Text(
-                          isLast ? '가입하기' : '다음',
+                          isLast && _isSubmitting
+                              ? '가입 중...'
+                              : isLast
+                              ? '가입하기'
+                              : '다음',
                           style: const TextStyle(
                             fontSize: 16,
                             fontWeight: FontWeight.w700,

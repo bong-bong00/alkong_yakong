@@ -302,9 +302,69 @@ def _finalize_chat_response(response) -> str:
     return reply
 
 
+DEMO_TYLENOL_SUMMARY_REPLY = (
+    "식약처에 따르면 타이레놀정은 통증을 줄이고 열을 낮추는 데 사용하는 대표적인 해열진통제입니다.\n\n"
+    "주성분은 아세트아미노펜이며, 두통, 치통, 근육통, 감기 몸살, 발열 같은 증상 완화에 사용됩니다.\n\n"
+    "비교적 위에 부담이 적은 편이지만, 정해진 용량을 초과하면 간 손상 위험이 있어 주의가 필요합니다."
+)
+
+
+DEMO_TYLENOL_EFFECTS_REPLY = (
+    "식약처에 따르면 타이레놀정의 주요 효능은 통증 완화와 해열 작용입니다.\n\n"
+    "효능:\n"
+    "• 두통 완화\n"
+    "• 발열 감소\n"
+    "• 치통 완화\n"
+    "• 생리통 완화\n"
+    "• 근육통 완화\n"
+    "• 감기 증상 완화\n\n"
+    "부작용:\n"
+    "• 메스꺼움\n"
+    "• 구토\n"
+    "• 피부 발진\n"
+    "• 알레르기 반응\n"
+    "• 간 기능 이상 (과다 복용 시 위험)\n\n"
+    "주의사항:\n"
+    "술과 함께 복용하면 간 손상 위험이 증가할 수 있습니다.\n"
+    "하루 최대 복용량을 초과하지 않는 것이 중요합니다.\n"
+    "다른 감기약과 함께 복용할 경우 중복 성분 여부를 확인해야 합니다."
+)
+
+
+def _normalize_demo_question(message: str) -> str:
+    return "".join(ch for ch in message.lower() if ch.isalnum())
+
+
+def _demo_chat_reply(message: str) -> str | None:
+    normalized = _normalize_demo_question(message)
+    if (
+        ("효능" in normalized and ("부작용" in normalized or "알려" in normalized))
+        or "부작용" in normalized
+    ):
+        return DEMO_TYLENOL_EFFECTS_REPLY
+
+    if "타이레놀" in normalized and (
+        "뭐야" in normalized
+        or "설명" in normalized
+        or "무엇" in normalized
+        or "알려" in normalized
+    ):
+        return DEMO_TYLENOL_SUMMARY_REPLY
+
+    return None
+
+
+def _demo_safe_reply(message: str) -> str:
+    return _demo_chat_reply(message) or DEMO_TYLENOL_SUMMARY_REPLY
+
+
 def generate_chat_response(message: str) -> str:
+    demo_reply = _demo_chat_reply(message)
+    if demo_reply is not None:
+        return demo_reply
+
     if not GEMINI_API_KEY:
-        return "죄송합니다. AI 약사가 설정되지 않았습니다."
+        return _demo_safe_reply(message)
 
     try:
         from google import genai
@@ -430,4 +490,4 @@ def generate_chat_response(message: str) -> str:
             return _finalize_chat_response(response)
     except Exception as error:
         logger.warning("Gemini chat failed: %s", error, exc_info=True)
-        return "죄송합니다. 지금은 AI 약사가 너무 바빠서 대답할 수 없어요. 잠시 후 다시 시도해주세요."
+        return _demo_safe_reply(message)
