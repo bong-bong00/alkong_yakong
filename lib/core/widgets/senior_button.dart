@@ -155,7 +155,9 @@ class SeniorTextButton extends StatelessWidget {
         child: Container(
           width: expand ? double.infinity : null,
           constraints: const BoxConstraints(minHeight: 48),
-          alignment: Alignment.center,
+          // alignment를 주면 Container가 남은 폭을 다 차지해버린다.
+          // 행 안에 놓일 때(expand:false)는 글자 폭만 쓰도록 비워둔다.
+          alignment: expand ? Alignment.center : null,
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
           child: Text(
             label,

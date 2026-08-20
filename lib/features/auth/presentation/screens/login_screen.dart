@@ -101,6 +101,8 @@ class _LoginScreenState extends State<LoginScreen> {
                 suffix: SeniorTextButton(
                   label: _obscure ? '보기' : '숨기기',
                   color: AppColors.point,
+                  // 가로를 채우지 않고 글자 폭만 차지해야 오른쪽에 붙는다.
+                  expand: false,
                   onPressed: () => setState(() => _obscure = !_obscure),
                 ),
               ),
@@ -213,7 +215,9 @@ class _SeniorField extends StatelessWidget {
         borderRadius: BorderRadius.circular(18),
         border: Border.all(color: AppColors.border, width: 2),
       ),
-      padding: const EdgeInsets.symmetric(horizontal: 20),
+      // "보기" 같은 우측 버튼이 붙으면 오른쪽 여백을 줄여 버튼을 테두리 쪽으로
+      // 붙인다. 버튼 자체의 탭 영역은 그대로 48px를 넘긴다.
+      padding: EdgeInsets.only(left: 20, right: suffix == null ? 20 : 6),
       child: Row(
         children: [
           Expanded(

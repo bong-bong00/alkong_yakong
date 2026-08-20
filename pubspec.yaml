@@ -54,6 +54,23 @@ dev_dependencies:
   # package. See that file for information about deactivating specific lint
   # rules and activating additional ones.
   flutter_lints: ^6.0.0
+  # 앱 아이콘 생성기. assets/icon/app_icon.png 하나로
+  # 안드로이드·iOS·웹 아이콘을 전부 만들어 준다.
+  #   dart run flutter_launcher_icons
+  flutter_launcher_icons: ^0.14.4
+
+# 앱 아이콘 원본은 1024×1024 정사각 PNG 한 장이다.
+# 파일을 assets/icon/app_icon.png 로 넣고 위 명령을 돌리면
+# 각 플랫폼의 아이콘이 갱신된다.
+flutter_launcher_icons:
+  image_path: assets/icon/app_icon.png
+  android: true
+  ios: true
+  remove_alpha_ios: true
+  web:
+    generate: true
+    background_color: "#1F42E5"
+    theme_color: "#1F42E5"
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec

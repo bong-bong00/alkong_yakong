@@ -127,4 +127,20 @@ void main() {
     );
     expect(DoseSlot.dinner.spokenTime, '저녁 6시');
   });
+
+  testWidgets('비밀번호 "보기"는 입력칸 오른쪽 끝에 붙는다 (4i)', (tester) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+
+    await tester.pumpWidget(wrap(const LoginScreen()));
+    await tester.pump();
+
+    // 입력칸은 화면 좌우 여백 24를 뺀 폭을 쓴다.
+    const fieldRight = 390.0 - 24.0;
+    final buttonRight = tester.getBottomRight(find.text('보기')).dx;
+
+    // 글자 끝에서 테두리까지 20px 안쪽 — 가로를 채우는 버튼이면 훨씬 멀어진다.
+    expect(fieldRight - buttonRight, lessThan(24));
+  });
 }
