@@ -19,12 +19,14 @@ import 'features/prescription/presentation/screens/prescription_screen.dart';
 import 'features/reminder/presentation/screens/lock_screen_alert.dart';
 import 'features/voice/presentation/screens/voice_screen.dart';
 
-/// 화면을 둘러볼 때 로그인을 건너뛴다.
+/// 화면을 둘러보는 동안 로그인을 건너뛴다.
 ///
-/// 기본값은 false(로그인부터 시작)이고, 확인용으로 켤 때는
-/// `flutter run --dart-define=SKIP_LOGIN=true` 로 실행한다.
-/// 코드를 고치지 않으므로 되돌리는 것을 잊을 일이 없다.
-const bool kSkipLogin = bool.fromEnvironment('SKIP_LOGIN');
+/// **지금은 켜져 있다** — 앱을 실행하면 바로 오늘 홈으로 들어간다.
+/// 화면 확인이 끝나면 defaultValue를 false로 바꿔 원래대로 되돌릴 것.
+/// 되돌리기 전에도 `flutter run --dart-define=SKIP_LOGIN=false` 로
+/// 로그인 화면을 그때그때 확인할 수 있다.
+// TODO: 확인이 끝나면 defaultValue: false 로 되돌린다.
+const bool kSkipLogin = bool.fromEnvironment('SKIP_LOGIN', defaultValue: true);
 
 final _router = GoRouter(
   initialLocation: kSkipLogin ? '/' : '/login',
