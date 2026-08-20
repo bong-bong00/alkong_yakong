@@ -76,6 +76,38 @@ class Dot extends StatelessWidget {
   );
 }
 
+/// 이모지를 앞에 붙인 제목.
+///
+/// **이모지 단독으로 뜻을 만들지 않는다.** 한글 라벨이 항상 함께 있고,
+/// 이모지는 스크린리더에서 제외해 "약 이모지 지금 드실 약"처럼
+/// 두 번 읽히지 않게 한다.
+class EmojiTitle extends StatelessWidget {
+  final String emoji;
+  final String text;
+  final TextStyle style;
+
+  const EmojiTitle({
+    super.key,
+    required this.emoji,
+    required this.text,
+    required this.style,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        ExcludeSemantics(
+          child: Text(emoji, style: TextStyle(fontSize: style.fontSize)),
+        ),
+        const SizedBox(width: 8),
+        Expanded(child: Text(text, style: style)),
+      ],
+    );
+  }
+}
+
 /// 상태 배지 ("꼭 확인하세요", "정상이에요", "가장 쉬운 방법").
 class SeniorBadge extends StatelessWidget {
   final String label;
@@ -120,6 +152,9 @@ class SeniorListRow extends StatelessWidget {
   final Widget? trailing;
   final VoidCallback? onTap;
 
+  /// 라벨 앞에 붙는 이모지. 없으면 라벨만 그린다.
+  final String? emoji;
+
   const SeniorListRow({
     super.key,
     required this.label,
@@ -127,6 +162,7 @@ class SeniorListRow extends StatelessWidget {
     this.valueColor = AppColors.textTertiary,
     this.trailing,
     this.onTap,
+    this.emoji,
   });
 
   @override
@@ -138,10 +174,20 @@ class SeniorListRow extends StatelessWidget {
         padding: const EdgeInsets.symmetric(vertical: 17),
         child: Row(
           children: [
+            if (emoji != null) ...[
+              ExcludeSemantics(
+                child: Text(emoji!, style: const TextStyle(fontSize: 20)),
+              ),
+              const SizedBox(width: 12),
+            ],
             Expanded(
               child: Text(
                 label,
-                style: AppText.label(size: 20, color: AppColors.textPrimary),
+                style: AppText.label(
+                  size: 20,
+                  color: AppColors.textPrimary,
+                  weight: FontWeight.w700,
+                ),
               ),
             ),
             if (value != null) ...[

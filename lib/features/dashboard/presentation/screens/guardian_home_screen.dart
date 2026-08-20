@@ -179,7 +179,14 @@ class GuardianStatusTab extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      Text('오늘 복약', style: AppText.label(size: 19)),
+                      EmojiTitle(
+                        emoji: '💊',
+                        text: '오늘 복약',
+                        style: AppText.label(
+                          size: 19,
+                          weight: FontWeight.w700,
+                        ),
+                      ),
                       const SizedBox(height: 6),
                       Wrap(
                         spacing: 12,
@@ -280,6 +287,7 @@ class GuardianStatusTab extends StatelessWidget {
                                 style: AppText.cardTitle(
                                   size: 18,
                                   color: AppColors.danger,
+                                  weight: FontWeight.w900,
                                 ),
                               ),
                             ),
@@ -317,7 +325,11 @@ class GuardianStatusTab extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      Text('오늘 있었던 일', style: AppText.cardTitle(size: 19)),
+                      EmojiTitle(
+                        emoji: '🕐',
+                        text: '오늘 있었던 일',
+                        style: AppText.cardTitle(size: 19),
+                      ),
                       const SizedBox(height: 12),
                       for (int i = 0; i < patient.activities.length; i++) ...[
                         if (i > 0) ...[
@@ -363,6 +375,7 @@ class GuardianStatusTab extends StatelessWidget {
                     children: [
                       SeniorListRow(
                         label: '약 목록 · 처방전',
+                        emoji: '📋',
                         trailing: const SeniorChevron(),
                         onTap: () => Navigator.of(context).push(
                           MaterialPageRoute<void>(
@@ -377,6 +390,7 @@ class GuardianStatusTab extends StatelessWidget {
                       const SeniorDivider(),
                       SeniorListRow(
                         label: '지난 알림 보기',
+                        emoji: '🔔',
                         trailing: const SeniorChevron(),
                         onTap: onOpenAlerts,
                       ),
@@ -547,8 +561,9 @@ class _AlertCard extends StatelessWidget {
           Row(
             children: [
               Expanded(
-                child: Text(
-                  alert.title,
+                child: EmojiTitle(
+                  emoji: _isDanger ? '⚠️' : '✅',
+                  text: alert.title,
                   style: AppText.cardTitle(size: 18, color: _barColor),
                 ),
               ),

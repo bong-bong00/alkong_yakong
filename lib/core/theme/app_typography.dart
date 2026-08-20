@@ -8,7 +8,11 @@ import '../constants/app_colors.dart';
 /// 16px 이하가 필요하다고 느껴지면 그 정보는 삭제 대상이다.
 ///
 /// weight는 400 / 500 / 700 / 900만 쓴다.
-/// 크기 인자는 각 역할의 허용 범위 안에서만 조절한다.
+///
+/// **굵기는 아껴 쓴다.** 900은 화면에서 가장 먼저 읽혀야 하는 것에만
+/// 붙인다 — 핵심 숫자, 큰 시각, 화면 제목, 경고 문장, 버튼 라벨.
+/// 본문·보조·라벨은 기본 굵기로 두어야 굵은 글자가 실제로 눈에 띈다.
+/// 전부 굵으면 위계가 사라지고 화면이 답답해진다.
 abstract final class AppText {
   /// 번들한 Noto Sans KR. 400/500/700/900 네 굵기를 함께 싣는다.
   /// 시스템 폰트에 기대면 기기마다 900이 없어 제목의 위계가 무너진다.
@@ -31,6 +35,7 @@ abstract final class AppText {
   static const FontWeight _black = FontWeight.w900;
   static const FontWeight _bold = FontWeight.w700;
   static const FontWeight _medium = FontWeight.w500;
+  static const FontWeight _regular = FontWeight.w400;
 
   static TextStyle _base({
     required double size,
@@ -98,33 +103,46 @@ abstract final class AppText {
     letterSpacingEm: -0.01,
   );
 
-  /// 카드 제목 / 리스트 항목. 20–21px / 900.
+  /// 카드 제목 / 리스트 항목. 20–21px / 700.
+  /// 화면에서 가장 강해야 하는 제목은 [screenTitle]이나 [emphasis]를 쓴다.
   static TextStyle cardTitle({
     double size = 20,
     Color color = AppColors.textPrimary,
-  }) => _base(size: size, weight: _black, height: 1.4, color: color);
+    FontWeight? weight,
+  }) => _base(
+    size: size,
+    weight: weight ?? _bold,
+    height: 1.4,
+    color: color,
+  );
 
   /// 버튼 라벨. 22–25px / 900.
   static TextStyle button({double size = 24, Color color = Colors.white}) =>
       _base(size: size, weight: _black, height: 1, color: color);
 
-  /// 본문. 19px / 500.
+  /// 본문. 19px / 400. 강조가 필요하면 [weight]로만 올린다.
   static TextStyle body({
     double size = 19,
     Color color = AppColors.textBody,
     FontWeight? weight,
   }) => _base(
     size: size,
-    weight: weight ?? _medium,
+    weight: weight ?? _regular,
     height: 1.6,
     color: color,
   );
 
-  /// 라벨. 18px / 700.
+  /// 라벨. 18px / 500. 눌러야 하는 행의 제목만 [weight]로 700을 준다.
   static TextStyle label({
     double size = 18,
     Color color = AppColors.textSecondary,
-  }) => _base(size: size, weight: _bold, height: 1.5, color: color);
+    FontWeight? weight,
+  }) => _base(
+    size: size,
+    weight: weight ?? _medium,
+    height: 1.5,
+    color: color,
+  );
 
   /// 보조. 17–17.5px / 500. **이 아래로 내려가지 않는다.**
   static TextStyle caption({
@@ -133,15 +151,15 @@ abstract final class AppText {
     FontWeight? weight,
   }) => _base(
     size: size,
-    weight: weight ?? _medium,
+    weight: weight ?? _regular,
     height: 1.6,
     color: color,
   );
 
-  /// 탭 라벨. 16px, 활성 900 / 비활성 700.
+  /// 탭 라벨. 16px, 활성 700 / 비활성 500.
   static TextStyle tab({required bool active}) => _base(
     size: 16,
-    weight: active ? _black : _bold,
+    weight: active ? _bold : _medium,
     height: 1,
     color: active ? AppColors.point : AppColors.inactiveLabel,
   );

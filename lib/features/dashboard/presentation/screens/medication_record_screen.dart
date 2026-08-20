@@ -193,7 +193,13 @@ class _MonthCard extends StatelessWidget {
         children: [
           Row(
             children: [
-              Expanded(child: Text('이번 달', style: AppText.cardTitle())),
+              Expanded(
+                child: EmojiTitle(
+                  emoji: '📊',
+                  text: '이번 달',
+                  style: AppText.cardTitle(),
+                ),
+              ),
               Text(
                 '$month월',
                 style: AppText.cardTitle(size: 19, color: AppColors.point),
@@ -250,7 +256,11 @@ class _WeekCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text('이번 주', style: AppText.cardTitle()),
+          EmojiTitle(
+            emoji: '📅',
+            text: '이번 주',
+            style: AppText.cardTitle(),
+          ),
           const SizedBox(height: 13),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -351,7 +361,11 @@ class _TodayCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text('오늘 기록', style: AppText.cardTitle()),
+          EmojiTitle(
+            emoji: '📝',
+            text: '오늘 기록',
+            style: AppText.cardTitle(),
+          ),
           const SizedBox(height: 12),
           for (int i = 0; i < rows.length; i++) ...[
             if (i > 0) ...[

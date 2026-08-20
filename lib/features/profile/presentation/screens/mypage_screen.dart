@@ -117,6 +117,7 @@ class _MyPageScreenState extends ConsumerState<MyPageScreen> {
                     children: [
                       SeniorListRow(
                         label: '내 약 목록',
+                        emoji: '💊',
                         value: '$medicineCount가지',
                         trailing: const SeniorChevron(),
                         onTap: () => _todo('내 약 목록'),
@@ -124,13 +125,15 @@ class _MyPageScreenState extends ConsumerState<MyPageScreen> {
                       const SeniorDivider(),
                       SeniorListRow(
                         label: '약 먹는 시간',
+                        emoji: '⏰',
                         value: '하루 ${today.doses.length}번',
                         trailing: const SeniorChevron(),
                         onTap: () => _todo('약 먹는 시간'),
                       ),
                       const SeniorDivider(),
                       SeniorListRow(
-                        label: '가슴에 차는 띠',
+                        label: '폴라 베리티 센스',
+                        emoji: '❤️',
                         value: '연결됨',
                         valueColor: AppColors.point,
                         trailing: const SeniorChevron(),
@@ -139,6 +142,7 @@ class _MyPageScreenState extends ConsumerState<MyPageScreen> {
                       const SeniorDivider(),
                       SeniorListRow(
                         label: '듣고 말하기',
+                        emoji: '🔊',
                         value: '켜기',
                         valueColor: AppColors.point,
                         trailing: const SeniorChevron(),
@@ -147,6 +151,7 @@ class _MyPageScreenState extends ConsumerState<MyPageScreen> {
                       const SeniorDivider(),
                       SeniorListRow(
                         label: '알림 소리 · 크게',
+                        emoji: '🔔',
                         trailing: SeniorToggle(
                           value: _loudAlarm,
                           semanticLabel: '알림 소리를 크게',
@@ -167,7 +172,11 @@ class _MyPageScreenState extends ConsumerState<MyPageScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      Text('함께 보는 가족', style: AppText.cardTitle(size: 19)),
+                      EmojiTitle(
+                        emoji: '👪',
+                        text: '함께 보는 가족',
+                        style: AppText.cardTitle(size: 19),
+                      ),
                       const SizedBox(height: 14),
                       Row(
                         children: [

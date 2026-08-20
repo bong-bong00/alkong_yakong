@@ -209,7 +209,7 @@ class _DurAnalysisScreenState extends State<DurAnalysisScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('같이 드셔도 괜찮아요', style: AppText.emphasis()),
+                  Text('✅ 같이 드셔도 괜찮아요', style: AppText.emphasis()),
                   const SizedBox(height: 8),
                   Text(
                     '등록하신 약끼리 부딪히는 것이 없었어요. '
@@ -231,7 +231,11 @@ class _DurAnalysisScreenState extends State<DurAnalysisScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Text('나머지 약은 괜찮아요', style: AppText.cardTitle(size: 19)),
+                  EmojiTitle(
+                    emoji: '✅',
+                    text: '나머지 약은 괜찮아요',
+                    style: AppText.cardTitle(size: 19),
+                  ),
                   const SizedBox(height: 10),
                   for (int i = 0; i < _safeMedicines.length; i++) ...[
                     if (i > 0) ...[
@@ -285,7 +289,11 @@ class _DurAnalysisScreenState extends State<DurAnalysisScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text('이 약은 무슨 약인가요?', style: AppText.cardTitle(size: 19)),
+                      EmojiTitle(
+                        emoji: '💊',
+                        text: '이 약은 무슨 약인가요?',
+                        style: AppText.cardTitle(size: 19),
+                      ),
                       Text('쉬운 말로 알려드려요', style: AppText.caption()),
                     ],
                   ),
@@ -349,7 +357,7 @@ class _RiskCard extends StatelessWidget {
           Align(
             alignment: Alignment.centerLeft,
             child: SeniorBadge(
-              label: isDanger ? '꼭 확인하세요' : '조심하세요',
+              label: isDanger ? '⚠️ 꼭 확인하세요' : '⚠️ 조심하세요',
               background: isDanger ? AppColors.danger : AppColors.dangerBorder,
               foreground: isDanger ? Colors.white : AppColors.danger,
               radius: 10,

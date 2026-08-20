@@ -24,14 +24,10 @@ class PatientHomeScreen extends ConsumerStatefulWidget {
   /// 심장 박동 화면으로 이동.
   final VoidCallback? onOpenHeartbeat;
 
-  /// 사용자 이름 — 상단 아바타의 첫 글자로 쓴다.
-  final String userName;
-
   const PatientHomeScreen({
     super.key,
     this.onOpenRecord,
     this.onOpenHeartbeat,
-    this.userName = '김복자',
   });
 
   @override
@@ -96,7 +92,6 @@ class _PatientHomeScreenState extends ConsumerState<PatientHomeScreen> {
       children: [
         _Header(
           today: now,
-          userName: widget.userName,
           onSelectDate: (date) {
             if (date.day != now.day) widget.onOpenRecord?.call();
           },
@@ -169,7 +164,7 @@ class _PatientHomeScreenState extends ConsumerState<PatientHomeScreen> {
               ),
             ),
             const SizedBox(height: 14),
-            Text('잘하셨어요', style: AppText.screenTitle()),
+            Text('👏 잘하셨어요', style: AppText.screenTitle()),
             const SizedBox(height: 6),
             Text(
               today.allTaken
@@ -196,7 +191,11 @@ class _PatientHomeScreenState extends ConsumerState<PatientHomeScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('오늘 복약', style: AppText.cardTitle()),
+            EmojiTitle(
+              emoji: '📅',
+              text: '오늘 복약',
+              style: AppText.cardTitle(),
+            ),
             const SizedBox(height: 12),
             _SlotChips(today: today),
           ],
@@ -235,14 +234,9 @@ class _PatientHomeScreenState extends ConsumerState<PatientHomeScreen> {
 // ════════════════════════════════════════════════════════════════
 class _Header extends StatelessWidget {
   final DateTime today;
-  final String userName;
   final ValueChanged<DateTime> onSelectDate;
 
-  const _Header({
-    required this.today,
-    required this.userName,
-    required this.onSelectDate,
-  });
+  const _Header({required this.today, required this.onSelectDate});
 
   @override
   Widget build(BuildContext context) {
@@ -250,37 +244,36 @@ class _Header extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Row(
-            children: [
-              Flexible(
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 18,
-                    vertical: 9,
-                  ),
-                  decoration: BoxDecoration(
-                    color: AppColors.surface,
-                    borderRadius: BorderRadius.circular(22),
-                  ),
-                  child: Wrap(
-                    spacing: 8,
-                    crossAxisAlignment: WrapCrossAlignment.center,
-                    children: [
-                      Text(
-                        '${today.month}월 ${today.day}일',
-                        style: AppText.cardTitle(
-                          size: 21,
-                          color: AppColors.point,
-                        ),
-                      ),
-                      Text('오늘', style: AppText.cardTitle(size: 21)),
-                    ],
-                  ),
-                ),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: Container(
+              padding: const EdgeInsets.symmetric(
+                horizontal: 18,
+                vertical: 9,
               ),
-              const SizedBox(width: 12),
-              InitialAvatar(name: userName),
-            ],
+              decoration: BoxDecoration(
+                color: AppColors.surface,
+                borderRadius: BorderRadius.circular(22),
+              ),
+              child: Wrap(
+                spacing: 8,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  Text(
+                    '${today.month}월 ${today.day}일',
+                    style: AppText.cardTitle(
+                      size: 21,
+                      color: AppColors.point,
+                      weight: FontWeight.w900,
+                    ),
+                  ),
+                  Text(
+                    '오늘',
+                    style: AppText.cardTitle(size: 21, weight: FontWeight.w900),
+                  ),
+                ],
+              ),
+            ),
           ),
           const SizedBox(height: 14),
           WeekDateStrip(today: today, onSelect: onSelectDate),
@@ -335,14 +328,10 @@ class _NextDoseCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Row(
-            children: [
-              const Dot(),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Text('지금 드실 약', style: AppText.label(size: 18)),
-              ),
-            ],
+          EmojiTitle(
+            emoji: '💊',
+            text: '지금 드실 약',
+            style: AppText.label(size: 18, weight: FontWeight.w700),
           ),
           const SizedBox(height: 12),
           // 고정 폭을 주지 않는다 — 글자가 커져도 "저녁 6 / 시"로 깨지면 안 된다.
@@ -550,9 +539,11 @@ class _HeartbeatCard extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  '심장 박동 ${today.heartRate} · '
-                  '${today.heartRateNormal ? '정상' : '확인 필요'}',
+                EmojiTitle(
+                  emoji: '❤️',
+                  text:
+                      '심장 박동 ${today.heartRate} · '
+                      '${today.heartRateNormal ? '정상' : '확인 필요'}',
                   style: AppText.cardTitle(),
                 ),
                 Text(

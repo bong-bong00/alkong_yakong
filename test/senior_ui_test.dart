@@ -80,7 +80,8 @@ void main() {
     await tester.tap(find.text('먹었어요'));
     await tester.pumpAndSettle();
 
-    expect(find.text('잘하셨어요'), findsOneWidget);
+    // 제목 앞에 이모지가 붙어 있어 부분 일치로 찾는다.
+    expect(find.textContaining('잘하셨어요'), findsOneWidget);
 
     // 되돌리기는 시간 제한 없이 노출된다.
     await tester.tap(find.text('잘못 눌렀어요 · 되돌리기'));

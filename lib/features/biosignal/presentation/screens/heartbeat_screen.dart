@@ -15,7 +15,12 @@ import '../../data/polar_service.dart';
 /// 4g — 심장 박동.
 ///
 /// "생체신호 / 바이탈"이라는 말을 쓰지 않는다. 화면 이름은 심장 박동이고,
-/// 센서는 "가슴에 차는 띠"라고 부른다. 동기화는 "최신 정보"다.
+/// 동기화는 "최신 정보"다.
+///
+/// 다만 기기는 제품명 그대로 **폴라 베리티 센스**라고 부른다.
+/// 돌려 말하면 어느 물건을 말하는지 알 수 없고, 사용설명서·구매처·
+/// 가족과의 대화에서 쓰는 이름과도 어긋난다. 대신 처음 나오는 자리에는
+/// 무엇인지 한 줄로 덧붙인다.
 ///
 /// 연결이 끊기면 오류 화면 대신 5e 회복 패턴([RecoveryView])으로 바뀐다.
 class HeartbeatScreen extends StatefulWidget {
@@ -145,17 +150,17 @@ class _HeartbeatScreenState extends State<HeartbeatScreen> {
   Widget _recovery() {
     return RecoveryView(
       title: '지금은 심장 박동을\n재지 못하고 있어요',
-      reassurance: '가슴에 찬 띠와 전화기가 떨어져 있어요. ',
+      reassurance: '폴라 베리티 센스와 전화기가 떨어져 있어요. ',
       reassuranceEmphasis: '고장이 아니니 걱정하지 마세요.',
       steps: const [
-        '띠가 가슴에 잘 붙어 있는지 만져보세요',
-        '띠의 가운데 단추를 한 번 누르세요',
-        '전화기를 띠 가까이 두세요',
+        '센서가 팔이나 가슴에 잘 붙어 있는지 만져보세요',
+        '센서 가운데 단추를 한 번 누르세요',
+        '전화기를 센서 가까이 두세요',
       ],
       actionLabel: '다시 연결하기',
       onAction: _connect,
       stillWorksTitle: '약 알림은 그대로 와요',
-      stillWorksBody: '띠가 끊겨도 복약 알림에는 영향이 없어요.',
+      stillWorksBody: '센서가 끊겨도 복약 알림에는 영향이 없어요.',
       helperText: '그래도 안 되면\n${widget.guardianTitle}에게 도움 청하기',
       onCallHelper: () => ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('${widget.guardianTitle}에게 전화를 겁니다')),
@@ -238,12 +243,14 @@ class _HeartbeatScreenState extends State<HeartbeatScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        _connecting ? '가슴에 차는 띠 찾는 중' : '가슴에 차는 띠 연결됨',
+                        _connecting
+                            ? '폴라 베리티 센스 찾는 중'
+                            : '폴라 베리티 센스 연결됨',
                         style: AppText.cardTitle(size: 19),
                       ),
                       Text(
                         _lastReadAt == null
-                            ? '아직 잰 적이 없어요'
+                            ? '팔이나 가슴에 차는 심박 센서예요'
                             : '${DoseSlot.absoluteTime(_lastReadAt!)} 최신 정보',
                         style: AppText.caption(),
                       ),
