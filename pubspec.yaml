@@ -43,6 +43,8 @@ dependencies:
   http: ^1.2.2
   shared_preferences: ^2.5.5
   fl_chart: ^1.2.0
+  # 화면 아이콘. 로고와 같은 둥근 선 조형이라 함께 놓아도 따로 놀지 않는다.
+  flutter_tabler_icons: ^1.43.0
 
 dev_dependencies:
   flutter_test:

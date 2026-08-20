@@ -76,32 +76,37 @@ class Dot extends StatelessWidget {
   );
 }
 
-/// 이모지를 앞에 붙인 제목.
+/// 아이콘을 앞에 붙인 제목.
 ///
-/// **이모지 단독으로 뜻을 만들지 않는다.** 한글 라벨이 항상 함께 있고,
-/// 이모지는 스크린리더에서 제외해 "약 이모지 지금 드실 약"처럼
-/// 두 번 읽히지 않게 한다.
-class EmojiTitle extends StatelessWidget {
-  final String emoji;
+/// 아이콘은 Tabler 세트를 쓴다 — 로고와 같은 둥근 선 조형이고,
+/// 시스템 이모지와 달리 기기마다 그림체가 달라지지 않는다.
+///
+/// **아이콘 단독으로 뜻을 만들지 않는다.** 한글 라벨이 항상 함께 있고,
+/// 아이콘은 스크린리더에서 제외해 두 번 읽히지 않게 한다.
+class IconTitle extends StatelessWidget {
+  final IconData icon;
   final String text;
   final TextStyle style;
 
-  const EmojiTitle({
+  /// 아이콘 색. 기본은 무채색이고, 상태를 알리는 자리에서만 색을 준다.
+  final Color color;
+
+  const IconTitle({
     super.key,
-    required this.emoji,
+    required this.icon,
     required this.text,
     required this.style,
+    this.color = AppColors.textSecondary,
   });
 
   @override
   Widget build(BuildContext context) {
+    final size = (style.fontSize ?? 20) * 1.15;
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        ExcludeSemantics(
-          child: Text(emoji, style: TextStyle(fontSize: style.fontSize)),
-        ),
-        const SizedBox(width: 8),
+        ExcludeSemantics(child: Icon(icon, size: size, color: color)),
+        const SizedBox(width: 9),
         Expanded(child: Text(text, style: style)),
       ],
     );
@@ -152,8 +157,17 @@ class SeniorListRow extends StatelessWidget {
   final Widget? trailing;
   final VoidCallback? onTap;
 
-  /// 라벨 앞에 붙는 이모지. 없으면 라벨만 그린다.
-  final String? emoji;
+  /// 라벨 앞에 붙는 아이콘. 없으면 라벨만 그린다.
+  final IconData? icon;
+
+  /// 아이콘 색.
+  final Color iconColor;
+
+  /// 라벨 아래 한 줄. 라벨이 길어 값이 옆에 들어가기 어려울 때 쓴다.
+  final String? subtitle;
+
+  /// 부제 색. 상태값이면 포인트색을 준다.
+  final Color subtitleColor;
 
   const SeniorListRow({
     super.key,
@@ -162,7 +176,10 @@ class SeniorListRow extends StatelessWidget {
     this.valueColor = AppColors.textTertiary,
     this.trailing,
     this.onTap,
-    this.emoji,
+    this.icon,
+    this.iconColor = AppColors.textSecondary,
+    this.subtitle,
+    this.subtitleColor = AppColors.textTertiary,
   });
 
   @override
@@ -174,20 +191,31 @@ class SeniorListRow extends StatelessWidget {
         padding: const EdgeInsets.symmetric(vertical: 17),
         child: Row(
           children: [
-            if (emoji != null) ...[
+            if (icon != null) ...[
               ExcludeSemantics(
-                child: Text(emoji!, style: const TextStyle(fontSize: 20)),
+                child: Icon(icon, size: 24, color: iconColor),
               ),
-              const SizedBox(width: 12),
+              const SizedBox(width: 13),
             ],
             Expanded(
-              child: Text(
-                label,
-                style: AppText.label(
-                  size: 20,
-                  color: AppColors.textPrimary,
-                  weight: FontWeight.w700,
-                ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    label,
+                    style: AppText.label(
+                      size: 20,
+                      color: AppColors.textPrimary,
+                      weight: FontWeight.w700,
+                    ),
+                  ),
+                  if (subtitle != null)
+                    Text(
+                      subtitle!,
+                      style: AppText.caption(size: 17, color: subtitleColor),
+                    ),
+                ],
               ),
             ),
             if (value != null) ...[

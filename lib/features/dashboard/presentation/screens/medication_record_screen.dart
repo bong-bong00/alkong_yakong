@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_tabler_icons/flutter_tabler_icons.dart';
 
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
@@ -194,8 +195,8 @@ class _MonthCard extends StatelessWidget {
           Row(
             children: [
               Expanded(
-                child: EmojiTitle(
-                  emoji: '📊',
+                child: IconTitle(
+                  icon: TablerIcons.chart_bar,
                   text: '이번 달',
                   style: AppText.cardTitle(),
                 ),
@@ -256,8 +257,8 @@ class _WeekCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          EmojiTitle(
-            emoji: '📅',
+          IconTitle(
+            icon: TablerIcons.calendar,
             text: '이번 주',
             style: AppText.cardTitle(),
           ),
@@ -361,8 +362,8 @@ class _TodayCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          EmojiTitle(
-            emoji: '📝',
+          IconTitle(
+            icon: TablerIcons.list_check,
             text: '오늘 기록',
             style: AppText.cardTitle(),
           ),

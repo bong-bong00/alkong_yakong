@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:flutter_tabler_icons/flutter_tabler_icons.dart';
 
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/providers/user_role.dart';
@@ -117,7 +118,7 @@ class _MyPageScreenState extends ConsumerState<MyPageScreen> {
                     children: [
                       SeniorListRow(
                         label: '내 약 목록',
-                        emoji: '💊',
+                        icon: TablerIcons.pill,
                         value: '$medicineCount가지',
                         trailing: const SeniorChevron(),
                         onTap: () => _todo('내 약 목록'),
@@ -125,7 +126,7 @@ class _MyPageScreenState extends ConsumerState<MyPageScreen> {
                       const SeniorDivider(),
                       SeniorListRow(
                         label: '약 먹는 시간',
-                        emoji: '⏰',
+                        icon: TablerIcons.clock,
                         value: '하루 ${today.doses.length}번',
                         trailing: const SeniorChevron(),
                         onTap: () => _todo('약 먹는 시간'),
@@ -133,16 +134,17 @@ class _MyPageScreenState extends ConsumerState<MyPageScreen> {
                       const SeniorDivider(),
                       SeniorListRow(
                         label: '폴라 베리티 센스',
-                        emoji: '❤️',
-                        value: '연결됨',
-                        valueColor: AppColors.point,
+                        icon: TablerIcons.heart,
+                        // 제품명이 길어 값을 옆에 붙이면 이름이 잘린다.
+                        subtitle: '연결됨 · 심박 센서',
+                        subtitleColor: AppColors.point,
                         trailing: const SeniorChevron(),
                         onTap: () => context.push('/biosignal'),
                       ),
                       const SeniorDivider(),
                       SeniorListRow(
                         label: '듣고 말하기',
-                        emoji: '🔊',
+                        icon: TablerIcons.volume_2,
                         value: '켜기',
                         valueColor: AppColors.point,
                         trailing: const SeniorChevron(),
@@ -151,7 +153,7 @@ class _MyPageScreenState extends ConsumerState<MyPageScreen> {
                       const SeniorDivider(),
                       SeniorListRow(
                         label: '알림 소리 · 크게',
-                        emoji: '🔔',
+                        icon: TablerIcons.bell,
                         trailing: SeniorToggle(
                           value: _loudAlarm,
                           semanticLabel: '알림 소리를 크게',
@@ -172,8 +174,8 @@ class _MyPageScreenState extends ConsumerState<MyPageScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      EmojiTitle(
-                        emoji: '👪',
+                      IconTitle(
+                        icon: TablerIcons.users,
                         text: '함께 보는 가족',
                         style: AppText.cardTitle(size: 19),
                       ),
@@ -229,6 +231,7 @@ class _MyPageScreenState extends ConsumerState<MyPageScreen> {
                   ),
                   child: SeniorListRow(
                     label: '계정 관리',
+                    icon: TablerIcons.user,
                     trailing: const SeniorChevron(),
                     onTap: () => Navigator.of(context).push(
                       MaterialPageRoute<void>(

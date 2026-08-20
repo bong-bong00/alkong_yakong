@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_tabler_icons/flutter_tabler_icons.dart';
 
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
@@ -28,9 +29,9 @@ class _GuardianHomeScreenState extends ConsumerState<GuardianHomeScreen> {
   int _patientIndex = 0;
 
   static const List<SeniorNavItem> _tabs = [
-    SeniorNavItem(icon: Icons.favorite_rounded, label: '현황'),
-    SeniorNavItem(icon: Icons.notifications_rounded, label: '알림'),
-    SeniorNavItem(icon: Icons.person_rounded, label: '내 정보'),
+    SeniorNavItem(icon: TablerIcons.heart, label: '현황'),
+    SeniorNavItem(icon: TablerIcons.bell, label: '알림'),
+    SeniorNavItem(icon: TablerIcons.user, label: '내 정보'),
   ];
 
   PatientData get _patient => DemoPatients.all[_patientIndex];
@@ -179,8 +180,8 @@ class GuardianStatusTab extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      EmojiTitle(
-                        emoji: '💊',
+                      IconTitle(
+                        icon: TablerIcons.pill,
                         text: '오늘 복약',
                         style: AppText.label(
                           size: 19,
@@ -279,8 +280,12 @@ class GuardianStatusTab extends StatelessWidget {
                       children: [
                         Row(
                           children: [
-                            const Dot(color: AppColors.danger),
-                            const SizedBox(width: 10),
+                            const Icon(
+                              TablerIcons.alert_triangle_filled,
+                              size: 21,
+                              color: AppColors.danger,
+                            ),
+                            const SizedBox(width: 9),
                             Expanded(
                               child: Text(
                                 '확인이 필요해요',
@@ -325,8 +330,8 @@ class GuardianStatusTab extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      EmojiTitle(
-                        emoji: '🕐',
+                      IconTitle(
+                        icon: TablerIcons.clock,
                         text: '오늘 있었던 일',
                         style: AppText.cardTitle(size: 19),
                       ),
@@ -375,7 +380,7 @@ class GuardianStatusTab extends StatelessWidget {
                     children: [
                       SeniorListRow(
                         label: '약 목록 · 처방전',
-                        emoji: '📋',
+                        icon: TablerIcons.file_text,
                         trailing: const SeniorChevron(),
                         onTap: () => Navigator.of(context).push(
                           MaterialPageRoute<void>(
@@ -390,7 +395,7 @@ class GuardianStatusTab extends StatelessWidget {
                       const SeniorDivider(),
                       SeniorListRow(
                         label: '지난 알림 보기',
-                        emoji: '🔔',
+                        icon: TablerIcons.bell,
                         trailing: const SeniorChevron(),
                         onTap: onOpenAlerts,
                       ),
@@ -561,8 +566,11 @@ class _AlertCard extends StatelessWidget {
           Row(
             children: [
               Expanded(
-                child: EmojiTitle(
-                  emoji: _isDanger ? '⚠️' : '✅',
+                child: IconTitle(
+                  icon: _isDanger
+                      ? TablerIcons.alert_triangle_filled
+                      : TablerIcons.circle_check_filled,
+                  color: _barColor,
                   text: alert.title,
                   style: AppText.cardTitle(size: 18, color: _barColor),
                 ),

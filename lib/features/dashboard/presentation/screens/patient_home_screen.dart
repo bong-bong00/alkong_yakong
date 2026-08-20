@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_tabler_icons/flutter_tabler_icons.dart';
 
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
@@ -164,7 +165,7 @@ class _PatientHomeScreenState extends ConsumerState<PatientHomeScreen> {
               ),
             ),
             const SizedBox(height: 14),
-            Text('👏 잘하셨어요', style: AppText.screenTitle()),
+            Text('잘하셨어요', style: AppText.screenTitle()),
             const SizedBox(height: 6),
             Text(
               today.allTaken
@@ -191,8 +192,8 @@ class _PatientHomeScreenState extends ConsumerState<PatientHomeScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            EmojiTitle(
-              emoji: '📅',
+            IconTitle(
+              icon: TablerIcons.calendar_check,
               text: '오늘 복약',
               style: AppText.cardTitle(),
             ),
@@ -328,8 +329,9 @@ class _NextDoseCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          EmojiTitle(
-            emoji: '💊',
+          IconTitle(
+            icon: TablerIcons.pill,
+            color: AppColors.point,
             text: '지금 드실 약',
             style: AppText.label(size: 18, weight: FontWeight.w700),
           ),
@@ -539,8 +541,9 @@ class _HeartbeatCard extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                EmojiTitle(
-                  emoji: '❤️',
+                IconTitle(
+                  icon: TablerIcons.heart,
+                  color: AppColors.point,
                   text:
                       '심장 박동 ${today.heartRate} · '
                       '${today.heartRateNormal ? '정상' : '확인 필요'}',

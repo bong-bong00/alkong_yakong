@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:flutter_tabler_icons/flutter_tabler_icons.dart';
 
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/widgets/senior_bottom_nav.dart';
@@ -24,9 +25,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   int _index = 0;
 
   static const List<SeniorNavItem> _tabs = [
-    SeniorNavItem(icon: Icons.today_rounded, label: '오늘'),
-    SeniorNavItem(icon: Icons.event_note_rounded, label: '기록'),
-    SeniorNavItem(icon: Icons.person_rounded, label: '내 정보'),
+    SeniorNavItem(icon: TablerIcons.pill, label: '오늘'),
+    SeniorNavItem(icon: TablerIcons.calendar, label: '기록'),
+    SeniorNavItem(icon: TablerIcons.user, label: '내 정보'),
   ];
 
   @override
