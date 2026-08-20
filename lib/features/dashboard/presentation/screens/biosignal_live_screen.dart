@@ -434,7 +434,7 @@ class _BiosignalLiveScreenState extends State<BiosignalLiveScreen>
                     mainAxisAlignment: MainAxisAlignment.center,
                     crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
-                      const Text('💓', style: TextStyle(fontSize: 30)),
+                      const Icon(Icons.favorite_rounded, size: 30, color: kPrimary),
                       const SizedBox(width: 8),
                       Text(
                         _isStreaming && _currentHr != null

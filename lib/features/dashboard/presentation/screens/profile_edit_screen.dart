@@ -79,25 +79,11 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
     super.dispose();
   }
 
-  int? get _age => _birth == null ? null : (DateTime.now().year - _birth!.year);
-
-  String _avatarEmoji(int? age, String? gender) {
-    if (age == null) return '🧑';
-    final child = age < 13;
-    final old = age >= 65;
-    if (gender == 'F') {
-      if (child) return '👧';
-      if (old) return '👵';
-      return '👩';
-    } else if (gender == 'M') {
-      if (child) return '👦';
-      if (old) return '👴';
-      return '👨';
-    } else {
-      if (child) return '🧒';
-      if (old) return '🧓';
-      return '🧑';
-    }
+  /// 아바타는 이모지 대신 이름 첫 글자를 쓴다.
+  /// 이모지는 기기마다 모양이 달라지고 의미 학습이 되지 않는다.
+  String _avatarInitial() {
+    final name = _name.text.trim();
+    return name.isEmpty ? '님' : name.substring(0, 1);
   }
 
   void _save() {
@@ -440,7 +426,7 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
                       ),
                       child: Center(
                         child: Text(
-                          _avatarEmoji(_age, _gender),
+                          _avatarInitial(),
                           style: const TextStyle(fontSize: 44),
                         ),
                       ),
@@ -580,7 +566,7 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
                           ),
                           child: Center(
                             child: Text(
-                              p.emoji,
+                              p.initial,
                               style: const TextStyle(fontSize: 20),
                             ),
                           ),

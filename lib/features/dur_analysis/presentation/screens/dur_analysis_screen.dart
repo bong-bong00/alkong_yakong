@@ -1,281 +1,379 @@
-import 'dart:convert';
-
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/network/api_client.dart';
 import '../../../../core/session/mvp_session.dart';
+import '../../../../core/theme/app_typography.dart';
+import '../../../../core/widgets/recovery_view.dart';
+import '../../../../core/widgets/senior_button.dart';
+import '../../../../core/widgets/senior_card.dart';
+import '../../../../core/widgets/senior_header.dart';
 
+/// 위험도 3단. **등급 숫자나 점수는 노출하지 않는다.**
+enum DrugRisk {
+  /// 위험 — 3px 위험색 테두리 카드.
+  danger,
+
+  /// 주의 — 테두리 + 본문 경고문.
+  caution,
+
+  /// 괜찮아요 — 안전 카드에 포함.
+  safe,
+}
+
+/// 4f — 약 함께먹기 주의.
+///
+/// "DUR 분석"이라는 말을 쓰지 않는다. 어떤 약이 어떤 약과 부딪히는지,
+/// 그래서 누구에게 물어봐야 하는지만 말한다.
 class DurAnalysisScreen extends StatefulWidget {
-  const DurAnalysisScreen({super.key});
+  /// 함께 보고 있는 가족.
+  final String guardianTitle;
+
+  const DurAnalysisScreen({super.key, this.guardianTitle = '딸 지안 님'});
 
   @override
   State<DurAnalysisScreen> createState() => _DurAnalysisScreenState();
 }
 
 class _DurAnalysisScreenState extends State<DurAnalysisScreen> {
-  final _apiClient = ApiClient();
-  late final TextEditingController _userIdController;
+  final ApiClient _apiClient = ApiClient();
 
-  bool _isLoading = false;
-  String? _errorMessage;
-  Map<String, dynamic>? _analysis;
-  Map<String, dynamic>? _latest;
+  bool _loading = true;
+  bool _failed = false;
+  List<Map<String, dynamic>> _matches = const [];
 
   @override
   void initState() {
     super.initState();
-    _userIdController = TextEditingController(text: MvpSession.userId);
-  }
-
-  @override
-  void dispose() {
-    _userIdController.dispose();
-    super.dispose();
+    _analyze();
   }
 
   Future<void> _analyze() async {
-    final userId = _userIdController.text.trim();
-    if (userId.isEmpty) {
-      setState(() => _errorMessage = '사용자 ID를 입력해주세요.');
-      return;
-    }
-
     setState(() {
-      _isLoading = true;
-      _errorMessage = null;
-      _analysis = null;
-      _latest = null;
+      _loading = true;
+      _failed = false;
     });
 
+    final userId = MvpSession.userId.trim();
     try {
-      final analysisResponse = await _apiClient.post(
+      final response = await _apiClient.post(
         '/api/v1/dur/analyze',
         body: {'user_id': userId, 'medicine_codes': <String>[]},
       );
-      final latestResponse = await _apiClient.get(
-        '/api/v1/users/${Uri.encodeComponent(userId)}/dur/latest',
-      );
+      if (!mounted) return;
+      final matches = response is Map ? response['matches'] : null;
+      setState(() {
+        _matches = matches is List
+            ? matches
+                  .whereType<Map>()
+                  .map((m) => Map<String, dynamic>.from(m))
+                  .toList()
+            : const [];
+        _loading = false;
+      });
+    } catch (_) {
       if (!mounted) return;
       setState(() {
-        _analysis = Map<String, dynamic>.from(analysisResponse as Map);
-        _latest = Map<String, dynamic>.from(latestResponse as Map);
+        _loading = false;
+        _failed = true;
       });
-      MvpSession.userId = userId;
-    } on ApiException catch (error) {
-      if (!mounted) return;
-      setState(() {
-        _errorMessage = error.statusCode == 400
-            ? '분석할 복용 약이 없습니다. 먼저 처방전 Mock OCR을 등록해주세요.'
-            : _apiError(error);
-      });
-    } catch (error) {
-      if (!mounted) return;
-      setState(() => _errorMessage = '응답 처리 중 오류가 발생했습니다: $error');
-    } finally {
-      if (mounted) setState(() => _isLoading = false);
     }
   }
 
-  @override
-  Widget build(BuildContext context) {
-    final matches = _analysis?['matches'] is List
-        ? _analysis!['matches'] as List
-        : const <dynamic>[];
-    final riskLevel = _text(_analysis?['risk_level'] ?? _latest?['risk_level']);
-    final analyzedAt = _text(_latest?['created_at']);
-    final totalMatches =
-        _analysis?['total_matches'] ?? _latest?['total_matches'] ?? matches.length;
-
-    return Scaffold(
-      backgroundColor: kBackground,
-      appBar: AppBar(title: const Text('복약 안전도'), backgroundColor: kPrimary),
-      body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              TextField(
-                controller: _userIdController,
-                decoration: const InputDecoration(
-                  labelText: '사용자 ID',
-                  border: OutlineInputBorder(),
-                ),
-              ),
-              const SizedBox(height: 12),
-              SizedBox(
-                width: double.infinity,
-                child: FilledButton.icon(
-                  onPressed: _isLoading ? null : _analyze,
-                  icon: _isLoading
-                      ? const _ButtonProgress()
-                      : const Icon(Icons.health_and_safety_outlined),
-                  label: Text(_isLoading ? '분석 중...' : 'DUR 분석 실행'),
-                ),
-              ),
-              if (_errorMessage != null) ...[
-                const SizedBox(height: 18),
-                _StatusCard(
-                  title: '분석 실패',
-                  value: _errorMessage!,
-                  color: Colors.red,
-                ),
-              ],
-              if (_analysis != null) ...[
-                const SizedBox(height: 18),
-                Row(
-                  children: [
-                    Expanded(
-                      child: _StatusCard(
-                        title: '위험도',
-                        value: riskLevel,
-                        color: _riskColor(riskLevel),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: _StatusCard(
-                        title: '분석 시각',
-                        value: analyzedAt,
-                        color: kPrimary,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 16),
-                Text(
-                  'DUR 위험 $totalMatches건',
-                  style: const TextStyle(
-                    fontSize: 17,
-                    fontWeight: FontWeight.w800,
-                    color: kText,
-                  ),
-                ),
-                const SizedBox(height: 10),
-                if (matches.isEmpty)
-                  const _StatusCard(
-                    title: '분석 결과',
-                    value: '현재 DUR 기준에서 발견된 성분 충돌이 없습니다.',
-                    color: kPrimary,
-                  )
-                else
-                  ...matches.map((item) {
-                    final match = item is Map
-                        ? Map<String, dynamic>.from(item)
-                        : <String, dynamic>{};
-                    return Padding(
-                      padding: const EdgeInsets.only(bottom: 10),
-                      child: _StatusCard(
-                        title: _text(
-                          match['type'] ?? match['taboo_type'],
-                          fallback: '성분 주의',
-                        ),
-                        value:
-                            '${_ingredientPair(match)}\n${_text(match['reason'] ?? match['description'])}',
-                        color: _matchColor(
-                          _text(match['type'] ?? match['taboo_type']),
-                        ),
-                      ),
-                    );
-                  }),
-                const SizedBox(height: 8),
-                ExpansionTile(
-                  title: const Text('원본 응답 보기'),
-                  tilePadding: EdgeInsets.zero,
-                  children: [
-                    SelectableText(
-                      const JsonEncoder.withIndent('  ').convert(_analysis),
-                    ),
-                  ],
-                ),
-              ],
-            ],
-          ),
-        ),
-      ),
-    );
+  static DrugRisk _riskOf(Map<String, dynamic> match) {
+    final type = (match['type'] ?? match['taboo_type'] ?? '').toString();
+    return switch (type) {
+      '병용금기' || '중복성분' || '효능군중복' => DrugRisk.danger,
+      '연령금기' || '임부금기' || '용량주의' || '투여기간주의' => DrugRisk.caution,
+      _ => DrugRisk.safe,
+    };
   }
-}
 
-class _StatusCard extends StatelessWidget {
-  final String title;
-  final String value;
-  final Color color;
+  static String _pairOf(Map<String, dynamic> match) {
+    final first = (match['ingredient_a'] ?? '').toString();
+    final second = (match['ingredient_b'] ?? '').toString();
+    if (first.isEmpty) return '등록하신 약';
+    if (second.isEmpty) return first;
+    return '$first과 $second';
+  }
 
-  const _StatusCard({
-    required this.title,
-    required this.value,
-    required this.color,
-  });
+  /// 등록된 약 이름들 — 위험 목록에 없으면 "괜찮아요"에 들어간다.
+  List<String> get _safeMedicines {
+    final risky = <String>{};
+    for (final match in _matches) {
+      for (final key in ['ingredient_a', 'ingredient_b']) {
+        final value = match[key]?.toString();
+        if (value != null && value.isNotEmpty) risky.add(value);
+      }
+    }
+    return [
+      for (final item in MvpSession.latestOcrItems)
+        if (item['drug_name'] != null &&
+            !risky.contains(item['drug_name'].toString()))
+          item['drug_name'].toString(),
+    ];
+  }
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: color.withValues(alpha: 0.35)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+    return Scaffold(
+      backgroundColor: AppColors.bg,
+      body: Column(
         children: [
-          Text(
-            title,
-            style: TextStyle(fontWeight: FontWeight.w700, color: color),
-          ),
-          const SizedBox(height: 6),
-          Text(value, style: const TextStyle(height: 1.4, color: kText)),
+          const SeniorBackHeader(title: '약 함께먹기 주의'),
+          Expanded(child: _body()),
         ],
       ),
     );
   }
-}
 
-class _ButtonProgress extends StatelessWidget {
-  const _ButtonProgress();
+  Widget _body() {
+    if (_loading) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const SizedBox(
+                width: 44,
+                height: 44,
+                child: CircularProgressIndicator(
+                  strokeWidth: 4,
+                  color: AppColors.point,
+                ),
+              ),
+              const SizedBox(height: 22),
+              Text('약을 하나씩 살펴보고 있어요', style: AppText.emphasis()),
+            ],
+          ),
+        ),
+      );
+    }
 
-  @override
-  Widget build(BuildContext context) {
-    return const SizedBox(
-      width: 18,
-      height: 18,
-      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+    if (_failed) {
+      return RecoveryView(
+        title: '지금은 약을\n살펴보지 못하고 있어요',
+        reassurance: '전화기가 인터넷에 닿지 않고 있어요. ',
+        reassuranceEmphasis: '고장이 아니니 걱정하지 마세요.',
+        steps: const [
+          '집 안 와이파이가 켜져 있는지 보세요',
+          '전화기를 껐다 다시 켜보세요',
+          '잠시 뒤 아래 단추를 눌러주세요',
+        ],
+        actionLabel: '다시 살펴보기',
+        onAction: _analyze,
+        stillWorksTitle: '약 알림은 그대로 와요',
+        stillWorksBody: '인터넷이 끊겨도 복약 알림에는 영향이 없어요.',
+        helperText: '그래도 안 되면\n${widget.guardianTitle}에게 도움 청하기',
+        onCallHelper: _callGuardian,
+      );
+    }
+
+    final dangers = _matches.where((m) => _riskOf(m) == DrugRisk.danger);
+    final cautions = _matches.where((m) => _riskOf(m) == DrugRisk.caution);
+
+    return SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(20, 16, 20, 28),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          for (final match in dangers) ...[
+            _RiskCard(
+              risk: DrugRisk.danger,
+              headline: '${_pairOf(match)}을\n같이 드시면 위험해요',
+              detail: match['reason']?.toString() ??
+                  '두 약이 서로 부딪혀 몸에 무리가 갈 수 있어요. '
+                      '약국에 전화해서 이 두 가지를 같이 먹어도 되는지 물어보세요.',
+              onCall: _callPharmacy,
+            ),
+            const SizedBox(height: 12),
+          ],
+          for (final match in cautions) ...[
+            _RiskCard(
+              risk: DrugRisk.caution,
+              headline: '${_pairOf(match)}은\n조심해서 드셔야 해요',
+              detail: match['reason']?.toString() ??
+                  '드시는 데 문제는 없지만, 몸이 평소와 다르면 약국에 물어보세요.',
+              onCall: _callPharmacy,
+            ),
+            const SizedBox(height: 12),
+          ],
+          if (dangers.isEmpty && cautions.isEmpty) ...[
+            SeniorCard(
+              padding: const EdgeInsets.symmetric(
+                horizontal: 20,
+                vertical: 20,
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('같이 드셔도 괜찮아요', style: AppText.emphasis()),
+                  const SizedBox(height: 8),
+                  Text(
+                    '등록하신 약끼리 부딪히는 것이 없었어요. '
+                    '지금처럼 드시면 돼요.',
+                    style: AppText.body(),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+          ],
+
+          if (_safeMedicines.isNotEmpty) ...[
+            SeniorCard(
+              padding: const EdgeInsets.symmetric(
+                horizontal: 20,
+                vertical: 18,
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text('나머지 약은 괜찮아요', style: AppText.cardTitle(size: 19)),
+                  const SizedBox(height: 10),
+                  for (int i = 0; i < _safeMedicines.length; i++) ...[
+                    if (i > 0) ...[
+                      const SizedBox(height: 10),
+                      const SeniorDivider(),
+                      const SizedBox(height: 10),
+                    ],
+                    Row(
+                      children: [
+                        Container(
+                          width: 34,
+                          height: 34,
+                          alignment: Alignment.center,
+                          decoration: const BoxDecoration(
+                            color: AppColors.pointTint,
+                            shape: BoxShape.circle,
+                          ),
+                          child: Text(
+                            '✓',
+                            style: AppText.label(
+                              size: 18,
+                              color: AppColors.point,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Text(
+                            _safeMedicines[i],
+                            style: AppText.label(
+                              size: 19,
+                              color: AppColors.textPrimary,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+          ],
+
+          SeniorCard(
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
+            onTap: () => context.push('/drug-explain'),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('이 약은 무슨 약인가요?', style: AppText.cardTitle(size: 19)),
+                      Text('쉬운 말로 알려드려요', style: AppText.caption()),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 12),
+                const SeniorChevron(),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+
+          SeniorButton(
+            label: '${widget.guardianTitle}에게 알리기',
+            kind: SeniorButtonKind.outline,
+            minHeight: 64,
+            fontSize: 21,
+            onPressed: _callGuardian,
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _callPharmacy() {
+    // TODO: 등록된 약국 번호로 전화 연결.
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('약국에 전화를 겁니다')));
+  }
+
+  void _callGuardian() {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('${widget.guardianTitle}에게 알려드렸어요')),
     );
   }
 }
 
-String _text(dynamic value, {String fallback = '데이터 없음'}) {
-  final text = value?.toString().trim();
-  return text == null || text.isEmpty ? fallback : text;
-}
+class _RiskCard extends StatelessWidget {
+  final DrugRisk risk;
+  final String headline;
+  final String detail;
+  final VoidCallback onCall;
 
-String _apiError(ApiException error) {
-  return error.statusCode == null
-      ? error.message
-      : '${error.message} (HTTP ${error.statusCode})';
-}
+  const _RiskCard({
+    required this.risk,
+    required this.headline,
+    required this.detail,
+    required this.onCall,
+  });
 
-Color _riskColor(String riskLevel) {
-  return switch (riskLevel.toUpperCase()) {
-    'CRITICAL' || 'HIGH' => Colors.red,
-    'WARNING' || 'CAUTION' => Colors.orange,
-    _ => kPrimary,
-  };
-}
-
-String _ingredientPair(Map<String, dynamic> match) {
-  final first = _text(match['ingredient_a']);
-  final second = _text(match['ingredient_b'], fallback: '');
-  return second.isEmpty ? first : '$first + $second';
-}
-
-Color _matchColor(String type) {
-  return switch (type) {
-    '병용금기' || '중복성분' || '효능군중복' => Colors.red,
-    '연령금기' || '임부금기' => Colors.orange,
-    _ => kPrimary,
-  };
+  @override
+  Widget build(BuildContext context) {
+    final isDanger = risk == DrugRisk.danger;
+    return SeniorCard(
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
+      borderColor: isDanger ? AppColors.danger : AppColors.dangerBorder,
+      borderWidth: isDanger ? 3 : 2,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Align(
+            alignment: Alignment.centerLeft,
+            child: SeniorBadge(
+              label: isDanger ? '꼭 확인하세요' : '조심하세요',
+              background: isDanger ? AppColors.danger : AppColors.dangerBorder,
+              foreground: isDanger ? Colors.white : AppColors.danger,
+              radius: 10,
+              fontSize: 17,
+              padding: const EdgeInsets.symmetric(
+                horizontal: 13,
+                vertical: 6,
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+          Text(headline, style: AppText.emphasis()),
+          const SizedBox(height: 12),
+          Text(detail, style: AppText.body()),
+          const SizedBox(height: 12),
+          SeniorButton(
+            label: '약국에 전화하기',
+            kind: SeniorButtonKind.danger,
+            minHeight: 66,
+            fontSize: 22,
+            onPressed: onCall,
+          ),
+        ],
+      ),
+    );
+  }
 }

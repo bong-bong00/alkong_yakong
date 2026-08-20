@@ -7,17 +7,18 @@ library;
 class PatientData {
   final String name;
   final String relation; // 어머니/아버지 등
-  final String emoji;
+  /// 아바타에 쓰는 이름 첫 글자. 이모지는 쓰지 않는다.
+  final String initial;
   final int age;
 
   // 현황
   final int takenCount; // 오늘 복용한 횟수
   final int totalCount; // 오늘 총 횟수
-  final String nextDose; // 다음 복약 안내
+  final String nextDose; // 다음에 드실 약 안내
   final int currentHr; // 현재 심박
   final bool hrNormal; // 심박 정상 여부
   final bool okToday; // 오늘 이상 없음 여부
-  final String syncedAgo; // 마지막 동기화
+  final String syncedAgo; // 마지막 최신 정보 시각
 
   final List<ActivityItem> activities; // 최근 활동
   final List<DayRecord> records; // 복약 기록 (날짜별)
@@ -26,7 +27,7 @@ class PatientData {
   const PatientData({
     required this.name,
     required this.relation,
-    required this.emoji,
+    required this.initial,
     required this.age,
     required this.takenCount,
     required this.totalCount,
@@ -42,10 +43,11 @@ class PatientData {
 }
 
 class ActivityItem {
-  final String emoji;
   final String text;
+
+  /// 절대시간 문자열. **상대시간("15분 전")은 쓰지 않는다.**
   final String time;
-  const ActivityItem(this.emoji, this.text, this.time);
+  const ActivityItem(this.text, this.time);
 }
 
 class DayRecord {
@@ -93,19 +95,19 @@ class DemoPatients {
   static const PatientData _bokja = PatientData(
     name: '김복자',
     relation: '어머니',
-    emoji: '🧓',
+    initial: '복',
     age: 72,
     takenCount: 2,
     totalCount: 3,
-    nextDose: '저녁 18:00 예정',
+    nextDose: '저녁 6시 약',
     currentHr: 78,
     hrNormal: true,
     okToday: true,
     syncedAgo: '방금 전',
     activities: [
-      ActivityItem('✅', '점심 약 복용 완료', '12:04'),
-      ActivityItem('💓', '복약 후 심박 정상 (80 bpm)', '12:14'),
-      ActivityItem('✅', '아침 약 복용 완료', '08:10'),
+      ActivityItem('점심 약 다 드셨어요', '12:04'),
+      ActivityItem('약 드신 뒤 심장 박동 정상 (80)', '12:14'),
+      ActivityItem('아침 약 다 드셨어요', '08:10'),
     ],
     records: [
       DayRecord('6월 5일 (오늘)', [
@@ -127,21 +129,21 @@ class DemoPatients {
     alerts: [
       AlertItem(
         type: 'alert',
-        title: '심박 이상 감지',
-        desc: '김복자님의 심박이 분당 125회까지 올랐어요 (빈맥)',
+        title: '심장 박동이 빨라요',
+        desc: '김복자 님의 심장 박동이 분당 125회까지 올랐어요',
         time: '14:16',
         tappable: true,
       ),
       AlertItem(
         type: 'done',
-        title: '복약 완료',
-        desc: '김복자님이 점심 약을 복용했어요 (심박 80)',
+        title: '약 다 드셨어요',
+        desc: '김복자 님이 점심 약을 다 드셨어요 (심장 박동 80)',
         time: '12:04',
       ),
       AlertItem(
         type: 'miss',
-        title: '미복약 알림',
-        desc: '6/3 저녁 약을 복용하지 않았어요',
+        title: '확인이 필요해요',
+        desc: '6월 3일 저녁 약을 드시지 않았어요',
         time: '어제',
       ),
     ],
@@ -150,19 +152,19 @@ class DemoPatients {
   static const PatientData _cheolsu = PatientData(
     name: '김철수',
     relation: '아버지',
-    emoji: '👴',
+    initial: '철',
     age: 75,
     takenCount: 3,
     totalCount: 3,
-    nextDose: '오늘 복약 완료',
+    nextDose: '오늘 약 다 드셨어요',
     currentHr: 68,
     hrNormal: true,
     okToday: true,
     syncedAgo: '5분 전',
     activities: [
-      ActivityItem('✅', '저녁 약 복용 완료', '18:20'),
-      ActivityItem('✅', '점심 약 복용 완료', '12:30'),
-      ActivityItem('💓', '복약 후 심박 정상 (70 bpm)', '12:40'),
+      ActivityItem('저녁 약 다 드셨어요', '18:20'),
+      ActivityItem('점심 약 다 드셨어요', '12:30'),
+      ActivityItem('약 드신 뒤 심장 박동 정상 (70)', '12:40'),
     ],
     records: [
       DayRecord('6월 5일 (오늘)', [
@@ -184,20 +186,20 @@ class DemoPatients {
     alerts: [
       AlertItem(
         type: 'done',
-        title: '복약 완료',
-        desc: '김철수님이 저녁 약을 복용했어요',
+        title: '약 다 드셨어요',
+        desc: '김철수 님이 저녁 약을 다 드셨어요',
         time: '18:20',
       ),
       AlertItem(
         type: 'done',
-        title: '복약 완료',
-        desc: '김철수님이 점심 약을 복용했어요 (심박 70)',
+        title: '약 다 드셨어요',
+        desc: '김철수 님이 점심 약을 다 드셨어요 (심장 박동 70)',
         time: '12:30',
       ),
       AlertItem(
         type: 'done',
-        title: '복약 완료',
-        desc: '김철수님이 아침 약을 복용했어요',
+        title: '약 다 드셨어요',
+        desc: '김철수 님이 아침 약을 다 드셨어요',
         time: '07:50',
       ),
     ],

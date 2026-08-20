@@ -66,6 +66,26 @@ flutter:
   # the material Icons class.
   uses-material-design: true
 
+  # 시니어 리디자인의 타이포는 Noto Sans KR의 400/500/700/900에 기대고 있다.
+  # 폰트를 번들하지 않으면 900이 없는 기기(iOS 기본 한글 폰트 등)에서
+  # 제목의 위계가 약해진다. 아래 네 파일을 assets/fonts/에 받아 두고
+  # 이 블록의 주석을 풀면 디자인 그대로 렌더된다.
+  #   https://fonts.google.com/noto/specimen/Noto+Sans+KR (400/500/700/900 TTF)
+  # 주석 상태에서는 lib/core/theme/app_typography.dart의
+  # fontFamilyFallback이 기기에 깔린 Noto Sans (CJK) KR을 찾아 쓴다.
+  #
+  # fonts:
+  #   - family: Noto Sans KR
+  #     fonts:
+  #       - asset: assets/fonts/NotoSansKR-400.ttf
+  #         weight: 400
+  #       - asset: assets/fonts/NotoSansKR-500.ttf
+  #         weight: 500
+  #       - asset: assets/fonts/NotoSansKR-700.ttf
+  #         weight: 700
+  #       - asset: assets/fonts/NotoSansKR-900.ttf
+  #         weight: 900
+
   # To add assets to your application, add an assets section, like this:
   # assets:
   #   - images/a_dot_burr.jpeg

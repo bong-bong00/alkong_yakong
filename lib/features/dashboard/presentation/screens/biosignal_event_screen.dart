@@ -77,7 +77,7 @@ class BiosignalEventScreen extends StatelessWidget {
                 children: [
                   Row(
                     children: [
-                      const Text('💓', style: TextStyle(fontSize: 22)),
+                      const Icon(Icons.favorite_rounded, size: 22, color: kPrimary),
                       const SizedBox(width: 8),
                       Text(
                         _eventType,

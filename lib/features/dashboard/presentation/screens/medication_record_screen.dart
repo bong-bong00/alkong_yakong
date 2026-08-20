@@ -1,262 +1,403 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
 import '../../../../core/constants/app_colors.dart';
-import '../../../../core/widgets/rounded_gradient_app_bar.dart';
+import '../../../../core/theme/app_typography.dart';
+import '../../../../core/widgets/senior_card.dart';
+import '../../../../core/widgets/senior_header.dart';
+import '../../../medication/application/medication_controller.dart';
+import '../../../medication/domain/medication_models.dart';
 import 'patient_data.dart';
 
-/// 환자·보호자 공용 복약기록 화면.
-/// - 환자: 본인 기록 (accent = kPrimary, records 생략 → 데모)
-/// - 보호자: 선택된 환자 기록 (accent = kGuardian, records·patientName 전달)
-/// 날짜 목록 → 누르면 아침/점심/저녁별 복용 여부 + 시각 + 그때 심박이 펼쳐진다.
-/// 위치: lib/features/dashboard/presentation/screens/medication_record_screen.dart
-class MedicationRecordScreen extends StatefulWidget {
-  final Color accent;
-  final String? patientName; // 보호자가 볼 때 환자 이름. 환자 본인은 null.
-  final bool showBack; // push로 열릴 때 true → 뒤로가기 버튼 표시 (탭일 땐 false)
-  final List<DayRecord>? records; // 환자별 기록. null이면 내장 데모 사용.
+/// 4c — 기록 탭.
+///
+/// 환자 본인과 보호자가 함께 쓴다.
+/// 보호자 전용 색은 폐기했다 — 두 역할이 같은 파란 규칙을 쓴다.
+///
+/// 숫자는 크게, 설명은 말로. "복약률 94%"가 아니라
+/// "잘 지키고 계세요 · 94%"로 읽힌다.
+class MedicationRecordScreen extends ConsumerWidget {
+  /// 보호자가 볼 때 환자 이름. 환자 본인은 null.
+  final String? patientName;
+
+  /// push로 열릴 때 true → B형 헤더(뒤로가기). 탭일 땐 A형.
+  final bool showBack;
+
+  /// 환자별 기록. null이면 본인의 오늘 상태를 쓴다.
+  final List<DayRecord>? records;
 
   const MedicationRecordScreen({
     super.key,
-    this.accent = kPrimary,
     this.patientName,
     this.showBack = false,
     this.records,
   });
 
   @override
-  State<MedicationRecordScreen> createState() => _MedicationRecordScreenState();
+  Widget build(BuildContext context, WidgetRef ref) {
+    final today = ref.watch(medicationProvider);
+    final days = records;
+
+    final title = patientName == null ? '복약 기록' : '$patientName님 복약 기록';
+
+    return Column(
+      children: [
+        if (showBack)
+          SeniorBackHeader(title: title)
+        else
+          SeniorTitleHeader(title: title),
+        Expanded(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(20, 16, 20, 28),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                _MonthCard(rate: _monthRate(days)),
+                const SizedBox(height: 12),
+                _WeekCard(days: _weekStatuses(days, today)),
+                const SizedBox(height: 12),
+                _TodayCard(rows: _todayRows(days, today)),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  // ── 데이터 정리 ───────────────────────────────────────────────
+  // TODO: 백엔드 복약기록 API로 교체한다.
+
+  int _monthRate(List<DayRecord>? days) {
+    if (days == null || days.isEmpty) return 94;
+    var taken = 0;
+    var total = 0;
+    for (final day in days) {
+      total += day.slots.length;
+      taken += day.slots.where((s) => s.taken).length;
+    }
+    if (total == 0) return 0;
+    return (taken * 100 / total).round();
+  }
+
+  List<_DayStatus> _weekStatuses(List<DayRecord>? days, TodayMedication today) {
+    final now = DateTime.now();
+    final monday = DateTime(
+      now.year,
+      now.month,
+      now.day,
+    ).subtract(Duration(days: now.weekday - 1));
+
+    if (days != null && days.isNotEmpty) {
+      // 보호자 경로: 최근 기록을 이번 주에 오래된 순으로 채운다.
+      final ordered = days.reversed.toList();
+      return [
+        for (int i = 0; i < 7; i++)
+          if (i >= ordered.length)
+            _DayStatus(date: monday.add(Duration(days: i)), taken: 0, total: 0)
+          else
+            _DayStatus(
+              date: monday.add(Duration(days: i)),
+              taken: ordered[i].slots.where((s) => s.taken).length,
+              total: ordered[i].slots.length,
+            ),
+      ];
+    }
+
+    // 본인 경로: 지난 날은 데모, 오늘은 실제 상태, 앞날은 비운다.
+    const demoTaken = <int>[3, 3, 2, 3, 3, 3, 3];
+    return [
+      for (int i = 0; i < 7; i++)
+        () {
+          final date = monday.add(Duration(days: i));
+          final isToday = date.day == now.day && date.month == now.month;
+          if (date.isAfter(DateTime(now.year, now.month, now.day))) {
+            return _DayStatus(date: date, taken: 0, total: 0);
+          }
+          if (isToday) {
+            return _DayStatus(
+              date: date,
+              taken: today.takenCount,
+              total: today.doses.length,
+              isToday: true,
+            );
+          }
+          return _DayStatus(date: date, taken: demoTaken[i], total: 3);
+        }(),
+    ];
+  }
+
+  List<_RecordRow> _todayRows(List<DayRecord>? days, TodayMedication today) {
+    if (days != null && days.isNotEmpty) {
+      return [
+        for (final slot in days.first.slots)
+          _RecordRow(
+            time: slot.label,
+            medicines: slot.meds.join(' · '),
+            taken: slot.taken,
+          ),
+      ];
+    }
+    return [
+      for (final dose in today.doses)
+        _RecordRow(
+          time: dose.slot.spokenTime,
+          medicines: dose.medicines.map((m) => m.ingredient).join(' · '),
+          taken: dose.taken,
+        ),
+    ];
+  }
 }
 
-class _MedicationRecordScreenState extends State<MedicationRecordScreen> {
-  int? _openIndex = 0; // 펼쳐진 날짜 (기본: 오늘)
+class _DayStatus {
+  final DateTime date;
+  final int taken;
+  final int total;
+  final bool isToday;
 
-  static const _amber = Color(0xFFE6A100);
+  const _DayStatus({
+    required this.date,
+    required this.taken,
+    required this.total,
+    this.isToday = false,
+  });
 
-  // 보호자가 records를 넘기면 그걸, 아니면(환자 본인) 내장 데모를 쓴다.
-  List<DayRecord> get _days => widget.records ?? _demoDays;
+  bool get complete => total > 0 && taken == total;
+  bool get future => total == 0;
+  bool get partial => total > 0 && taken < total;
+}
 
-  // TODO: 백엔드 복약기록 API로 교체. 환자 본인 화면용 데모 데이터.
-  final List<DayRecord> _demoDays = const [
-    DayRecord('6월 5일 (오늘)', [
-      Slot('아침', taken: true, time: '08:10', hr: 76, meds: ['혈압약', '당뇨약']),
-      Slot('점심', taken: true, time: '12:04', hr: 80, meds: ['혈압약']),
-      Slot('저녁', taken: false, meds: ['혈압약', '당뇨약']),
-    ]),
-    DayRecord('6월 4일', [
-      Slot('아침', taken: true, time: '08:02', hr: 74, meds: ['혈압약', '당뇨약']),
-      Slot('점심', taken: true, time: '12:20', hr: 78, meds: ['혈압약']),
-      Slot('저녁', taken: true, time: '18:30', hr: 75, meds: ['혈압약', '당뇨약']),
-    ]),
-    DayRecord('6월 3일', [
-      Slot('아침', taken: true, time: '08:15', hr: 77, meds: ['혈압약', '당뇨약']),
-      Slot('점심', taken: true, time: '12:10', hr: 79, meds: ['혈압약']),
-      Slot('저녁', taken: false, meds: ['혈압약', '당뇨약']),
-    ]),
-    DayRecord('6월 2일', [
-      Slot('아침', taken: true, time: '08:05', hr: 73, meds: ['혈압약', '당뇨약']),
-      Slot('점심', taken: true, time: '12:00', hr: 76, meds: ['혈압약']),
-      Slot('저녁', taken: true, time: '18:40', hr: 74, meds: ['혈압약', '당뇨약']),
-    ]),
-    DayRecord('6월 1일', [
-      Slot('아침', taken: true, time: '08:12', hr: 75, meds: ['혈압약', '당뇨약']),
-      Slot('점심', taken: true, time: '12:08', hr: 77, meds: ['혈압약']),
-      Slot('저녁', taken: true, time: '18:25', hr: 76, meds: ['혈압약', '당뇨약']),
-    ]),
-  ];
+class _RecordRow {
+  final String time;
+  final String medicines;
+  final bool taken;
+  const _RecordRow({
+    required this.time,
+    required this.medicines,
+    required this.taken,
+  });
+}
+
+/// 카드 1 — 이번 달.
+class _MonthCard extends StatelessWidget {
+  final int rate;
+  const _MonthCard({required this.rate});
 
   @override
   Widget build(BuildContext context) {
-    final accent = widget.accent;
-    return Scaffold(
-      backgroundColor: kBackground,
-      appBar: RoundedGradientAppBar(
-        '복약 기록',
-        color: accent,
-        leading: widget.showBack
-            ? IconButton(
-                icon: const Icon(
-                  Icons.arrow_back_ios_new_rounded,
-                  color: Colors.white,
-                ),
-                onPressed: () => Navigator.of(context).maybePop(),
-              )
-            : null,
-      ),
-      body: ListView(
-        padding: const EdgeInsets.fromLTRB(20, 20, 20, 28),
-        children: [
-          if (widget.patientName != null) ...[
-            Text(
-              '${widget.patientName}님의 복약 기록',
-              style: const TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w800,
-                color: kText,
-              ),
-            ),
-            const SizedBox(height: 14),
-          ],
-          for (int i = 0; i < _days.length; i++) ...[
-            _dayCard(i, _days[i], accent),
-            const SizedBox(height: 10),
-          ],
-        ],
-      ),
-    );
-  }
-
-  Widget _dayCard(int index, DayRecord day, Color accent) {
-    final total = day.slots.length;
-    final taken = day.slots.where((s) => s.taken).length;
-    final allOk = taken == total;
-    final open = _openIndex == index;
-
-    final Color statusColor = allOk ? accent : _amber;
-    final String summary = allOk ? '복약 완료' : '$taken/$total 복용';
-
-    return Container(
-      decoration: BoxDecoration(
-        color: kCard,
-        borderRadius: BorderRadius.circular(18),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.04),
-            blurRadius: 12,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
+    final month = DateTime.now().month;
+    return SeniorCard(
+      padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 18),
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // ── 헤더 (탭하면 펼침/접힘) ──
-          InkWell(
-            borderRadius: BorderRadius.circular(18),
-            onTap: () => setState(() => _openIndex = open ? null : index),
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Row(
-                children: [
-                  Icon(
-                    allOk ? Icons.check_circle_rounded : Icons.error_rounded,
-                    color: statusColor,
-                    size: 22,
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Text(
-                      day.date,
-                      style: const TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w700,
-                        color: kText,
-                      ),
-                    ),
-                  ),
-                  Text(
-                    summary,
-                    style: TextStyle(
-                      fontSize: 12.5,
-                      fontWeight: FontWeight.w600,
-                      color: allOk ? Colors.grey[600] : _amber,
-                    ),
-                  ),
-                  const SizedBox(width: 6),
-                  AnimatedRotation(
-                    turns: open ? 0.5 : 0,
-                    duration: const Duration(milliseconds: 200),
-                    child: Icon(
-                      Icons.keyboard_arrow_down_rounded,
-                      color: Colors.grey[400],
-                    ),
-                  ),
-                ],
+          Row(
+            children: [
+              Expanded(child: Text('이번 달', style: AppText.cardTitle())),
+              Text(
+                '$month월',
+                style: AppText.cardTitle(size: 19, color: AppColors.point),
               ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 10,
+            runSpacing: 4,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              Text('$rate%', style: AppText.hero(size: 40)),
+              Text(
+                rate >= 90 ? '잘 지키고 계세요' : '조금만 더 챙겨보세요',
+                style: AppText.label(size: 18, color: AppColors.textTertiary),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(6),
+            child: LinearProgressIndicator(
+              value: rate / 100,
+              minHeight: 12,
+              backgroundColor: AppColors.divider,
+              valueColor: const AlwaysStoppedAnimation<Color>(AppColors.point),
             ),
           ),
-          // ── 상세 (아침/점심/저녁) ──
-          if (open) ...[
-            const Divider(height: 1, indent: 16, endIndent: 16),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 6, 16, 14),
-              child: Column(
-                children: [for (final s in day.slots) _slotRow(s, accent)],
-              ),
+        ],
+      ),
+    );
+  }
+}
+
+/// 카드 2 — 이번 주.
+class _WeekCard extends StatelessWidget {
+  final List<_DayStatus> days;
+  const _WeekCard({required this.days});
+
+  static const List<String> _labels = ['월', '화', '수', '목', '금', '토', '일'];
+
+  String get _summary {
+    final missed = days.where((d) => d.partial && !d.isToday).toList();
+    if (missed.isEmpty) return '이번 주는 빠뜨린 약이 없어요.';
+    final names = missed.map((d) => '${_labels[d.date.weekday - 1]}요일').join(', ');
+    return '$names 약을 한 번 못 드셨어요.';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SeniorCard(
+      padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 18),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text('이번 주', style: AppText.cardTitle()),
+          const SizedBox(height: 13),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              for (int i = 0; i < days.length; i++)
+                _WeekDay(status: days[i], label: _labels[i]),
+            ],
+          ),
+          const SizedBox(height: 13),
+          Text(
+            _summary,
+            style: AppText.caption(color: AppColors.textSecondary),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _WeekDay extends StatelessWidget {
+  final _DayStatus status;
+  final String label;
+
+  const _WeekDay({required this.status, required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    late final Color background;
+    late final Widget mark;
+    BoxBorder? border;
+
+    if (status.isToday) {
+      background = AppColors.point;
+      mark = Text(
+        status.complete ? '✓' : '${status.taken}',
+        style: AppText.cardTitle(size: 17, color: Colors.white),
+      );
+    } else if (status.future) {
+      background = AppColors.headerBg;
+      mark = Text(
+        '·',
+        style: AppText.cardTitle(size: 17, color: AppColors.inactive),
+      );
+    } else if (status.complete) {
+      background = AppColors.pointTint;
+      mark = Text(
+        '✓',
+        style: AppText.cardTitle(size: 17, color: AppColors.point),
+      );
+    } else {
+      background = AppColors.bg;
+      border = Border.all(color: AppColors.strongBorder, width: 2);
+      mark = Text(
+        '${status.taken}',
+        style: AppText.cardTitle(size: 17, color: AppColors.textTertiary),
+      );
+    }
+
+    return Semantics(
+      label: '${status.date.day}일 $label요일, '
+          '${status.future ? '아직 오지 않은 날' : '${status.total}번 중 ${status.taken}번'}',
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 38,
+            height: 38,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: background,
+              shape: BoxShape.circle,
+              border: border,
             ),
+            child: mark,
+          ),
+          const SizedBox(height: 6),
+          Text(
+            label,
+            style: status.isToday
+                ? AppText.cardTitle(size: 16, color: AppColors.point)
+                : AppText.label(size: 16, color: AppColors.textTertiary),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// 카드 3 — 오늘 기록.
+class _TodayCard extends StatelessWidget {
+  final List<_RecordRow> rows;
+  const _TodayCard({required this.rows});
+
+  @override
+  Widget build(BuildContext context) {
+    return SeniorCard(
+      padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 18),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text('오늘 기록', style: AppText.cardTitle()),
+          const SizedBox(height: 12),
+          for (int i = 0; i < rows.length; i++) ...[
+            if (i > 0) ...[
+              const SizedBox(height: 12),
+              const SeniorDivider(),
+              const SizedBox(height: 12),
+            ],
+            _TodayRow(row: rows[i]),
           ],
         ],
       ),
     );
   }
+}
 
-  Widget _slotRow(Slot s, Color accent) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 10),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // 시간대 라벨
-          SizedBox(
-            width: 38,
-            child: Text(
-              s.label,
-              style: const TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w700,
-                color: kText,
-              ),
-            ),
+class _TodayRow extends StatelessWidget {
+  final _RecordRow row;
+  const _TodayRow({required this.row});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // 고정 폭을 주지 않는다 — 글자가 커져도 시각이 잘리면 안 된다.
+        Text(
+          row.time,
+          softWrap: false,
+          style: AppText.cardTitle(size: 19),
+        ),
+        const SizedBox(width: 14),
+        Expanded(
+          child: Text(
+            row.medicines,
+            style: AppText.body(size: 18.5, color: AppColors.textBody),
           ),
-          const SizedBox(width: 8),
-          // 복용 여부 점
-          Padding(
-            padding: const EdgeInsets.only(top: 2),
-            child: Icon(
-              s.taken ? Icons.check_circle : Icons.cancel,
-              size: 18,
-              color: s.taken ? accent : _amber,
-            ),
+        ),
+        const SizedBox(width: 10),
+        Text(
+          row.taken ? '✓' : '대기',
+          style: AppText.cardTitle(
+            size: row.taken ? 20 : 17,
+            color: row.taken ? AppColors.point : AppColors.textTertiary,
           ),
-          const SizedBox(width: 10),
-          // 약 이름 + 상태
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  s.meds.join(' · '),
-                  style: const TextStyle(fontSize: 13.5, color: kText),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  s.taken ? '${s.time} 복용 · 심박 ${s.hr} bpm' : '복용 안 함',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: s.taken ? Colors.grey[500] : _amber,
-                    fontWeight: s.taken ? FontWeight.w400 : FontWeight.w600,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          // 심박 강조 (복용 시)
-          if (s.taken && s.hr != null) ...[
-            const SizedBox(width: 8),
-            Row(
-              children: [
-                const Text('💓', style: TextStyle(fontSize: 12)),
-                const SizedBox(width: 3),
-                Text(
-                  '${s.hr}',
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w800,
-                    color: accent,
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ],
-      ),
+        ),
+      ],
     );
   }
 }
