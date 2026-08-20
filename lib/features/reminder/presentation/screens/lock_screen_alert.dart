@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
+import '../../../../core/widgets/app_logo.dart';
 import '../../../../core/widgets/senior_button.dart';
 import '../../../medication/domain/medication_models.dart';
 
@@ -81,14 +82,7 @@ class LockScreenAlert extends StatelessWidget {
                   children: [
                     Row(
                       children: [
-                        Container(
-                          width: 30,
-                          height: 30,
-                          decoration: BoxDecoration(
-                            color: AppColors.point,
-                            borderRadius: BorderRadius.circular(9),
-                          ),
-                        ),
+                        const AppLogo(size: 30, radius: 9),
                         const SizedBox(width: 10),
                         Expanded(
                           child: Text('알콩약콩', style: AppText.label(size: 17)),

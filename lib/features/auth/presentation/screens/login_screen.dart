@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/session/auth_session.dart';
 import '../../../../core/theme/app_typography.dart';
+import '../../../../core/widgets/app_logo.dart';
 import '../../../../core/widgets/senior_button.dart';
 import '../../../onboarding/presentation/screens/first_run_screen.dart';
 import 'signup_screen.dart';
@@ -54,21 +55,9 @@ class _LoginScreenState extends State<LoginScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Align(
+              const Align(
                 alignment: Alignment.centerLeft,
-                child: Container(
-                  width: 72,
-                  height: 72,
-                  alignment: Alignment.center,
-                  decoration: BoxDecoration(
-                    color: AppColors.point,
-                    borderRadius: BorderRadius.circular(22),
-                  ),
-                  child: Text(
-                    '알',
-                    style: AppText.screenTitle(size: 34, color: Colors.white),
-                  ),
-                ),
+                child: AppLogo(size: 72),
               ),
               const SizedBox(height: 18),
               Text('알콩약콩', style: AppText.screenTitle(size: 36)),

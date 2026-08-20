@@ -103,10 +103,10 @@ flutter:
   #       - asset: assets/fonts/NotoSansKR-900.ttf
   #         weight: 900
 
-  # To add assets to your application, add an assets section, like this:
-  # assets:
-  #   - images/a_dot_burr.jpeg
-  #   - images/a_dot_ham.jpeg
+  # 앱 아이콘 원본. 런처 아이콘뿐 아니라 로그인·잠금화면 알림의
+  # 로고 자리에도 같은 파일을 쓴다.
+  assets:
+    - assets/icon/app_icon.png
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images
