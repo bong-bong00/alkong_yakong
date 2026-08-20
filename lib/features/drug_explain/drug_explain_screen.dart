@@ -51,7 +51,7 @@ class _DrugExplainScreenState extends State<DrugExplainScreen> {
     // 초기 안내 메시지 추가
     _messages.add({
       'isMe': false,
-      'text': '안녕하세요! 어떤 약에 대해 알고 싶으신가요?\n증상이나 약 이름을 편하게 물어보세요. 🤖',
+      'text': '안녕하세요! 어떤 약에 대해 알고 싶으신가요?\n증상이나 약 이름을 편하게 물어보세요.',
     });
   }
 
@@ -265,7 +265,7 @@ class _ChatBubble extends StatelessWidget {
                 shape: BoxShape.circle,
               ),
               child: const Center(
-                child: Text('🤖', style: TextStyle(fontSize: 18)),
+                child: Icon(Icons.chat_bubble_outline_rounded, size: 18, color: kPrimary),
               ),
             ),
             const SizedBox(width: 8),

@@ -340,9 +340,9 @@ class _SignupScreenState extends State<SignupScreen> {
         title: '어떤 분이신가요?',
         child: Row(
           children: [
-            Expanded(child: _roleCard('patient', '🧓', '환자', '직접 복약 관리')),
+            Expanded(child: _roleCard('patient', '환자', '직접 복약 관리')),
             const SizedBox(width: 12),
-            Expanded(child: _roleCard('guardian', '👩', '보호자', '가족 복약 관리')),
+            Expanded(child: _roleCard('guardian', '보호자', '가족 복약 관리')),
           ],
         ),
       ),
@@ -1003,7 +1003,7 @@ class _SignupScreenState extends State<SignupScreen> {
     ),
   );
 
-  Widget _roleCard(String role, String emoji, String title, String sub) {
+  Widget _roleCard(String role, String title, String sub) {
     final selected = _role == role;
     final c = role == 'guardian' ? kGuardian : kPrimary;
     return GestureDetector(
@@ -1020,7 +1020,6 @@ class _SignupScreenState extends State<SignupScreen> {
         ),
         child: Column(
           children: [
-            Text(emoji, style: const TextStyle(fontSize: 32)),
             const SizedBox(height: 8),
             Text(
               title,
