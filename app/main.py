@@ -5,6 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.routes import (
     biosignal,
+    biosignal_test,
     dashboard,
     drug_explain,
     dur_analysis,
@@ -44,6 +45,7 @@ for router in (
     dur_analysis.router,
     drug_explain.router,
     biosignal.router,
+    biosignal_test.router,
     medication_logs.router,
     notifications.router,
     dashboard.router,
