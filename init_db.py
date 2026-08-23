@@ -185,6 +185,29 @@ TABLE_DEFINITIONS = {
             FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
         )
     """,
+    "biosignal_test_sessions": """
+        CREATE TABLE biosignal_test_sessions (
+            id TEXT PRIMARY KEY,
+            participant_id TEXT NOT NULL CHECK (participant_id IN ('P01', 'P02', 'P03')),
+            scenario TEXT NOT NULL CHECK (scenario IN ('REST_SITTING', 'REST_LYING', 'MORNING', 'MEAL', 'STAIRS', 'WALK', 'SHOWER', 'COFFEE', 'PHONE_AWAY', 'SENSOR_OFF')),
+            started_at TEXT NOT NULL,
+            ended_at TEXT,
+            is_synthetic INTEGER NOT NULL DEFAULT 0 CHECK (is_synthetic IN (0, 1)),
+            note TEXT
+        )
+    """,
+    "biosignal_test_samples": """
+        CREATE TABLE biosignal_test_samples (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            session_id TEXT NOT NULL,
+            bpm INTEGER NOT NULL CHECK (bpm > 0),
+            measured_at TEXT NOT NULL,
+            device_id TEXT,
+            source TEXT NOT NULL CHECK (source IN ('POLAR_DATASET_5S', 'SYNTHETIC_TEST')),
+            is_synthetic INTEGER NOT NULL DEFAULT 0 CHECK (is_synthetic IN (0, 1)),
+            FOREIGN KEY (session_id) REFERENCES biosignal_test_sessions(id) ON DELETE CASCADE
+        )
+    """,
     "baseline_heart_rate": """
         CREATE TABLE baseline_heart_rate (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -298,6 +321,8 @@ INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_medication_logs_user_taken ON medication_logs(user_id, taken_at)",
     "CREATE INDEX IF NOT EXISTS idx_risk_results_user_created ON risk_results(user_id, created_at)",
     "CREATE INDEX IF NOT EXISTS idx_heart_rate_user_measured ON heart_rate_logs(user_id, measured_at)",
+    "CREATE INDEX IF NOT EXISTS idx_biosignal_test_sessions_filter ON biosignal_test_sessions(participant_id, scenario, is_synthetic, started_at)",
+    "CREATE INDEX IF NOT EXISTS idx_biosignal_test_samples_session_measured ON biosignal_test_samples(session_id, measured_at)",
     "CREATE INDEX IF NOT EXISTS idx_abnormal_events_user_occurred ON abnormal_events(user_id, occurred_at)",
     "CREATE INDEX IF NOT EXISTS idx_notifications_user_created ON notifications(user_id, created_at)",
     "CREATE INDEX IF NOT EXISTS idx_notifications_schedule ON notifications(schedule_id, notification_type)",

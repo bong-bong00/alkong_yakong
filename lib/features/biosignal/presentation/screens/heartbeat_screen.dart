@@ -10,6 +10,7 @@ import '../../../../core/widgets/senior_button.dart';
 import '../../../../core/widgets/senior_card.dart';
 import '../../../../core/widgets/senior_header.dart';
 import '../../../medication/domain/medication_models.dart';
+import '../../data/biosignal_dataset_collector.dart';
 import '../../data/polar_service.dart';
 
 /// 4g — 심장 박동.
@@ -35,6 +36,8 @@ class HeartbeatScreen extends StatefulWidget {
 
 class _HeartbeatScreenState extends State<HeartbeatScreen> {
   final PolarService _polar = PolarService();
+  final BiosignalDatasetCollector _datasetCollector =
+      BiosignalDatasetCollector();
   final List<int> _samples = <int>[];
   final List<StreamSubscription<dynamic>> _subscriptions = [];
 
@@ -94,6 +97,10 @@ class _HeartbeatScreenState extends State<HeartbeatScreen> {
       _subscriptions.add(
         _polar.currentBpmStream.listen((bpm) {
           if (!mounted || bpm == null) return;
+          _datasetCollector.addPolarBpm(
+            bpm,
+            deviceId: _deviceId ?? PolarService.defaultDeviceId,
+          );
           setState(() {
             _bpm = bpm;
             _lastReadAt = DateTime.now();
