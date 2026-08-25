@@ -49,3 +49,5 @@ alkongyakong.db
 __pycache__/
 # Widget Preview related
 .widget_preview/
+all_code.txt
+all_code2.txt

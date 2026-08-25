@@ -73,21 +73,66 @@ def search_drug_info_by_name(
             detail="E_DRUG_API_KEY가 설정되지 않았습니다.",
         )
 
-    params = {
-        "ServiceKey": E_DRUG_API_KEY,
-        "pageNo": page_no,
-        "numOfRows": num_of_rows,
-        "itemName": name,
-        "type": "json",
-    }
     try:
-        response = requests.get(
-            E_DRUG_BASE_URL,
-            params=params,
-            timeout=TIMEOUT_SECONDS,
+        exact_items = _request_drug_items(
+            name.strip(),
+            page_no=page_no,
+            num_of_rows=num_of_rows,
         )
-        response.raise_for_status()
-        items = _extract_items(response.json())
+        exact_key = _compact_drug_name(name)
+        exact_matches = [
+            item
+            for item in exact_items
+            if _compact_drug_name(item.get("itemName")) == exact_key
+        ]
+        if exact_matches:
+            normalized = [_normalize_item(item) for item in exact_matches]
+            return {
+                "query": name,
+                "count": len(normalized),
+                "items": normalized,
+                "match_type": "exact",
+            }
+
+        normalized_query = _normalize_drug_search_name(name)
+        partial_items = exact_items
+        if normalized_query and normalized_query != exact_key:
+            partial_items = _request_drug_items(
+                normalized_query,
+                page_no=page_no,
+                num_of_rows=num_of_rows,
+            )
+
+        scored_matches = []
+        for item in partial_items:
+            candidate_name = _normalize_drug_search_name(item.get("itemName"))
+            if not normalized_query or normalized_query not in candidate_name:
+                continue
+            startswith = candidate_name.startswith(normalized_query)
+            length_ratio = len(normalized_query) / max(len(candidate_name), 1)
+            match_score = (
+                80.0 + (20.0 * length_ratio)
+                if startswith
+                else 50.0 + (20.0 * length_ratio)
+            )
+            scored_matches.append(
+                (
+                    0 if startswith else 1,
+                    len(_compact_drug_name(item.get("itemName"))),
+                    _compact_drug_name(item.get("itemName")),
+                    match_score,
+                    item,
+                )
+            )
+        scored_matches.sort(key=lambda match: match[:3])
+        partial_matches = [match[4] for match in scored_matches]
+        if scored_matches:
+            best_match = scored_matches[0]
+            logger.info(
+                "match_type=partial matched_name=%s match_score=%.2f",
+                best_match[4].get("itemName"),
+                best_match[3],
+            )
     except requests.Timeout as error:
         raise HTTPException(status_code=504, detail="식약처 API 타임아웃") from error
     except requests.RequestException as error:
@@ -101,8 +146,48 @@ def search_drug_info_by_name(
             detail="식약처 API 응답 형식이 올바르지 않습니다.",
         ) from error
 
-    normalized = [_normalize_item(item) for item in items]
-    return {"query": name, "count": len(normalized), "items": normalized}
+    normalized = [_normalize_item(item) for item in partial_matches]
+    response = {"query": name, "count": len(normalized), "items": normalized}
+    if normalized:
+        response["match_type"] = "partial"
+    return response
+
+
+def _request_drug_items(
+    query: str,
+    *,
+    page_no: int,
+    num_of_rows: int,
+) -> list[dict[str, Any]]:
+    params = {
+        "ServiceKey": E_DRUG_API_KEY,
+        "pageNo": page_no,
+        "numOfRows": num_of_rows,
+        "itemName": query,
+        "type": "json",
+    }
+    response = requests.get(
+        E_DRUG_BASE_URL,
+        params=params,
+        timeout=TIMEOUT_SECONDS,
+    )
+    response.raise_for_status()
+    return _extract_items(response.json())
+
+
+def _compact_drug_name(value: Any) -> str:
+    return re.sub(r"\s+", "", str(value or "")).casefold()
+
+
+def _normalize_drug_search_name(value: Any) -> str:
+    text = _compact_drug_name(value)
+    text = re.sub(r"\d+(?:\.\d+)?(?:mg|ml)", "", text, flags=re.IGNORECASE)
+    text = re.sub(r"(?:mg|ml)", "", text, flags=re.IGNORECASE)
+    for dosage_form in ("필름코팅정", "연질캡슐", "캡슐", "정"):
+        if text.endswith(dosage_form):
+            text = text[: -len(dosage_form)]
+            break
+    return text
 
 
 def _extract_items(payload: dict[str, Any]) -> list[dict[str, Any]]:

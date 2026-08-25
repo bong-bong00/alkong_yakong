@@ -2,7 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:go_router/go_router.dart';
 import '../../../../core/constants/app_colors.dart';
-import '../../../../core/session/auth_session.dart';
+import '../../../../core/network/api_client.dart';
+import '../../../../core/session/mvp_session.dart';
 
 /// 단계형 회원가입 (위저드).
 /// 위치: lib/features/auth/presentation/screens/signup_screen.dart
@@ -16,6 +17,8 @@ class SignupScreen extends StatefulWidget {
 class _SignupScreenState extends State<SignupScreen> {
   int _step = 0;
   String? _error; // 질문 바로 아래에 크게 표시
+  bool _isSubmitting = false;
+  final ApiClient _apiClient = ApiClient();
 
   String _role = 'patient';
   final _name = TextEditingController();
@@ -243,10 +246,92 @@ class _SignupScreenState extends State<SignupScreen> {
     }
   }
 
+  String? _optionalTrimmed(String value) {
+    final trimmed = value.trim();
+    return trimmed.isEmpty ? null : trimmed;
+  }
+
+  String? _birthDateForApi() {
+    final birth = _birth;
+    if (birth == null) return null;
+    final month = birth.month.toString().padLeft(2, '0');
+    final day = birth.day.toString().padLeft(2, '0');
+    return '${birth.year}-$month-$day';
+  }
+
   Future<void> _submit() async {
     // TODO: 백엔드 회원가입 API 연동.
-    await AuthSession.setLoggedIn(_role);
-    if (mounted) context.go(_role == 'guardian' ? '/guardian' : '/');
+    if (_isSubmitting) return;
+    setState(() {
+      _error = null;
+      _isSubmitting = true;
+    });
+
+    try {
+      final birthDate = _birthDateForApi();
+      final phone = _optionalTrimmed(_phone.text);
+      final body = <String, dynamic>{
+        'name': _name.text.trim(),
+        'role': _role,
+      };
+      if (birthDate != null) body['birth_date'] = birthDate;
+      if (_gender != null) body['gender'] = _gender;
+      if (phone != null) body['phone'] = phone;
+
+      final response = await _apiClient
+          .post('/api/v1/users', body: body)
+          .timeout(const Duration(seconds: 10));
+      final userId = response is Map<String, dynamic>
+          ? response['id']?.toString()
+          : null;
+      if (userId == null || userId.isEmpty) {
+        throw const ApiException('회원가입 응답에 사용자 ID가 없습니다.');
+      }
+
+      MvpSession.userId = userId;
+      if (!mounted) return;
+      await _showSignupCompleteDialog();
+      if (!mounted) return;
+      if (Navigator.of(context).canPop()) {
+        Navigator.of(context).pop();
+      } else {
+        context.go('/login');
+      }
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _error = error.toString());
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('회원가입에 실패했습니다: $error'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _isSubmitting = false);
+      }
+    }
+  }
+
+  Future<void> _showSignupCompleteDialog() {
+    return showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text(
+          '가입이 완료되었습니다',
+          style: TextStyle(fontWeight: FontWeight.w800),
+        ),
+        content: const Text('로그인 화면으로 이동합니다.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('확인', style: TextStyle(color: kPrimary)),
+          ),
+        ],
+      ),
+    );
   }
 
   List<_StepDef> _buildSteps() {
@@ -255,9 +340,9 @@ class _SignupScreenState extends State<SignupScreen> {
         title: '어떤 분이신가요?',
         child: Row(
           children: [
-            Expanded(child: _roleCard('patient', '🧓', '환자', '직접 복약 관리')),
+            Expanded(child: _roleCard('patient', '환자', '직접 복약 관리')),
             const SizedBox(width: 12),
-            Expanded(child: _roleCard('guardian', '👩', '보호자', '가족 복약 관리')),
+            Expanded(child: _roleCard('guardian', '보호자', '가족 복약 관리')),
           ],
         ),
       ),
@@ -842,9 +927,13 @@ class _SignupScreenState extends State<SignupScreen> {
                             borderRadius: BorderRadius.circular(16),
                           ),
                         ),
-                        onPressed: () => _next(steps),
+                        onPressed: _isSubmitting ? null : () => _next(steps),
                         child: Text(
-                          isLast ? '가입하기' : '다음',
+                          isLast && _isSubmitting
+                              ? '가입 중...'
+                              : isLast
+                              ? '가입하기'
+                              : '다음',
                           style: const TextStyle(
                             fontSize: 16,
                             fontWeight: FontWeight.w700,
@@ -914,7 +1003,7 @@ class _SignupScreenState extends State<SignupScreen> {
     ),
   );
 
-  Widget _roleCard(String role, String emoji, String title, String sub) {
+  Widget _roleCard(String role, String title, String sub) {
     final selected = _role == role;
     final c = role == 'guardian' ? kGuardian : kPrimary;
     return GestureDetector(
@@ -931,7 +1020,6 @@ class _SignupScreenState extends State<SignupScreen> {
         ),
         child: Column(
           children: [
-            Text(emoji, style: const TextStyle(fontSize: 32)),
             const SizedBox(height: 8),
             Text(
               title,
