@@ -1,14 +1,15 @@
+import base64
+import binascii
 import json
-import re
 import uuid
 from datetime import date, timedelta
-from hashlib import sha1
 
 from fastapi import HTTPException
 
 from app.database import get_connection
 from app.models.schemas import OCRMedicineItem, PrescriptionOCRRequest
-from app.services.gemini_service import analyze_prescription_image
+from app.services.matching.name_matcher import match_medicine_name
+from app.services.ocr.pipeline import run_ocr_pipeline, run_ocr_text_pipeline
 
 
 DEFAULT_SCHEDULE_TIMES = {
@@ -22,37 +23,50 @@ DEFAULT_SCHEDULE_TIMES = {
 }
 
 
-def _extract_items(request: PrescriptionOCRRequest) -> list[OCRMedicineItem]:
+def _structured_items(structured: dict) -> list[OCRMedicineItem]:
+    results = []
+    for item in structured.get("items", []):
+        if not item.get("drug_name"):
+            continue
+        results.append(
+            OCRMedicineItem(
+                drug_name=item["drug_name"],
+                dosage=item.get("dosage"),
+                unit=item.get("unit"),
+                frequency_per_day=item.get("frequency_per_day"),
+                times_per_take=item.get("times_per_take"),
+                duration_days=item.get("duration_days"),
+                easy_explanation=item.get("easy_explanation"),
+            )
+        )
+    return results
+
+
+def _extract_items(request: PrescriptionOCRRequest) -> tuple[list[OCRMedicineItem], str]:
     if request.image_data:
-        parsed_data = analyze_prescription_image(request.image_data)
-        if parsed_data and "items" in parsed_data:
-            results = []
-            for item in parsed_data["items"]:
-                if not item.get("drug_name"):
-                    continue
-                results.append(OCRMedicineItem(
-                    drug_name=item["drug_name"],
-                    dosage=str(item.get("dosage") or "1"),
-                    unit=str(item.get("unit") or "정"),
-                    frequency_per_day=int(item.get("frequency_per_day") or 1),
-                    times_per_take=int(item.get("times_per_take") or 1),
-                    duration_days=int(item.get("duration_days") or 1),
-                    easy_explanation=item.get("easy_explanation")
-                ))
-            if results:
-                return results
+        try:
+            encoded = request.image_data.split(",", 1)[-1]
+            image_bytes = base64.b64decode(encoded, validate=True)
+        except (binascii.Error, ValueError, TypeError) as error:
+            raise HTTPException(
+                status_code=422,
+                detail="이미지 데이터가 올바르지 않습니다.",
+            ) from error
+        result = run_ocr_pipeline(image_bytes)
+    elif request.ocr_text:
+        result = run_ocr_text_pipeline(request.ocr_text)
+    else:
+        raise HTTPException(status_code=422, detail="처방전 이미지 또는 원문이 필요합니다.")
 
-    if request.mock_items:
-        return request.mock_items
-
-    names = [
-        value.strip()
-        for value in re.split(r"[\n,]", request.ocr_text or "")
-        if value.strip()
-    ]
-    if not names:
-        names = ["아스피린 100mg"]
-    return [OCRMedicineItem(drug_name=name) for name in names]
+    if not result.ok or not result.structured:
+        raise HTTPException(
+            status_code=422,
+            detail={"message": "처방전을 읽지 못했습니다.", "error": result.error},
+        )
+    items = _structured_items(result.structured)
+    if not items:
+        raise HTTPException(status_code=422, detail="처방전에서 약품을 찾지 못했습니다.")
+    return items, result.raw_text
 
 
 def _resolve_medicine(cursor, item: OCRMedicineItem) -> tuple[str, str]:
@@ -63,30 +77,24 @@ def _resolve_medicine(cursor, item: OCRMedicineItem) -> tuple[str, str]:
             (item.medicine_code,),
         ).fetchone()
     if not medicine:
-        medicine = cursor.execute(
-            "SELECT * FROM medicines WHERE product_name = ?",
-            (item.drug_name,),
-        ).fetchone()
+        rows = cursor.execute(
+            "SELECT * FROM medicines WHERE product_name IS NOT NULL"
+        ).fetchall()
+        match = match_medicine_name(
+            item.drug_name,
+            [row["product_name"] for row in rows],
+        )
+        if match.matched_name:
+            medicine = next(
+                row for row in rows
+                if row["product_name"] == match.matched_name
+            )
     if medicine:
         return medicine["medicine_code"], "MATCHED"
-
-    code = item.medicine_code or f"MOCK-{sha1(item.drug_name.encode('utf-8')).hexdigest()[:10].upper()}"
-    cursor.execute(
-        """
-        INSERT OR IGNORE INTO medicines (
-            medicine_code, product_name, ingredient, efficacy, usage, precautions
-        ) VALUES (?, ?, ?, ?, ?, ?)
-        """,
-        (
-            code,
-            item.drug_name,
-            item.ingredient or item.drug_name,
-            "등록된 효능 정보가 없습니다.",
-            "처방 지시에 따라 복용하세요.",
-            "이상 반응이 있으면 전문가와 상담하세요.",
-        ),
+    raise HTTPException(
+        status_code=422,
+        detail=f"등록된 공식 약품에서 확인하지 못했습니다: {item.drug_name}",
     )
-    return code, "MOCK_CREATED"
 
 
 def _parse_date(value: str | None, fallback: date) -> date:
@@ -166,6 +174,7 @@ def create_prescription_from_ocr(request: PrescriptionOCRRequest) -> dict:
     conn = get_connection()
     try:
         cursor = conn.cursor()
+        items, raw_text = _extract_items(request)
         user = cursor.execute(
             "SELECT id FROM users WHERE id = ?", (request.user_id,)
         ).fetchone()
@@ -191,12 +200,12 @@ def create_prescription_from_ocr(request: PrescriptionOCRRequest) -> dict:
                 request.prescribed_date,
                 request.expire_date,
                 request.image_path,
-                request.ocr_text,
+                raw_text,
             ),
         )
 
         created_items = []
-        for item in _extract_items(request):
+        for item in items:
             medicine_code, match_status = _resolve_medicine(cursor, item)
             cursor.execute(
                 """
@@ -266,6 +275,7 @@ def create_prescription_from_ocr(request: PrescriptionOCRRequest) -> dict:
             "prescription_id": prescription_id,
             "user_id": request.user_id,
             "ocr_status": "COMPLETED",
+            "ocr_text": raw_text,
             "items": created_items,
         }
     except Exception:

@@ -47,3 +47,5 @@ app.*.map.json
 
 alkongyakong.db
 __pycache__/
+# Widget Preview related
+.widget_preview/

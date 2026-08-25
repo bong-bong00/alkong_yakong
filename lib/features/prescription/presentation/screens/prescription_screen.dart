@@ -209,14 +209,30 @@ class _PrescriptionScreenState extends State<PrescriptionScreen> {
                   ),
                 ),
                 const SizedBox(height: 16),
+                if ((_resultData?['ocr_text'] ?? '').toString().isNotEmpty) ...[
+                  Text(
+                    '읽은 원문',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                      color: Colors.grey[700],
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    _resultData!['ocr_text'].toString(),
+                    style: TextStyle(fontSize: 13, color: Colors.grey[700]),
+                  ),
+                  const SizedBox(height: 16),
+                ],
                 Expanded(
                   child: ListView.separated(
-                    itemCount: _resultData?['items']?.length ?? 2,
-                    separatorBuilder: (_, __) => const SizedBox(height: 12),
+                    itemCount: (_resultData?['items'] as List?)?.length ?? 0,
+                    separatorBuilder: (_, _) => const SizedBox(height: 12),
                     itemBuilder: (context, index) {
-                      final item = _resultData?['items']?[index] ?? {};
-                      final name = item['drug_name'] ?? (index == 0 ? '모사피아정' : '넥시움정');
-                      final freq = item['frequency_per_day'] ?? (index == 0 ? 3 : 1);
+                      final item = (_resultData?['items'] as List)[index] as Map;
+                      final name = item['drug_name']?.toString() ?? '';
+                      final freq = item['frequency_per_day'] ?? 1;
                       final days = item['duration_days'] ?? 7;
                       return Container(
                         padding: const EdgeInsets.all(16),
