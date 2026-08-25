@@ -244,13 +244,81 @@ class _CaptureScreen extends StatelessWidget {
                   child: IntrinsicHeight(
                     child: Column(
                       children: [
-                        Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 22),
-                          child: Container(
-                            width: double.infinity,
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 22,
-                              vertical: 20,
+                        const CircularProgressIndicator(color: kPrimary),
+                        const SizedBox(height: 24),
+                        Text(
+                          '처방전을 분석 중입니다...',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.grey[700],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ] else if (_state == OcrState.result) ...[
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFFEBEE),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: const Color(0xFFE24B4A).withValues(alpha: 0.3)),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.warning_rounded, color: Color(0xFFE24B4A), size: 20),
+                      const SizedBox(width: 8),
+                      const Expanded(
+                        child: Text(
+                          'AI가 분석한 결과입니다. 실제 처방전과 일치하는지 반드시 확인해주세요.',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                            color: Color(0xFFC2185B),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 16),
+                if ((_resultData?['ocr_text'] ?? '').toString().isNotEmpty) ...[
+                  Text(
+                    '읽은 원문',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                      color: Colors.grey[700],
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    _resultData!['ocr_text'].toString(),
+                    style: TextStyle(fontSize: 13, color: Colors.grey[700]),
+                  ),
+                  const SizedBox(height: 16),
+                ],
+                Expanded(
+                  child: ListView.separated(
+                    itemCount: (_resultData?['items'] as List?)?.length ?? 0,
+                    separatorBuilder: (_, _) => const SizedBox(height: 12),
+                    itemBuilder: (context, index) {
+                      final item = (_resultData?['items'] as List)[index] as Map;
+                      final name = item['drug_name']?.toString() ?? '';
+                      final freq = item['frequency_per_day'] ?? 1;
+                      final days = item['duration_days'] ?? 7;
+                      return Container(
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(16),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withValues(alpha: 0.04),
+                              blurRadius: 10,
+                              offset: const Offset(0, 4),
                             ),
                             decoration: BoxDecoration(
                               color: AppColors.point,

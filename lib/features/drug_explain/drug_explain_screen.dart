@@ -19,6 +19,14 @@ class _DrugExplainScreenState extends State<DrugExplainScreen> {
 
   bool _isLoading = false;
   final List<Map<String, dynamic>> _messages = [];
+  List<Map<String, dynamic>> _suggestions = [];
+  String? _selectedMedicine;
+  static const _quickQuestions = [
+    '지금 먹을 약',
+    '이 약 설명',
+    '같이 먹으면',
+    '안 먹었을 때',
+  ];
 
   static const String _demoTylenolSummaryReply =
       '식약처에 따르면 타이레놀정은 통증을 줄이고 열을 낮추는 데 사용하는 대표적인 해열진통제입니다.\n\n'
@@ -74,6 +82,44 @@ class _DrugExplainScreenState extends State<DrugExplainScreen> {
     });
   }
 
+  Future<void> _loadSuggestions(String query) async {
+    try {
+      final encodedQuery = Uri.encodeQueryComponent(query.trim());
+      final encodedUser = Uri.encodeQueryComponent(MvpSession.userId);
+      final response = await _apiClient.get(
+        '/api/v1/drug-explain/suggestions?q=$encodedQuery&user_id=$encodedUser',
+      );
+      if (!mounted || response is! Map) return;
+      final items = response['items'];
+      if (items is! List) return;
+      setState(() {
+        _suggestions = items.whereType<Map>().map(Map<String, dynamic>.from).toList();
+      });
+    } catch (_) {
+      if (mounted) setState(() => _suggestions = []);
+    }
+  }
+
+  void _selectSuggestion(Map<String, dynamic> item) {
+    final label = item['label']?.toString() ?? '';
+    final type = item['type']?.toString();
+    if (label.isEmpty) return;
+    if (type == 'medicine' || type == 'today_medicine') {
+      _selectedMedicine = label;
+      _chatController
+        ..text = label
+        ..selection = TextSelection.collapsed(offset: label.length);
+    } else {
+      final question = _selectedMedicine == null
+          ? label
+          : '$_selectedMedicine $label';
+      _chatController
+        ..text = question
+        ..selection = TextSelection.collapsed(offset: question.length);
+    }
+    setState(() => _suggestions = []);
+  }
+
   Future<void> _sendMessage() async {
     final text = _chatController.text.trim();
     if (text.isEmpty) return;
@@ -94,10 +140,23 @@ class _DrugExplainScreenState extends State<DrugExplainScreen> {
       );
 
       final data = Map<String, dynamic>.from(response as Map);
-      final reply = _safeDemoReply(
-        text,
-        data['reply']?.toString() ?? '응답을 받아오지 못했습니다.',
-      );
+      var reply = data['reply']?.toString() ?? '응답을 받아오지 못했습니다.';
+      final trace = data['trace'];
+      if (trace is Map) {
+        final corrected = trace['corrected']?.toString();
+        final source = trace['source']?.toString();
+        final nameScore = trace['name_match_score'];
+        final evidenceScore = trace['evidence_score'];
+        final metadata = [
+          if (corrected != null && corrected.isNotEmpty) '찾은 약: $corrected',
+          if (source != null && source.isNotEmpty) '출처: $source',
+          if (nameScore != null) '약 이름 일치율: $nameScore%',
+          if (evidenceScore != null) '공식자료 근거 충족률: $evidenceScore%',
+        ];
+        if (metadata.isNotEmpty) {
+          reply = '${metadata.join('\n')}\n\n$reply';
+        }
+      }
 
       if (!mounted) return;
       setState(() {
@@ -143,6 +202,41 @@ class _DrugExplainScreenState extends State<DrugExplainScreen> {
       body: SafeArea(
         child: Column(
           children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: _quickQuestions
+                      .map(
+                        (question) => ActionChip(
+                          label: Text(question),
+                          onPressed: _isLoading
+                              ? null
+                              : () {
+                                  _chatController.text = question;
+                                  _sendMessage();
+                                },
+                        ),
+                      )
+                      .toList(),
+                ),
+              ),
+            ),
+            if (_selectedMedicine != null)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: Chip(
+                    avatar: const Icon(Icons.medication_outlined, size: 18),
+                    label: Text('선택한 약: $_selectedMedicine'),
+                    onDeleted: () => setState(() => _selectedMedicine = null),
+                  ),
+                ),
+              ),
             // 채팅 내역 리스트
             Expanded(
               child: ListView.builder(
@@ -164,7 +258,26 @@ class _DrugExplainScreenState extends State<DrugExplainScreen> {
                   style: TextStyle(fontSize: 12, color: kTextSub),
                 ),
               ),
-            // 하단 입력창 (플로팅 스타일)
+            if (_suggestions.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: _suggestions
+                        .map(
+                          (item) => ActionChip(
+                            label: Text(item['label']?.toString() ?? ''),
+                            onPressed: () => _selectSuggestion(item),
+                          ),
+                        )
+                        .toList(),
+                  ),
+                ),
+              ),
+            // 하단 입력창 (플로팅 스타일로 변경)
             Padding(
               // 하단바와 겹치지 않도록 좌, 우, 아래에 여백을 주어 띄웁니다.
               padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
@@ -191,6 +304,7 @@ class _DrugExplainScreenState extends State<DrugExplainScreen> {
                       child: TextField(
                         controller: _chatController,
                         textInputAction: TextInputAction.send,
+                        onChanged: _loadSuggestions,
                         onSubmitted: (_) => _sendMessage(),
                         decoration: InputDecoration(
                           hintText: '궁금한 약 정보나 증상을 입력하세요...',
