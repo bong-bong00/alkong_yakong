@@ -4,6 +4,8 @@ import 'package:go_router/go_router.dart';
 import 'package:flutter_tabler_icons/flutter_tabler_icons.dart';
 
 import '../../../../core/constants/app_colors.dart';
+import '../../../../core/mode/app_mode.dart';
+import '../../../easy_flow/presentation/easy_flow_shell.dart';
 import '../../../../core/widgets/senior_bottom_nav.dart';
 import '../../../profile/presentation/screens/mypage_screen.dart';
 import 'medication_record_screen.dart';
@@ -32,6 +34,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // 쉬운 모드는 같은 화면을 한 줄로 이어 붙인 쉘을 쓴다.
+    // 화면 자체는 아래 일반 모드와 완전히 같은 것을 부른다.
+    if (ref.watch(appModeProvider).isEasy) {
+      return const EasyFlowShell();
+    }
+
     return Scaffold(
       backgroundColor: AppColors.bg,
       body: IndexedStack(

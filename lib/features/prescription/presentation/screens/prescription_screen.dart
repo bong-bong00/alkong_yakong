@@ -35,7 +35,13 @@ enum PrescriptionStep {
 /// "처방전 OCR 인식"이라는 말을 쓰지 않는다.
 /// 읽지 못했을 때도 사용자를 탓하지 않는다 — "다시 찍어드릴게요".
 class PrescriptionScreen extends StatefulWidget {
-  const PrescriptionScreen({super.key});
+  /// 등록이 끝났을 때 부를 콜백.
+  ///
+  /// 쉬운 모드가 이걸 받아서 다음 화면으로 넘긴다. 일반 모드는 넘기지 않고,
+  /// 그때는 지금까지처럼 위험이 있으면 주의 화면을 띄우고 없으면 닫는다.
+  final VoidCallback? onCompleted;
+
+  const PrescriptionScreen({super.key, this.onCompleted});
 
   @override
   State<PrescriptionScreen> createState() => _PrescriptionScreenState();
@@ -167,6 +173,13 @@ class _PrescriptionScreenState extends State<PrescriptionScreen> {
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('약을 등록했어요. 시간에 맞춰 알려드릴게요.')),
     );
+
+    // 쉬운 모드에서는 다음 단계가 곧 "함께 먹어도 되는지" 화면이라
+    // 여기서 화면을 직접 열지 않고 넘어갔다는 사실만 알린다.
+    if (widget.onCompleted != null) {
+      widget.onCompleted!();
+      return;
+    }
 
     // 위험이 있으면 주의 화면을 바로 띄운다.
     if (hasRisk) {

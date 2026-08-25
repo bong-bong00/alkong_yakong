@@ -11,12 +11,18 @@ import 'package:alkong_yakong/features/voice/presentation/screens/voice_screen.d
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:alkong_yakong/features/dashboard/presentation/screens/home_screen.dart';
+import 'package:alkong_yakong/features/easy_flow/domain/easy_flow.dart';
+import 'package:alkong_yakong/core/widgets/senior_bottom_nav.dart';
+import 'package:alkong_yakong/core/mode/app_mode.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 /// 시니어 리디자인의 QA 기준을 코드로 굳힌 테스트.
 ///
 /// 특히 5h — 시스템 글자 크기를 최대로 올렸을 때도 레이아웃이 버텨야 한다.
 /// 어떤 화면도 오버플로로 터지면 안 된다.
 void main() {
+  _easyModeTests();
   Widget wrap(Widget child, {double textScale = 1.0}) {
     return ProviderScope(
       child: MaterialApp(
@@ -144,4 +150,77 @@ void main() {
     // 글자 끝에서 테두리까지 20px 안쪽 — 가로를 채우는 버튼이면 훨씬 멀어진다.
     expect(fieldRight - buttonRight, lessThan(24));
   });
+}
+
+// ════════════════════════════════════════════════════════════════
+//  쉬운 모드 — 화면은 그대로, 오가는 방법만 다르다
+// ════════════════════════════════════════════════════════════════
+
+void _easyModeTests() {
+  testWidgets('쉬운 모드는 탭 대신 "다음" 버튼 하나로 넘어간다', (tester) async {
+    SharedPreferences.setMockInitialValues({});
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [appModeProvider.overrideWith((ref) => _EasyMode())],
+        child: MaterialApp(theme: AppTheme.build(), home: const HomeScreen()),
+      ),
+    );
+    await tester.pump();
+
+    // 아래 탭바가 없다.
+    expect(find.byType(SeniorBottomNav), findsNothing);
+    // 첫 단계의 다음 버튼이 보인다.
+    expect(find.text(kEasyFlow.first.nextLabel), findsOneWidget);
+    // 첫 단계에는 "이전으로"가 없다.
+    expect(find.text('이전으로'), findsNothing);
+  });
+
+  testWidgets('다음을 누르면 흐름 순서대로 넘어가고 되돌아올 수 있다', (tester) async {
+    SharedPreferences.setMockInitialValues({});
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [appModeProvider.overrideWith((ref) => _EasyMode())],
+        child: MaterialApp(theme: AppTheme.build(), home: const HomeScreen()),
+      ),
+    );
+    await tester.pump();
+
+    await tester.tap(find.text(kEasyFlow[0].nextLabel));
+    await tester.pump();
+    expect(find.text(kEasyFlow[1].nextLabel), findsOneWidget);
+    expect(find.text('이전으로'), findsOneWidget);
+
+    await tester.tap(find.text('이전으로'));
+    await tester.pump();
+    expect(find.text(kEasyFlow[0].nextLabel), findsOneWidget);
+  });
+
+  test('마지막 단계에서 다음을 누르면 처음으로 돌아간다 — 막다른 곳이 없다', () {
+    final last = kEasyFlow.length - 1;
+    expect((last + 1) % kEasyFlow.length, 0);
+  });
+
+  test('쉬운 모드가 부르는 화면은 모두 일반 모드에도 있는 화면이다', () {
+    // 흐름에 일반 모드가 모르는 화면이 섞이면 "앱 두 개"가 된다.
+    for (final step in kEasyFlow) {
+      expect(EasyScreen.values.contains(step.screen), isTrue);
+    }
+    // 같은 화면을 두 번 지나가지 않는다.
+    final screens = kEasyFlow.map((s) => s.screen).toList();
+    expect(screens.toSet().length, screens.length);
+  });
+
+  test('모든 단계에 다음 버튼 라벨이 있다', () {
+    for (final step in kEasyFlow) {
+      expect(step.nextLabel.trim(), isNotEmpty);
+      expect(step.title.trim(), isNotEmpty);
+    }
+  });
+}
+
+/// 테스트에서 쉬운 모드로 고정하기 위한 알림자.
+class _EasyMode extends AppModeNotifier {
+  _EasyMode() {
+    state = AppMode.easy;
+  }
 }

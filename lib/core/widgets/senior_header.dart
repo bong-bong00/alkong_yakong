@@ -108,6 +108,12 @@ class SeniorBackButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // 쉬운 모드처럼 화면이 쉘 안에 얹혀 있으면 돌아갈 곳이 없다.
+    // 눌러도 아무 일이 없는 버튼은 그리지 않는다.
+    if (onTap == null && !Navigator.of(context).canPop()) {
+      return const SizedBox(width: 4);
+    }
+
     return Semantics(
       button: true,
       label: '뒤로 가기',

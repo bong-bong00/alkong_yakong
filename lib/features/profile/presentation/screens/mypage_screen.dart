@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:flutter_tabler_icons/flutter_tabler_icons.dart';
 
 import '../../../../core/constants/app_colors.dart';
+import '../../../../core/mode/app_mode.dart';
 import '../../../../core/providers/user_role.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../core/widgets/senior_button.dart';
@@ -47,6 +48,7 @@ class _MyPageScreenState extends ConsumerState<MyPageScreen> {
   @override
   Widget build(BuildContext context) {
     final today = ref.watch(medicationProvider);
+    final mode = ref.watch(appModeProvider);
     final age = DateTime.now().year - widget.birthYear;
     final medicineCount = today.doses
         .expand((d) => d.medicines.map((m) => m.ingredient))
@@ -158,6 +160,25 @@ class _MyPageScreenState extends ConsumerState<MyPageScreen> {
                           value: _loudAlarm,
                           semanticLabel: '알림 소리를 크게',
                           onChanged: (v) => setState(() => _loudAlarm = v),
+                        ),
+                      ),
+                      const SeniorDivider(),
+                      // 화면은 그대로 두고 오가는 방법만 바꾼다.
+                      SeniorListRow(
+                        label: '쉬운 모드',
+                        icon: TablerIcons.arrow_narrow_right,
+                        subtitle: mode.isEasy
+                            ? AppMode.easy.description
+                            : '켜면 버튼 하나로 다음 화면까지 안내해요',
+                        subtitleColor: mode.isEasy
+                            ? AppColors.point
+                            : AppColors.textTertiary,
+                        trailing: SeniorToggle(
+                          value: mode.isEasy,
+                          semanticLabel: '쉬운 모드',
+                          onChanged: (v) => ref
+                              .read(appModeProvider.notifier)
+                              .set(v ? AppMode.easy : AppMode.normal),
                         ),
                       ),
                     ],
