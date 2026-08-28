@@ -28,31 +28,6 @@ class _DrugExplainScreenState extends State<DrugExplainScreen> {
     '안 먹었을 때',
   ];
 
-  static const String _demoTylenolSummaryReply =
-      '식약처에 따르면 타이레놀정은 통증을 줄이고 열을 낮추는 데 사용하는 대표적인 해열진통제입니다.\n\n'
-      '주성분은 아세트아미노펜이며, 두통, 치통, 근육통, 감기 몸살, 발열 같은 증상 완화에 사용됩니다.\n\n'
-      '비교적 위에 부담이 적은 편이지만, 정해진 용량을 초과하면 간 손상 위험이 있어 주의가 필요합니다.';
-
-  static const String _demoTylenolEffectsReply =
-      '식약처에 따르면 타이레놀정의 주요 효능은 통증 완화와 해열 작용입니다.\n\n'
-      '효능:\n'
-      '• 두통 완화\n'
-      '• 발열 감소\n'
-      '• 치통 완화\n'
-      '• 생리통 완화\n'
-      '• 근육통 완화\n'
-      '• 감기 증상 완화\n\n'
-      '부작용:\n'
-      '• 메스꺼움\n'
-      '• 구토\n'
-      '• 피부 발진\n'
-      '• 알레르기 반응\n'
-      '• 간 기능 이상 (과다 복용 시 위험)\n\n'
-      '주의사항:\n'
-      '술과 함께 복용하면 간 손상 위험이 증가할 수 있습니다.\n'
-      '하루 최대 복용량을 초과하지 않는 것이 중요합니다.\n'
-      '다른 감기약과 함께 복용할 경우 중복 성분 여부를 확인해야 합니다.';
-
   @override
   void initState() {
     super.initState();
@@ -132,10 +107,8 @@ class _DrugExplainScreenState extends State<DrugExplainScreen> {
     _scrollToBottom();
 
     try {
-      // TODO: 실제 AI 챗봇 API 엔드포인트로 변경 필요
-      // 현재는 기존 약물 설명 API 구조를 임시로 챗봇 응답처럼 활용하도록 구성
       final response = await _apiClient.post(
-        '/api/v1/drug-explain/chat', // 가상의 챗봇 엔드포인트
+        '/api/v1/drug-explain/chat',
         body: {'user_id': MvpSession.userId, 'message': text},
       );
 
@@ -167,13 +140,16 @@ class _DrugExplainScreenState extends State<DrugExplainScreen> {
       setState(() {
         _messages.add({
           'isMe': false,
-          'text': '죄송합니다. 오류가 발생했어요.\n${_apiError(error)}',
+          'text': _chatErrorText(error),
         });
       });
     } catch (error) {
       if (!mounted) return;
       setState(() {
-        _messages.add({'isMe': false, 'text': '통신 중 문제가 발생했습니다.\n다시 시도해주세요.'});
+        _messages.add({
+          'isMe': false,
+          'text': '서버에 연결하지 못했어요. 잠시 후 다시 시도해주세요.',
+        });
       });
     } finally {
       if (mounted) {
@@ -181,17 +157,6 @@ class _DrugExplainScreenState extends State<DrugExplainScreen> {
         _scrollToBottom();
       }
     }
-  }
-
-  String _safeDemoReply(String question, String reply) {
-    if (!reply.contains('너무 바빠') && !reply.contains('AI 약사가 설정')) {
-      return reply;
-    }
-    final normalized = question.replaceAll(' ', '').toLowerCase();
-    if (normalized.contains('효능') || normalized.contains('부작용')) {
-      return _demoTylenolEffectsReply;
-    }
-    return _demoTylenolSummaryReply;
   }
 
   @override
@@ -216,7 +181,10 @@ class _DrugExplainScreenState extends State<DrugExplainScreen> {
                           onPressed: _isLoading
                               ? null
                               : () {
-                                  _chatController.text = question;
+                                  _selectSuggestion({
+                                    'label': question,
+                                    'type': 'faq',
+                                  });
                                   _sendMessage();
                                 },
                         ),
@@ -424,4 +392,19 @@ String _apiError(ApiException error) {
   return error.statusCode == null
       ? error.message
       : '${error.message} (HTTP ${error.statusCode})';
+}
+
+String _chatErrorText(ApiException error) {
+  switch (error.statusCode) {
+    case 404:
+    case 422:
+      return '공식 자료에서 그 약을 찾지 못했어요.\n약 이름을 목록에서 골라 주세요.';
+    case 502:
+    case 504:
+      return '약 정보를 가져오는 데 시간이 걸렸어요.\n잠시 후 다시 시도해주세요.';
+    case 503:
+      return '지금은 약 검색을 쓸 수 없어요.';
+    default:
+      return '답변을 만들지 못했어요.\n${_apiError(error)}';
+  }
 }

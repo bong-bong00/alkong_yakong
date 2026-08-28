@@ -7,7 +7,7 @@ from fastapi import HTTPException
 from app.core.config import GEMINI_MODEL
 from app.database import get_connection
 from app.services.external_api_service import fetch_e_drug_info
-from app.services.gemini_service import generate_easy_explanation
+from app.services.pharmacist.generate import generate_card_from_source
 
 
 logger = logging.getLogger(__name__)
@@ -50,14 +50,19 @@ def get_drug_explanation(
             )
             medicine = _get_medicine(cursor, medicine_code)
 
-            generated = generate_easy_explanation(official_info)
-            if generated:
+            generated = None
+            try:
+                generated = generate_card_from_source(official_info)
+            except Exception:
+                generated = None
+            if generated and generated.get("source_based") is not False:
                 card_data = {
                     **generated,
                     "model_name": GEMINI_MODEL,
                     "generated_by": "e약은요+gemini",
                     "source": "e약은요",
                     "is_verified": 0,
+                    "source_based": True,
                 }
             else:
                 card_data = {
@@ -84,24 +89,13 @@ def get_drug_explanation(
             raise HTTPException(status_code=404, detail="의약품이 없습니다.")
 
         stale_cache = _get_latest_card(cursor, medicine_code)
-        if stale_cache:
+        if stale_cache and stale_cache.get("source_based"):
             return _response(medicine, stale_cache, generated_by="local-cache")
 
-        card = _save_card(
-            cursor,
-            medicine_code,
-            {
-                **_local_fallback(medicine),
-                "model_name": "mock",
-                "generated_by": "mock",
-                "source": "local",
-                "is_verified": 0,
-                "official_raw_summary": "",
-            },
-            [],
+        raise HTTPException(
+            status_code=404,
+            detail="공식 자료에서 이 약을 찾지 못했습니다.",
         )
-        conn.commit()
-        return _response(medicine, card)
     except HTTPException:
         raise
     except Exception as error:
@@ -112,7 +106,10 @@ def get_drug_explanation(
             error,
             exc_info=True,
         )
-        return _safe_existing_or_fallback(conn, medicine_code)
+        raise HTTPException(
+            status_code=502,
+            detail="공식 약 설명을 만들지 못했습니다.",
+        ) from error
     finally:
         conn.close()
 

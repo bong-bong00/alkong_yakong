@@ -26,7 +26,14 @@ def _normalize(value: str) -> str:
 
 def _medicine_key(value: str) -> str:
     normalized = _normalize(value)
-    normalized = re.sub(r"\d+(?:\.\d+)?(?:mg|ml|g)", "", normalized)
+    normalized = re.sub(r"\([^)]*\)", "", normalized)
+    normalized = re.sub(r"\[[^\]]*\]", "", normalized)
+    normalized = re.sub(r"[·]", "", normalized)
+    normalized = re.sub(
+        r"\d+(?:\.\d+)?(?:mg|ml|g|밀리그램|밀리그람)",
+        "",
+        normalized,
+    )
     for dosage_form in ("필름코팅정", "서방정", "연질캡슐", "캡슐", "정", "시럽"):
         if normalized.endswith(dosage_form):
             normalized = normalized[: -len(dosage_form)]

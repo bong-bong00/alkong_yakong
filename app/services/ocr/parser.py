@@ -65,6 +65,62 @@ def parse_prescription_text(raw_text: str) -> dict[str, Any] | None:
         if parsed is None:
             response_text = str(getattr(response, "text", None) or "")
             parsed = json.loads(response_text) if response_text else None
-        return parsed if isinstance(parsed, dict) and parsed.get("items") else None
+        if not isinstance(parsed, dict) or not parsed.get("items"):
+            return None
+        filtered = filter_to_source(parsed, text)
+        return filtered if filtered.get("items") else None
     except (ImportError, ValueError, TypeError, json.JSONDecodeError):
         return None
+
+
+def filter_to_source(parsed: dict[str, Any], raw_text: str) -> dict[str, Any]:
+    """Drop invented drug names and numbers that are not in the OCR source."""
+    source = raw_text or ""
+    compact_source = _compact(source)
+    items: list[dict[str, Any]] = []
+    for item in parsed.get("items") or []:
+        if not isinstance(item, dict):
+            continue
+        name = str(item.get("drug_name") or "").strip()
+        if not name or not _name_in_source(name, compact_source):
+            continue
+        cleaned = dict(item)
+        cleaned["drug_name"] = name
+        for key in ("frequency_per_day", "times_per_take", "duration_days"):
+            if key in cleaned and not _number_in_source(key, cleaned.get(key), source):
+                cleaned.pop(key, None)
+        items.append(cleaned)
+    result = dict(parsed)
+    result["items"] = items
+    return result
+
+
+def _compact(value: str) -> str:
+    return "".join(str(value or "").casefold().split())
+
+
+def _name_in_source(name: str, compact_source: str) -> bool:
+    compact_name = _compact(name)
+    return bool(compact_name) and compact_name in compact_source
+
+
+def _number_in_source(key: str, value: Any, raw_text: str) -> bool:
+    if value is None or value == "":
+        return False
+    try:
+        number = str(int(value))
+    except (TypeError, ValueError):
+        number = str(value).strip()
+    if not number:
+        return False
+    if key == "duration_days":
+        return f"{number}일" in raw_text
+    if key == "frequency_per_day":
+        return f"{number}회" in raw_text or f"{number}번" in raw_text
+    if key == "times_per_take":
+        return (
+            f"{number}정" in raw_text
+            or f"{number}캡슐" in raw_text
+            or f"{number}개" in raw_text
+        )
+    return number in raw_text
