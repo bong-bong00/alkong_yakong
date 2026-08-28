@@ -10,6 +10,7 @@ from app.database import get_connection
 from app.models.schemas import OCRMedicineItem, PrescriptionOCRRequest
 from app.services.matching.name_matcher import match_medicine_name
 from app.services.ocr.pipeline import run_ocr_pipeline, run_ocr_text_pipeline
+from app.services.pharmacist.retrieve import retrieve_official
 
 
 DEFAULT_SCHEDULE_TIMES = {
@@ -37,12 +38,30 @@ def _structured_items(structured: dict) -> list[OCRMedicineItem]:
                 times_per_take=item.get("times_per_take"),
                 duration_days=item.get("duration_days"),
                 easy_explanation=item.get("easy_explanation"),
+                warning_note=item.get("warning_note"),
             )
         )
     return results
 
 
-def _extract_items(request: PrescriptionOCRRequest) -> tuple[list[OCRMedicineItem], str]:
+def _raise_ocr_fail(result) -> None:
+    error = result.error or "unknown"
+    payload = {"message": "처방전을 읽지 못했습니다.", "error": error}
+    if error == "missing_api_key":
+        raise HTTPException(status_code=503, detail=payload)
+    if error in {"timeout", "DeadlineExceeded"}:
+        raise HTTPException(status_code=504, detail=payload)
+    if error in {"auth_error", "unavailable"} or (
+        result.trace.get("stage") == "engine"
+        and error not in {"empty_image", "empty_raw_text"}
+    ):
+        raise HTTPException(status_code=502, detail=payload)
+    raise HTTPException(status_code=422, detail=payload)
+
+
+def _extract_items(
+    request: PrescriptionOCRRequest,
+) -> tuple[list[OCRMedicineItem], str, dict]:
     if request.image_data:
         try:
             encoded = request.image_data.split(",", 1)[-1]
@@ -59,14 +78,52 @@ def _extract_items(request: PrescriptionOCRRequest) -> tuple[list[OCRMedicineIte
         raise HTTPException(status_code=422, detail="처방전 이미지 또는 원문이 필요합니다.")
 
     if not result.ok or not result.structured:
-        raise HTTPException(
-            status_code=422,
-            detail={"message": "처방전을 읽지 못했습니다.", "error": result.error},
-        )
+        _raise_ocr_fail(result)
     items = _structured_items(result.structured)
     if not items:
         raise HTTPException(status_code=422, detail="처방전에서 약품을 찾지 못했습니다.")
-    return items, result.raw_text
+    return items, result.raw_text, result.trace
+
+
+def _upsert_official_medicine(cursor, official: dict) -> tuple[str, str]:
+    med = official.get("medicine") or {}
+    code = str(med.get("medicine_code") or "").strip()
+    name = str(med.get("product_name") or med.get("medicine_name") or "").strip()
+    if not code or not name:
+        raise HTTPException(
+            status_code=422,
+            detail="공식 약품 코드가 없습니다.",
+        )
+    precautions = med.get("precautions") or med.get("cautions") or ""
+    cursor.execute(
+        """
+        INSERT INTO medicines (
+            medicine_code, product_name, ingredient, manufacturer,
+            efficacy, usage, precautions, image_url
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(medicine_code) DO UPDATE SET
+            product_name = excluded.product_name,
+            ingredient = excluded.ingredient,
+            manufacturer = excluded.manufacturer,
+            efficacy = excluded.efficacy,
+            usage = excluded.usage,
+            precautions = excluded.precautions,
+            image_url = excluded.image_url,
+            updated_at = CURRENT_TIMESTAMP
+        """,
+        (
+            code,
+            name,
+            med.get("ingredient") or name,
+            med.get("manufacturer"),
+            med.get("efficacy"),
+            med.get("usage"),
+            precautions if isinstance(precautions, str) else str(precautions or ""),
+            med.get("image_url"),
+        ),
+    )
+    status = "MATCHED" if official.get("source") == "local" else "MFDS"
+    return code, status
 
 
 def _resolve_medicine(cursor, item: OCRMedicineItem) -> tuple[str, str]:
@@ -91,6 +148,11 @@ def _resolve_medicine(cursor, item: OCRMedicineItem) -> tuple[str, str]:
             )
     if medicine:
         return medicine["medicine_code"], "MATCHED"
+
+    official = retrieve_official(item.drug_name)
+    if official:
+        return _upsert_official_medicine(cursor, official)
+
     raise HTTPException(
         status_code=422,
         detail=f"등록된 공식 약품에서 확인하지 못했습니다: {item.drug_name}",
@@ -174,7 +236,7 @@ def create_prescription_from_ocr(request: PrescriptionOCRRequest) -> dict:
     conn = get_connection()
     try:
         cursor = conn.cursor()
-        items, raw_text = _extract_items(request)
+        items, raw_text, ocr_trace = _extract_items(request)
         user = cursor.execute(
             "SELECT id FROM users WHERE id = ?", (request.user_id,)
         ).fetchone()
@@ -212,8 +274,9 @@ def create_prescription_from_ocr(request: PrescriptionOCRRequest) -> dict:
                 INSERT INTO prescription_items (
                     prescription_id, medicine_code, ocr_drug_name, dosage, unit,
                     frequency_per_day, times_per_take, duration_days,
-                    administration_times, match_status, easy_explanation
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    administration_times, match_status, easy_explanation,
+                    warning_note
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     prescription_id,
@@ -227,6 +290,7 @@ def create_prescription_from_ocr(request: PrescriptionOCRRequest) -> dict:
                     json.dumps(item.administration_times, ensure_ascii=False),
                     match_status,
                     item.easy_explanation,
+                    item.warning_note,
                 ),
             )
             item_id = cursor.lastrowid
@@ -276,6 +340,7 @@ def create_prescription_from_ocr(request: PrescriptionOCRRequest) -> dict:
             "user_id": request.user_id,
             "ocr_status": "COMPLETED",
             "ocr_text": raw_text,
+            "ocr_trace": ocr_trace,
             "items": created_items,
         }
     except Exception:
