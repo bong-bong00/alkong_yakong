@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_tabler_icons/flutter_tabler_icons.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
@@ -140,6 +141,10 @@ class _PatientHomeScreenState extends ConsumerState<PatientHomeScreen> {
       ],
       const SizedBox(height: 12),
       _HeartbeatCard(today: today, onTap: widget.onOpenHeartbeat),
+      const SizedBox(height: 12),
+      _PrescriptionCameraCard(
+        onTap: () => context.push('/prescription'),
+      ),
     ];
   }
 
@@ -226,6 +231,10 @@ class _PatientHomeScreenState extends ConsumerState<PatientHomeScreen> {
             ],
           ),
         ),
+      const SizedBox(height: 12),
+      _PrescriptionCameraCard(
+        onTap: () => context.push('/prescription'),
+      ),
     ];
   }
 }
@@ -557,6 +566,54 @@ class _HeartbeatCard extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 16),
+          const SeniorChevron(),
+        ],
+      ),
+    );
+  }
+}
+
+/// 처방전 촬영은 OCR → 읽은 약 확인 → 등록 순서로 기존 등록 흐름을 연다.
+class _PrescriptionCameraCard extends StatelessWidget {
+  final VoidCallback onTap;
+
+  const _PrescriptionCameraCard({required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return SeniorCard(
+      padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 18),
+      onTap: onTap,
+      child: Row(
+        children: [
+          Container(
+            width: 48,
+            height: 48,
+            alignment: Alignment.center,
+            decoration: const BoxDecoration(
+              color: AppColors.pointTint,
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(
+              TablerIcons.camera,
+              color: AppColors.point,
+              size: 26,
+            ),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('처방전 사진 찍기', style: AppText.cardTitle()),
+                const SizedBox(height: 3),
+                Text(
+                  '사진을 읽고 약을 확인한 뒤 등록해요',
+                  style: AppText.caption(size: 16.5),
+                ),
+              ],
+            ),
+          ),
           const SeniorChevron(),
         ],
       ),

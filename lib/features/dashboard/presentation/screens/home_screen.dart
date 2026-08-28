@@ -50,6 +50,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         currentIndex: _index,
         onTap: (i) => setState(() => _index = i),
       ),
+      // 어느 탭에 있든 약에 관해 바로 물어볼 수 있게 하단 탭 위에 둔다.
+      floatingActionButton: FloatingActionButton(
+        onPressed: () => context.push('/drug-explain'),
+        child: const Icon(TablerIcons.message_circle),
+        tooltip: '약 상담 열기',
+      ),
+      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
     );
   }
 }
