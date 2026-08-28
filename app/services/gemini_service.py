@@ -302,69 +302,25 @@ def _finalize_chat_response(response) -> str:
     return reply
 
 
-DEMO_TYLENOL_SUMMARY_REPLY = (
-    "식약처에 따르면 타이레놀정은 통증을 줄이고 열을 낮추는 데 사용하는 대표적인 해열진통제입니다.\n\n"
-    "주성분은 아세트아미노펜이며, 두통, 치통, 근육통, 감기 몸살, 발열 같은 증상 완화에 사용됩니다.\n\n"
-    "비교적 위에 부담이 적은 편이지만, 정해진 용량을 초과하면 간 손상 위험이 있어 주의가 필요합니다."
-)
+def generate_chat_response(message: str, *, user_id: str = "") -> str:
+    from app.services.chat_context_service import (
+        build_grounded_chat_prompt,
+        classify_question,
+        is_safety_question,
+        load_latest_dur_context,
+        select_official_context,
+    )
 
-
-DEMO_TYLENOL_EFFECTS_REPLY = (
-    "식약처에 따르면 타이레놀정의 주요 효능은 통증 완화와 해열 작용입니다.\n\n"
-    "효능:\n"
-    "• 두통 완화\n"
-    "• 발열 감소\n"
-    "• 치통 완화\n"
-    "• 생리통 완화\n"
-    "• 근육통 완화\n"
-    "• 감기 증상 완화\n\n"
-    "부작용:\n"
-    "• 메스꺼움\n"
-    "• 구토\n"
-    "• 피부 발진\n"
-    "• 알레르기 반응\n"
-    "• 간 기능 이상 (과다 복용 시 위험)\n\n"
-    "주의사항:\n"
-    "술과 함께 복용하면 간 손상 위험이 증가할 수 있습니다.\n"
-    "하루 최대 복용량을 초과하지 않는 것이 중요합니다.\n"
-    "다른 감기약과 함께 복용할 경우 중복 성분 여부를 확인해야 합니다."
-)
-
-
-def _normalize_demo_question(message: str) -> str:
-    return "".join(ch for ch in message.lower() if ch.isalnum())
-
-
-def _demo_chat_reply(message: str) -> str | None:
-    normalized = _normalize_demo_question(message)
-    if (
-        ("효능" in normalized and ("부작용" in normalized or "알려" in normalized))
-        or "부작용" in normalized
-    ):
-        return DEMO_TYLENOL_EFFECTS_REPLY
-
-    if "타이레놀" in normalized and (
-        "뭐야" in normalized
-        or "설명" in normalized
-        or "무엇" in normalized
-        or "알려" in normalized
-    ):
-        return DEMO_TYLENOL_SUMMARY_REPLY
-
-    return None
-
-
-def _demo_safe_reply(message: str) -> str:
-    return _demo_chat_reply(message) or DEMO_TYLENOL_SUMMARY_REPLY
-
-
-def generate_chat_response(message: str) -> str:
-    demo_reply = _demo_chat_reply(message)
-    if demo_reply is not None:
-        return demo_reply
-
+    intents = classify_question(message)
+    safety_question = is_safety_question(intents)
+    unavailable_reply = (
+        "현재 확인된 식약처 정보만으로는 확인하기 어렵습니다. "
+        "병용 가능 여부나 복용 안전성은 복용 중인 약 전체를 가지고 의사 또는 약사에게 확인해주세요."
+        if safety_question
+        else "현재 식약처 공식정보를 확인할 수 없어 답변하기 어렵습니다. 잠시 후 다시 시도해주세요."
+    )
     if not GEMINI_API_KEY:
-        return _demo_safe_reply(message)
+        return unavailable_reply
 
     try:
         from google import genai
@@ -403,8 +359,7 @@ def generate_chat_response(message: str) -> str:
             if isinstance(extracted_parsed, dict):
                 drug_names = extracted_parsed.get("drug_names", [])
 
-            # 2. 식약처 오피셜 데이터 수집 및 로컬 DB 풀백
-            from app.database import get_connection
+            # 2. 식약처 공식 데이터 수집
             official_data_list = []
             
             for name in drug_names:
@@ -421,65 +376,27 @@ def generate_chat_response(message: str) -> str:
                 except Exception as e:
                     logger.warning("식약처 API 검색 실패 (%s): %s", name, e)
                 
-                # 2-2. API 실패 또는 결과가 없으면 로컬 DB(medicines) 검색
-                if not found_data:
-                    conn = get_connection()
-                    try:
-                        cursor = conn.cursor()
-                        # 이름이 포함된 약품 검색
-                        row = cursor.execute(
-                            "SELECT * FROM medicines WHERE product_name LIKE ? OR ingredient LIKE ? LIMIT 1",
-                            (f"%{name}%", f"%{name}%")
-                        ).fetchone()
-                        if row:
-                            found_data = {"검색된_약품명": name, "로컬DB_저장정보": dict(row)}
-                    finally:
-                        conn.close()
-                
                 if found_data:
                     official_data_list.append(found_data)
 
-            # 3. 식약처 검색 성공 시 요약 전용, 실패 시 기존 full fallback
-            mfds_data_list = [
-                item
+            official_contexts = [
+                select_official_context(item["식약처_공식정보"], intents)
                 for item in official_data_list
                 if item.get("match_type") in {"exact", "partial"}
                 and item.get("식약처_공식정보")
             ]
-            if mfds_data_list:
-                prompt = (
-                    "당신은 식약처 공식 의약품 정보를 고령자도 이해하기 쉽게 "
-                    "풀어쓰는 요약 도우미입니다.\n"
-                    "- 쉬운 단어만 사용하세요.\n"
-                    "- 3~5문장으로 작성하세요.\n"
-                    "- 공식 정보 외 새로운 사실을 만들거나 추측하지 마세요.\n"
-                    "- 효능, 복용법, 주의사항을 중심으로 설명하세요.\n"
-                    "- 정보가 없는 항목은 만들어내지 마세요.\n\n"
-                    f"[식약처 공식 정보]\n{json.dumps(mfds_data_list, ensure_ascii=False, indent=2)}\n\n"
-                    f"사용자 질문: {message}"
-                )
-            else:
-                prompt = (
-                    "당신은 어르신들을 위한 다정하고 친절한 AI 약사 '알콩약콩'입니다. "
-                    "사용자의 다음 질문이나 인사에 쉽고 따뜻한 말투로 대답해주세요. "
-                    "어려운 의학 용어는 피하고 친근하게 답변해주세요.\n"
-                    "중요: 모바일 화면에서 읽기 편하도록, 답변은 핵심만 요약해서 반드시 3~4문장 이내로 아주 짧고 간결하게 작성하세요.\n\n"
-                )
+            official_contexts = [item for item in official_contexts if item]
+            dur_contexts = load_latest_dur_context(user_id, intents)
 
-            if not mfds_data_list and official_data_list:
-                prompt += (
-                    "아래 로컬 의약품 정보를 참고해 답변하세요.\n\n"
-                    f"[로컬 참고 데이터]\n{json.dumps(official_data_list, ensure_ascii=False, indent=2)}\n\n"
-                )
-            elif not mfds_data_list and drug_names:
-                prompt += (
-                    "참고: 사용자가 특정 약품명을 언급했으나, 식약처 공식 DB에서 데이터를 찾지 못했습니다. "
-                    "답변 시 '정확한 제품 정보는 식약처 DB에서 찾을 수 없지만, 일반적인 성분 정보로 안내해 드릴게요' "
-                    "라고 부드럽게 안내한 뒤 일반적인 지식 내에서 답변해주세요.\n\n"
-                )
-                
-            if not mfds_data_list:
-                prompt += f"사용자: {message}"
+            if not official_contexts and not dur_contexts:
+                return unavailable_reply
+
+            prompt = build_grounded_chat_prompt(
+                message=message,
+                intents=intents,
+                official_contexts=official_contexts,
+                dur_contexts=dur_contexts,
+            )
 
             response = _generate_content_with_retry(
                 client,
@@ -490,4 +407,4 @@ def generate_chat_response(message: str) -> str:
             return _finalize_chat_response(response)
     except Exception as error:
         logger.warning("Gemini chat failed: %s", error, exc_info=True)
-        return _demo_safe_reply(message)
+        return unavailable_reply
