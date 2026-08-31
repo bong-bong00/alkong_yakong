@@ -1,4 +1,5 @@
 import json
+from collections import Counter
 from typing import Any
 
 from app.database import get_connection
@@ -29,6 +30,24 @@ DUR_TYPES_BY_INTENT = {
 }
 
 SAFETY_INTENTS = frozenset(DUR_TYPES_BY_INTENT)
+
+
+def general_conversation_reply(message: str) -> str | None:
+    normalized = "".join(ch for ch in str(message or "").lower() if ch.isalnum())
+    if normalized in {"안녕", "안녕하세요"}:
+        return (
+            "안녕하세요. 복용 중인 약이나 약의 효능, 복용법, "
+            "주의사항, 상호작용 등에 대해 질문해주세요."
+        )
+    if normalized in {"고마워", "고마워요", "감사", "감사합니다"}:
+        return "도움이 되어 기뻐요. 다른 약 정보가 궁금하면 편하게 물어보세요."
+    if normalized in {"너는뭐야", "무슨기능이있어"}:
+        return (
+            "식약처 e약은요 공식정보와 서버에서 확인한 DUR 분석 결과를 "
+            "바탕으로 약의 효능, 복용법, 주의사항, 부작용, 상호작용 등을 "
+            "쉽게 설명해드릴 수 있습니다."
+        )
+    return None
 
 
 def classify_question(message: str) -> set[str]:
@@ -79,38 +98,72 @@ def select_official_context(
     }
 
 
-def load_latest_dur_context(user_id: str, intents: set[str]) -> list[dict[str, Any]]:
+def load_latest_dur_context(user_id: str, intents: set[str]) -> dict[str, Any]:
     wanted_types = set().union(
         *(DUR_TYPES_BY_INTENT.get(intent, set()) for intent in intents)
     )
-    if not user_id or not wanted_types:
-        return []
+    if not wanted_types:
+        return {"status": "not_required", "items": []}
+    if not user_id:
+        return {"status": "missing", "items": []}
 
     conn = get_connection()
     try:
         row = conn.execute(
             """
-            SELECT matches_json FROM risk_results
+            SELECT analyzed_ingredients, matches_json FROM risk_results
             WHERE user_id = ?
             ORDER BY created_at DESC, id DESC LIMIT 1
             """,
             (user_id,),
         ).fetchone()
-        if not row or not row["matches_json"]:
-            return []
-        try:
-            matches = json.loads(row["matches_json"])
-        except (TypeError, json.JSONDecodeError):
-            return []
+        if not row:
+            return {"status": "missing", "items": []}
+
+        current_rows = conn.execute(
+            """
+            SELECT m.ingredient FROM user_medicines um
+            JOIN medicines m ON m.medicine_code = um.medicine_code
+            WHERE um.user_id = ? AND um.is_active = 1
+            ORDER BY um.id
+            """,
+            (user_id,),
+        ).fetchall()
+        current = [item["ingredient"] for item in current_rows if item["ingredient"]]
+        analyzed = _json_list(row["analyzed_ingredients"])
+        if _ingredient_signature(current) != _ingredient_signature(analyzed):
+            return {"status": "stale", "items": []}
+
+        matches = _json_list(row["matches_json"])
 
         result = []
         for match in matches if isinstance(matches, list) else []:
             if not isinstance(match, dict) or match.get("type") not in wanted_types:
                 continue
             result.append(_enrich_dur_match(conn, match))
-        return result
+        return {"status": "current", "items": result}
     finally:
         conn.close()
+
+
+def _json_list(value: Any) -> list[Any]:
+    if isinstance(value, list):
+        return value
+    if not value:
+        return []
+    try:
+        parsed = json.loads(value)
+    except (TypeError, json.JSONDecodeError):
+        return []
+    return parsed if isinstance(parsed, list) else []
+
+
+def _ingredient_signature(values: list[Any]) -> Counter:
+    return Counter(
+        "".join(str(value or "").lower().split())
+        for value in values
+        if value
+    )
 
 
 def _enrich_dur_match(conn, match: dict[str, Any]) -> dict[str, Any]:
@@ -162,7 +215,7 @@ def build_grounded_chat_prompt(
     message: str,
     intents: set[str],
     official_contexts: list[dict[str, Any]],
-    dur_contexts: list[dict[str, Any]],
+    dur_result: dict[str, Any],
 ) -> str:
     official_text = (
         json.dumps(official_contexts, ensure_ascii=False, indent=2)
@@ -170,8 +223,8 @@ def build_grounded_chat_prompt(
         else "현재 질문에 사용할 수 있는 e약은요 공식정보가 없습니다."
     )
     dur_text = (
-        json.dumps(dur_contexts, ensure_ascii=False, indent=2)
-        if dur_contexts
+        json.dumps(dur_result["items"], ensure_ascii=False, indent=2)
+        if dur_result["items"]
         else "현재 서버가 확인한 해당 유형의 DUR 분석 결과가 없습니다."
     )
     return f"""
@@ -196,6 +249,9 @@ def build_grounded_chat_prompt(
 
 [식약처 e약은요 공식정보]
 {official_text}
+
+[DUR 분석 결과 상태]
+{dur_result['status']}
 
 [식약처 DUR 서버 분석 결과]
 {dur_text}

@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:permission_handler/permission_handler.dart';
 
 import '../../../../core/constants/app_colors.dart';
+import '../../../../core/network/api_client.dart';
+import '../../../../core/session/mvp_session.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../core/widgets/recovery_view.dart';
 import '../../../../core/widgets/senior_button.dart';
@@ -36,6 +38,7 @@ class HeartbeatScreen extends StatefulWidget {
 
 class _HeartbeatScreenState extends State<HeartbeatScreen> {
   final PolarService _polar = PolarService();
+  final ApiClient _apiClient = ApiClient();
   final BiosignalDatasetCollector _datasetCollector =
       BiosignalDatasetCollector();
   final List<int> _samples = <int>[];
@@ -110,6 +113,13 @@ class _HeartbeatScreenState extends State<HeartbeatScreen> {
         }),
       );
       _subscriptions.add(
+        _polar.averageBpmStream.listen((average) {
+          if (average != null) {
+            unawaited(_sendAverageBpm(average));
+          }
+        }),
+      );
+      _subscriptions.add(
         _polar.deviceDisconnectedStream.listen((_) {
           if (!mounted) return;
           setState(() => _disconnected = true);
@@ -130,6 +140,28 @@ class _HeartbeatScreenState extends State<HeartbeatScreen> {
         _connecting = false;
         _disconnected = true;
       });
+    }
+  }
+
+  Future<void> _sendAverageBpm(double average) async {
+    final userId = MvpSession.userId.trim();
+    if (userId.isEmpty) {
+      debugPrint('Skipping average BPM upload: user ID is empty.');
+      return;
+    }
+    try {
+      await _apiClient.post(
+        '/api/v1/biosignal/heart-rate',
+        body: {
+          'user_id': userId,
+          'bpm': average.round(),
+          'device_id': _deviceId ?? PolarService.defaultDeviceId,
+          'source': 'POLAR_30S_AVERAGE',
+        },
+      );
+      debugPrint('[POLAR_UI] avg upload success');
+    } on ApiException catch (error) {
+      debugPrint('[POLAR_UI] avg upload failed: $error');
     }
   }
 

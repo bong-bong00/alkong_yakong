@@ -306,16 +306,20 @@ def generate_chat_response(message: str, *, user_id: str = "") -> str:
     from app.services.chat_context_service import (
         build_grounded_chat_prompt,
         classify_question,
+        general_conversation_reply,
         is_safety_question,
         load_latest_dur_context,
         select_official_context,
     )
 
+    if general_reply := general_conversation_reply(message):
+        return general_reply
+
     intents = classify_question(message)
     safety_question = is_safety_question(intents)
     unavailable_reply = (
         "현재 확인된 식약처 정보만으로는 확인하기 어렵습니다. "
-        "병용 가능 여부나 복용 안전성은 복용 중인 약 전체를 가지고 의사 또는 약사에게 확인해주세요."
+        "최신 DUR 재분석 후 복용 중인 약 전체를 가지고 의사 또는 약사에게 확인해주세요."
         if safety_question
         else "현재 식약처 공식정보를 확인할 수 없어 답변하기 어렵습니다. 잠시 후 다시 시도해주세요."
     )
@@ -386,16 +390,18 @@ def generate_chat_response(message: str, *, user_id: str = "") -> str:
                 and item.get("식약처_공식정보")
             ]
             official_contexts = [item for item in official_contexts if item]
-            dur_contexts = load_latest_dur_context(user_id, intents)
+            dur_result = load_latest_dur_context(user_id, intents)
 
-            if not official_contexts and not dur_contexts:
+            if safety_question and dur_result["status"] in {"stale", "missing"}:
+                return unavailable_reply
+            if not official_contexts and not dur_result["items"]:
                 return unavailable_reply
 
             prompt = build_grounded_chat_prompt(
                 message=message,
                 intents=intents,
                 official_contexts=official_contexts,
-                dur_contexts=dur_contexts,
+                dur_result=dur_result,
             )
 
             response = _generate_content_with_retry(
