@@ -9,10 +9,10 @@ from app.database import get_connection
 from app.services.external_api_service import search_drug_info_by_name
 from app.services.matching.chosung import is_chosung_query, to_chosung
 from app.services.mfds_drug_permission.db import search_permission_names
+from app.services.pharmacist.easy_category_db import lookup_chat_links
 
 
 FAQ_SUGGESTIONS = (
-    "지금 먹을 약",
     "이 약 설명",
     "같이 먹으면",
     "안 먹었을 때",
@@ -24,118 +24,12 @@ RELATED_FAQ = (
     "안 먹었을 때",
 )
 
-# 식약처에서 확인한 흔한 제품명. API가 비거나 느릴 때 접두 자동완성용.
 FALLBACK_OFFICIAL_NAMES = (
     "타이레놀정500밀리그램",
     "타이레놀8시간이알서방정",
     "부루펜정200밀리그램(이부프로펜)",
     "게보린정",
     "아스피린장용정",
-)
-
-# 어르신 대충 입력 → 검색 키워드 / FAQ.
-# triggers는 긴 것 우선 매칭. search는 허가정보·e약은요 조회용.
-SENIOR_HINT_GROUPS: tuple[dict[str, tuple[str, ...]], ...] = (
-    {
-        "triggers": ("타이래", "타일레", "타이레", "타이", "ㅌㅇㄹㄴ", "ㅌㄹㄴ", "ㅌㄹ"),
-        "search": ("타이레놀",),
-        "faqs": (),
-    },
-    {
-        "triggers": ("부르펜", "부루펜", "부루", "ㅂㄹㅍ", "ㅂㄹ"),
-        "search": ("부루펜",),
-        "faqs": (),
-    },
-    {
-        "triggers": ("게보링", "게보린", "게보", "ㄱㅂㄹ", "ㄱㅂ"),
-        "search": ("게보린",),
-        "faqs": (),
-    },
-    {
-        "triggers": ("아스피린", "아스피", "ㅇㅅㅍㄹ", "ㅇㅅㅍ"),
-        "search": ("아스피린",),
-        "faqs": (),
-    },
-    {
-        "triggers": ("프리마란", "프리마", "ㅍㄹㅁㄹ", "ㅍㄹㅁ"),
-        "search": ("프리마란",),
-        "faqs": (),
-    },
-    {
-        "triggers": ("열올라", "열나", "해열", "열난"),
-        "search": ("타이레놀",),
-        "faqs": ("이 약 설명",),
-    },
-    {
-        "triggers": ("열",),
-        "search": ("타이레놀",),
-        "faqs": ("이 약 설명",),
-    },
-    {
-        "triggers": ("머리아픈", "머리아", "두통", "골치"),
-        "search": ("게보린", "타이레놀"),
-        "faqs": ("이 약 설명",),
-    },
-    {
-        "triggers": ("몸살", "콧물", "감기"),
-        "search": ("타이레놀콜드", "타이레놀", "게보린"),
-        "faqs": ("이 약 설명",),
-    },
-    {
-        "triggers": ("속안좋", "체한", "배아", "소화"),
-        "search": (),
-        "faqs": ("이 약 설명", "같이 먹으면"),
-    },
-    {
-        "triggers": ("허리아", "무릎", "관절", "허리"),
-        "search": ("부루펜",),
-        "faqs": ("이 약 설명",),
-    },
-    {
-        "triggers": ("혈압",),
-        "search": (),
-        "faqs": ("같이 먹으면", "이 약 설명"),
-    },
-    {
-        "triggers": ("당뇨",),
-        "search": (),
-        "faqs": ("같이 먹으면", "이 약 설명"),
-    },
-    {
-        "triggers": ("언제먹", "밥전", "식후", "몇알", "하루몇"),
-        "search": (),
-        "faqs": ("지금 먹을 약", "이 약 설명"),
-    },
-    {
-        "triggers": ("같이먹", "겹쳐", "같이"),
-        "search": (),
-        "faqs": ("같이 먹으면",),
-    },
-    {
-        "triggers": ("어제안", "안먹", "깜빡", "잊었"),
-        "search": (),
-        "faqs": ("안 먹었을 때",),
-    },
-    {
-        "triggers": ("부작용", "어지러", "졸려", "속이"),
-        "search": (),
-        "faqs": ("이 약 설명", "안 먹었을 때"),
-    },
-    {
-        "triggers": ("이거뭐", "효과있", "저약", "뭐야"),
-        "search": (),
-        "faqs": ("이 약 설명",),
-    },
-    {
-        "triggers": ("술하고", "술먹"),
-        "search": (),
-        "faqs": ("같이 먹으면",),
-    },
-    {
-        "triggers": ("먹어도돼", "두알"),
-        "search": (),
-        "faqs": ("이 약 설명", "같이 먹으면"),
-    },
 )
 
 _CACHE_TTL_SECONDS = 60.0
@@ -150,12 +44,14 @@ def get_chat_suggestions(query: str = "", user_id: str | None = None) -> list[di
         return _unique(items)[:20]
 
     items: list[dict[str, str]] = []
-    hint = _match_senior_hint(needle)
+    links = lookup_chat_links(query)
 
-    # 1순위: 허가정보 DB / 힌트 검색어 / e약은요 / 초성
+    # DB 일상어 연결: 연관 검색어(phrase) → 약검색 → FAQ
+    for phrase in links.get("phrase") or []:
+        items.append({"label": phrase, "type": "phrase"})
+
     search_queries: list[str] = []
-    if hint:
-        search_queries.extend(hint.get("search") or ())
+    search_queries.extend(links.get("search") or ())
     raw_query = query.strip()
     if is_chosung_query(raw_query) or len(needle) >= 2:
         search_queries.append(raw_query)
@@ -175,20 +71,22 @@ def get_chat_suggestions(query: str = "", user_id: str | None = None) -> list[di
     items.extend(_local_medicines(needle))
 
     seen_names = {_compact(item["label"]) for item in items}
-    first_name = next((item["label"] for item in items if item["type"] != "faq"), None)
-    if first_name:
-        short = _short_name(first_name)
+    first_medicine = next(
+        (item["label"] for item in items if item["type"] == "medicine"),
+        None,
+    )
+    if first_medicine:
+        short = _short_name(first_medicine)
         for faq in RELATED_FAQ:
             label = f"{short} {faq}"
             if _compact(label) not in seen_names:
                 items.append({"label": label, "type": "faq"})
                 seen_names.add(_compact(label))
 
-    if hint:
-        for faq in hint.get("faqs") or ():
-            if _compact(faq) not in seen_names:
-                items.append({"label": faq, "type": "faq"})
-                seen_names.add(_compact(faq))
+    for faq in links.get("faq") or ():
+        if _compact(faq) not in seen_names:
+            items.append({"label": faq, "type": "faq"})
+            seen_names.add(_compact(faq))
 
     for label in FAQ_SUGGESTIONS:
         if needle in _compact(label) or _compact(label) in needle:
@@ -196,28 +94,7 @@ def get_chat_suggestions(query: str = "", user_id: str | None = None) -> list[di
                 items.append({"label": label, "type": "faq"})
                 seen_names.add(_compact(label))
 
-    return _unique(items)[:12]
-
-
-def _match_senior_hint(needle: str) -> dict[str, tuple[str, ...]] | None:
-    best: dict[str, tuple[str, ...]] | None = None
-    best_len = -1
-    for group in SENIOR_HINT_GROUPS:
-        for trigger in group["triggers"]:
-            if not _trigger_hit(needle, trigger):
-                continue
-            if len(trigger) > best_len:
-                best = group
-                best_len = len(trigger)
-    return best
-
-
-def _trigger_hit(needle: str, trigger: str) -> bool:
-    if not needle or not trigger:
-        return False
-    if len(trigger) == 1:
-        return needle == trigger or needle.startswith(trigger)
-    return trigger in needle or needle in trigger
+    return _unique(items)[:16]
 
 
 def _today_medicines(user_id: str | None, needle: str) -> list[dict[str, str]]:
@@ -264,7 +141,6 @@ def _official_names(query: str) -> list[str]:
     if not raw:
         return []
 
-    # 초성 전용 검색 (ㅌㄹㄴ 등)
     if is_chosung_query(raw):
         chosung = "".join(raw.split())
         cache_key = f"chosung:{chosung}"
@@ -290,7 +166,7 @@ def _official_names(query: str) -> list[str]:
     if cached and now - cached[0] < _CACHE_TTL_SECONDS:
         return cached[1]
 
-    names = []
+    names: list[str] = []
     try:
         for label in search_permission_names(raw, limit=10):
             if label and (
@@ -326,7 +202,6 @@ def _official_names(query: str) -> list[str]:
 
 
 def _matches_prefix(name: str, needle: str) -> bool:
-    """연관어는 접두 일치만. 성분명 한가운데 우연 일치는 제외."""
     compact = re.sub(r"\([^)]*\)", "", _compact(name))
     short = _compact(_short_name(name))
     return compact.startswith(needle) or short.startswith(needle)

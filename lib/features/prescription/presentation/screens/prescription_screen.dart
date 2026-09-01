@@ -52,29 +52,6 @@ class _PrescriptionScreenState extends State<PrescriptionScreen> {
   /// 촬영 실패 횟수. 3번 실패하면 가족 대행(5g)을 권한다.
   int _failureCount = 0;
 
-  // TODO: 백엔드 OCR이 비어 있을 때 쓰는 데모 약 목록. 연동되면 지운다.
-  static const List<Map<String, dynamic>> _fallbackItems = [
-    {
-      'drug_name': '모사피아정',
-      'frequency_per_day': 2,
-      'duration_days': 7,
-      'easy_explanation': '속이 더부룩할 때 위장 운동을 도와 편안하게 해주는 약이에요.',
-    },
-    {
-      'drug_name': '프로맥정',
-      'frequency_per_day': 2,
-      'duration_days': 7,
-      'easy_explanation': '위벽을 보호하고 손상된 위를 낫게 해주는 약이에요.',
-    },
-    {
-      'drug_name': '니자엑스캡슐150mg',
-      'frequency_per_day': 2,
-      'duration_days': 7,
-      'easy_explanation': '속쓰릴 때 위산을 줄여 속을 편안하게 해주는 약이에요.',
-      'uncertain': true,
-    },
-  ];
-
   List<Map<String, dynamic>> get _items {
     final items = _result?['items'];
     if (items is List && items.isNotEmpty) {
@@ -83,7 +60,7 @@ class _PrescriptionScreenState extends State<PrescriptionScreen> {
           .map((item) => Map<String, dynamic>.from(item))
           .toList();
     }
-    return _fallbackItems.map(Map<String, dynamic>.from).toList();
+    return const [];
   }
 
   Future<void> _pick(ImageSource source) async {
@@ -111,18 +88,33 @@ class _PrescriptionScreenState extends State<PrescriptionScreen> {
         base64Image = base64Encode(await image.readAsBytes());
       }
 
+      // Gemini 비전+구조화는 시간이 더 걸릴 수 있어 OCR만 길게 기다린다.
       final response = await _apiClient.post(
         '/api/v1/prescriptions/ocr',
         body: {
-          'user_id': MvpSession.userId.trim(),
+          'user_id': MvpSession.userId.trim().isEmpty
+              ? 'mvp-user'
+              : MvpSession.userId.trim(),
           'image_data': base64Image,
           'source_type': 'OCR',
         },
+        timeout: const Duration(seconds: 90),
       );
 
       if (!mounted) return;
+      final mapped = Map<String, dynamic>.from(response as Map);
+      final items = mapped['items'];
+      final hasItems = items is List && items.isNotEmpty;
+      if (!hasItems) {
+        setState(() {
+          _failureCount++;
+          _step = PrescriptionStep.failed;
+        });
+        return;
+      }
+
       setState(() {
-        _result = Map<String, dynamic>.from(response as Map);
+        _result = mapped;
         _failureCount = 0;
         _step = PrescriptionStep.confirm;
       });
@@ -131,7 +123,8 @@ class _PrescriptionScreenState extends State<PrescriptionScreen> {
       if (first != null) {
         MvpSession.medicineCode = first['medicine_code']?.toString() ?? '';
       }
-    } catch (_) {
+    } catch (error) {
+      debugPrint('처방전 OCR 실패: $error');
       if (!mounted) return;
       setState(() {
         _failureCount++;
@@ -242,34 +235,44 @@ class _CaptureScreen extends StatelessWidget {
                   child: IntrinsicHeight(
                     child: Column(
                       children: [
-                        Container(
-                          margin: const EdgeInsets.all(22),
-                          height: 280,
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(22),
-                            border: Border.all(
-                              color: AppColors.textSecondary,
-                              width: 3,
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(22, 18, 22, 8),
+                          child: Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.fromLTRB(22, 22, 22, 20),
+                            decoration: BoxDecoration(
+                              color: AppColors.darkSurface,
+                              borderRadius: BorderRadius.circular(22),
                             ),
-                          ),
-                          child: Center(
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 22,
-                                vertical: 18,
-                              ),
-                              decoration: BoxDecoration(
-                                color: AppColors.darkSurface,
-                                borderRadius: BorderRadius.circular(16),
-                              ),
-                              child: Text(
-                                '처방전을 이 안에\n맞춰 주세요',
-                                textAlign: TextAlign.center,
-                                style: AppText.label(
-                                  size: 19,
-                                  color: AppColors.onDarkMuted,
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  '📸 이렇게 찍어 주세요',
+                                  style: AppText.emphasis(
+                                    size: 26,
+                                    color: Colors.white,
+                                  ),
                                 ),
-                              ),
+                                const SizedBox(height: 18),
+                                _CaptureTip(
+                                  number: '1',
+                                  emoji: '☀️',
+                                  text: '밝은 곳에 처방전이\n잘 보이게 펼쳐 놓으세요',
+                                ),
+                                const _CaptureTipArrow(),
+                                _CaptureTip(
+                                  number: '2',
+                                  emoji: '📄',
+                                  text: '종이 네 모서리가\n사진에 다 나오게 하세요',
+                                ),
+                                const _CaptureTipArrow(),
+                                _CaptureTip(
+                                  number: '3',
+                                  emoji: '📱',
+                                  text: '두 손으로 잡고\n흔들리지 않게 찍으세요',
+                                ),
+                              ],
                             ),
                           ),
                         ),
@@ -308,6 +311,62 @@ class _CaptureScreen extends StatelessWidget {
           ),
           const SafeArea(top: false, child: SizedBox(height: 12)),
         ],
+      ),
+    );
+  }
+}
+
+class _CaptureTip extends StatelessWidget {
+  final String number;
+  final String emoji;
+  final String text;
+
+  const _CaptureTip({
+    required this.number,
+    required this.emoji,
+    required this.text,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          width: 40,
+          height: 40,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: AppColors.point,
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Text(
+            number,
+            style: AppText.button(size: 22, color: Colors.white),
+          ),
+        ),
+        const SizedBox(width: 14),
+        Expanded(
+          child: Text(
+            '$emoji  $text',
+            style: AppText.body(size: 22, color: Colors.white, weight: FontWeight.w500),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _CaptureTipArrow extends StatelessWidget {
+  const _CaptureTipArrow();
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Text(
+        '↓',
+        style: AppText.emphasis(size: 28, color: AppColors.onDarkMuted),
       ),
     );
   }
@@ -395,6 +454,7 @@ class _ConfirmScreen extends StatelessWidget {
 
   static bool _uncertain(Map<String, dynamic> item) {
     if (item['uncertain'] == true) return true;
+    if (item['match_status']?.toString() == 'UNMATCHED') return true;
     final confidence = item['confidence'];
     return confidence is num && confidence < 0.7;
   }

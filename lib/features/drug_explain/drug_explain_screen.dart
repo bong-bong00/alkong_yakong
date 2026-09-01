@@ -22,6 +22,8 @@ class _DrugExplainScreenState extends State<DrugExplainScreen> {
   bool _isLoading = false;
   final List<Map<String, dynamic>> _messages = [];
   List<Map<String, dynamic>> _suggestions = [];
+  /// 애매한 약 이름 후보 (75~90%). 채팅에서 고르게 한다.
+  List<Map<String, dynamic>> _candidateChips = [];
   Timer? _suggestTimer;
   int _suggestSeq = 0;
   String? _selectedMedicine;
@@ -112,6 +114,15 @@ class _DrugExplainScreenState extends State<DrugExplainScreen> {
       _loadSuggestions(label);
       return;
     }
+    // 일상 연관어(콧물, 설사 등): 입력만 채우고 다시 연관 목록을 불러온다.
+    if (type == 'phrase') {
+      _chatController
+        ..text = label
+        ..selection = TextSelection.collapsed(offset: label.length);
+      setState(() => _suggestions = []);
+      _loadSuggestions(label);
+      return;
+    }
     final question = (_selectedMedicine != null && _bareFaqs.contains(label))
         ? '$_selectedMedicine $label'
         : label;
@@ -144,14 +155,17 @@ class _DrugExplainScreenState extends State<DrugExplainScreen> {
       final data = Map<String, dynamic>.from(response as Map);
       // 일치율·근거 충족률 등 내부 trace는 채팅에 노출하지 않는다.
       final reply = data['reply']?.toString() ?? '응답을 받아오지 못했습니다.';
+      final candidates = _extractCandidates(data);
 
       if (!mounted) return;
       setState(() {
+        _candidateChips = candidates;
         _messages.add({'isMe': false, 'text': reply});
       });
     } on ApiException catch (error) {
       if (!mounted) return;
       setState(() {
+        _candidateChips = [];
         _messages.add({
           'isMe': false,
           'text': _chatErrorText(error),
@@ -160,6 +174,7 @@ class _DrugExplainScreenState extends State<DrugExplainScreen> {
     } catch (error) {
       if (!mounted) return;
       setState(() {
+        _candidateChips = [];
         _messages.add({
           'isMe': false,
           'text': '서버에 연결하지 못했어요. 잠시 후 다시 시도해주세요.',
@@ -171,6 +186,45 @@ class _DrugExplainScreenState extends State<DrugExplainScreen> {
         _scrollToBottom();
       }
     }
+  }
+
+  List<Map<String, dynamic>> _extractCandidates(Map<String, dynamic> data) {
+    final fromTop = data['candidates'];
+    if (fromTop is List) {
+      return fromTop
+          .whereType<Map>()
+          .map(Map<String, dynamic>.from)
+          .where((item) => (item['label']?.toString() ?? '').isNotEmpty)
+          .toList();
+    }
+    final trace = data['trace'];
+    if (trace is! Map) return [];
+    if (trace['stage']?.toString() != 'match') return [];
+    final raw = trace['candidates'];
+    if (raw is! List) return [];
+    return raw
+        .map((item) {
+          if (item is Map) {
+            return Map<String, dynamic>.from(item);
+          }
+          if (item is List && item.isNotEmpty) {
+            return <String, dynamic>{'label': item.first.toString()};
+          }
+          return <String, dynamic>{'label': item.toString()};
+        })
+        .where((item) => (item['label']?.toString() ?? '').isNotEmpty)
+        .toList();
+  }
+
+  void _pickCandidate(Map<String, dynamic> item) {
+    final label = item['label']?.toString() ?? '';
+    if (label.isEmpty) return;
+    _selectedMedicine = label;
+    _chatController
+      ..text = '$label 이 약 설명'
+      ..selection = TextSelection.collapsed(offset: '$label 이 약 설명'.length);
+    setState(() => _candidateChips = []);
+    _sendMessage();
   }
 
   @override
@@ -190,6 +244,35 @@ class _DrugExplainScreenState extends State<DrugExplainScreen> {
                     avatar: const Icon(Icons.medication_outlined, size: 18),
                     label: Text('선택한 약: $_selectedMedicine'),
                     onDeleted: () => setState(() => _selectedMedicine = null),
+                  ),
+                ),
+              ),
+            if (_candidateChips.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      const Padding(
+                        padding: EdgeInsets.only(right: 4, top: 8),
+                        child: Text(
+                          '혹시 이 약인가요?',
+                          style: TextStyle(fontSize: 13, color: kTextSub),
+                        ),
+                      ),
+                      ..._candidateChips.map(
+                        (item) => ActionChip(
+                          avatar: const Icon(Icons.medication_outlined, size: 18),
+                          label: Text(item['label']?.toString() ?? ''),
+                          onPressed: _isLoading
+                              ? null
+                              : () => _pickCandidate(item),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ),

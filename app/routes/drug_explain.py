@@ -27,7 +27,11 @@ def chat_with_pharmacist(request: DrugExplainChatRequest):
             lexicon.append(label)
 
     result = run_chat_pipeline(request.message, lexicon=lexicon)
-    return {"reply": result.reply, "ok": result.ok, "trace": result.trace}
+    payload = {"reply": result.reply, "ok": result.ok, "trace": result.trace}
+    candidates = result.trace.get("candidates")
+    if isinstance(candidates, list) and candidates:
+        payload["candidates"] = candidates
+    return payload
 
 
 @router.get("/drug-explain/suggestions")

@@ -35,11 +35,12 @@ class ApiClient {
   Future<dynamic> post(
     String path, {
     required Map<String, dynamic> body,
+    Duration timeout = const Duration(seconds: 45),
   }) async {
     try {
       final response = await _client
           .post(_uri(path), headers: _headers, body: jsonEncode(body))
-          .timeout(const Duration(seconds: 45));
+          .timeout(timeout);
       return _decodeResponse(response);
     } on ApiException {
       rethrow;

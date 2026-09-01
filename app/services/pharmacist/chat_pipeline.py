@@ -33,13 +33,17 @@ def run_chat_pipeline(message: str, lexicon: list[str] | None = None) -> ChatPip
     if enriched_lexicon:
         match = match_medicine_name(candidates[0], enriched_lexicon)
         if not match.matched_name and match.candidates:
+            candidate_items = [
+                {"label": name, "score": round(score * 100, 1)}
+                for name, score in match.candidates[:5]
+            ]
             return ChatPipelineResult(
                 False,
-                "약 이름을 정확히 확인하지 못했어요. 목록에서 약을 골라 주세요.",
+                "혹시 이 약인가요? 아래에서 골라 주세요.",
                 {
                     "original": original,
                     "corrected": None,
-                    "candidates": list(match.candidates),
+                    "candidates": candidate_items,
                     "name_match_score": round(match.score * 100, 1),
                     "name_match_method": "candidate",
                     "source": None,
@@ -130,12 +134,14 @@ def _enrich_lexicon(message: str, lexicon: list[str] | None) -> list[str]:
     for label in lexicon or []:
         _add(label)
 
+    # 사용자가 친 원문 토큰은 사전에 넣지 않는다.
+    # (넣으면 exact 매칭되어 오타가 그대로 확정됨)
     tokens = extract_drug_name_candidates(message, None)
     for token in tokens:
-        _add(token)
         try:
-            for hit in search_permission_names(token[:2], limit=8):
-                _add(hit)
+            if len(token) >= 2:
+                for hit in search_permission_names(token[:2], limit=8):
+                    _add(hit)
             for hit in search_permission_names(token, limit=8):
                 _add(hit)
         except Exception:
