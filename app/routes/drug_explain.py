@@ -12,8 +12,19 @@ router = APIRouter(prefix="/api/v1", tags=["Drug Explain"])
 
 @router.post("/drug-explain/chat")
 def chat_with_pharmacist(request: DrugExplainChatRequest):
-    suggestions = get_chat_suggestions(user_id=request.user_id)
-    lexicon = [item["label"] for item in suggestions if item["type"] != "faq"]
+    # 오늘 약 + 입력 문장으로 뜨는 자동완성 약 이름을 사전으로 씀.
+    # (아산형: 고른/친 약 이름이 매칭 후보가 됨)
+    base = get_chat_suggestions(user_id=request.user_id)
+    typed = get_chat_suggestions(request.message, user_id=request.user_id)
+    lexicon: list[str] = []
+    seen: set[str] = set()
+    for item in [*base, *typed]:
+        if item.get("type") == "faq":
+            continue
+        label = str(item.get("label") or "").strip()
+        if label and label not in seen:
+            seen.add(label)
+            lexicon.append(label)
 
     result = run_chat_pipeline(request.message, lexicon=lexicon)
     return {"reply": result.reply, "ok": result.ok, "trace": result.trace}
