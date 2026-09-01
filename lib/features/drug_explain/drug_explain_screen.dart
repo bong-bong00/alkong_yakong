@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../core/constants/app_colors.dart';
@@ -20,13 +22,15 @@ class _DrugExplainScreenState extends State<DrugExplainScreen> {
   bool _isLoading = false;
   final List<Map<String, dynamic>> _messages = [];
   List<Map<String, dynamic>> _suggestions = [];
+  Timer? _suggestTimer;
+  int _suggestSeq = 0;
   String? _selectedMedicine;
-  static const _quickQuestions = [
+  static const _bareFaqs = {
     '지금 먹을 약',
     '이 약 설명',
     '같이 먹으면',
     '안 먹었을 때',
-  ];
+  };
 
   @override
   void initState() {
@@ -40,6 +44,7 @@ class _DrugExplainScreenState extends State<DrugExplainScreen> {
 
   @override
   void dispose() {
+    _suggestTimer?.cancel();
     _chatController.dispose();
     _scrollController.dispose();
     super.dispose();
@@ -57,21 +62,40 @@ class _DrugExplainScreenState extends State<DrugExplainScreen> {
     });
   }
 
+  void _onQueryChanged(String query) {
+    _suggestTimer?.cancel();
+    final trimmed = query.trim();
+    if (trimmed.isEmpty) {
+      _suggestSeq++;
+      setState(() => _suggestions = []);
+      return;
+    }
+    _suggestTimer = Timer(const Duration(milliseconds: 280), () {
+      _loadSuggestions(trimmed);
+    });
+  }
+
   Future<void> _loadSuggestions(String query) async {
+    final seq = ++_suggestSeq;
     try {
-      final encodedQuery = Uri.encodeQueryComponent(query.trim());
+      final encodedQuery = Uri.encodeQueryComponent(query);
       final encodedUser = Uri.encodeQueryComponent(MvpSession.userId);
       final response = await _apiClient.get(
         '/api/v1/drug-explain/suggestions?q=$encodedQuery&user_id=$encodedUser',
       );
-      if (!mounted || response is! Map) return;
+      if (!mounted || seq != _suggestSeq || response is! Map) return;
       final items = response['items'];
       if (items is! List) return;
       setState(() {
-        _suggestions = items.whereType<Map>().map(Map<String, dynamic>.from).toList();
+        _suggestions = items
+            .whereType<Map>()
+            .map(Map<String, dynamic>.from)
+            .toList();
       });
     } catch (_) {
-      if (mounted) setState(() => _suggestions = []);
+      if (mounted && seq == _suggestSeq) {
+        setState(() => _suggestions = []);
+      }
     }
   }
 
@@ -84,15 +108,20 @@ class _DrugExplainScreenState extends State<DrugExplainScreen> {
       _chatController
         ..text = label
         ..selection = TextSelection.collapsed(offset: label.length);
-    } else {
-      final question = _selectedMedicine == null
-          ? label
-          : '$_selectedMedicine $label';
-      _chatController
-        ..text = question
-        ..selection = TextSelection.collapsed(offset: question.length);
+      setState(() => _suggestions = []);
+      _loadSuggestions(label);
+      return;
     }
+    final question = (_selectedMedicine != null && _bareFaqs.contains(label))
+        ? '$_selectedMedicine $label'
+        : label;
+    _chatController
+      ..text = question
+      ..selection = TextSelection.collapsed(offset: question.length);
     setState(() => _suggestions = []);
+    if (type == 'faq') {
+      _sendMessage();
+    }
   }
 
   Future<void> _sendMessage() async {
@@ -113,23 +142,8 @@ class _DrugExplainScreenState extends State<DrugExplainScreen> {
       );
 
       final data = Map<String, dynamic>.from(response as Map);
-      var reply = data['reply']?.toString() ?? '응답을 받아오지 못했습니다.';
-      final trace = data['trace'];
-      if (trace is Map) {
-        final corrected = trace['corrected']?.toString();
-        final source = trace['source']?.toString();
-        final nameScore = trace['name_match_score'];
-        final evidenceScore = trace['evidence_score'];
-        final metadata = [
-          if (corrected != null && corrected.isNotEmpty) '찾은 약: $corrected',
-          if (source != null && source.isNotEmpty) '출처: $source',
-          if (nameScore != null) '약 이름 일치율: $nameScore%',
-          if (evidenceScore != null) '공식자료 근거 충족률: $evidenceScore%',
-        ];
-        if (metadata.isNotEmpty) {
-          reply = '${metadata.join('\n')}\n\n$reply';
-        }
-      }
+      // 일치율·근거 충족률 등 내부 trace는 채팅에 노출하지 않는다.
+      final reply = data['reply']?.toString() ?? '응답을 받아오지 못했습니다.';
 
       if (!mounted) return;
       setState(() {
@@ -167,32 +181,6 @@ class _DrugExplainScreenState extends State<DrugExplainScreen> {
       body: SafeArea(
         child: Column(
           children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-              child: Align(
-                alignment: Alignment.centerLeft,
-                child: Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: _quickQuestions
-                      .map(
-                        (question) => ActionChip(
-                          label: Text(question),
-                          onPressed: _isLoading
-                              ? null
-                              : () {
-                                  _selectSuggestion({
-                                    'label': question,
-                                    'type': 'faq',
-                                  });
-                                  _sendMessage();
-                                },
-                        ),
-                      )
-                      .toList(),
-                ),
-              ),
-            ),
             if (_selectedMedicine != null)
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
@@ -226,93 +214,149 @@ class _DrugExplainScreenState extends State<DrugExplainScreen> {
                   style: TextStyle(fontSize: 12, color: kTextSub),
                 ),
               ),
-            if (_suggestions.isNotEmpty)
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: Align(
-                  alignment: Alignment.centerLeft,
-                  child: Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: _suggestions
-                        .map(
-                          (item) => ActionChip(
-                            label: Text(item['label']?.toString() ?? ''),
-                            onPressed: () => _selectSuggestion(item),
-                          ),
-                        )
-                        .toList(),
-                  ),
-                ),
-              ),
-            // 하단 입력창 (플로팅 스타일로 변경)
+            // 아산형: 입력창 바로 위에 연관어 목록, 그 아래 입력창.
             Padding(
-              // 하단바와 겹치지 않도록 좌, 우, 아래에 여백을 주어 띄웁니다.
               padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-              child: Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 10,
-                  vertical: 8,
-                ),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  // 전체 컨테이너를 캡슐 모양으로 완전히 둥글게 처리합니다.
-                  borderRadius: BorderRadius.circular(30),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.06),
-                      blurRadius: 16,
-                      offset: const Offset(0, 4),
-                    ),
-                  ],
-                ),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: TextField(
-                        controller: _chatController,
-                        textInputAction: TextInputAction.send,
-                        onChanged: _loadSuggestions,
-                        onSubmitted: (_) => _sendMessage(),
-                        decoration: InputDecoration(
-                          hintText: '궁금한 약 정보나 증상을 입력하세요...',
-                          hintStyle: TextStyle(
-                            color: Colors.grey[400],
-                            fontSize: 14,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (_suggestions.isNotEmpty) ...[
+                    Container(
+                      width: double.infinity,
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(16),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.06),
+                            blurRadius: 12,
+                            offset: const Offset(0, 2),
                           ),
-                          filled: true,
-                          // 캡슐(흰색)과 구분되도록 입력칸은 연한 연두색으로.
-                          fillColor: kPrimaryLight,
-                          contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 20,
-                            vertical: 12,
+                        ],
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Padding(
+                            padding: EdgeInsets.fromLTRB(14, 12, 14, 4),
+                            child: Text(
+                              '관련 검색어를 고르면 바로 답을 볼 수 있어요',
+                              style: TextStyle(
+                                fontSize: 13,
+                                color: kTextSub,
+                              ),
+                            ),
                           ),
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(24),
-                            borderSide: BorderSide.none,
+                          ConstrainedBox(
+                            constraints: const BoxConstraints(maxHeight: 168),
+                            child: ListView.separated(
+                              shrinkWrap: true,
+                              padding: const EdgeInsets.only(bottom: 8),
+                              itemCount: _suggestions.length,
+                              separatorBuilder: (context, index) => const Divider(
+                                height: 1,
+                                indent: 14,
+                                endIndent: 14,
+                              ),
+                              itemBuilder: (context, index) {
+                                final item = _suggestions[index];
+                                final label = item['label']?.toString() ?? '';
+                                final type = item['type']?.toString();
+                                final isMedicine = type == 'medicine' ||
+                                    type == 'today_medicine';
+                                return ListTile(
+                                  dense: true,
+                                  leading: Icon(
+                                    isMedicine
+                                        ? Icons.medication_outlined
+                                        : Icons.help_outline,
+                                    size: 20,
+                                    color: kPrimary,
+                                  ),
+                                  title: Text(
+                                    label,
+                                    style: const TextStyle(
+                                      fontSize: 15,
+                                      color: kText,
+                                    ),
+                                  ),
+                                  onTap: _isLoading
+                                      ? null
+                                      : () => _selectSuggestion(item),
+                                );
+                              },
+                            ),
                           ),
-                        ),
+                        ],
                       ),
                     ),
-                    const SizedBox(width: 8),
-                    GestureDetector(
-                      onTap: _isLoading ? null : _sendMessage,
-                      child: Container(
-                        width: 48,
-                        height: 48,
-                        decoration: BoxDecoration(
-                          color: _isLoading ? Colors.grey : kPrimary,
-                          shape: BoxShape.circle,
-                        ),
-                        child: const Icon(
-                          Icons.send_rounded,
-                          color: Colors.white,
-                          size: 20,
-                        ),
-                      ),
-                    ),
+                    const SizedBox(height: 8),
                   ],
-                ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 8,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(30),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.06),
+                          blurRadius: 16,
+                          offset: const Offset(0, 4),
+                        ),
+                      ],
+                    ),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: TextField(
+                            controller: _chatController,
+                            textInputAction: TextInputAction.send,
+                            onChanged: _onQueryChanged,
+                            onSubmitted: (_) => _sendMessage(),
+                            decoration: InputDecoration(
+                              hintText: '약 이름을 조금만 입력해 보세요...',
+                              hintStyle: TextStyle(
+                                color: Colors.grey[400],
+                                fontSize: 14,
+                              ),
+                              filled: true,
+                              fillColor: kPrimaryLight,
+                              contentPadding: const EdgeInsets.symmetric(
+                                horizontal: 20,
+                                vertical: 12,
+                              ),
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(24),
+                                borderSide: BorderSide.none,
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        GestureDetector(
+                          onTap: _isLoading ? null : _sendMessage,
+                          child: Container(
+                            width: 48,
+                            height: 48,
+                            decoration: BoxDecoration(
+                              color: _isLoading ? Colors.grey : kPrimary,
+                              shape: BoxShape.circle,
+                            ),
+                            child: const Icon(
+                              Icons.send_rounded,
+                              color: Colors.white,
+                              size: 20,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
               ),
             ),
           ],

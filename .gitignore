@@ -46,6 +46,10 @@ app.*.map.json
 /android/app/release
 
 alkongyakong.db
+mfds_drug_permission.db
+mfds_drug_permission.db-*
+easy_category_map.db
+easy_category_map.db-*
 __pycache__/
 # Widget Preview related
 .widget_preview/

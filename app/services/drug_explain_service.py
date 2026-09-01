@@ -7,6 +7,7 @@ from fastapi import HTTPException
 from app.core.config import GEMINI_MODEL
 from app.database import get_connection
 from app.services.external_api_service import fetch_e_drug_info
+from app.services.pharmacist.easy_category import derive_easy_category_from_medicine
 from app.services.pharmacist.generate import generate_card_from_source
 
 
@@ -190,12 +191,22 @@ def _upsert_medicine(
     official: dict[str, Any],
 ) -> None:
     local = local or {}
+    merged = {
+        **local,
+        **{key: value for key, value in official.items() if value},
+        "product_name": official.get("product_name")
+        or local.get("product_name")
+        or medicine_code,
+    }
+    easy_category = derive_easy_category_from_medicine(merged) or local.get(
+        "easy_category"
+    )
     cursor.execute(
         """
         INSERT INTO medicines (
             medicine_code, product_name, ingredient, manufacturer,
-            efficacy, usage, precautions, image_url
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            efficacy, usage, precautions, image_url, easy_category
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(medicine_code) DO UPDATE SET
             product_name = excluded.product_name,
             ingredient = excluded.ingredient,
@@ -204,13 +215,12 @@ def _upsert_medicine(
             usage = excluded.usage,
             precautions = excluded.precautions,
             image_url = excluded.image_url,
+            easy_category = COALESCE(excluded.easy_category, medicines.easy_category),
             updated_at = CURRENT_TIMESTAMP
         """,
         (
             medicine_code,
-            official.get("product_name")
-            or local.get("product_name")
-            or medicine_code,
+            merged["product_name"],
             official.get("ingredient")
             or local.get("ingredient")
             or MISSING_OFFICIAL_TEXT,
@@ -219,6 +229,7 @@ def _upsert_medicine(
             official.get("usage") or local.get("usage"),
             official.get("cautions") or local.get("precautions"),
             official.get("image_url") or local.get("image_url"),
+            easy_category,
         ),
     )
 

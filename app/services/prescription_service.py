@@ -10,6 +10,7 @@ from app.database import get_connection
 from app.models.schemas import OCRMedicineItem, PrescriptionOCRRequest
 from app.services.matching.name_matcher import match_medicine_name
 from app.services.ocr.pipeline import run_ocr_pipeline, run_ocr_text_pipeline
+from app.services.pharmacist.easy_category import derive_easy_category_from_medicine
 from app.services.pharmacist.retrieve import retrieve_official
 
 
@@ -95,12 +96,19 @@ def _upsert_official_medicine(cursor, official: dict) -> tuple[str, str]:
             detail="공식 약품 코드가 없습니다.",
         )
     precautions = med.get("precautions") or med.get("cautions") or ""
+    easy_category = derive_easy_category_from_medicine(
+        {
+            **med,
+            "product_name": name,
+            "source_text": official.get("source_text"),
+        }
+    )
     cursor.execute(
         """
         INSERT INTO medicines (
             medicine_code, product_name, ingredient, manufacturer,
-            efficacy, usage, precautions, image_url
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            efficacy, usage, precautions, image_url, easy_category
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(medicine_code) DO UPDATE SET
             product_name = excluded.product_name,
             ingredient = excluded.ingredient,
@@ -109,6 +117,7 @@ def _upsert_official_medicine(cursor, official: dict) -> tuple[str, str]:
             usage = excluded.usage,
             precautions = excluded.precautions,
             image_url = excluded.image_url,
+            easy_category = COALESCE(excluded.easy_category, medicines.easy_category),
             updated_at = CURRENT_TIMESTAMP
         """,
         (
@@ -120,6 +129,7 @@ def _upsert_official_medicine(cursor, official: dict) -> tuple[str, str]:
             med.get("usage"),
             precautions if isinstance(precautions, str) else str(precautions or ""),
             med.get("image_url"),
+            easy_category,
         ),
     )
     status = "MATCHED" if official.get("source") == "local" else "MFDS"
@@ -147,6 +157,7 @@ def _resolve_medicine(cursor, item: OCRMedicineItem) -> tuple[str, str]:
                 if row["product_name"] == match.matched_name
             )
     if medicine:
+        _ensure_easy_category(cursor, dict(medicine))
         return medicine["medicine_code"], "MATCHED"
 
     official = retrieve_official(item.drug_name)
@@ -156,6 +167,22 @@ def _resolve_medicine(cursor, item: OCRMedicineItem) -> tuple[str, str]:
     raise HTTPException(
         status_code=422,
         detail=f"등록된 공식 약품에서 확인하지 못했습니다: {item.drug_name}",
+    )
+
+
+def _ensure_easy_category(cursor, medicine: dict) -> None:
+    if medicine.get("easy_category"):
+        return
+    category = derive_easy_category_from_medicine(medicine)
+    if not category:
+        return
+    cursor.execute(
+        """
+        UPDATE medicines
+        SET easy_category = ?, updated_at = CURRENT_TIMESTAMP
+        WHERE medicine_code = ?
+        """,
+        (category, medicine["medicine_code"]),
     )
 
 

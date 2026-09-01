@@ -49,16 +49,27 @@ class Medicine {
   /// 음성 안내([5d])와 스크린리더 설명에만 쓴다.
   final String? appearance;
 
+  /// 어르신용 쉬운 분류 — "혈압약". 화면에 `이름 (분류)` 로 붙인다.
+  final String? easyCategory;
+
   const Medicine({
     required this.ingredient,
     required this.amount,
     this.appearance,
+    this.easyCategory,
   });
+
+  /// 홈·목록에 쓰는 한 줄 — "암로디핀 5mg (혈압약)".
+  String get displayName {
+    final category = easyCategory?.trim();
+    if (category == null || category.isEmpty) return ingredient;
+    return '$ingredient ($category)';
+  }
 
   /// 음성으로 읽어줄 때의 한 줄 — "메트포르민 500mg, 흰색 동그란 알약 1알".
   String get spoken => appearance == null
-      ? '$ingredient $amount'
-      : '$ingredient, $appearance $amount';
+      ? '$displayName $amount'
+      : '$displayName, $appearance $amount';
 }
 
 /// 한 시간대의 복약 상태.

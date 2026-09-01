@@ -41,6 +41,7 @@ TABLE_DEFINITIONS = {
             usage TEXT,
             precautions TEXT,
             image_url TEXT,
+            easy_category TEXT,
             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
             updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
         )
@@ -341,6 +342,9 @@ ADDITIVE_COLUMNS = {
     },
     "prescription_items": {
         "easy_explanation": "TEXT",
+    },
+    "medicines": {
+        "easy_category": "TEXT",
     },
 }
 

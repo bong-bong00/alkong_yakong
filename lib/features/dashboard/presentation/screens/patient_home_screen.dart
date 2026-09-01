@@ -378,7 +378,7 @@ class _MedicineRow extends StatelessWidget {
         children: [
           Expanded(
             child: Text(
-              medicine.ingredient,
+              medicine.displayName,
               style: AppText.label(size: 20, color: AppColors.textBody),
             ),
           ),
