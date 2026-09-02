@@ -50,6 +50,8 @@ def _raise_ocr_fail(result) -> None:
     payload = {"message": "처방전을 읽지 못했습니다.", "error": error}
     if error == "missing_api_key":
         raise HTTPException(status_code=503, detail=payload)
+    if error == "quota_exceeded":
+        raise HTTPException(status_code=503, detail=payload)
     if error in {"timeout", "DeadlineExceeded"}:
         raise HTTPException(status_code=504, detail=payload)
     if error in {"auth_error", "unavailable"} or (
@@ -83,7 +85,11 @@ def _extract_items(
     items = _structured_items(result.structured)
     if not items:
         raise HTTPException(status_code=422, detail="처방전에서 약품을 찾지 못했습니다.")
-    return items, result.raw_text, result.trace
+    trace = dict(result.trace or {})
+    coverage = result.structured.get("field_coverage")
+    if coverage:
+        trace["field_coverage"] = coverage
+    return items, result.raw_text, trace
 
 
 def _upsert_official_medicine(cursor, official: dict) -> tuple[str, str]:
@@ -136,6 +142,22 @@ def _upsert_official_medicine(cursor, official: dict) -> tuple[str, str]:
     return code, status
 
 
+def _create_provisional_medicine(cursor, drug_name: str) -> tuple[str, str]:
+    """공식 DB에 없어도 OCR로 읽힌 약 이름은 임시 코드로 남겨 확인 화면까지 보낸다."""
+    name = (drug_name or "").strip() or "이름을 못 읽었어요"
+    code = f"OCR-{uuid.uuid4().hex[:10].upper()}"
+    cursor.execute(
+        """
+        INSERT INTO medicines (
+            medicine_code, product_name, ingredient, manufacturer,
+            efficacy, usage, precautions, image_url, easy_category
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (code, name, name, None, None, None, None, None, None),
+    )
+    return code, "UNMATCHED"
+
+
 def _resolve_medicine(cursor, item: OCRMedicineItem) -> tuple[str, str]:
     medicine = None
     if item.medicine_code:
@@ -143,31 +165,32 @@ def _resolve_medicine(cursor, item: OCRMedicineItem) -> tuple[str, str]:
             "SELECT * FROM medicines WHERE medicine_code = ?",
             (item.medicine_code,),
         ).fetchone()
-    if not medicine:
-        rows = cursor.execute(
-            "SELECT * FROM medicines WHERE product_name IS NOT NULL"
-        ).fetchall()
-        match = match_medicine_name(
-            item.drug_name,
-            [row["product_name"] for row in rows],
-        )
-        if match.matched_name:
-            medicine = next(
-                row for row in rows
-                if row["product_name"] == match.matched_name
-            )
     if medicine:
         _ensure_easy_category(cursor, dict(medicine))
         return medicine["medicine_code"], "MATCHED"
 
+    # 허가정보·e약은요 등 공식 조회를 먼저 시도한다.
     official = retrieve_official(item.drug_name)
     if official:
         return _upsert_official_medicine(cursor, official)
 
-    raise HTTPException(
-        status_code=422,
-        detail=f"등록된 공식 약품에서 확인하지 못했습니다: {item.drug_name}",
+    rows = cursor.execute(
+        "SELECT * FROM medicines WHERE product_name IS NOT NULL"
+    ).fetchall()
+    match = match_medicine_name(
+        item.drug_name,
+        [row["product_name"] for row in rows],
     )
+    if match.matched_name:
+        medicine = next(
+            row for row in rows
+            if row["product_name"] == match.matched_name
+        )
+        _ensure_easy_category(cursor, dict(medicine))
+        return medicine["medicine_code"], "MATCHED"
+
+    # 매칭 실패해도 처방 읽기 전체를 실패시키지 않는다.
+    return _create_provisional_medicine(cursor, item.drug_name)
 
 
 def _ensure_easy_category(cursor, medicine: dict) -> None:
@@ -356,7 +379,9 @@ def create_prescription_from_ocr(request: PrescriptionOCRRequest) -> dict:
                     "drug_name": item.drug_name,
                     "match_status": match_status,
                     "frequency_per_day": item.frequency_per_day or 1,
+                    "duration_days": item.duration_days,
                     "easy_explanation": item.easy_explanation,
+                    "uncertain": match_status == "UNMATCHED",
                     "schedules": schedules,
                 }
             )
