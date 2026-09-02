@@ -16,6 +16,7 @@ from app.routes import (
     users,
 )
 from init_db import initialize_database
+from app.models.response_schemas import HealthResponse, RootResponse
 
 
 @asynccontextmanager
@@ -53,11 +54,11 @@ for router in (
     app.include_router(router)
 
 
-@app.get("/")
+@app.get("/", response_model=RootResponse)
 def root():
     return {"message": "알콩약콩 MVP 서버 실행 중", "docs": "/docs"}
 
 
-@app.get("/health")
+@app.get("/health", response_model=HealthResponse)
 def health():
     return {"status": "ok"}

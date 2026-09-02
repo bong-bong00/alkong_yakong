@@ -4,12 +4,13 @@ from fastapi import APIRouter, HTTPException
 
 from app.database import get_connection
 from app.models.schemas import GuardianCreate
+from app.models.response_schemas import GuardianCreateResponse, GuardianResponse
 
 
 router = APIRouter(prefix="/api/v1/guardians", tags=["Guardians"])
 
 
-@router.post("")
+@router.post("", response_model=GuardianCreateResponse)
 def create_guardian(guardian: GuardianCreate):
     conn = get_connection()
     try:
@@ -41,7 +42,7 @@ def create_guardian(guardian: GuardianCreate):
         conn.close()
 
 
-@router.get("/users/{user_id}")
+@router.get("/users/{user_id}", response_model=list[GuardianResponse])
 def get_user_guardians(user_id: str):
     conn = get_connection()
     try:
