@@ -42,6 +42,8 @@ class _DrugExplainScreenState extends State<DrugExplainScreen> {
       'isMe': false,
       'text': '안녕하세요! 어떤 약에 대해 알고 싶으신가요?\n증상이나 약 이름을 편하게 물어보세요.',
     });
+    // FAQ + 오늘 약 칩
+    _loadSuggestions('');
   }
 
   @override
@@ -67,11 +69,7 @@ class _DrugExplainScreenState extends State<DrugExplainScreen> {
   void _onQueryChanged(String query) {
     _suggestTimer?.cancel();
     final trimmed = query.trim();
-    if (trimmed.isEmpty) {
-      _suggestSeq++;
-      setState(() => _suggestions = []);
-      return;
-    }
+    // 빈 입력이면 FAQ + 오늘 약 칩을 불러온다 (비우지 않음)
     _suggestTimer = Timer(const Duration(milliseconds: 280), () {
       _loadSuggestions(trimmed);
     });
@@ -154,13 +152,20 @@ class _DrugExplainScreenState extends State<DrugExplainScreen> {
 
       final data = Map<String, dynamic>.from(response as Map);
       // 일치율·근거 충족률 등 내부 trace는 채팅에 노출하지 않는다.
+      // 출처(source_label)만 사용자에게 보여 일반 챗봇과 구분한다.
       final reply = data['reply']?.toString() ?? '응답을 받아오지 못했습니다.';
+      final sourceLabel = data['source_label']?.toString();
       final candidates = _extractCandidates(data);
 
       if (!mounted) return;
       setState(() {
         _candidateChips = candidates;
-        _messages.add({'isMe': false, 'text': reply});
+        _messages.add({
+          'isMe': false,
+          'text': reply,
+          if (sourceLabel != null && sourceLabel.isNotEmpty)
+            'sourceLabel': sourceLabel,
+        });
       });
     } on ApiException catch (error) {
       if (!mounted) return;
@@ -285,7 +290,11 @@ class _DrugExplainScreenState extends State<DrugExplainScreen> {
                 itemBuilder: (context, index) {
                   final msg = _messages[index];
                   final isMe = msg['isMe'] as bool;
-                  return _ChatBubble(isMe: isMe, text: msg['text'] as String);
+                  return _ChatBubble(
+                    isMe: isMe,
+                    text: msg['text'] as String,
+                    sourceLabel: msg['sourceLabel']?.toString(),
+                  );
                 },
               ),
             ),
@@ -452,11 +461,22 @@ class _DrugExplainScreenState extends State<DrugExplainScreen> {
 class _ChatBubble extends StatelessWidget {
   final bool isMe;
   final String text;
+  final String? sourceLabel;
 
-  const _ChatBubble({required this.isMe, required this.text});
+  const _ChatBubble({
+    required this.isMe,
+    required this.text,
+    this.sourceLabel,
+  });
 
   @override
   Widget build(BuildContext context) {
+    final label = sourceLabel?.trim() ?? '';
+    final showSource = !isMe && label.isNotEmpty;
+    var body = text;
+    if (showSource && body.startsWith(label)) {
+      body = body.substring(label.length).replaceFirst(RegExp(r'^,?\s*'), '');
+    }
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
       child: Row(
@@ -480,32 +500,51 @@ class _ChatBubble extends StatelessWidget {
             const SizedBox(width: 8),
           ],
           Flexible(
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              decoration: BoxDecoration(
-                color: isMe ? kPrimary : Colors.white,
-                borderRadius: BorderRadius.only(
-                  topLeft: const Radius.circular(16),
-                  topRight: const Radius.circular(16),
-                  bottomLeft: Radius.circular(isMe ? 16 : 4),
-                  bottomRight: Radius.circular(isMe ? 4 : 16),
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.04),
-                    blurRadius: 8,
-                    offset: const Offset(0, 2),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (showSource) ...[
+                  Padding(
+                    padding: const EdgeInsets.only(left: 4, bottom: 6),
+                    child: Text(
+                      label,
+                      style: const TextStyle(
+                        fontSize: 12.5,
+                        height: 1.3,
+                        color: kPrimary,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
                   ),
                 ],
-              ),
-              child: Text(
-                text,
-                style: TextStyle(
-                  fontSize: 14.5,
-                  height: 1.4,
-                  color: isMe ? Colors.white : kText,
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  decoration: BoxDecoration(
+                    color: isMe ? kPrimary : Colors.white,
+                    borderRadius: BorderRadius.only(
+                      topLeft: const Radius.circular(16),
+                      topRight: const Radius.circular(16),
+                      bottomLeft: Radius.circular(isMe ? 16 : 4),
+                      bottomRight: Radius.circular(isMe ? 4 : 16),
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.04),
+                        blurRadius: 8,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                  child: Text(
+                    body,
+                    style: TextStyle(
+                      fontSize: 14.5,
+                      height: 1.4,
+                      color: isMe ? Colors.white : kText,
+                    ),
+                  ),
                 ),
-              ),
+              ],
             ),
           ),
           if (isMe) const SizedBox(width: 44),

@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 
@@ -13,6 +14,7 @@ import '../../../../core/widgets/recovery_view.dart';
 import '../../../../core/widgets/senior_button.dart';
 import '../../../../core/widgets/senior_card.dart';
 import '../../../../core/widgets/senior_header.dart';
+import '../../../medication/application/medication_controller.dart';
 import '../../../onboarding/presentation/screens/first_run_screen.dart';
 
 /// 처방전 등록 흐름의 단계.
@@ -22,6 +24,9 @@ enum PrescriptionStep {
 
   /// 읽는 중.
   reading,
+
+  /// 읽기 완성도 % (정답 인식률이 아님).
+  readiness,
 
   /// 4e — 이렇게 읽었어요.
   confirm,
@@ -34,20 +39,24 @@ enum PrescriptionStep {
 ///
 /// "처방전 OCR 인식"이라는 말을 쓰지 않는다.
 /// 읽지 못했을 때도 사용자를 탓하지 않는다 — "다시 찍어드릴게요".
-class PrescriptionScreen extends StatefulWidget {
+class PrescriptionScreen extends ConsumerStatefulWidget {
   const PrescriptionScreen({super.key});
 
   @override
-  State<PrescriptionScreen> createState() => _PrescriptionScreenState();
+  ConsumerState<PrescriptionScreen> createState() => _PrescriptionScreenState();
 }
 
-class _PrescriptionScreenState extends State<PrescriptionScreen> {
+class _PrescriptionScreenState extends ConsumerState<PrescriptionScreen> {
   final ImagePicker _picker = ImagePicker();
   final ApiClient _apiClient = ApiClient();
 
   PrescriptionStep _step = PrescriptionStep.capture;
   File? _image;
   Map<String, dynamic>? _result;
+  int _readinessPct = 0;
+  String _readinessLabel = 'fair';
+  String _readinessSummary = '';
+  List<String> _missingHints = const [];
 
   /// 촬영 실패 횟수. 3번 실패하면 가족 대행(5g)을 권한다.
   int _failureCount = 0;
@@ -113,10 +122,20 @@ class _PrescriptionScreenState extends State<PrescriptionScreen> {
         return;
       }
 
+      final pctRaw = mapped['user_readiness_pct'];
+      final pct = pctRaw is num ? pctRaw.round() : 0;
+      final hints = mapped['missing_hints'];
       setState(() {
         _result = mapped;
         _failureCount = 0;
-        _step = PrescriptionStep.confirm;
+        _readinessPct = pct.clamp(0, 100);
+        _readinessLabel = mapped['readiness_label']?.toString() ?? 'fair';
+        _readinessSummary =
+            mapped['readiness_summary']?.toString() ?? '처방전을 읽었어요.';
+        _missingHints = hints is List
+            ? hints.map((e) => e.toString()).where((e) => e.isNotEmpty).toList()
+            : const [];
+        _step = PrescriptionStep.readiness;
       });
 
       final first = _items.isEmpty ? null : _items.first;
@@ -134,34 +153,100 @@ class _PrescriptionScreenState extends State<PrescriptionScreen> {
   }
 
   Future<void> _register() async {
+    final userId = MvpSession.userId.trim().isEmpty
+        ? 'mvp-user'
+        : MvpSession.userId.trim();
+    final confirmItems = _items
+        .where((item) => (item['medicine_code']?.toString() ?? '').isNotEmpty)
+        .map(
+          (item) => <String, dynamic>{
+            'medicine_code': item['medicine_code'],
+            'drug_name': item['drug_name'] ?? item['product_name'] ?? '',
+            'dosage': item['dosage'],
+            'unit': item['unit'],
+            'frequency_per_day': item['frequency_per_day'],
+            'times_per_take': item['times_per_take'],
+            'duration_days': item['duration_days'],
+            'administration_times': item['administration_times'] is List
+                ? item['administration_times']
+                : <String>[],
+            'match_status': item['match_status'],
+            'easy_explanation': item['easy_explanation'],
+            'warning_note': item['warning_note'],
+          },
+        )
+        .toList();
+
+    if (confirmItems.isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('등록할 약을 찾지 못했어요. 다시 찍어 주세요.')),
+      );
+      return;
+    }
+
+    try {
+      await _apiClient.post(
+        '/api/v1/prescriptions/confirm',
+        body: {
+          'user_id': userId,
+          'items': confirmItems,
+          'hospital_name': _result?['hospital_name'],
+          'pharmacy_name': _result?['pharmacy_name'],
+          'prescribed_date': _result?['prescribed_date'],
+        },
+      );
+    } catch (error) {
+      debugPrint('처방 확정 등록 실패: $error');
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('약 등록에 실패했어요. 잠시 후 다시 시도해 주세요.')),
+      );
+      return;
+    }
+
     MvpSession.latestOcrItems = _items;
     MvpSession.latestOcrRegisteredAt = DateTime.now();
+    await ref.read(medicationProvider.notifier).refreshFromServer();
 
     var hasRisk = false;
-    final userId = MvpSession.userId.trim();
-    if (userId.isNotEmpty) {
-      try {
-        // 등록 직후 약 함께먹기 검사를 자동으로 돌린다.
-        // 사용자가 찾아가게 하지 않는다.
-        final analysis = await _apiClient.post(
-          '/api/v1/dur/analyze',
-          body: {'user_id': userId, 'medicine_codes': <String>[]},
-        );
-        if (analysis is Map) {
+    var durFailed = false;
+    try {
+      final analysisBody = <String, dynamic>{
+        'user_id': userId,
+        'medicine_codes': <String>[],
+      };
+      if (MvpSession.isPregnant != null) {
+        analysisBody['is_pregnant'] = MvpSession.isPregnant;
+      }
+      final analysis = await _apiClient.post(
+        '/api/v1/dur/analyze',
+        body: analysisBody,
+      );
+      if (analysis is Map) {
+        if (analysis['has_risk'] == true) {
+          hasRisk = true;
+        } else {
           final matches = analysis['matches'];
           hasRisk = matches is List && matches.isNotEmpty;
         }
-      } catch (error) {
-        debugPrint('등록 직후 약 함께먹기 검사 실패: $error');
       }
+    } catch (error) {
+      durFailed = true;
+      debugPrint('등록 직후 약 함께먹기 검사 실패: $error');
     }
 
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('약을 등록했어요. 시간에 맞춰 알려드릴게요.')),
+      SnackBar(
+        content: Text(
+          durFailed
+              ? '약은 등록했어요. 함께먹기 검사는 나중에 다시 확인해 주세요.'
+              : '약을 등록했어요. 시간에 맞춰 알려드릴게요.',
+        ),
+      ),
     );
 
-    // 위험이 있으면 주의 화면을 바로 띄운다.
     if (hasRisk) {
       context.push('/dur-analysis');
     } else {
@@ -182,6 +267,19 @@ class _PrescriptionScreenState extends State<PrescriptionScreen> {
         );
       case PrescriptionStep.reading:
         return _ReadingScreen(image: _image);
+      case PrescriptionStep.readiness:
+        return _ReadinessScreen(
+          pct: _readinessPct,
+          label: _readinessLabel,
+          summary: _readinessSummary,
+          missingHints: _missingHints,
+          onNext: () => setState(() => _step = PrescriptionStep.confirm),
+          onRetake: () => setState(() {
+            _image = null;
+            _result = null;
+            _step = PrescriptionStep.capture;
+          }),
+        );
       case PrescriptionStep.confirm:
         return _ConfirmScreen(
           items: _items,
@@ -412,6 +510,129 @@ class _ReadingScreen extends StatelessWidget {
                     ),
                   ],
                 ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// 촬영 후 읽기 완성도(정답 인식률 아님)를 보여 준 뒤 확인 화면으로 보냄.
+class _ReadinessScreen extends StatelessWidget {
+  final int pct;
+  final String label;
+  final String summary;
+  final List<String> missingHints;
+  final VoidCallback onNext;
+  final VoidCallback onRetake;
+
+  const _ReadinessScreen({
+    required this.pct,
+    required this.label,
+    required this.summary,
+    required this.missingHints,
+    required this.onNext,
+    required this.onRetake,
+  });
+
+  Color get _accent {
+    if (label == 'good' || pct >= 85) return AppColors.point;
+    if (label == 'poor' || pct < 60) return AppColors.danger;
+    return const Color(0xFFC9A227);
+  }
+
+  String get _title {
+    if (pct >= 85) return '잘 읽었어요';
+    if (pct >= 60) return '일부 확인이 필요해요';
+    return '다시 찍어 주세요';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final emphasizeRetake = pct < 60;
+    return Scaffold(
+      backgroundColor: AppColors.bg,
+      body: Column(
+        children: [
+          const SeniorBackHeader(title: '읽기 결과'),
+          Expanded(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.fromLTRB(22, 24, 22, 20),
+              child: Column(
+                children: [
+                  Text('읽기 완성도', style: AppText.cardTitle()),
+                  const SizedBox(height: 8),
+                  Text(
+                    '$pct%',
+                    style: AppText.hero(size: 72, color: _accent),
+                  ),
+                  const SizedBox(height: 10),
+                  Text(
+                    _title,
+                    textAlign: TextAlign.center,
+                    style: AppText.emphasis(color: _accent),
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    summary,
+                    textAlign: TextAlign.center,
+                    style: AppText.body(),
+                  ),
+                  if (missingHints.isNotEmpty) ...[
+                    const SizedBox(height: 16),
+                    SeniorCard(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 18,
+                        vertical: 14,
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('비어 있을 수 있는 칸', style: AppText.cardTitle(size: 18)),
+                          const SizedBox(height: 8),
+                          for (final hint in missingHints)
+                            Padding(
+                              padding: const EdgeInsets.only(bottom: 4),
+                              child: Text('· $hint', style: AppText.body()),
+                            ),
+                        ],
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: 12),
+                  Text(
+                    '정답 대비 인식률이 아니라, 칸을 얼마나 채웠는지예요.',
+                    textAlign: TextAlign.center,
+                    style: AppText.caption(),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          SafeArea(
+            top: false,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
+              child: Column(
+                children: [
+                  if (!emphasizeRetake) ...[
+                    SeniorButton(
+                      label: '다음',
+                      minHeight: 70,
+                      onPressed: onNext,
+                    ),
+                    SeniorTextButton(label: '다시 찍기', onPressed: onRetake),
+                  ] else ...[
+                    SeniorButton(
+                      label: '다시 찍어드릴게요',
+                      minHeight: 70,
+                      onPressed: onRetake,
+                    ),
+                    SeniorTextButton(label: '그래도 다음', onPressed: onNext),
+                  ],
+                ],
               ),
             ),
           ),

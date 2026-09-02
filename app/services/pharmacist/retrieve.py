@@ -74,10 +74,8 @@ def _find_permission_fuzzy(name: str) -> dict[str, Any] | None:
     if not candidates:
         return None
     match = match_medicine_name(name, candidates)
-    # 채팅 자동확정(0.90)보다 조금 낮게: DB에 있는 가장 가까운 공식명으로 연결
+    # 스펙: 0.90 미만은 자동 확정하지 않음 (잘못된 약 바인딩 방지)
     chosen = match.matched_name
-    if not chosen and match.candidates and match.candidates[0][1] >= 0.80:
-        chosen = match.candidates[0][0]
     if not chosen:
         return None
     try:

@@ -26,10 +26,12 @@ def get_today_medicines(user_id: str, target_date: str | None = None) -> dict[st
         if not user:
             raise HTTPException(status_code=404, detail="사용자가 없습니다.")
 
-        # 오늘 스케줄이 있으면 스케줄 기준, 없으면 활성 user_medicines 로 슬롯 구성
+        # 활성 약에 오늘 스케줄이 없으면 만들어 「먹었어요」가 schedule_id 를 쓰게 한다
+        _ensure_today_schedules(conn, uid, day)
+
         schedule_rows = conn.execute(
             """
-            SELECT ms.time_slot, ms.scheduled_time, ms.status,
+            SELECT ms.id AS schedule_id, ms.time_slot, ms.scheduled_time, ms.status,
                    um.dosage, um.frequency_per_day,
                    m.medicine_code, m.product_name, m.ingredient, m.easy_category,
                    m.efficacy
@@ -84,6 +86,51 @@ def get_today_medicines(user_id: str, target_date: str | None = None) -> dict[st
         conn.close()
 
 
+def _ensure_today_schedules(conn, user_id: str, day: str) -> None:
+    """활성 복용약에 대해 오늘 스케줄 행이 없으면 기본 시각으로 만든다."""
+    active = conn.execute(
+        """
+        SELECT um.id AS user_medicine_id, um.frequency_per_day
+        FROM user_medicines um
+        WHERE um.user_id = ? AND COALESCE(um.is_active, 1) = 1
+        """,
+        (user_id,),
+    ).fetchall()
+    default_times = {
+        1: [("08:00", "MORNING")],
+        2: [("08:00", "MORNING"), ("20:00", "EVENING")],
+        3: [
+            ("08:00", "MORNING"),
+            ("13:00", "AFTERNOON"),
+            ("20:00", "EVENING"),
+        ],
+    }
+    for row in active:
+        um_id = row["user_medicine_id"]
+        exists = conn.execute(
+            """
+            SELECT 1 FROM medication_schedules
+            WHERE user_medicine_id = ? AND scheduled_date = ?
+            LIMIT 1
+            """,
+            (um_id, day),
+        ).fetchone()
+        if exists:
+            continue
+        freq = min(max(int(row["frequency_per_day"] or 1), 1), 3)
+        for scheduled_time, time_slot in default_times[freq]:
+            conn.execute(
+                """
+                INSERT OR IGNORE INTO medication_schedules (
+                    user_id, user_medicine_id, scheduled_date,
+                    scheduled_time, time_slot, status
+                ) VALUES (?, ?, ?, ?, ?, 'PENDING')
+                """,
+                (user_id, um_id, day, scheduled_time, time_slot),
+            )
+    conn.commit()
+
+
 def _medicine_item(row) -> dict[str, Any]:
     data = dict(row)
     name = (
@@ -95,7 +142,7 @@ def _medicine_item(row) -> dict[str, Any]:
     if not category:
         category = derive_easy_category_from_medicine(data)
     dosage = str(data.get("dosage") or "").strip() or "1알"
-    return {
+    item = {
         "medicine_code": data.get("medicine_code"),
         "ingredient": name,
         "amount": dosage,
@@ -103,6 +150,13 @@ def _medicine_item(row) -> dict[str, Any]:
         "display_name": format_display_name(name, category),
         "product_name": data.get("product_name"),
     }
+    schedule_id = data.get("schedule_id")
+    if schedule_id is not None:
+        try:
+            item["schedule_id"] = int(schedule_id)
+        except (TypeError, ValueError):
+            pass
+    return item
 
 
 def _slot_from_time(time_slot: str | None, scheduled_time: str | None) -> str:

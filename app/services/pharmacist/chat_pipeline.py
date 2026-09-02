@@ -76,21 +76,30 @@ def run_chat_pipeline(message: str, lexicon: list[str] | None = None) -> ChatPip
 
     official_name = official.get("medicine", {}).get("product_name")
     corrected = official_name or corrected
+    source_label = _source_label(official)
     faq_kind = _faq_kind(original)
     reply = _fixed_db_reply(faq_kind, official, corrected)
+    # missed/together 는 안전 안내(추측)라 공식 출처·evidence 100 으로 위장하지 않음
+    safety_only = faq_kind in {"missed", "together"}
     trace = {
         "original": original,
         "corrected": corrected,
         "name_match_score": name_match_score,
         "name_match_method": name_match_method,
         "source": official.get("source"),
+        "source_label": None if safety_only else source_label,
         "rejected": [],
-        "evidence_score": 100.0,
+        "evidence_score": 0.0 if safety_only else 100.0,
         "stage": "fixed",
         "faq_kind": faq_kind,
     }
     if reply:
-        return ChatPipelineResult(True, reply, {**trace, "stage": "done"})
+        body = reply if safety_only else _with_source(reply, source_label)
+        return ChatPipelineResult(
+            True,
+            body,
+            {**trace, "stage": "safety_fixed" if safety_only else "done"},
+        )
 
     # 고정 답이 애매할 때만 생성→가드. 실패하면 원문 발췌로 대체.
     try:
@@ -99,7 +108,7 @@ def run_chat_pipeline(message: str, lexicon: list[str] | None = None) -> ChatPip
         if guarded.allowed and guarded.reply.strip():
             return ChatPipelineResult(
                 True,
-                guarded.reply,
+                _with_source(guarded.reply, source_label),
                 {
                     **trace,
                     "rejected": list(guarded.rejected),
@@ -112,7 +121,11 @@ def run_chat_pipeline(message: str, lexicon: list[str] | None = None) -> ChatPip
 
     fallback = _official_excerpt_reply(official, corrected)
     if fallback:
-        return ChatPipelineResult(True, fallback, {**trace, "stage": "excerpt"})
+        return ChatPipelineResult(
+            True,
+            _with_source(fallback, source_label),
+            {**trace, "stage": "excerpt"},
+        )
     return ChatPipelineResult(
         False,
         "공식 자료로 안내할 내용이 부족해요. 의사·약사에게 확인해 주세요.",
@@ -147,6 +160,34 @@ def _enrich_lexicon(message: str, lexicon: list[str] | None) -> list[str]:
         except Exception:
             continue
     return names
+
+
+def _source_label(official: dict[str, Any]) -> str:
+    """사용자에게 보여줄 출처 한 줄 (점수 없이)."""
+    source = str(official.get("source") or "").strip()
+    lowered = source.casefold()
+    if "허가" in source or "permission" in lowered or "mfds" in lowered:
+        return "식약처 의약품 허가정보에 의하면"
+    if "e약은요" in source or "easy" in lowered:
+        return "식약처 e약은요 안내에 의하면"
+    if "local" in lowered or "로컬" in source:
+        return "등록된 약 정보에 의하면"
+    if source:
+        return f"{source}에 의하면"
+    return "공식 약 정보에 의하면"
+
+
+def _with_source(reply: str, source_label: str) -> str:
+    text = (reply or "").strip()
+    label = (source_label or "").strip()
+    if not text:
+        return text
+    if not label:
+        return text
+    # 이미 출처가 붙어 있으면 중복하지 않음
+    if text.startswith(label) or "에 의하면" in text[:40]:
+        return text
+    return f"{label},\n{text}"
 
 
 def _faq_kind(message: str) -> str | None:

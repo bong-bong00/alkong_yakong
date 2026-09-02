@@ -7,7 +7,11 @@ from datetime import date, timedelta
 from fastapi import HTTPException
 
 from app.database import get_connection
-from app.models.schemas import OCRMedicineItem, PrescriptionOCRRequest
+from app.models.schemas import (
+    OCRMedicineItem,
+    PrescriptionConfirmRequest,
+    PrescriptionOCRRequest,
+)
 from app.services.matching.name_matcher import match_medicine_name
 from app.services.ocr.pipeline import run_ocr_pipeline, run_ocr_text_pipeline
 from app.services.pharmacist.easy_category import derive_easy_category_from_medicine
@@ -109,6 +113,25 @@ def _upsert_official_medicine(cursor, official: dict) -> tuple[str, str]:
             "source_text": official.get("source_text"),
         }
     )
+    # 성분이 없거나 제품명과 같으면 DUR이 제품명으로 오탐하지 않게 빈 값/기존값 유지
+    incoming_ingredient = str(med.get("ingredient") or "").strip()
+    if not incoming_ingredient or incoming_ingredient == name:
+        prev = cursor.execute(
+            "SELECT ingredient, product_name FROM medicines WHERE medicine_code = ?",
+            (code,),
+        ).fetchone()
+        if (
+            prev
+            and prev["ingredient"]
+            and str(prev["ingredient"]).strip()
+            and str(prev["ingredient"]).strip() != str(prev["product_name"] or "").strip()
+        ):
+            ingredient = str(prev["ingredient"]).strip()
+        else:
+            ingredient = ""
+    else:
+        ingredient = incoming_ingredient
+
     cursor.execute(
         """
         INSERT INTO medicines (
@@ -117,7 +140,13 @@ def _upsert_official_medicine(cursor, official: dict) -> tuple[str, str]:
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(medicine_code) DO UPDATE SET
             product_name = excluded.product_name,
-            ingredient = excluded.ingredient,
+            ingredient = CASE
+                WHEN excluded.ingredient IS NOT NULL
+                     AND trim(excluded.ingredient) != ''
+                     AND excluded.ingredient != excluded.product_name
+                THEN excluded.ingredient
+                ELSE medicines.ingredient
+            END,
             manufacturer = excluded.manufacturer,
             efficacy = excluded.efficacy,
             usage = excluded.usage,
@@ -129,7 +158,7 @@ def _upsert_official_medicine(cursor, official: dict) -> tuple[str, str]:
         (
             code,
             name,
-            med.get("ingredient") or name,
+            ingredient,
             med.get("manufacturer"),
             med.get("efficacy"),
             med.get("usage"),
@@ -153,7 +182,8 @@ def _create_provisional_medicine(cursor, drug_name: str) -> tuple[str, str]:
             efficacy, usage, precautions, image_url, easy_category
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
-        (code, name, name, None, None, None, None, None, None),
+        # ingredient 는 비워 둔다. 제품명을 넣으면 DUR이 성분을 오인한다.
+        (code, name, "", None, None, None, None, None, None),
     )
     return code, "UNMATCHED"
 
@@ -282,7 +312,69 @@ def _create_medication_schedules(
     return created_schedules
 
 
+def _user_readiness(items: list[dict], ocr_trace: dict | None = None) -> dict:
+    """사용자용 읽기 완성도(정답 인식률이 아님). 핵심 칸 채움 비율."""
+    if not items:
+        return {
+            "pct": 0,
+            "label": "poor",
+            "summary": "약을 거의 읽지 못했어요. 다시 찍어 주세요.",
+            "missing_hints": ["약 이름"],
+        }
+
+    core_keys = ("drug_name", "frequency_per_day", "duration_days")
+    filled = 0
+    total = 0
+    missing: list[str] = []
+    uncertain_n = 0
+    for item in items:
+        total += len(core_keys)
+        name_ok = bool(str(item.get("drug_name") or "").strip())
+        freq_ok = item.get("frequency_per_day") is not None
+        days_ok = item.get("duration_days") is not None
+        filled += int(name_ok) + int(freq_ok) + int(days_ok)
+        if not name_ok:
+            missing.append("약 이름")
+        if not freq_ok:
+            missing.append("하루 횟수")
+        if not days_ok:
+            missing.append("투약 일수")
+        if item.get("uncertain") is True or item.get("match_status") == "UNMATCHED":
+            uncertain_n += 1
+
+    pct = round(100.0 * filled / total) if total else 0
+    # 불확실 약이 있으면 조금 감점
+    if uncertain_n:
+        pct = max(0, pct - min(15, uncertain_n * 5))
+
+    if pct >= 85:
+        label = "good"
+        summary = f"약 {len(items)}개를 잘 읽었어요."
+    elif pct >= 60:
+        label = "fair"
+        summary = f"약 {len(items)}개를 읽었지만, 일부 칸을 확인해 주세요."
+    else:
+        label = "poor"
+        summary = "글자가 잘 안 보였어요. 다시 찍어 주세요."
+
+    # 중복 힌트 제거, 순서 유지
+    hints: list[str] = []
+    for hint in missing:
+        if hint not in hints:
+            hints.append(hint)
+
+    # field_coverage가 있으면 참고용으로만 남김 (사용자 pct는 핵심 칸 기준)
+    _ = ocr_trace
+    return {
+        "pct": pct,
+        "label": label,
+        "summary": summary,
+        "missing_hints": hints[:4],
+    }
+
+
 def create_prescription_from_ocr(request: PrescriptionOCRRequest) -> dict:
+    """OCR 미리보기만. user_medicines/스케줄은 넣지 않는다 (확정 API에서 등록)."""
     conn = get_connection()
     try:
         cursor = conn.cursor()
@@ -293,8 +385,80 @@ def create_prescription_from_ocr(request: PrescriptionOCRRequest) -> dict:
         if not user:
             cursor.execute(
                 "INSERT INTO users (id, name, role) VALUES (?, ?, ?)",
-                (request.user_id, "테스트유저", "PATIENT")
+                (request.user_id, "테스트유저", "PATIENT"),
             )
+
+        preview_items = []
+        readiness_seed: list[dict] = []
+        for item in items:
+            medicine_code, match_status = _resolve_medicine(cursor, item)
+            readiness_seed.append(
+                {
+                    "drug_name": item.drug_name,
+                    "frequency_per_day": item.frequency_per_day,
+                    "duration_days": item.duration_days,
+                    "uncertain": match_status == "UNMATCHED",
+                    "match_status": match_status,
+                }
+            )
+            preview_items.append(
+                {
+                    "medicine_code": medicine_code,
+                    "drug_name": item.drug_name,
+                    "match_status": match_status,
+                    "dosage": item.dosage,
+                    "unit": item.unit,
+                    "frequency_per_day": item.frequency_per_day,
+                    "times_per_take": item.times_per_take,
+                    "duration_days": item.duration_days,
+                    "administration_times": list(item.administration_times or []),
+                    "easy_explanation": item.easy_explanation,
+                    "warning_note": item.warning_note,
+                    "uncertain": match_status == "UNMATCHED",
+                    "schedules": [],
+                }
+            )
+
+        # 약 사전(medicines) upsert 만 커밋. 복용 등록은 confirm 에서.
+        conn.commit()
+        readiness = _user_readiness(readiness_seed, ocr_trace)
+        return {
+            "prescription_id": None,
+            "preview": True,
+            "registered": False,
+            "user_id": request.user_id,
+            "ocr_status": "COMPLETED",
+            "ocr_text": raw_text,
+            "ocr_trace": ocr_trace,
+            "items": preview_items,
+            "hospital_name": request.hospital_name,
+            "pharmacy_name": request.pharmacy_name,
+            "prescribed_date": request.prescribed_date,
+            "user_readiness_pct": readiness["pct"],
+            "readiness_label": readiness["label"],
+            "readiness_summary": readiness["summary"],
+            "missing_hints": readiness["missing_hints"],
+        }
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+def confirm_prescription(request: PrescriptionConfirmRequest) -> dict:
+    """확인 화면에서 「이대로 등록하기」 할 때 실제 복용약·스케줄을 넣는다."""
+    if not request.items:
+        raise HTTPException(status_code=422, detail="등록할 약이 없습니다.")
+
+    conn = get_connection()
+    try:
+        cursor = conn.cursor()
+        user = cursor.execute(
+            "SELECT id FROM users WHERE id = ?", (request.user_id,)
+        ).fetchone()
+        if not user:
+            raise HTTPException(status_code=404, detail="사용자가 없습니다.")
 
         prescription_id = str(uuid.uuid4())
         cursor.execute(
@@ -311,14 +475,26 @@ def create_prescription_from_ocr(request: PrescriptionOCRRequest) -> dict:
                 request.pharmacy_name,
                 request.prescribed_date,
                 request.expire_date,
-                request.image_path,
-                raw_text,
+                None,
+                None,
             ),
         )
 
         created_items = []
-        for item in items:
-            medicine_code, match_status = _resolve_medicine(cursor, item)
+        for item in request.items:
+            code = (item.medicine_code or "").strip()
+            if not code:
+                raise HTTPException(status_code=422, detail="medicine_code가 없습니다.")
+            exists = cursor.execute(
+                "SELECT medicine_code FROM medicines WHERE medicine_code = ?",
+                (code,),
+            ).fetchone()
+            if not exists:
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"알 수 없는 약 코드입니다: {code}",
+                )
+
             cursor.execute(
                 """
                 INSERT INTO prescription_items (
@@ -330,7 +506,7 @@ def create_prescription_from_ocr(request: PrescriptionOCRRequest) -> dict:
                 """,
                 (
                     prescription_id,
-                    medicine_code,
+                    code,
                     item.drug_name,
                     item.dosage,
                     item.unit,
@@ -338,7 +514,7 @@ def create_prescription_from_ocr(request: PrescriptionOCRRequest) -> dict:
                     item.times_per_take,
                     item.duration_days,
                     json.dumps(item.administration_times, ensure_ascii=False),
-                    match_status,
+                    item.match_status or "MATCHED",
                     item.easy_explanation,
                     item.warning_note,
                 ),
@@ -348,12 +524,13 @@ def create_prescription_from_ocr(request: PrescriptionOCRRequest) -> dict:
                 """
                 INSERT INTO user_medicines (
                     user_id, medicine_code, prescription_item_id, start_date,
-                    end_date, dosage, frequency_per_day, administration_times
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    end_date, dosage, frequency_per_day, administration_times,
+                    is_active
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)
                 """,
                 (
                     request.user_id,
-                    medicine_code,
+                    code,
                     item_id,
                     request.prescribed_date,
                     request.expire_date,
@@ -363,25 +540,35 @@ def create_prescription_from_ocr(request: PrescriptionOCRRequest) -> dict:
                 ),
             )
             user_medicine_id = cursor.lastrowid
+            ocr_item = OCRMedicineItem(
+                drug_name=item.drug_name,
+                medicine_code=code,
+                dosage=item.dosage,
+                unit=item.unit,
+                frequency_per_day=item.frequency_per_day,
+                times_per_take=item.times_per_take,
+                duration_days=item.duration_days,
+                administration_times=list(item.administration_times or []),
+                easy_explanation=item.easy_explanation,
+                warning_note=item.warning_note,
+            )
             schedules = _create_medication_schedules(
                 cursor,
                 user_id=request.user_id,
                 user_medicine_id=user_medicine_id,
                 prescribed_date=request.prescribed_date,
                 expire_date=request.expire_date,
-                item=item,
+                item=ocr_item,
             )
             created_items.append(
                 {
                     "id": item_id,
                     "user_medicine_id": user_medicine_id,
-                    "medicine_code": medicine_code,
+                    "medicine_code": code,
                     "drug_name": item.drug_name,
-                    "match_status": match_status,
-                    "frequency_per_day": item.frequency_per_day or 1,
+                    "match_status": item.match_status,
+                    "frequency_per_day": item.frequency_per_day,
                     "duration_days": item.duration_days,
-                    "easy_explanation": item.easy_explanation,
-                    "uncertain": match_status == "UNMATCHED",
                     "schedules": schedules,
                 }
             )
@@ -390,11 +577,12 @@ def create_prescription_from_ocr(request: PrescriptionOCRRequest) -> dict:
         return {
             "prescription_id": prescription_id,
             "user_id": request.user_id,
-            "ocr_status": "COMPLETED",
-            "ocr_text": raw_text,
-            "ocr_trace": ocr_trace,
+            "registered": True,
             "items": created_items,
         }
+    except HTTPException:
+        conn.rollback()
+        raise
     except Exception:
         conn.rollback()
         raise

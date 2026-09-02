@@ -7,4 +7,7 @@ abstract final class MvpSession {
   static String medicineCode = '';
   static List<Map<String, dynamic>> latestOcrItems = <Map<String, dynamic>>[];
   static DateTime? latestOcrRegisteredAt;
+
+  /// 임부금기 DUR용. 회원가입·프로필에서 갱신.
+  static bool? isPregnant;
 }
