@@ -34,12 +34,13 @@ def _mime_type(image_bytes: bytes) -> str:
 
 
 def _prepare_image(image_bytes: bytes) -> tuple[bytes, str]:
-    """너무 큰 사진은 JPEG로 줄여 Gemini 전송 실패·지연을 줄인다."""
+    """큰 사진은 줄이고, 대비·선명을 조금 올려 표 글자 인식률을 높인다."""
     try:
-        from PIL import Image
+        from PIL import Image, ImageEnhance, ImageOps
 
         with Image.open(BytesIO(image_bytes)) as image:
             image = image.convert("RGB")
+            image = ImageOps.exif_transpose(image)
             width, height = image.size
             longest = max(width, height)
             if longest > _MAX_EDGE_PX:
@@ -48,8 +49,9 @@ def _prepare_image(image_bytes: bytes) -> tuple[bytes, str]:
                     (max(1, int(width * scale)), max(1, int(height * scale))),
                     Image.Resampling.LANCZOS,
                 )
-            elif len(image_bytes) < 1_500_000 and _mime_type(image_bytes) == "image/jpeg":
-                return image_bytes, "image/jpeg"
+            # 과도한 대비는 글자를 깨뜨릴 수 있어 약하게만 보정
+            image = ImageEnhance.Contrast(image).enhance(1.15)
+            image = ImageEnhance.Sharpness(image).enhance(1.1)
             buffer = BytesIO()
             image.save(buffer, format="JPEG", quality=_JPEG_QUALITY, optimize=True)
             return buffer.getvalue(), "image/jpeg"
@@ -84,10 +86,16 @@ def extract_raw_text(image_bytes: bytes) -> OcrEngineResult:
         part = types.Part.from_bytes(data=prepared_bytes, mime_type=mime_type)
         prompt = (
             "이 사진은 한국의 처방전 또는 약국 복약안내문입니다. "
-            "사진에 보이는 글자를 원문 그대로 옮겨 적으세요. "
-            "약품명, 용량, 복용 횟수, 투약 일수, 주의사항을 포함하세요. "
-            "읽을 수 없는 내용은 추측하지 말고 생략하세요. "
-            "JSON이나 설명을 붙이지 말고 인식한 원문만 반환하세요."
+            "사진에 보이는 글자를 원문 그대로 옮겨 적으세요.\n"
+            "특히 약 표가 있으면 각 약마다 아래를 빠뜨리지 마세요:\n"
+            "- 약품명\n"
+            "- 1회 투약량\n"
+            "- 1일 투여횟수\n"
+            "- 투약 일수 (며칠분)\n"
+            "표는 가능하면 '약이름 | 설명 | 투약량 | 횟수 | 일수' 형태로 줄마다 적으세요.\n"
+            "병원명, 조제약사, 조제일자도 포함하세요.\n"
+            "읽을 수 없는 내용만 생략하고, 보이는 숫자는 추측으로 바꾸지 마세요.\n"
+            "JSON이나 설명 문장 없이 인식한 원문만 반환하세요."
         )
         with genai.Client(api_key=GEMINI_API_KEY) as client:
             response = client.models.generate_content(
