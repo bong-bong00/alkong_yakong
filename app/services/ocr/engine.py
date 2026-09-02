@@ -1,15 +1,39 @@
-"""Prescription image to raw OCR text."""
+"""Prescription image to raw OCR text.
+
+우선순위:
+  1) Gemini Vision (기본)
+  2) Gemini 할당량/키 실패 시 → CLOVA OCR (자격증명 있을 때)
+  3) CLOVA_OCR_ENABLED=true 이면 CLOVA를 먼저 시도
+"""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 from io import BytesIO
 
-from app.core.config import GEMINI_API_KEY, GEMINI_MODEL
+from app.core.config import (
+    CLOVA_OCR_API_URL,
+    CLOVA_OCR_ENABLED,
+    CLOVA_OCR_SECRET_KEY,
+    GEMINI_API_KEY,
+    GEMINI_MODEL,
+)
 
 # 휴대폰 원본(수 MB)은 전송·인식이 느려져서, OCR 전에 긴 변을 줄인다.
 _MAX_EDGE_PX = 1600
 _JPEG_QUALITY = 85
+
+# Gemini 실패 시 CLOVA로 넘길 오류
+_GEMINI_FALLBACK_ERRORS = frozenset(
+    {
+        "quota_exceeded",
+        "missing_api_key",
+        "auth_error",
+        "unavailable",
+        "timeout",
+        "empty_raw_text",
+    }
+)
 
 
 @dataclass(frozen=True)
@@ -19,6 +43,7 @@ class OcrEngineResult:
     confidence: float | None
     ok: bool
     error: str | None = None
+    fallback_from: str | None = None
 
 
 def _mime_type(image_bytes: bytes) -> str:
@@ -49,7 +74,6 @@ def _prepare_image(image_bytes: bytes) -> tuple[bytes, str]:
                     (max(1, int(width * scale)), max(1, int(height * scale))),
                     Image.Resampling.LANCZOS,
                 )
-            # 과도한 대비는 글자를 깨뜨릴 수 있어 약하게만 보정
             image = ImageEnhance.Contrast(image).enhance(1.15)
             image = ImageEnhance.Sharpness(image).enhance(1.1)
             buffer = BytesIO()
@@ -72,12 +96,13 @@ def _error_code(error: Exception) -> str:
     return type(error).__name__
 
 
-def extract_raw_text(image_bytes: bytes) -> OcrEngineResult:
-    if not image_bytes:
-        return OcrEngineResult("", "none", None, False, "empty_image")
+def _clova_ready() -> bool:
+    return bool(CLOVA_OCR_API_URL and CLOVA_OCR_SECRET_KEY)
+
+
+def _extract_with_gemini(image_bytes: bytes) -> OcrEngineResult:
     if not GEMINI_API_KEY:
         return OcrEngineResult("", "gemini-vision", None, False, "missing_api_key")
-
     try:
         from google import genai
         from google.genai import types
@@ -111,3 +136,62 @@ def extract_raw_text(image_bytes: bytes) -> OcrEngineResult:
         return OcrEngineResult(
             "", "gemini-vision", None, False, _error_code(error)
         )
+
+
+def _extract_with_clova(image_bytes: bytes) -> OcrEngineResult:
+    if not _clova_ready():
+        return OcrEngineResult("", "clova-ocr", None, False, "missing_clova_credentials")
+    try:
+        from app.services.ocr.clova_engine import extract_with_clova
+
+        prepared_bytes, _mime = _prepare_image(image_bytes)
+        result = extract_with_clova(
+            prepared_bytes,
+            image_name="prescription.jpg",
+            enable_table_detection=False,
+        )
+        if not result.ok:
+            return OcrEngineResult(
+                "", "clova-ocr", None, False, result.error or "clova_failed"
+            )
+        return OcrEngineResult(result.raw_text, "clova-ocr", None, True)
+    except Exception as error:
+        return OcrEngineResult("", "clova-ocr", None, False, _error_code(error))
+
+
+def extract_raw_text(image_bytes: bytes) -> OcrEngineResult:
+    """Gemini 우선, 실패(할당량 등) 시 CLOVA로 폴백."""
+    if not image_bytes:
+        return OcrEngineResult("", "none", None, False, "empty_image")
+
+    # 강제 CLOVA 우선 (테스트/할당량 절약용)
+    if CLOVA_OCR_ENABLED and _clova_ready():
+        clova_first = _extract_with_clova(image_bytes)
+        if clova_first.ok:
+            return clova_first
+
+    gemini = _extract_with_gemini(image_bytes)
+    if gemini.ok:
+        return gemini
+
+    # Gemini 할당량·키·일시 장애면 CLOVA로
+    if gemini.error in _GEMINI_FALLBACK_ERRORS and _clova_ready():
+        clova = _extract_with_clova(image_bytes)
+        if clova.ok:
+            return OcrEngineResult(
+                clova.raw_text,
+                "clova-ocr",
+                None,
+                True,
+                fallback_from=f"gemini:{gemini.error}",
+            )
+        return OcrEngineResult(
+            "",
+            "clova-ocr",
+            None,
+            False,
+            error=clova.error or "clova_failed",
+            fallback_from=f"gemini:{gemini.error}",
+        )
+
+    return gemini

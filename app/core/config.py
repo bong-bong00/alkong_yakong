@@ -46,6 +46,13 @@ EASY_CATEGORY_MAP_DB_PATH = os.getenv(
     str(PROJECT_ROOT / "easy_category_map.db"),
 )
 
+# 네이버 CLOVA OCR
+# - 기본: Gemini 우선, 할당량/키 실패 시 CLOVA로 자동 폴백(URL·SECRET 있으면)
+# - CLOVA_OCR_ENABLED=true 이면 CLOVA를 먼저 시도
+CLOVA_OCR_API_URL = os.getenv("CLOVA_OCR_API_URL", "").strip()
+CLOVA_OCR_SECRET_KEY = os.getenv("CLOVA_OCR_SECRET_KEY", "").strip()
+CLOVA_OCR_ENABLED = os.getenv("CLOVA_OCR_ENABLED", "false").lower() == "true"
+
 # Backward-compatible names used by the existing external route.
 MFDS_SERVICE_KEY = E_DRUG_API_KEY
 MFDS_E_DRUG_BASE_URL = E_DRUG_BASE_URL

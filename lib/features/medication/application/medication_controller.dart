@@ -19,7 +19,9 @@ final medicationProvider =
 
 /// 오늘 복약 상태를 들고 있는 컨트롤러.
 ///
-/// 서버 `user_medicines` 를 우선 읽고, 실패/비어 있으면 로컬 데모를 유지한다.
+/// 서버 응답을 우선한다. 서버가 빈 목록을 주면 데모약을 치운다.
+/// (빈 응답인데 데모를 남기면 가짜 약이 실약처럼 보임)
+/// 네트워크 실패 시에만 기존(또는 데모) 상태를 유지한다.
 class MedicationController extends Notifier<TodayMedication> {
   final _api = ApiClient();
 
@@ -35,10 +37,10 @@ class MedicationController extends Notifier<TodayMedication> {
       final response = await _api.get('/api/v1/users/$userId/today-medicines');
       if (response is! Map) return;
       final parsed = _fromServer(Map<String, dynamic>.from(response));
-      if (parsed.doses.isEmpty) return;
+      // 서버가 정상 응답했으면 비어 있어도 그대로 반영 (데모 유지 금지)
       state = parsed;
     } catch (_) {
-      // 서버 불가면 데모 유지
+      // 서버 불가면 현재 상태(최초엔 데모) 유지
     }
   }
 
@@ -59,11 +61,16 @@ class MedicationController extends Notifier<TodayMedication> {
                 m['ingredient']?.toString() ??
                 m['product_name']?.toString() ??
                 '약';
+            final scheduleRaw = m['schedule_id'];
+            final scheduleId = scheduleRaw is num
+                ? scheduleRaw.toInt()
+                : int.tryParse(scheduleRaw?.toString() ?? '');
             meds.add(
               Medicine(
                 ingredient: ingredient,
                 amount: m['amount']?.toString() ?? '1알',
                 easyCategory: m['easy_category']?.toString(),
+                scheduleId: scheduleId,
               ),
             );
           }
@@ -195,6 +202,25 @@ class MedicationController extends Notifier<TodayMedication> {
     ref.read(reminderSchedulerProvider).cancelSlot(slot);
     _snoozeCount.remove(slot);
     _guardianNotified.add(slot);
+    _postTakenLogs(slot);
+  }
+
+  Future<void> _postTakenLogs(DoseSlot slot) async {
+    final dose = state.doseOf(slot);
+    final userId = MvpSession.userId.trim();
+    if (userId.isEmpty) return;
+    for (final med in dose.medicines) {
+      final scheduleId = med.scheduleId;
+      if (scheduleId == null || scheduleId <= 0) continue;
+      try {
+        await _api.post(
+          '/api/v1/medication-logs',
+          body: {'user_id': userId, 'schedule_id': scheduleId},
+        );
+      } catch (_) {
+        // 로컬 기록은 유지. 서버 실패는 다음에 동기화 가능.
+      }
+    }
   }
 
   void undo(DoseSlot slot) {

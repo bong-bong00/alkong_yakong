@@ -52,11 +52,15 @@ class Medicine {
   /// 어르신용 쉬운 분류 — "혈압약". 화면에 `이름 (분류)` 로 붙인다.
   final String? easyCategory;
 
+  /// 오늘 스케줄 id — 「먹었어요」 서버 기록용.
+  final int? scheduleId;
+
   const Medicine({
     required this.ingredient,
     required this.amount,
     this.appearance,
     this.easyCategory,
+    this.scheduleId,
   });
 
   /// 홈·목록에 쓰는 한 줄 — "암로디핀 5mg (혈압약)".

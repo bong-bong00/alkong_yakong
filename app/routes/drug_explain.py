@@ -28,6 +28,9 @@ def chat_with_pharmacist(request: DrugExplainChatRequest):
 
     result = run_chat_pipeline(request.message, lexicon=lexicon)
     payload = {"reply": result.reply, "ok": result.ok, "trace": result.trace}
+    source_label = result.trace.get("source_label")
+    if source_label:
+        payload["source_label"] = source_label
     candidates = result.trace.get("candidates")
     if isinstance(candidates, list) and candidates:
         payload["candidates"] = candidates

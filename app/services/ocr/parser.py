@@ -52,8 +52,42 @@ ITEM_FIELDS = (
 
 
 def parse_prescription_text(raw_text: str) -> dict[str, Any] | None:
+    """Gemini 구조화 우선, 실패(할당량 등) 시 휴리스틱 구조화."""
     text = (raw_text or "").strip()
-    if not text or not GEMINI_API_KEY:
+    if not text:
+        return None
+
+    parsed = _parse_with_gemini(text)
+    parser_engine = "gemini-json"
+    if not parsed:
+        parsed = _parse_with_heuristic(text)
+        parser_engine = "heuristic"
+
+    if not parsed or not parsed.get("items"):
+        return None
+
+    filtered = filter_to_source(parsed, text)
+    if not filtered.get("items"):
+        # 이름 교정 전 단계의 휴리스틱 결과는 원문 토큰이 잘려 있을 수 있어
+        # 필터가 전부 지우면 휴리스틱 원본을 한 번 더 살린다.
+        if parser_engine == "heuristic":
+            filtered = enrich_dosing_from_raw(parsed, text)
+            filtered = correct_drug_names(filtered)
+        else:
+            return None
+    else:
+        filtered = enrich_dosing_from_raw(filtered, text)
+        filtered = correct_drug_names(filtered)
+
+    if not filtered.get("items"):
+        return None
+    filtered["field_coverage"] = measure_field_coverage(filtered)
+    filtered["parser_engine"] = parser_engine
+    return filtered
+
+
+def _parse_with_gemini(text: str) -> dict[str, Any] | None:
+    if not GEMINI_API_KEY:
         return None
     try:
         from google import genai
@@ -91,17 +125,75 @@ def parse_prescription_text(raw_text: str) -> dict[str, Any] | None:
             parsed = json.loads(response_text) if response_text else None
         if not isinstance(parsed, dict) or not parsed.get("items"):
             return None
-        filtered = filter_to_source(parsed, text)
-        if not filtered.get("items"):
-            return None
-        # Gemini가 빠뜨린 횟수·일수를 원문 표에서 보강하고, 약이름 오타를 공식명에 가깝게 교정
-        filtered = enrich_dosing_from_raw(filtered, text)
-        filtered = correct_drug_names(filtered)
-        filtered["field_coverage"] = measure_field_coverage(filtered)
-        return filtered
+        return parsed
     except Exception:
-        # 할당량(429)·네트워크 등도 parse_failed로 올려 파이프라인이 죽지 않게 한다.
         return None
+
+
+def _parse_with_heuristic(text: str) -> dict[str, Any] | None:
+    """Gemini 없이 CLOVA 원문 등에서 약 줄을 규칙으로 뽑는다."""
+    if not text.strip():
+        return None
+
+    hospital = None
+    pharmacy = None
+    prescribed = None
+    for pattern, key in (
+        (r"(미래의원|[\w가-힣]+의원|[\w가-힣]+병원)", "hospital"),
+        (r"(?:조제약\s*사|약사)\s*:?\s*([가-힣]{2,4})", "pharmacy"),
+        (r"(?:조제\s*일\s*자|처방일자)\s*:?\s*(\d{4}[.-]\d{1,2}[.-]\d{1,2})", "date"),
+        (r"(\d{4}-\d{2}-\d{2})", "date"),
+    ):
+        match = re.search(pattern, text)
+        if not match:
+            continue
+        value = match.group(1) if match.lastindex else match.group(0)
+        if key == "hospital" and not hospital:
+            hospital = value
+        elif key == "pharmacy" and not pharmacy:
+            pharmacy = value
+        elif key == "date" and not prescribed:
+            prescribed = value.replace(".", "-")
+
+    items: list[dict[str, Any]] = []
+    # 약이름 + 용량 + 횟수 + (일수)
+    row_re = re.compile(
+        r"([가-힣A-Za-z][가-힣A-Za-z0-9.%]{1,40}(?:정|캡슐|액|시럽|산|주))"
+        r"(?:\s*\([^)]*\))?"
+        r".{0,80}?"
+        r"(\d+(?:\.\d+)?)"
+        r"\s*[|/\s]+\s*"
+        r"(\d+)"
+        r"(?:\s*[|/\s]+\s*(\d+))?",
+        re.DOTALL,
+    )
+    seen: set[str] = set()
+    for match in row_re.finditer(text):
+        name = _clean_drug_label(match.group(1))
+        if not name or name in seen:
+            continue
+        if name in {"투여횟수", "투약량", "투약일수", "약품명"}:
+            continue
+        seen.add(name)
+        item: dict[str, Any] = {
+            "drug_name": name,
+            "dosage": match.group(2),
+            "frequency_per_day": int(match.group(3)),
+        }
+        if match.group(4):
+            item["duration_days"] = int(match.group(4))
+        items.append(item)
+
+    if not items:
+        return None
+    result: dict[str, Any] = {"items": items}
+    if hospital:
+        result["hospital_name"] = hospital
+    if pharmacy:
+        result["pharmacy_name"] = pharmacy
+    if prescribed:
+        result["prescribed_date"] = prescribed
+    return result
 
 
 def measure_field_coverage(structured: dict[str, Any]) -> dict[str, Any]:
@@ -297,13 +389,9 @@ def _correct_one_drug_name(name: str) -> str:
     if not lexicon:
         return raw
     match = match_medicine_name(raw, lexicon)
+    # AUTO_ACCEPT(0.90) 이상만 조용히 교정. 미만은 OCR 원문 유지.
     if match.matched_name:
         return match.matched_name
-    # 후보 최저선(0.75) + 앞 2글자 동일할 때만 교정 (다른 약으로 바꾸지 않음)
-    if match.candidates and match.candidates[0][1] >= 0.75:
-        candidate = match.candidates[0][0]
-        if _compact(candidate)[:2] == compact_raw[:2]:
-            return candidate
     return raw
 
 

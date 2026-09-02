@@ -1,4 +1,8 @@
-"""OCR pipeline: image/text input -> raw text -> structured prescription."""
+"""OCR pipeline: image/text input -> raw text -> structured prescription.
+
+엔진 우선순위: Gemini → (할당량 등 실패 시) CLOVA
+구조화 우선순위: Gemini JSON → (실패 시) 휴리스틱
+"""
 
 from __future__ import annotations
 
@@ -18,14 +22,18 @@ class OcrPipelineResult:
     trace: dict[str, Any] = field(default_factory=dict)
 
 
-def _parse_result(raw_text: str, engine_name: str | None = None) -> OcrPipelineResult:
+def _parse_result(raw_text: str, engine_name: str | None = None, **extra_trace: Any) -> OcrPipelineResult:
     parsed = parse_prescription_text(raw_text)
     if not parsed or not parsed.get("items"):
-        trace = {"stage": "parser"}
+        trace = {"stage": "parser", **extra_trace}
         if engine_name:
             trace["engine"] = engine_name
         return OcrPipelineResult(False, raw_text, error="parse_failed", trace=trace)
-    trace = {"stage": "done"}
+    trace = {
+        "stage": "done",
+        "parser_engine": parsed.get("parser_engine"),
+        **extra_trace,
+    }
     if engine_name:
         trace["engine"] = engine_name
     return OcrPipelineResult(True, raw_text, parsed, trace=trace)
@@ -33,13 +41,16 @@ def _parse_result(raw_text: str, engine_name: str | None = None) -> OcrPipelineR
 
 def run_ocr_pipeline(image_bytes: bytes) -> OcrPipelineResult:
     engine = extract_raw_text(image_bytes)
+    extra = {}
+    if getattr(engine, "fallback_from", None):
+        extra["fallback_from"] = engine.fallback_from
     if not engine.ok:
         return OcrPipelineResult(
             False,
             error=engine.error,
-            trace={"engine": engine.engine_name, "stage": "engine"},
+            trace={"engine": engine.engine_name, "stage": "engine", **extra},
         )
-    return _parse_result(engine.raw_text, engine.engine_name)
+    return _parse_result(engine.raw_text, engine.engine_name, **extra)
 
 
 def run_ocr_text_pipeline(raw_text: str) -> OcrPipelineResult:

@@ -107,7 +107,9 @@ def _today_medicines(user_id: str | None, needle: str) -> list[dict[str, str]]:
             SELECT DISTINCT m.product_name
             FROM user_medicines um
             JOIN medicines m ON m.medicine_code = um.medicine_code
-            WHERE um.user_id = ? AND m.product_name IS NOT NULL
+            WHERE um.user_id = ?
+              AND um.is_active = 1
+              AND m.product_name IS NOT NULL
             """,
             (user_id,),
         ).fetchall()

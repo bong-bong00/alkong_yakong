@@ -13,6 +13,8 @@ TABLE_DEFINITIONS = {
             gender TEXT,
             phone TEXT,
             role TEXT NOT NULL DEFAULT 'PATIENT',
+            is_pregnant INTEGER NOT NULL DEFAULT 0,
+            pregnancy_status TEXT,
             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
             updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
         )
@@ -345,6 +347,10 @@ ADDITIVE_COLUMNS = {
     },
     "medicines": {
         "easy_category": "TEXT",
+    },
+    "users": {
+        "is_pregnant": "INTEGER NOT NULL DEFAULT 0",
+        "pregnancy_status": "TEXT",
     },
 }
 

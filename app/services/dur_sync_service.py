@@ -385,7 +385,9 @@ def _normalize_item(
     risk_type: str,
     item: dict[str, Any],
 ) -> dict[str, Any] | None:
-    if str(item.get("DEL_YN") or "N").upper() == "Y":
+    # 식약처는 DEL_YN 에 Y/N 또는 정상/삭제를 씀. 삭제 행은 넣지 않음.
+    del_yn = str(item.get("DEL_YN") or "N").strip()
+    if del_yn.upper() in {"Y", "삭제", "DELETE", "DELETED"} or del_yn == "삭제":
         return None
 
     ingredient_a = _first(
@@ -408,6 +410,9 @@ def _normalize_item(
         ingredient_b_code = _first(item, "MIXTURE_INGR_CODE")
         if not ingredient_b:
             return None
+    elif risk_type == "효능군중복":
+        # 같은 EFFECT_CODE 끼리 겹칠 때만 주의 → 분석 시 그룹 키로 사용
+        ingredient_b = _first(item, "EFFECT_CODE", "SERS_NAME", "CLASS_NAME")
 
     min_age, max_age = _parse_age_base(
         _first(item, "AGE_BASE") if risk_type == "연령금기" else None
@@ -500,16 +505,35 @@ def _upsert_taboo(cursor, item: dict[str, Any]) -> str:
 
 
 def _parse_age_base(value: str | None) -> tuple[int | None, int | None]:
+    """AGE_BASE → (min_age, max_age) 금기 연령대. 파싱 불가면 (None, None)."""
     if not value:
         return None, None
-    match = re.search(r"(\d+)\s*세", value)
+    text = str(value).strip()
+
+    # 개월/주: 연 단위로는 영아(0세)만 해당. 성인 오탐 방지.
+    month_match = re.search(r"(\d+)\s*개월", text)
+    week_match = re.search(r"(\d+)\s*주", text)
+    if month_match or week_match:
+        if "이상" in text or "초과" in text:
+            months = int((month_match or week_match).group(1))
+            if week_match and not month_match:
+                months = max(1, int(week_match.group(1)) // 4)
+            min_age = max(0, months // 12)
+            if "초과" in text and months % 12 == 0:
+                min_age += 1
+            return min_age, None
+        # 미만/이하/그 외 → 만 0세(1세 미만)만 금기로 본다
+        return None, 0
+
+    match = re.search(r"(\d+)\s*세", text)
     if not match:
         return None, None
     age = int(match.group(1))
-    if "이상" in value or "초과" in value:
-        return age + (1 if "초과" in value else 0), None
-    if "미만" in value:
+    if "이상" in text or "초과" in text:
+        return age + (1 if "초과" in text else 0), None
+    if "미만" in text:
         return None, max(age - 1, 0)
+    # "N세 이하" 및 숫자만 있는 경우 → max_age = N
     return None, age
 
 

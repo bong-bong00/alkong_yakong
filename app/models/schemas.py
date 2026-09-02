@@ -9,6 +9,8 @@ class UserCreate(BaseModel):
     gender: Optional[str] = None
     phone: Optional[str] = None
     role: str = "PATIENT"
+    is_pregnant: Optional[bool] = None
+    pregnancy_status: Optional[str] = None
 
 
 class GuardianCreate(BaseModel):
@@ -45,6 +47,29 @@ class PrescriptionOCRRequest(BaseModel):
     prescribed_date: Optional[str] = None
     expire_date: Optional[str] = None
     mock_items: List[OCRMedicineItem] = Field(default_factory=list)
+
+
+class PrescriptionConfirmItem(BaseModel):
+    medicine_code: str
+    drug_name: str
+    dosage: Optional[str] = None
+    unit: Optional[str] = None
+    frequency_per_day: Optional[int] = None
+    times_per_take: Optional[int] = None
+    duration_days: Optional[int] = None
+    administration_times: List[str] = Field(default_factory=list)
+    match_status: Optional[str] = None
+    easy_explanation: Optional[str] = None
+    warning_note: Optional[str] = None
+
+
+class PrescriptionConfirmRequest(BaseModel):
+    user_id: str
+    items: List[PrescriptionConfirmItem] = Field(default_factory=list)
+    hospital_name: Optional[str] = None
+    pharmacy_name: Optional[str] = None
+    prescribed_date: Optional[str] = None
+    expire_date: Optional[str] = None
 
 
 class DurAnalyzeRequest(BaseModel):
