@@ -200,7 +200,10 @@ def _resolve_medicine(cursor, item: OCRMedicineItem) -> tuple[str, str]:
         return medicine["medicine_code"], "MATCHED"
 
     # 허가정보·e약은요 등 공식 조회를 먼저 시도한다.
-    official = retrieve_official(item.drug_name)
+    official = retrieve_official(
+        item.drug_name,
+        dosage_hint=item.dosage,
+    )
     if official:
         return _upsert_official_medicine(cursor, official)
 
@@ -313,63 +316,110 @@ def _create_medication_schedules(
 
 
 def _user_readiness(items: list[dict], ocr_trace: dict | None = None) -> dict:
-    """사용자용 읽기 완성도(정답 인식률이 아님). 핵심 칸 채움 비율."""
+    """사용자용 글자 인식률(%).
+
+    칸만 채워졌다고 높은 점수를 주지 않는다.
+    - 약 이름 공식 매칭 성공(MATCHED/MFDS) vs 실패(UNMATCHED)
+    - 용량·횟수·일수 추출 여부
+    - 엔진 confidence(있으면) 를 반영
+    """
     if not items:
         return {
             "pct": 0,
             "label": "poor",
-            "summary": "약을 거의 읽지 못했어요. 다시 찍어 주세요.",
+            "summary": "글자를 거의 인식하지 못했어요. 다시 찍어 주세요.",
             "missing_hints": ["약 이름"],
+            "metric": "char_recognition",
         }
 
-    core_keys = ("drug_name", "frequency_per_day", "duration_days")
-    filled = 0
-    total = 0
-    missing: list[str] = []
-    uncertain_n = 0
+    scores: list[float] = []
+    hints: list[str] = []
+    weak_name_n = 0
     for item in items:
-        total += len(core_keys)
-        name_ok = bool(str(item.get("drug_name") or "").strip())
+        name = str(item.get("drug_name") or "").strip()
+        status = str(item.get("match_status") or "").upper()
+        uncertain = item.get("uncertain") is True or status == "UNMATCHED"
+
+        if not name:
+            name_score = 0.0
+            hints.append("약 이름")
+            weak_name_n += 1
+        elif uncertain:
+            # 글자는 잡았지만 인식·매칭이 불확실 → 인식률 크게 낮춤
+            name_score = 0.35
+            hints.append("약 이름 인식")
+            weak_name_n += 1
+        else:
+            name_score = 1.0
+
+        dosage_ok = bool(str(item.get("dosage") or "").strip())
         freq_ok = item.get("frequency_per_day") is not None
         days_ok = item.get("duration_days") is not None
-        filled += int(name_ok) + int(freq_ok) + int(days_ok)
-        if not name_ok:
-            missing.append("약 이름")
         if not freq_ok:
-            missing.append("하루 횟수")
+            hints.append("하루 횟수")
         if not days_ok:
-            missing.append("투약 일수")
-        if item.get("uncertain") is True or item.get("match_status") == "UNMATCHED":
-            uncertain_n += 1
+            hints.append("투약 일수")
 
-    pct = round(100.0 * filled / total) if total else 0
-    # 불확실 약이 있으면 조금 감점
-    if uncertain_n:
-        pct = max(0, pct - min(15, uncertain_n * 5))
+        # 이름 인식 비중을 가장 크게
+        item_score = (
+            0.55 * name_score
+            + 0.15 * (1.0 if dosage_ok else 0.0)
+            + 0.15 * (1.0 if freq_ok else 0.0)
+            + 0.15 * (1.0 if days_ok else 0.0)
+        )
+        scores.append(item_score)
+
+    pct = round(100.0 * (sum(scores) / len(scores))) if scores else 0
+
+    # OCR 엔진 confidence(0~1 또는 0~100)가 있으면 혼합
+    eng_conf = None
+    if isinstance(ocr_trace, dict):
+        eng_conf = ocr_trace.get("engine_confidence")
+        coverage = ocr_trace.get("field_coverage")
+        if isinstance(coverage, dict) and coverage.get("overall_pct") is not None:
+            # 구조화 커버리지도 인식 보조 신호로 소량 반영
+            try:
+                cov = float(coverage["overall_pct"])
+                pct = round(0.85 * pct + 0.15 * cov)
+            except (TypeError, ValueError):
+                pass
+    if eng_conf is not None:
+        try:
+            conf = float(eng_conf)
+            if conf > 1.0:
+                conf = conf / 100.0
+            conf = max(0.0, min(1.0, conf))
+            pct = round(0.7 * pct + 0.3 * (conf * 100.0))
+        except (TypeError, ValueError):
+            pass
+
+    pct = int(max(0, min(100, pct)))
 
     if pct >= 85:
         label = "good"
-        summary = f"약 {len(items)}개를 잘 읽었어요."
+        summary = f"약 {len(items)}개 글자 인식률이 좋아요."
     elif pct >= 60:
         label = "fair"
-        summary = f"약 {len(items)}개를 읽었지만, 일부 칸을 확인해 주세요."
+        summary = (
+            f"약 {len(items)}개 중 일부 글자 인식이 불완전해요."
+            if weak_name_n
+            else f"약 {len(items)}개 글자 인식률이 보통이에요."
+        )
     else:
         label = "poor"
-        summary = "글자가 잘 안 보였어요. 다시 찍어 주세요."
+        summary = "글자 인식률이 낮아요. 다시 찍어 주세요."
 
-    # 중복 힌트 제거, 순서 유지
-    hints: list[str] = []
-    for hint in missing:
-        if hint not in hints:
-            hints.append(hint)
+    unique_hints: list[str] = []
+    for hint in hints:
+        if hint not in unique_hints:
+            unique_hints.append(hint)
 
-    # field_coverage가 있으면 참고용으로만 남김 (사용자 pct는 핵심 칸 기준)
-    _ = ocr_trace
     return {
         "pct": pct,
         "label": label,
         "summary": summary,
-        "missing_hints": hints[:4],
+        "missing_hints": unique_hints[:4],
+        "metric": "char_recognition",
     }
 
 
@@ -395,6 +445,7 @@ def create_prescription_from_ocr(request: PrescriptionOCRRequest) -> dict:
             readiness_seed.append(
                 {
                     "drug_name": item.drug_name,
+                    "dosage": item.dosage,
                     "frequency_per_day": item.frequency_per_day,
                     "duration_days": item.duration_days,
                     "uncertain": match_status == "UNMATCHED",
@@ -434,10 +485,15 @@ def create_prescription_from_ocr(request: PrescriptionOCRRequest) -> dict:
             "hospital_name": request.hospital_name,
             "pharmacy_name": request.pharmacy_name,
             "prescribed_date": request.prescribed_date,
+            # 하위 호환: user_readiness_* 유지. 의미는 글자 인식률.
             "user_readiness_pct": readiness["pct"],
             "readiness_label": readiness["label"],
             "readiness_summary": readiness["summary"],
             "missing_hints": readiness["missing_hints"],
+            "recognition_pct": readiness["pct"],
+            "recognition_label": readiness["label"],
+            "recognition_summary": readiness["summary"],
+            "recognition_metric": readiness.get("metric") or "char_recognition",
         }
     except Exception:
         conn.rollback()

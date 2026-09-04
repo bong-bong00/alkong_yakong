@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import re
 import time
-from typing import Callable
+from typing import Any, Callable
 
 import requests
 
+from app.services.matching.name_matcher import _medicine_key, match_medicine_name
 from app.services.mfds_drug_permission.client import (
     extract_items,
     extract_total_count,
@@ -15,6 +17,7 @@ from app.services.mfds_drug_permission.client import (
 )
 from app.services.mfds_drug_permission.db import (
     count_stats,
+    find_permission_product,
     get_permission_connection,
     initialize_permission_db,
     update_detail_item,
@@ -152,3 +155,166 @@ def ensure_detail_for_product(item_seq: str, item_name: str) -> bool:
         return True
     finally:
         conn.close()
+
+
+def _ocr_name_query_variants(name: str, *, similar: bool = False) -> list[str]:
+    """OCR 약명 → 식약처 검색어."""
+    raw = (name or "").strip()
+    if not raw:
+        return []
+    variants: list[str] = []
+
+    def _add(value: str) -> None:
+        text = (value or "").strip()
+        if text and text not in variants:
+            variants.append(text)
+
+    _add(raw)
+    stripped = re.sub(
+        r"\d+(?:\.\d+)?\s*(?:mg|ml|g|%|밀리그램|밀리그람)",
+        "",
+        raw,
+        flags=re.IGNORECASE,
+    )
+    stripped = re.sub(r"\s+", "", stripped)
+    _add(stripped)
+    key = _medicine_key(raw)
+    _add(key)
+    for suffix in ("정", "캡슐", "액", "시럽", "서방정", "패취", "플라스타"):
+        if key:
+            _add(key + suffix)
+    # 유사 추론용: 앞부분으로 후보 풀을 넓힘 + 흔한 한 글자 혼동
+    if similar:
+        hangul = re.sub(r"[^가-힣]", "", key or stripped or raw)
+        if len(hangul) >= 4:
+            _add(hangul[:4])
+        if len(hangul) >= 3:
+            _add(hangul[:3])
+        for a, b in (("짓", "짙"), ("짙", "짓"), ("짓", "짇"), ("짙", "짇"), ("짇", "짓"), ("핀", "피"), ("피", "핀")):
+            if a in raw:
+                _add(raw.replace(a, b, 1))
+            if a in (key or ""):
+                _add((key or "").replace(a, b, 1))
+    return variants
+
+
+def _pick_official_name(
+    query: str,
+    candidates: list[str],
+    *,
+    dosage_hint: str | float | None = None,
+    similar: bool = False,
+) -> str | None:
+    if not candidates:
+        return None
+    match = match_medicine_name(
+        query,
+        candidates,
+        dosage_hint=dosage_hint,
+        similar=similar,
+    )
+    return match.matched_name
+
+
+def _row_matches_query(
+    query: str,
+    row: dict[str, Any] | None,
+    *,
+    dosage_hint: str | float | None = None,
+    similar: bool = False,
+) -> dict[str, Any] | None:
+    if not row:
+        return None
+    official = str(row.get("item_name") or "")
+    if not official:
+        return None
+    match = match_medicine_name(
+        query,
+        [official],
+        dosage_hint=dosage_hint,
+        similar=similar,
+    )
+    return row if match.matched_name else None
+
+
+def lookup_permission_by_ocr_name(
+    name: str,
+    *,
+    dosage_hint: str | float | None = None,
+    allow_similar: bool = True,
+) -> dict[str, Any] | None:
+    """OCR 약명 → 식약처 공식명. 1차 정확 매칭, 실패 시 유사 추론."""
+    initialize_permission_db()
+    query = (name or "").strip()
+    if not query:
+        return None
+
+    for similar in (False, True) if allow_similar else (False,):
+        cached = _row_matches_query(
+            query,
+            find_permission_product(query),
+            dosage_hint=dosage_hint,
+            similar=similar,
+        )
+        if cached:
+            return cached
+
+        collected: list[dict[str, Any]] = []
+        seen_seq: set[str] = set()
+        for variant in _ocr_name_query_variants(query, similar=similar):
+            try:
+                payload = fetch_permission_list_page(
+                    page_no=1,
+                    num_of_rows=15 if similar else 10,
+                    item_name=variant,
+                )
+            except Exception:
+                continue
+            for item in extract_items(payload):
+                seq = str(item.get("ITEM_SEQ") or "").strip()
+                item_name = str(item.get("ITEM_NAME") or "").strip()
+                if not seq or not item_name or seq in seen_seq:
+                    continue
+                seen_seq.add(seq)
+                collected.append(item)
+
+        if not collected:
+            continue
+
+        names = [str(item.get("ITEM_NAME") or "") for item in collected]
+        chosen = _pick_official_name(
+            query,
+            names,
+            dosage_hint=dosage_hint,
+            similar=similar,
+        )
+        if not chosen:
+            continue
+
+        chosen_item = next(
+            (item for item in collected if str(item.get("ITEM_NAME") or "") == chosen),
+            None,
+        )
+        if not chosen_item:
+            continue
+
+        conn = get_permission_connection()
+        try:
+            upsert_list_item(conn, chosen_item)
+            conn.commit()
+        finally:
+            conn.close()
+
+        row = find_permission_product(chosen)
+        if not row:
+            continue
+        ensure_detail_for_product(str(row["item_seq"]), str(row["item_name"]))
+        matched = _row_matches_query(
+            query,
+            find_permission_product(chosen) or row,
+            dosage_hint=dosage_hint,
+            similar=similar,
+        )
+        if matched:
+            return matched
+    return None

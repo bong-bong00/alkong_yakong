@@ -81,6 +81,10 @@ def parse_prescription_text(raw_text: str) -> dict[str, Any] | None:
 
     if not filtered.get("items"):
         return None
+    filtered["items"] = _normalize_table_dosing(filtered["items"])
+    filtered["items"] = _merge_duplicate_drugs(filtered["items"])
+    if not filtered.get("items"):
+        return None
     filtered["field_coverage"] = measure_field_coverage(filtered)
     filtered["parser_engine"] = parser_engine
     return filtered
@@ -98,12 +102,16 @@ def _parse_with_gemini(text: str) -> dict[str, Any] | None:
             "1) 원문에 없는 약 이름·용량·횟수·기간을 추측하지 마세요.\n"
             "2) 확인되지 않는 항목은 생략하세요.\n"
             "3) 표/줄 형식이면 열을 이렇게 매핑하세요.\n"
-            "   - 약품명 → drug_name\n"
-            "   - 1회 투약량(0.50 등) → dosage\n"
-            "   - 1일 투여횟수 → frequency_per_day (정수)\n"
-            "   - 투약 일수/N일분 → duration_days (정수)  ※ 반드시 채우세요\n"
+            "   - 처방의약품의 명칭 → drug_name (0.25mg 등 이름에 적힌 용량 포함)\n"
+            "   - 약품명에 있는 mg/% → dosage  (예: 0.25mg, 400mg)\n"
+            "   - '1 T' '1 C' '1 PKG'는 dosage가 아닙니다. unit=T/C/PKG, times_per_take=1\n"
+            "   - 1일 투여횟수 → frequency_per_day (정수, 보통 1~3. 총량 60을 넣지 마세요)\n"
+            "   - 총 투약 일수 → duration_days (정수, 예: 60)\n"
+            "   - 총량 열은 duration_days로 쓰지 마세요.\n"
             "4) 한 줄에 '0.50 3 7' 또는 '0.50 | 3 | 7'이면\n"
             "   dosage=0.50, frequency_per_day=3, duration_days=7 입니다.\n"
+            "4-1) 같은 약이 아침/점심/저녁으로 반복되면 항목을 하나로 합치고\n"
+            "   frequency_per_day는 반복 횟수(3)로 하세요.\n"
             "5) 복용법/효능 설명 문장은 easy_explanation에 넣으세요.\n"
             "6) prescribed_date는 YYYY-MM-DD로 정규화하세요.\n"
             "7) hospital_name은 병원/의원명, pharmacy_name은 약국명 또는 조제약사명.\n\n"
@@ -288,6 +296,98 @@ def enrich_dosing_from_raw(structured: dict[str, Any], raw_text: str) -> dict[st
     return result
 
 
+def _normalize_table_dosing(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """보험 처방 표: '1 T'는 용량이 아님. 총량 60을 횟수로 쓰지 않음."""
+    result: list[dict[str, Any]] = []
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        cleaned = dict(item)
+        name = str(cleaned.get("drug_name") or "")
+        dosage = str(cleaned.get("dosage") or "").strip()
+        unit = str(cleaned.get("unit") or "").strip()
+
+        take_match = re.match(
+            r"^(\d+(?:\.\d+)?)\s*(T|C|EA|PKG|정|캡슐)$",
+            dosage.replace(" ", ""),
+            re.IGNORECASE,
+        )
+        if take_match or unit.upper() in {"T", "C", "EA", "PKG"}:
+            if take_match:
+                try:
+                    cleaned["times_per_take"] = int(float(take_match.group(1)))
+                except ValueError:
+                    cleaned["times_per_take"] = 1
+                cleaned["unit"] = take_match.group(2).upper()
+            strength = re.search(
+                r"(\d+(?:\.\d+)?)\s*(mg|ml|g|%|밀리그램|밀리그람)",
+                name,
+                re.IGNORECASE,
+            )
+            if strength:
+                cleaned["dosage"] = strength.group(0).replace(" ", "")
+            elif take_match:
+                cleaned.pop("dosage", None)
+
+        freq = cleaned.get("frequency_per_day")
+        days = cleaned.get("duration_days")
+        try:
+            freq_n = int(freq) if freq is not None else None
+        except (TypeError, ValueError):
+            freq_n = None
+        # 총량/일수 60을 1일 횟수로 오인
+        if freq_n is not None and freq_n >= 10:
+            if days is None:
+                cleaned["duration_days"] = freq_n
+            cleaned["frequency_per_day"] = 1
+        result.append(cleaned)
+    return result
+
+
+def _merge_duplicate_drugs(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """아침/점심/저녁으로 반복된 같은 약을 한 줄로 합친다."""
+    try:
+        from app.services.matching.name_matcher import _medicine_key, extract_strengths
+    except Exception:
+        return items
+
+    groups: dict[tuple, list[dict[str, Any]]] = {}
+    order: list[tuple] = []
+    for item in items:
+        name = str(item.get("drug_name") or "")
+        key = _medicine_key(name)
+        strengths = tuple(sorted(extract_strengths(name + " " + str(item.get("dosage") or ""))))
+        group_key = (key, strengths)
+        if group_key not in groups:
+            groups[group_key] = []
+            order.append(group_key)
+        groups[group_key].append(item)
+
+    merged: list[dict[str, Any]] = []
+    for group_key in order:
+        rows = groups[group_key]
+        base = dict(rows[0])
+        if len(rows) > 1:
+            slot_n = len(rows)
+            freq = base.get("frequency_per_day")
+            try:
+                freq_n = int(freq) if freq is not None else 1
+            except (TypeError, ValueError):
+                freq_n = 1
+            base["frequency_per_day"] = max(slot_n, freq_n if freq_n < 10 else 1)
+        days_vals = []
+        for row in rows:
+            if row.get("duration_days") is not None:
+                try:
+                    days_vals.append(int(row["duration_days"]))
+                except (TypeError, ValueError):
+                    pass
+        if days_vals and base.get("duration_days") is None:
+            base["duration_days"] = max(days_vals)
+        merged.append(base)
+    return merged
+
+
 def correct_drug_names(structured: dict[str, Any]) -> dict[str, Any]:
     """OCR 약이름 오타를 허가정보·유사도 매칭으로 공식명에 가깝게 고친다."""
     items: list[dict[str, Any]] = []
@@ -361,23 +461,68 @@ def _dosing_near_name(drug_name: str, raw_text: str) -> dict[str, Any]:
     return result
 
 
-# 복약안내 OCR에서 반복되는 한두 글자 오타
+# OCR이 자주 틀리는 글자 → 식약처 공식 표기 (wrong → right)
 _OCR_TYPO_FIXES = {
-    "프리마란정": "프리마라정",
-    "프레벨액": "프레베넥액",
-    "프레벨렉액": "프레베넥액",
-    "프레벨액0.25%": "프레베넥액 0.25%",
-    "휴온스시메티딘정200밀리그램": "휴온스시메티딘정200밀리그람",
+    "프리마라정": "프리마란정",
+    "프레베넥액": "프레벨액",
+    "프레베넥액0.25%": "프레벨액 0.25%",
+    "프레베넥액 0.25%": "프레벨액 0.25%",
+    "프레베이액": "프레벨액",
+    "프레베이액0.25%": "프레벨액 0.25%",
+    "프레베이액 0.25%": "프레벨액 0.25%",
+    "휴온스시메티딘정200밀리그람": "휴온스시메티딘정200밀리그램",
+    "프리스타서방정": "프리스틱서방정50밀리그램",
+    "프리스타 서방정 50mg": "프리스틱서방정50밀리그램",
+    "프리스틱 서방정 50mg": "프리스틱서방정50밀리그램",
+    "쎄스페이알서방정": "써스펜8시간이알서방정650밀리그램",
+    "쎄스페이알서방정 650mg": "써스펜8시간이알서방정650밀리그램",
+    "써스펜이알서방정": "써스펜8시간이알서방정650밀리그램",
+    "써스펜이알서방정 650mg": "써스펜8시간이알서방정650밀리그램",
+    "엑셀론 패취 10": "엑셀론패취10",
+    "엑셀론패취 10": "엑셀론패취10",
+    "엑셀론 패취 10 9.5mg/24hours": "엑셀론패취10",
+    "듀파락 이지 시럽": "듀파락시럽",
+    "듀파락이지시럽": "듀파락시럽",
+    "듀파락 이지 시럽 15ml/pkg": "듀파락시럽",
+    "벤포정": "삐콤정",
 }
+
+# OCR에서 자주 바뀌는 한글 한 글자 (교정 후보 검색용)
+_OCR_CHAR_SWAPS = (
+    ("넥", "벨"),
+    ("벨", "넥"),
+    ("라", "란"),
+    ("란", "라"),
+    ("그람", "그램"),
+    ("그램", "그람"),
+)
+
+
+def _strip_pack_noise(name: str) -> str:
+    """'케토톱엘플라스타 7매/PKG', '코푸시럽 20ml/pkg' → 제품명만."""
+    text = str(name or "").strip()
+    text = re.sub(r"\s*\d+\s*매\s*/?\s*pkg.*$", "", text, flags=re.IGNORECASE)
+    text = re.sub(r"\s*\d+(?:\.\d+)?\s*ml\s*/?\s*pkg.*$", "", text, flags=re.IGNORECASE)
+    text = re.sub(r"\s*/\s*pkg.*$", "", text, flags=re.IGNORECASE)
+    text = re.sub(r"\s*\d+(?:\.\d+)?\s*mg/24hours?.*$", "", text, flags=re.IGNORECASE)
+    return text.strip(" ,-/")
 
 
 def _correct_one_drug_name(name: str) -> str:
-    raw = (name or "").strip()
+    """OCR 약명을 식약처 공식 약품명에 맞게 교정한다."""
+    raw = _strip_pack_noise((name or "").strip())
     if not raw:
-        return raw
+        return (name or "").strip()
     compact_raw = _compact(raw)
-    for wrong, right in _OCR_TYPO_FIXES.items():
-        if compact_raw == _compact(wrong) or compact_raw.startswith(_compact(wrong)):
+
+    # 1) 알려진 OCR 오타 표 (긴 키 우선 — '프레베넥액 0.25%'가 '프레베넥액'에 먹히지 않게)
+    for wrong, right in sorted(
+        _OCR_TYPO_FIXES.items(),
+        key=lambda item: len(_compact(item[0])),
+        reverse=True,
+    ):
+        wrong_c = _compact(wrong)
+        if compact_raw == wrong_c or compact_raw.startswith(wrong_c):
             return right
 
     try:
@@ -389,37 +534,87 @@ def _correct_one_drug_name(name: str) -> str:
     if not lexicon:
         return raw
     match = match_medicine_name(raw, lexicon)
-    # AUTO_ACCEPT(0.90) 이상만 조용히 교정. 미만은 OCR 원문 유지.
+    # 공식 사전과 0.90 이상/키 동일하면 공식명으로 교정
     if match.matched_name:
-        return match.matched_name
+        # 괄호 성분 등은 짧은 표시명으로 정리
+        return _short_official_label(match.matched_name, raw)
     return raw
 
 
+def _short_official_label(official: str, ocr_raw: str) -> str:
+    """'프레벨액0.25%(프레드니카르베이트)' → OCR에 %가 있으면 용량 유지한 짧은 이름."""
+    base = _clean_drug_label(official)
+    # 괄호 앞까지만
+    base = re.split(r"[（(]", base, maxsplit=1)[0].strip()
+    if re.search(r"\d+(?:\.\d+)?\s*%", ocr_raw) and "%" not in base:
+        # OCR에 농도가 있으면 공식명에 농도 붙이기
+        m = re.search(r"(\d+(?:\.\d+)?\s*%)", official) or re.search(
+            r"(\d+(?:\.\d+)?\s*%)", ocr_raw
+        )
+        if m and m.group(1) not in base:
+            return f"{base}" if re.search(r"\d+(?:\.\d+)?%", base) else base
+    return base
+
+
+def _confusable_queries(name: str) -> list[str]:
+    """한 글자 OCR 혼동을 바꿔 식약처 검색어를 만든다."""
+    raw = (name or "").strip()
+    out: list[str] = []
+    seen: set[str] = set()
+
+    def _add(value: str) -> None:
+        text = (value or "").strip()
+        if text and text not in seen:
+            seen.add(text)
+            out.append(text)
+
+    _add(raw)
+    for a, b in _OCR_CHAR_SWAPS:
+        if a in raw:
+            _add(raw.replace(a, b, 1))
+    return out
+
+
 def _ocr_name_lexicon(raw: str) -> list[str]:
-    """허가DB가 없거나 비어도 로컬 medicines + 흔한 OCR 교정 후보로 사전을 만든다."""
+    """교정용 공식 약품명 사전(허가DB·식약처 API·로컬 medicines)."""
     lexicon: list[str] = []
     seen: set[str] = set()
 
     def _add(label: str) -> None:
         text = _clean_drug_label(label)
         if text and text not in seen:
+            # OCR 오타 문자열 자체는 후보에서 제외
+            if _compact(text) == _compact(raw):
+                return
             seen.add(text)
             lexicon.append(text)
 
-    # 이 프로젝트 복약안내 샘플에서 자주 틀리는 이름
+    # 시화병원 봉투 등에서 확인된 공식 표기
     for known in (
-        "프리마라정",
+        "프리마란정",
         "아디팜정",
-        "휴온스시메티딘정200밀리그람",
+        "모사피아정",
+        "프로맥정",
+        "니자액스캡슐150mg",
         "휴온스시메티딘정200밀리그램",
-        "프레베넥액",
-        "프레베넥액 0.25%",
+        "프레벨액",
+        "프레벨액 0.25%",
+        "프레벨액0.25%",
+        "프리스틱서방정50밀리그램",
+        "써스펜8시간이알서방정650밀리그램",
+        "엑셀론패취10",
+        "케토톱엘플라스타",
+        "코푸시럽에스",
+        "듀파락시럽",
+        "삐콤정",
     ):
         _add(known)
 
     compact = _compact(raw)
     core = re.sub(r"\d+(?:\.\d+)?(?:mg|ml|g|%|밀리그람|밀리그램)", "", compact)
     prefixes = [raw[:2], raw[:3], core[:2], core[:3], core[:4]]
+
+    # 로컬 허가 미러 DB
     try:
         from app.services.mfds_drug_permission.db import search_permission_names
 
@@ -435,6 +630,38 @@ def _ocr_name_lexicon(raw: str) -> list[str]:
     except Exception:
         pass
 
+    # 식약처 허가 API 실시간 (DB가 비어 있을 때) + 혼동 글자 검색
+    try:
+        from app.services.mfds_drug_permission.client import (
+            extract_items,
+            fetch_permission_list_page,
+        )
+
+        search_terms = list(prefixes)
+        for variant in _confusable_queries(raw):
+            search_terms.append(variant)
+            hangul = re.sub(r"[^가-힣]", "", variant)
+            if len(hangul) >= 3:
+                search_terms.append(hangul[:3])
+            if len(hangul) >= 4:
+                search_terms.append(hangul[:4])
+        for term in search_terms:
+            token = str(term or "").strip()
+            if len(token) < 2:
+                continue
+            try:
+                payload = fetch_permission_list_page(
+                    page_no=1,
+                    num_of_rows=8,
+                    item_name=token,
+                )
+                for item in extract_items(payload):
+                    _add(str(item.get("ITEM_NAME") or ""))
+            except Exception:
+                continue
+    except Exception:
+        pass
+
     try:
         from app.database import get_connection
 
@@ -444,7 +671,6 @@ def _ocr_name_lexicon(raw: str) -> list[str]:
                 token = str(prefix or "").strip()
                 if len(token) < 2:
                     continue
-                # OCR 임시로 넣어진 오타 이름(OCR-…)은 교정 사전에서 제외
                 rows = conn.execute(
                     "SELECT product_name FROM medicines "
                     "WHERE product_name LIKE ? "
@@ -453,11 +679,7 @@ def _ocr_name_lexicon(raw: str) -> list[str]:
                     (f"%{token}%",),
                 ).fetchall()
                 for row in rows:
-                    label = str(row[0] or "")
-                    # 지금 OCR이 읽은 오타 문자열 자체는 후보에서 빼 공식명 쪽으로 유도
-                    if _compact(label) == _compact(raw):
-                        continue
-                    _add(label)
+                    _add(str(row[0] or ""))
         finally:
             conn.close()
     except Exception:
@@ -466,9 +688,65 @@ def _ocr_name_lexicon(raw: str) -> list[str]:
     return lexicon
 
 
-def _clean_drug_label(name: str) -> str:
-    """'프리마라정 (알러지질환약)' → '프리마라정'."""
+def _strip_non_drug_markers(name: str) -> str:
+    """처방 표 기호·구분코드를 약 이름에서 제거.
+
+    비)다이크로지정, 급)타이레놀, 원내)세파클러 처럼
+    '한 글자/짧은 말 + 괄호·점' 형태는 약 이름이 아님.
+    비타민·비오플처럼 '비'로 시작하는 실제 약명은 그대로 둔다.
+    """
     text = str(name or "").strip()
+    delim = r"[)\]\}>:：.\-/|·,]"
+    words = (
+        "비급여",
+        "급여대상",
+        "급여약",
+        "비급여약",
+        "본인부담",
+        "산정특례",
+        "원내처방",
+        "원외처방",
+        "원내약",
+        "원외약",
+        "의료급여",
+        "보훈급여",
+        "차상위",
+        "전액본인",
+        "100분의100",
+        "100/100",
+        "비급여",
+        "급여",
+        "비급",
+        "원내",
+        "원외",
+        "보훈",
+        "향정",
+        "마약",
+        "한약",
+        "건보",
+        "자보",
+        "산재",
+    )
+    # 한 글자 구분 코드: 비) 급) 원) 보) 향) 마) 산) 자)
+    code_letters = "비급원보향마산자내외특"
+
+    for _ in range(5):
+        prev = text
+        text = re.sub(r"^(?:" + "|".join(words) + r")\s*", "", text)
+        text = re.sub(rf"^[{code_letters}]\s*{delim}\s*", "", text)
+        text = re.sub(rf"^{delim}+\s*", "", text)
+        # 선두 기호: ★ ☆ ● ○ ◎ ■ □ △ ▲ ※
+        text = re.sub(r"^[\s★☆●○◎■□△▲※*]+", "", text)
+        # 표준코드처럼 이름 앞에 붙은 숫자 코드 (8자리 이상)
+        text = re.sub(r"^\d{8,}\s*", "", text)
+        if text == prev:
+            break
+    return text.strip(" -/|")
+
+
+def _clean_drug_label(name: str) -> str:
+    """'비)다이크로지정 (이뇨제)' → '다이크로지정'."""
+    text = _strip_non_drug_markers(str(name or "").strip())
     text = re.sub(r"\s*\([^)]*\)\s*", " ", text)
     text = re.sub(r"\s*\[[^\]]*\]\s*", " ", text)
     return re.sub(r"\s+", " ", text).strip()

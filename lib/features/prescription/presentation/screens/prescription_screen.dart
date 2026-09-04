@@ -25,7 +25,7 @@ enum PrescriptionStep {
   /// 읽는 중.
   reading,
 
-  /// 읽기 완성도 % (정답 인식률이 아님).
+  /// 글자 인식률 % 결과.
   readiness,
 
   /// 4e — 이렇게 읽었어요.
@@ -122,16 +122,22 @@ class _PrescriptionScreenState extends ConsumerState<PrescriptionScreen> {
         return;
       }
 
-      final pctRaw = mapped['user_readiness_pct'];
+      final pctRaw =
+          mapped['recognition_pct'] ?? mapped['user_readiness_pct'];
       final pct = pctRaw is num ? pctRaw.round() : 0;
       final hints = mapped['missing_hints'];
       setState(() {
         _result = mapped;
         _failureCount = 0;
         _readinessPct = pct.clamp(0, 100);
-        _readinessLabel = mapped['readiness_label']?.toString() ?? 'fair';
+        _readinessLabel =
+            mapped['recognition_label']?.toString() ??
+            mapped['readiness_label']?.toString() ??
+            'fair';
         _readinessSummary =
-            mapped['readiness_summary']?.toString() ?? '처방전을 읽었어요.';
+            mapped['recognition_summary']?.toString() ??
+            mapped['readiness_summary']?.toString() ??
+            '글자 인식을 마쳤어요.';
         _missingHints = hints is List
             ? hints.map((e) => e.toString()).where((e) => e.isNotEmpty).toList()
             : const [];
@@ -519,7 +525,7 @@ class _ReadingScreen extends StatelessWidget {
   }
 }
 
-/// 촬영 후 읽기 완성도(정답 인식률 아님)를 보여 준 뒤 확인 화면으로 보냄.
+/// 촬영 후 글자 인식률을 보여 준 뒤 확인 화면으로 보냄.
 class _ReadinessScreen extends StatelessWidget {
   final int pct;
   final String label;
@@ -544,9 +550,9 @@ class _ReadinessScreen extends StatelessWidget {
   }
 
   String get _title {
-    if (pct >= 85) return '잘 읽었어요';
-    if (pct >= 60) return '일부 확인이 필요해요';
-    return '다시 찍어 주세요';
+    if (pct >= 85) return '글자 인식이 좋아요';
+    if (pct >= 60) return '일부 글자 인식이 불완전해요';
+    return '글자 인식률이 낮아요';
   }
 
   @override
@@ -556,13 +562,13 @@ class _ReadinessScreen extends StatelessWidget {
       backgroundColor: AppColors.bg,
       body: Column(
         children: [
-          const SeniorBackHeader(title: '읽기 결과'),
+          const SeniorBackHeader(title: '인식 결과'),
           Expanded(
             child: SingleChildScrollView(
               padding: const EdgeInsets.fromLTRB(22, 24, 22, 20),
               child: Column(
                 children: [
-                  Text('읽기 완성도', style: AppText.cardTitle()),
+                  Text('글자 인식률', style: AppText.cardTitle()),
                   const SizedBox(height: 8),
                   Text(
                     '$pct%',
@@ -590,7 +596,7 @@ class _ReadinessScreen extends StatelessWidget {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text('비어 있을 수 있는 칸', style: AppText.cardTitle(size: 18)),
+                          Text('인식이 약한 항목', style: AppText.cardTitle(size: 18)),
                           const SizedBox(height: 8),
                           for (final hint in missingHints)
                             Padding(
@@ -601,12 +607,6 @@ class _ReadinessScreen extends StatelessWidget {
                       ),
                     ),
                   ],
-                  const SizedBox(height: 12),
-                  Text(
-                    '정답 대비 인식률이 아니라, 칸을 얼마나 채웠는지예요.',
-                    textAlign: TextAlign.center,
-                    style: AppText.caption(),
-                  ),
                 ],
               ),
             ),
@@ -810,7 +810,7 @@ class _DrugCard extends StatelessWidget {
           if (uncertain) ...[
             const SizedBox(height: 10),
             Text(
-              '글씨가 흐려서 확인이 필요해요',
+              '약 이름 인식이 불확실해요',
               style: AppText.label(size: 17.5, color: AppColors.danger),
             ),
           ],
@@ -843,7 +843,7 @@ class _FailedScreen extends StatelessWidget {
           Expanded(
             child: RecoveryView(
               title: '지금은 처방전을\n읽지 못하고 있어요',
-              reassurance: '글씨가 흐리거나 종이가 잘려 보였어요. ',
+              reassurance: '글자 인식에 실패했어요. ',
               reassuranceEmphasis: '잘못 찍으신 게 아니니 걱정하지 마세요.',
               steps: const [
                 '밝은 곳에 처방전을 펼쳐 놓으세요',
