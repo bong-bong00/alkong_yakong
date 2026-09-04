@@ -451,15 +451,38 @@ def generate_chat_response(message: str, *, user_id: str = "") -> str:
             )
             
             drug_names = _extract_drug_names(extract_response)
+            logger.info(
+                "Gemini extraction_result drug_name_count=%d",
+                len(drug_names),
+            )
 
             # 2. 식약처 공식 데이터 수집
             official_data_list = []
             
-            for name in drug_names:
+            for drug_index, name in enumerate(drug_names):
                 found_data = None
                 # 2-1. 먼저 식약처 API 시도
+                logger.info(
+                    "Gemini official_search_start drug_index=%d",
+                    drug_index,
+                )
                 try:
                     search_result = search_drug_info_by_name(name)
+                    search_items = (
+                        search_result.get("items", [])
+                        if isinstance(search_result, dict)
+                        else []
+                    )
+                    logger.info(
+                        "Gemini official_search_result drug_index=%d "
+                        "items_found=%d match_type_present=%s",
+                        drug_index,
+                        len(search_items) if isinstance(search_items, list) else 0,
+                        bool(
+                            isinstance(search_result, dict)
+                            and search_result.get("match_type")
+                        ),
+                    )
                     if search_result and search_result.get("items"):
                         found_data = {
                             "검색된_약품명": name,
@@ -467,7 +490,11 @@ def generate_chat_response(message: str, *, user_id: str = "") -> str:
                             "식약처_공식정보": search_result["items"][0],
                         }
                 except Exception as e:
-                    logger.warning("식약처 API 검색 실패 (%s): %s", name, e)
+                    logger.warning(
+                        "Gemini official_search_failed drug_index=%d error_type=%s",
+                        drug_index,
+                        type(e).__name__,
+                    )
                 
                 if found_data:
                     official_data_list.append(found_data)
