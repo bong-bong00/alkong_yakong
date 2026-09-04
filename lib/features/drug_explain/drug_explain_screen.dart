@@ -19,41 +19,34 @@ class _DrugExplainScreenState extends State<DrugExplainScreen> {
   final FocusNode _chatFocusNode = FocusNode();
 
   bool _isLoading = false;
+  bool _isLoadingMedicines = false;
   String? _selectedKeyword;
+  String? _selectedMedicine;
+  String? _medicineLoadError;
+  final List<String> _medicines = [];
   final List<Map<String, dynamic>> _messages = [];
 
   static const List<Map<String, String>> _keywordPrompts = [
-    {
-      'label': '#약효·효능',
-      'prompt': '[약 이름]은 어떤 효능과 효과가 있는지 공식 정보 기준으로 알려주세요.',
-    },
-    {
-      'label': '#복용방법',
-      'prompt': '[약 이름]은 언제, 어떻게 복용해야 하는지 공식 복용법을 알려주세요.',
-    },
-    {
-      'label': '#주의사항',
-      'prompt': '[약 이름]을 복용할 때 주의해야 할 사항을 공식 정보 기준으로 알려주세요.',
-    },
-    {
-      'label': '#부작용',
-      'prompt': '[약 이름]의 공식 부작용과 이상반응 정보를 알려주세요.',
-    },
+    {'label': '#약효·효능', 'prompt': '{medicine}의 약효와 효능을 공식 의약품 정보 기준으로 알려주세요.'},
+    {'label': '#복용방법', 'prompt': '{medicine}의 복용방법을 공식 의약품 정보 기준으로 알려주세요.'},
+    {'label': '#주의사항', 'prompt': '{medicine} 복용 시 주의사항을 알려주세요.'},
+    {'label': '#부작용', 'prompt': '{medicine}의 공식 부작용을 알려주세요.'},
     {
       'label': '#같이 먹는 약',
-      'prompt': '현재 먹는 약들을 같이 복용해도 되는지 기존 DUR 병용금기 분석 결과를 설명해주세요.',
+      'prompt': '{medicine}과 현재 먹는 약들을 같이 복용해도 되는지 기존 DUR 병용금기 분석 결과를 설명해주세요.',
     },
     {
       'label': '#나이별 주의',
-      'prompt': '현재 먹는 약의 나이별 주의사항을 기존 DUR 연령금기 분석 결과로 설명해주세요.',
+      'prompt': '{medicine}의 나이별 주의사항을 기존 DUR 연령금기 분석 결과로 설명해주세요.',
     },
     {
       'label': '#임신 중 주의',
-      'prompt': '현재 먹는 약의 임신 중 주의사항을 기존 DUR 임부금기 분석 결과로 설명해주세요.',
+      'prompt': '{medicine}의 임신 중 복용 주의사항을 기존 DUR 임부금기 분석 결과로 설명해주세요.',
     },
     {
       'label': '#비슷한 약 중복',
-      'prompt': '현재 먹는 약에 비슷한 효능의 약이 중복되는지 기존 DUR 효능군중복 분석 결과로 설명해주세요.',
+      'prompt':
+          '{medicine}과 현재 먹는 약에 비슷한 효능의 약이 중복되는지 기존 DUR 효능군중복 분석 결과로 설명해주세요.',
     },
   ];
 
@@ -90,6 +83,7 @@ class _DrugExplainScreenState extends State<DrugExplainScreen> {
       'isMe': false,
       'text': '안녕하세요! 어떤 약에 대해 알고 싶으신가요?\n증상이나 약 이름을 편하게 물어보세요.',
     });
+    WidgetsBinding.instance.addPostFrameCallback((_) => _loadMedicines());
   }
 
   @override
@@ -105,11 +99,151 @@ class _DrugExplainScreenState extends State<DrugExplainScreen> {
     final prompt = keyword['prompt'];
     if (label == null || prompt == null) return;
 
+    final medicine = _selectedMedicine;
+    if (medicine == null || medicine.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('먼저 궁금한 약을 선택해주세요.'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+
     setState(() => _selectedKeyword = label);
+    final completedPrompt = prompt.replaceAll('{medicine}', medicine);
     _chatController
-      ..text = prompt
-      ..selection = TextSelection.collapsed(offset: prompt.length);
+      ..text = completedPrompt
+      ..selection = TextSelection.collapsed(offset: completedPrompt.length);
     _chatFocusNode.requestFocus();
+  }
+
+  Future<void> _loadMedicines() async {
+    final names = <String>[];
+
+    void addName(dynamic value) {
+      final name = value?.toString().trim() ?? '';
+      if (name.isNotEmpty && !names.contains(name)) names.add(name);
+    }
+
+    for (final item in MvpSession.latestOcrItems) {
+      addName(
+        item['medicine_name'] ?? item['drug_name'] ?? item['ocr_drug_name'],
+      );
+    }
+
+    final userId = MvpSession.userId.trim();
+    if (userId.isEmpty) {
+      if (!mounted) return;
+      setState(() {
+        _medicines
+          ..clear()
+          ..addAll(names);
+        _medicineLoadError = names.isEmpty ? '로그인 후 내 약을 불러올 수 있어요.' : null;
+      });
+      return;
+    }
+
+    setState(() {
+      _isLoadingMedicines = true;
+      _medicineLoadError = null;
+    });
+    try {
+      final response = await _apiClient.get(
+        '/api/v1/users/${Uri.encodeComponent(userId)}/dashboard',
+      );
+      final dashboard = Map<String, dynamic>.from(response as Map);
+      final prescription = dashboard['latest_prescription'];
+      if (prescription is Map) {
+        final medicineNames = prescription['medicine_names'];
+        if (medicineNames is List) {
+          for (final name in medicineNames) {
+            addName(name);
+          }
+        }
+      }
+      final todayMedications = dashboard['today_medications'];
+      if (todayMedications is List) {
+        for (final medication in todayMedications) {
+          if (medication is Map) {
+            addName(
+              medication['product_name'] ??
+                  medication['drug_name'] ??
+                  medication['medicine_name'],
+            );
+          }
+        }
+      }
+      if (!mounted) return;
+      setState(() {
+        _medicines
+          ..clear()
+          ..addAll(names);
+        _selectedMedicine ??= names.length == 1 ? names.first : null;
+        _medicineLoadError = names.isEmpty ? '등록된 처방/복용약이 없습니다.' : null;
+      });
+    } on ApiException catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _medicines
+          ..clear()
+          ..addAll(names);
+        _medicineLoadError = names.isEmpty ? _apiError(error) : null;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _medicines
+          ..clear()
+          ..addAll(names);
+        _medicineLoadError = names.isEmpty ? '내 약을 불러오지 못했습니다.' : null;
+      });
+    } finally {
+      if (mounted) setState(() => _isLoadingMedicines = false);
+    }
+  }
+
+  Future<void> _enterOtherMedicine() async {
+    final controller = TextEditingController();
+    final medicine = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('다른 약 검색하기'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          textInputAction: TextInputAction.done,
+          decoration: const InputDecoration(
+            hintText: '정확한 약 이름을 입력하세요',
+            border: OutlineInputBorder(),
+          ),
+          onSubmitted: (value) {
+            final name = value.trim();
+            if (name.isNotEmpty) Navigator.of(dialogContext).pop(name);
+          },
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('취소'),
+          ),
+          FilledButton(
+            onPressed: () {
+              final name = controller.text.trim();
+              if (name.isNotEmpty) Navigator.of(dialogContext).pop(name);
+            },
+            child: const Text('선택'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    if (!mounted || medicine == null) return;
+    setState(() {
+      if (!_medicines.contains(medicine)) _medicines.add(medicine);
+      _selectedMedicine = medicine;
+      _selectedKeyword = null;
+    });
   }
 
   void _scrollToBottom() {
@@ -199,50 +333,81 @@ class _DrugExplainScreenState extends State<DrugExplainScreen> {
               child: ListView.builder(
                 controller: _scrollController,
                 padding: const EdgeInsets.all(20),
-                itemCount: _messages.length + 2,
+                keyboardDismissBehavior:
+                    ScrollViewKeyboardDismissBehavior.onDrag,
+                itemCount: _messages.length + 3,
                 itemBuilder: (context, index) {
                   if (index == 0) {
                     return const _PharmacistGuide();
                   }
                   if (index == 1) {
+                    return _MedicineSelector(
+                      medicines: _medicines,
+                      selectedMedicine: _selectedMedicine,
+                      isLoading: _isLoadingMedicines,
+                      errorMessage: _medicineLoadError,
+                      onSelected: (medicine) {
+                        setState(() {
+                          _selectedMedicine = medicine;
+                          _selectedKeyword = null;
+                        });
+                      },
+                      onEnterOther: _enterOtherMedicine,
+                    );
+                  }
+                  if (index == 2) {
                     return Padding(
                       padding: const EdgeInsets.only(bottom: 20),
-                      child: Wrap(
-                        spacing: 8,
-                        runSpacing: 10,
-                        children: _keywordPrompts.map((keyword) {
-                          final label = keyword['label']!;
-                          final selected = label == _selectedKeyword;
-                          return ChoiceChip(
-                            label: Text(label),
-                            selected: selected,
-                            onSelected: _isLoading
-                                ? null
-                                : (_) => _selectKeyword(keyword),
-                            labelStyle: TextStyle(
-                              color: selected ? Colors.white : kText,
-                              fontSize: 15,
-                              fontWeight: FontWeight.w600,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            '궁금한 내용을 선택하세요.',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w700,
+                              color: kText,
                             ),
-                            backgroundColor: Colors.white,
-                            selectedColor: kPrimary,
-                            side: BorderSide(
-                              color: selected ? kPrimary : kPrimaryLight,
-                            ),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(18),
-                            ),
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 8,
-                              vertical: 8,
-                            ),
-                          );
-                        }).toList(),
+                          ),
+                          const SizedBox(height: 10),
+                          Wrap(
+                            spacing: 8,
+                            runSpacing: 10,
+                            children: _keywordPrompts.map((keyword) {
+                              final label = keyword['label']!;
+                              final selected = label == _selectedKeyword;
+                              return ChoiceChip(
+                                label: Text(label),
+                                selected: selected,
+                                onSelected: _isLoading
+                                    ? null
+                                    : (_) => _selectKeyword(keyword),
+                                labelStyle: TextStyle(
+                                  color: selected ? Colors.white : kText,
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                                backgroundColor: Colors.white,
+                                selectedColor: kPrimary,
+                                side: BorderSide(
+                                  color: selected ? kPrimary : kPrimaryLight,
+                                ),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(18),
+                                ),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 8,
+                                  vertical: 8,
+                                ),
+                              );
+                            }).toList(),
+                          ),
+                        ],
                       ),
                     );
                   }
 
-                  final msg = _messages[index - 2];
+                  final msg = _messages[index - 3];
                   final isMe = msg['isMe'] as bool;
                   return _ChatBubble(isMe: isMe, text: msg['text'] as String);
                 },
@@ -333,6 +498,100 @@ class _DrugExplainScreenState extends State<DrugExplainScreen> {
   }
 }
 
+class _MedicineSelector extends StatelessWidget {
+  final List<String> medicines;
+  final String? selectedMedicine;
+  final bool isLoading;
+  final String? errorMessage;
+  final ValueChanged<String> onSelected;
+  final VoidCallback onEnterOther;
+
+  const _MedicineSelector({
+    required this.medicines,
+    required this.selectedMedicine,
+    required this.isLoading,
+    required this.errorMessage,
+    required this.onSelected,
+    required this.onEnterOther,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(bottom: 18),
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: kBorder),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            '어떤 약이 궁금하세요?',
+            style: TextStyle(
+              fontSize: 17,
+              fontWeight: FontWeight.w700,
+              color: kText,
+            ),
+          ),
+          const SizedBox(height: 4),
+          const Text(
+            '내 처방/복용약',
+            style: TextStyle(fontSize: 14, color: kTextSub),
+          ),
+          const SizedBox(height: 12),
+          if (isLoading)
+            const LinearProgressIndicator(minHeight: 3)
+          else if (medicines.isNotEmpty)
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: medicines.map((medicine) {
+                final selected = medicine == selectedMedicine;
+                return ChoiceChip(
+                  label: Text(medicine),
+                  selected: selected,
+                  onSelected: (_) => onSelected(medicine),
+                  labelStyle: TextStyle(
+                    color: selected ? Colors.white : kText,
+                    fontWeight: FontWeight.w600,
+                  ),
+                  selectedColor: kPrimary,
+                  backgroundColor: kPrimaryLight,
+                  side: BorderSide(color: selected ? kPrimary : kBorder),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(18),
+                  ),
+                );
+              }).toList(),
+            )
+          else
+            Text(
+              errorMessage ?? '등록된 처방/복용약이 없습니다.',
+              style: const TextStyle(fontSize: 14, color: kTextSub),
+            ),
+          const SizedBox(height: 10),
+          OutlinedButton.icon(
+            onPressed: onEnterOther,
+            icon: const Icon(Icons.search_rounded, size: 20),
+            label: const Text('다른 약 검색하기'),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: kPrimary,
+              side: const BorderSide(color: kPrimary),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(18),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _PharmacistGuide extends StatelessWidget {
   const _PharmacistGuide();
 
@@ -392,7 +651,11 @@ class _ChatBubble extends StatelessWidget {
                 shape: BoxShape.circle,
               ),
               child: const Center(
-                child: Icon(Icons.chat_bubble_outline_rounded, size: 18, color: kPrimary),
+                child: Icon(
+                  Icons.chat_bubble_outline_rounded,
+                  size: 18,
+                  color: kPrimary,
+                ),
               ),
             ),
             const SizedBox(width: 8),
