@@ -385,6 +385,27 @@ def _finalize_chat_response(response) -> str:
     logger.debug("Gemini final reply length: %d", len(reply))
 
     has_valid_ending = reply.endswith((".", "요", "다", "니다"))
+    candidates = getattr(response, "candidates", None) or []
+    part_count = sum(
+        len(getattr(getattr(candidate, "content", None), "parts", None) or [])
+        for candidate in candidates
+    )
+    usage_metadata = getattr(response, "usage_metadata", None)
+    logger.warning(
+        "Gemini final_response_diagnostic response_length=%d candidate_count=%d "
+        "finish_reason=%s part_count=%d valid_ending=%s "
+        "prompt_token_count=%s candidates_token_count=%s "
+        "thoughts_token_count=%s total_token_count=%s",
+        len(reply),
+        len(candidates),
+        ",".join(reasons) or "none",
+        part_count,
+        has_valid_ending,
+        getattr(usage_metadata, "prompt_token_count", None),
+        getattr(usage_metadata, "candidates_token_count", None),
+        getattr(usage_metadata, "thoughts_token_count", None),
+        getattr(usage_metadata, "total_token_count", None),
+    )
     if len(reply) < 20 or not has_valid_ending:
         logger.warning(
             "Gemini response may be incomplete: length=%d valid_ending=%s",
