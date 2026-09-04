@@ -741,7 +741,7 @@ class _ConfirmScreen extends StatelessWidget {
       });
     }
     if (days is num) parts.add('${days.toInt()}일');
-    return parts.isEmpty ? '복용법을 확인해 주세요' : parts.join(' · ');
+    return parts.join(' · ');
   }
 
   static bool _uncertain(Map<String, dynamic> item) {
@@ -935,11 +935,13 @@ class _DrugCard extends StatelessWidget {
               ),
             ],
           ),
-          const SizedBox(height: 6),
-          Text(
-            dosage,
-            style: AppText.body(size: 18, color: AppColors.textSecondary),
-          ),
+          if (dosage.isNotEmpty) ...[
+            const SizedBox(height: 6),
+            Text(
+              dosage,
+              style: AppText.body(size: 18, color: AppColors.textSecondary),
+            ),
+          ],
           if (explanation != null && explanation!.isNotEmpty) ...[
             const SizedBox(height: 8),
             Text(explanation!, style: AppText.caption()),
