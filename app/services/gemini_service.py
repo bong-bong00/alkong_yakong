@@ -250,6 +250,56 @@ def _read_response_text(response) -> str:
         return ""
 
 
+def _strip_json_code_fence(response_text: str) -> str:
+    stripped = response_text.strip()
+    if not stripped.startswith("```"):
+        return stripped
+
+    first_newline = stripped.find("\n")
+    if first_newline == -1:
+        return stripped
+
+    fenced_body = stripped[first_newline + 1 :]
+    if fenced_body.rstrip().endswith("```"):
+        fenced_body = fenced_body.rstrip()[:-3]
+    return fenced_body.strip()
+
+
+def _extract_drug_names(response) -> list[str]:
+    extracted_parsed = getattr(response, "parsed", None)
+    if hasattr(extracted_parsed, "model_dump"):
+        extracted_parsed = extracted_parsed.model_dump()
+
+    if extracted_parsed is None:
+        response_text = _read_response_text(response)
+        cleaned_text = _strip_json_code_fence(response_text)
+        if cleaned_text:
+            try:
+                extracted_parsed = json.loads(cleaned_text)
+            except (json.JSONDecodeError, TypeError):
+                logger.warning(
+                    "Gemini extraction_parse_failed response_length=%d response_empty=%s",
+                    len(response_text),
+                    not bool(response_text.strip()),
+                )
+                return []
+        else:
+            logger.warning(
+                "Gemini extraction_parse_failed response_length=%d response_empty=%s",
+                len(response_text),
+                True,
+            )
+            return []
+
+    if not isinstance(extracted_parsed, dict):
+        return []
+
+    drug_names = extracted_parsed.get("drug_names", [])
+    if not isinstance(drug_names, list):
+        return []
+    return [name.strip() for name in drug_names if isinstance(name, str) and name.strip()]
+
+
 def _complete_response_text(response, *, response_text: str | None = None) -> str:
     primary_text = (
         _read_response_text(response) if response_text is None else response_text
@@ -355,13 +405,7 @@ def generate_chat_response(message: str, *, user_id: str = "") -> str:
                 },
             )
             
-            extracted_parsed = extract_response.parsed
-            if extracted_parsed is None and extract_response.text:
-                extracted_parsed = json.loads(extract_response.text)
-                
-            drug_names = []
-            if isinstance(extracted_parsed, dict):
-                drug_names = extracted_parsed.get("drug_names", [])
+            drug_names = _extract_drug_names(extract_response)
 
             # 2. 식약처 공식 데이터 수집
             official_data_list = []
