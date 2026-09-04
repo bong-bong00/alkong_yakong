@@ -338,9 +338,13 @@ def search_permission_names(query: str, limit: int = 10) -> list[str]:
 
 
 def find_permission_product(name: str) -> dict[str, Any] | None:
+    """이름으로 허가 제품을 찾는다. 임의 LIKE로 다른 약을 끌어오지 않는다."""
+    from app.services.matching.name_matcher import _medicine_key, match_medicine_name
+
     compact = compact_name(name)
     if not compact:
         return None
+    query_key = _medicine_key(name)
     conn = get_permission_connection()
     try:
         row = conn.execute(
@@ -352,21 +356,39 @@ def find_permission_product(name: str) -> dict[str, Any] | None:
             """,
             (compact,),
         ).fetchone()
-        if row is None:
-            row = conn.execute(
+        if row is not None:
+            return dict(row)
+
+        # 접두 일치 후보만 모아, 약품명 매칭(0.90/키 동일)으로 확정
+        rows = conn.execute(
+            """
+            SELECT * FROM products
+            WHERE name_compact LIKE ?
+            ORDER BY LENGTH(name_compact), detail_synced DESC, item_seq
+            LIMIT 20
+            """,
+            (f"{compact}%",),
+        ).fetchall()
+        if not rows and query_key:
+            rows = conn.execute(
                 """
                 SELECT * FROM products
                 WHERE name_compact LIKE ?
-                ORDER BY
-                    CASE WHEN name_compact LIKE ? THEN 0 ELSE 1 END,
-                    detail_synced DESC,
-                    LENGTH(name_compact),
-                    item_seq
-                LIMIT 1
+                ORDER BY LENGTH(name_compact), detail_synced DESC, item_seq
+                LIMIT 20
                 """,
-                (f"%{compact}%", f"{compact}%"),
-            ).fetchone()
-        return dict(row) if row else None
+                (f"{query_key}%",),
+            ).fetchall()
+        if not rows:
+            return None
+        labels = [str(r["item_name"] or "") for r in rows]
+        match = match_medicine_name(name, labels)
+        if not match.matched_name:
+            return None
+        for r in rows:
+            if str(r["item_name"] or "") == match.matched_name:
+                return dict(r)
+        return None
     finally:
         conn.close()
 

@@ -50,6 +50,8 @@ def run_ocr_pipeline(image_bytes: bytes) -> OcrPipelineResult:
             error=engine.error,
             trace={"engine": engine.engine_name, "stage": "engine", **extra},
         )
+    if engine.confidence is not None:
+        extra["engine_confidence"] = engine.confidence
     return _parse_result(engine.raw_text, engine.engine_name, **extra)
 
 
