@@ -548,7 +548,11 @@ def generate_chat_response(message: str, *, user_id: str = "") -> str:
                 client,
                 model=GEMINI_MODEL,
                 contents=prompt,
-                config={"temperature": 0.2, "max_output_tokens": 512},
+                config={
+                    "temperature": 0.2,
+                    "max_output_tokens": 512,
+                    "thinking_config": {"thinking_budget": 0},
+                },
             )
             return _finalize_chat_response(response)
     except Exception as error:
