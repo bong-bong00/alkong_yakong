@@ -265,6 +265,58 @@ def _strip_json_code_fence(response_text: str) -> str:
     return fenced_body.strip()
 
 
+def _json_boundary_kind(response_text: str, *, first: bool) -> str:
+    stripped = response_text.strip()
+    if not stripped:
+        return "empty"
+    boundary = stripped[0] if first else stripped[-1]
+    if boundary in "{}[]`":
+        return boundary
+    if boundary.isalpha():
+        return "alphabetic"
+    return "other"
+
+
+def _gemini_part_kind(part) -> str:
+    if getattr(part, "function_call", None) is not None:
+        return "function_call"
+    if isinstance(getattr(part, "text", None), str):
+        return "thought_text" if getattr(part, "thought", False) else "text"
+    return "other"
+
+
+def _log_extraction_diagnostics(response, response_text: str) -> None:
+    extracted_parsed = getattr(response, "parsed", None)
+    candidates = getattr(response, "candidates", None) or []
+    finish_reasons = []
+    part_types = []
+    part_count = 0
+
+    for candidate in candidates:
+        finish_reason = getattr(candidate, "finish_reason", None)
+        if finish_reason is not None:
+            finish_reasons.append(str(finish_reason))
+        content = getattr(candidate, "content", None)
+        parts = getattr(content, "parts", None) or []
+        part_count += len(parts)
+        part_types.extend(_gemini_part_kind(part) for part in parts)
+
+    logger.warning(
+        "Gemini extraction_parse_failed parsed_type=%s parsed_is_none=%s "
+        "candidate_count=%d finish_reason=%s part_count=%d part_types=%s "
+        "response_length=%d first_char_type=%s last_char_type=%s",
+        type(extracted_parsed).__name__,
+        extracted_parsed is None,
+        len(candidates),
+        ",".join(finish_reasons) or "none",
+        part_count,
+        ",".join(part_types) or "none",
+        len(response_text),
+        _json_boundary_kind(response_text, first=True),
+        _json_boundary_kind(response_text, first=False),
+    )
+
+
 def _extract_drug_names(response) -> list[str]:
     extracted_parsed = getattr(response, "parsed", None)
     if hasattr(extracted_parsed, "model_dump"):
@@ -277,18 +329,10 @@ def _extract_drug_names(response) -> list[str]:
             try:
                 extracted_parsed = json.loads(cleaned_text)
             except (json.JSONDecodeError, TypeError):
-                logger.warning(
-                    "Gemini extraction_parse_failed response_length=%d response_empty=%s",
-                    len(response_text),
-                    not bool(response_text.strip()),
-                )
+                _log_extraction_diagnostics(response, response_text)
                 return []
         else:
-            logger.warning(
-                "Gemini extraction_parse_failed response_length=%d response_empty=%s",
-                len(response_text),
-                True,
-            )
+            _log_extraction_diagnostics(response, response_text)
             return []
 
     if not isinstance(extracted_parsed, dict):
@@ -399,9 +443,10 @@ def generate_chat_response(message: str, *, user_id: str = "") -> str:
                 contents=extract_prompt,
                 config={
                     "temperature": 0.2,
-                    "max_output_tokens": 256,
+                    "max_output_tokens": 512,
                     "response_mime_type": "application/json",
                     "response_json_schema": CHAT_EXTRACTION_SCHEMA,
+                    "thinking_config": {"thinking_budget": 0},
                 },
             )
             
