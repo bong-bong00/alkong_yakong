@@ -204,40 +204,10 @@ class _DrugExplainScreenState extends State<DrugExplainScreen> {
   }
 
   Future<void> _enterOtherMedicine() async {
-    final controller = TextEditingController();
     final medicine = await showDialog<String>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('다른 약 검색하기'),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          textInputAction: TextInputAction.done,
-          decoration: const InputDecoration(
-            hintText: '정확한 약 이름을 입력하세요',
-            border: OutlineInputBorder(),
-          ),
-          onSubmitted: (value) {
-            final name = value.trim();
-            if (name.isNotEmpty) Navigator.of(dialogContext).pop(name);
-          },
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(),
-            child: const Text('취소'),
-          ),
-          FilledButton(
-            onPressed: () {
-              final name = controller.text.trim();
-              if (name.isNotEmpty) Navigator.of(dialogContext).pop(name);
-            },
-            child: const Text('선택'),
-          ),
-        ],
-      ),
+      builder: (_) => const _OtherMedicineDialog(),
     );
-    controller.dispose();
     if (!mounted || medicine == null) return;
     setState(() {
       if (!_medicines.contains(medicine)) _medicines.add(medicine);
@@ -494,6 +464,52 @@ class _DrugExplainScreenState extends State<DrugExplainScreen> {
           ],
         ),
       ),
+    );
+  }
+}
+
+class _OtherMedicineDialog extends StatefulWidget {
+  const _OtherMedicineDialog();
+
+  @override
+  State<_OtherMedicineDialog> createState() => _OtherMedicineDialogState();
+}
+
+class _OtherMedicineDialogState extends State<_OtherMedicineDialog> {
+  final TextEditingController _controller = TextEditingController();
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _submit() {
+    final medicine = _controller.text.trim();
+    if (medicine.isNotEmpty) Navigator.of(context).pop(medicine);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('다른 약 검색하기'),
+      content: TextField(
+        controller: _controller,
+        autofocus: true,
+        textInputAction: TextInputAction.done,
+        decoration: const InputDecoration(
+          hintText: '정확한 약 이름을 입력하세요',
+          border: OutlineInputBorder(),
+        ),
+        onSubmitted: (_) => _submit(),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('취소'),
+        ),
+        FilledButton(onPressed: _submit, child: const Text('선택')),
+      ],
     );
   }
 }
