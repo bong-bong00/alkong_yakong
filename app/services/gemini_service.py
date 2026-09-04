@@ -451,7 +451,7 @@ def generate_chat_response(message: str, *, user_id: str = "") -> str:
             )
             
             drug_names = _extract_drug_names(extract_response)
-            logger.info(
+            logger.warning(
                 "Gemini extraction_result drug_name_count=%d",
                 len(drug_names),
             )
@@ -462,7 +462,7 @@ def generate_chat_response(message: str, *, user_id: str = "") -> str:
             for drug_index, name in enumerate(drug_names):
                 found_data = None
                 # 2-1. 먼저 식약처 API 시도
-                logger.info(
+                logger.warning(
                     "Gemini official_search_start drug_index=%d",
                     drug_index,
                 )
@@ -473,7 +473,7 @@ def generate_chat_response(message: str, *, user_id: str = "") -> str:
                         if isinstance(search_result, dict)
                         else []
                     )
-                    logger.info(
+                    logger.warning(
                         "Gemini official_search_result drug_index=%d "
                         "items_found=%d match_type_present=%s",
                         drug_index,
