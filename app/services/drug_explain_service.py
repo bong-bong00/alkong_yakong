@@ -41,7 +41,6 @@ def get_drug_explanation(
             official_info["ingredient"] = (
                 official_info.get("ingredient")
                 or (medicine.get("ingredient") if medicine else None)
-                or MISSING_OFFICIAL_TEXT
             )
             _upsert_medicine(cursor, medicine_code, medicine, official_info)
             document_id = _save_official_document(
@@ -223,7 +222,7 @@ def _upsert_medicine(
             merged["product_name"],
             official.get("ingredient")
             or local.get("ingredient")
-            or MISSING_OFFICIAL_TEXT,
+            or None,
             official.get("manufacturer") or local.get("manufacturer"),
             official.get("efficacy") or local.get("efficacy"),
             official.get("usage") or local.get("usage"),

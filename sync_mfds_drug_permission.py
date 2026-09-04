@@ -5,14 +5,18 @@ from __future__ import annotations
 import argparse
 
 from app.services.mfds_drug_permission.db import DB_PATH, count_stats, initialize_permission_db
-from app.services.mfds_drug_permission.sync import sync_permission_details, sync_permission_list
+from app.services.mfds_drug_permission.sync import (
+    seed_permission_sample,
+    sync_permission_details,
+    sync_permission_list,
+)
 
 
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--mode",
-        choices=("list", "detail", "all"),
+        choices=("list", "detail", "all", "sample"),
         default="all",
         help="list=목록만, detail=미동기화 상세만, all=목록 후 상세",
     )
@@ -28,6 +32,17 @@ def main() -> None:
     path = initialize_permission_db()
     print("db =", path)
     print("path env default =", DB_PATH)
+
+    if args.mode == "sample":
+        result = seed_permission_sample(
+            target=100,
+            batch_size=4,
+            sleep_seconds=2.5,
+            progress=print,
+        )
+        print("sample result:", result)
+        print("final stats:", count_stats())
+        return
 
     if args.mode in {"list", "all"}:
         result = sync_permission_list(

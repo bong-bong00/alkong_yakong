@@ -25,7 +25,7 @@ enum PrescriptionStep {
   /// 읽는 중.
   reading,
 
-  /// 글자 인식률 % 결과.
+  /// 공식 약 확인률 % 결과.
   readiness,
 
   /// 4e — 이렇게 읽었어요.
@@ -56,10 +56,13 @@ class _PrescriptionScreenState extends ConsumerState<PrescriptionScreen> {
   int _readinessPct = 0;
   String _readinessLabel = 'fair';
   String _readinessSummary = '';
+  String _readinessMeaning = '';
+  bool _retakeRecommended = false;
   List<String> _missingHints = const [];
 
   /// 촬영 실패 횟수. 3번 실패하면 가족 대행(5g)을 권한다.
   int _failureCount = 0;
+  String _failureReason = '';
 
   List<Map<String, dynamic>> get _items {
     final items = _result?['items'];
@@ -67,9 +70,28 @@ class _PrescriptionScreenState extends ConsumerState<PrescriptionScreen> {
       return items
           .whereType<Map>()
           .map((item) => Map<String, dynamic>.from(item))
+          .where(_isOfficialMatchedItem)
           .toList();
     }
     return const [];
+  }
+
+  List<String> get _unrecognizedNames {
+    final raw = _result?['unrecognized_names'];
+    if (raw is! List) return const [];
+    return raw
+        .map((item) => item.toString().trim())
+        .where((name) => name.isNotEmpty)
+        .toList();
+  }
+
+  static bool _isOfficialMatchedItem(Map<String, dynamic> item) {
+    final code = item['medicine_code']?.toString() ?? '';
+    if (code.isEmpty || code.toUpperCase().startsWith('OCR-')) {
+      return false;
+    }
+    final status = item['match_status']?.toString().toUpperCase() ?? '';
+    return status != 'UNMATCHED';
   }
 
   Future<void> _pick(ImageSource source) async {
@@ -113,10 +135,19 @@ class _PrescriptionScreenState extends ConsumerState<PrescriptionScreen> {
       if (!mounted) return;
       final mapped = Map<String, dynamic>.from(response as Map);
       final items = mapped['items'];
-      final hasItems = items is List && items.isNotEmpty;
-      if (!hasItems) {
+      final hasOfficial = items is List && items.isNotEmpty
+          ? items
+              .whereType<Map>()
+              .map((item) => Map<String, dynamic>.from(item))
+              .where(_isOfficialMatchedItem)
+              .isNotEmpty
+          : false;
+      final unreadRaw = mapped['unrecognized_names'];
+      final hasUnread = unreadRaw is List && unreadRaw.isNotEmpty;
+      if (!hasOfficial && !hasUnread) {
         setState(() {
           _failureCount++;
+          _failureReason = '처방전에서 약을 찾지 못했어요.';
           _step = PrescriptionStep.failed;
         });
         return;
@@ -137,7 +168,12 @@ class _PrescriptionScreenState extends ConsumerState<PrescriptionScreen> {
         _readinessSummary =
             mapped['recognition_summary']?.toString() ??
             mapped['readiness_summary']?.toString() ??
-            '글자 인식을 마쳤어요.';
+            '공식 약 이름과 성분을 맞춰 봤어요.';
+        _readinessMeaning =
+            mapped['recognition_meaning']?.toString() ??
+            '이 숫자는 사진 글자를 얼마나 읽었는지가 아니라, 공식 약 이름과 성분에 얼마나 맞췄는지예요.';
+        _retakeRecommended =
+            mapped['retake_recommended'] == true || !hasOfficial;
         _missingHints = hints is List
             ? hints.map((e) => e.toString()).where((e) => e.isNotEmpty).toList()
             : const [];
@@ -153,6 +189,7 @@ class _PrescriptionScreenState extends ConsumerState<PrescriptionScreen> {
       if (!mounted) return;
       setState(() {
         _failureCount++;
+        _failureReason = error.toString();
         _step = PrescriptionStep.failed;
       });
     }
@@ -278,6 +315,8 @@ class _PrescriptionScreenState extends ConsumerState<PrescriptionScreen> {
           pct: _readinessPct,
           label: _readinessLabel,
           summary: _readinessSummary,
+          meaning: _readinessMeaning,
+          retakeRecommended: _retakeRecommended || _unrecognizedNames.isNotEmpty,
           missingHints: _missingHints,
           onNext: () => setState(() => _step = PrescriptionStep.confirm),
           onRetake: () => setState(() {
@@ -289,6 +328,7 @@ class _PrescriptionScreenState extends ConsumerState<PrescriptionScreen> {
       case PrescriptionStep.confirm:
         return _ConfirmScreen(
           items: _items,
+          unrecognizedNames: _unrecognizedNames,
           onRegister: _register,
           onRetake: () => setState(() {
             _image = null;
@@ -298,8 +338,10 @@ class _PrescriptionScreenState extends ConsumerState<PrescriptionScreen> {
       case PrescriptionStep.failed:
         return _FailedScreen(
           failureCount: _failureCount,
+          failureReason: _failureReason,
           onRetry: () => setState(() {
             _image = null;
+            _failureReason = '';
             _step = PrescriptionStep.capture;
           }),
           onAskFamily: () => Navigator.of(context).push(
@@ -374,7 +416,7 @@ class _CaptureScreen extends StatelessWidget {
                                 _CaptureTip(
                                   number: '3',
                                   emoji: '📱',
-                                  text: '두 손으로 잡고\n흔들리지 않게 찍으세요',
+                                  text: '두 손으로 잡고\n흔들리지 않게, 흐리지 않게 찍으세요',
                                 ),
                               ],
                             ),
@@ -525,11 +567,13 @@ class _ReadingScreen extends StatelessWidget {
   }
 }
 
-/// 촬영 후 글자 인식률을 보여 준 뒤 확인 화면으로 보냄.
+/// 촬영 후 공식 약 확인률을 보여 준 뒤 확인 화면으로 보냄.
 class _ReadinessScreen extends StatelessWidget {
   final int pct;
   final String label;
   final String summary;
+  final String meaning;
+  final bool retakeRecommended;
   final List<String> missingHints;
   final VoidCallback onNext;
   final VoidCallback onRetake;
@@ -538,6 +582,8 @@ class _ReadinessScreen extends StatelessWidget {
     required this.pct,
     required this.label,
     required this.summary,
+    required this.meaning,
+    required this.retakeRecommended,
     required this.missingHints,
     required this.onNext,
     required this.onRetake,
@@ -550,25 +596,25 @@ class _ReadinessScreen extends StatelessWidget {
   }
 
   String get _title {
-    if (pct >= 85) return '글자 인식이 좋아요';
-    if (pct >= 60) return '일부 글자 인식이 불완전해요';
-    return '글자 인식률이 낮아요';
+    if (pct >= 85 && !retakeRecommended) return '공식 약으로 잘 맞췄어요';
+    if (pct >= 60) return '일부 약은 아직 공식 목록에 못 맞췄어요';
+    return '공식 약으로 맞춘 비율이 낮아요';
   }
 
   @override
   Widget build(BuildContext context) {
-    final emphasizeRetake = pct < 60;
+    final emphasizeRetake = retakeRecommended || pct < 60;
     return Scaffold(
       backgroundColor: AppColors.bg,
       body: Column(
         children: [
-          const SeniorBackHeader(title: '인식 결과'),
+          const SeniorBackHeader(title: '약 확인 결과'),
           Expanded(
             child: SingleChildScrollView(
               padding: const EdgeInsets.fromLTRB(22, 24, 22, 20),
               child: Column(
                 children: [
-                  Text('글자 인식률', style: AppText.cardTitle()),
+                  Text('공식 약 확인', style: AppText.cardTitle()),
                   const SizedBox(height: 8),
                   Text(
                     '$pct%',
@@ -582,10 +628,33 @@ class _ReadinessScreen extends StatelessWidget {
                   ),
                   const SizedBox(height: 12),
                   Text(
-                    summary,
+                    meaning.isEmpty
+                        ? '이 숫자는 사진 글자를 얼마나 읽었는지가 아니라, 공식 약 이름과 성분에 얼마나 맞췄는지예요.'
+                        : meaning,
                     textAlign: TextAlign.center,
                     style: AppText.body(),
                   ),
+                  const SizedBox(height: 10),
+                  Text(
+                    summary,
+                    textAlign: TextAlign.center,
+                    style: AppText.body(color: AppColors.textSecondary),
+                  ),
+                  if (emphasizeRetake) ...[
+                    const SizedBox(height: 16),
+                    SeniorCard(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 18,
+                        vertical: 14,
+                      ),
+                      borderColor: AppColors.dangerBorder,
+                      borderWidth: 2,
+                      child: Text(
+                        '사진이 흐리거나 흔들리면 약 이름이 잘려서 버려질 수 있어요. 밝은 곳에서 다시 찍어 주세요.',
+                        style: AppText.body(),
+                      ),
+                    ),
+                  ],
                   if (missingHints.isNotEmpty) ...[
                     const SizedBox(height: 16),
                     SeniorCard(
@@ -596,7 +665,7 @@ class _ReadinessScreen extends StatelessWidget {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text('인식이 약한 항목', style: AppText.cardTitle(size: 18)),
+                          Text('확인이 약한 항목', style: AppText.cardTitle(size: 18)),
                           const SizedBox(height: 8),
                           for (final hint in missingHints)
                             Padding(
@@ -647,11 +716,13 @@ class _ReadinessScreen extends StatelessWidget {
 // ════════════════════════════════════════════════════════════════
 class _ConfirmScreen extends StatelessWidget {
   final List<Map<String, dynamic>> items;
+  final List<String> unrecognizedNames;
   final VoidCallback onRegister;
   final VoidCallback onRetake;
 
   const _ConfirmScreen({
     required this.items,
+    required this.unrecognizedNames,
     required this.onRegister,
     required this.onRetake,
   });
@@ -706,7 +777,9 @@ class _ConfirmScreen extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          '약 ${items.length}가지를 찾았어요',
+                          items.isEmpty
+                              ? '글자는 읽었는데, 공식 약과 아직 못 맞췄어요'
+                              : '약 ${items.length}가지를 찾았어요',
                           style: AppText.cardTitle(color: AppColors.point),
                         ),
                         const SizedBox(height: 4),
@@ -726,6 +799,49 @@ class _ConfirmScreen extends StatelessWidget {
                       dosage: _dosage(item),
                       explanation: item['easy_explanation']?.toString(),
                       uncertain: _uncertain(item),
+                      recognitionPct: item['recognition_pct'] is num
+                          ? (item['recognition_pct'] as num).round()
+                          : null,
+                    ),
+                    const SizedBox(height: 12),
+                  ],
+                  if (unrecognizedNames.isNotEmpty) ...[
+                    SeniorCard(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 22,
+                        vertical: 18,
+                      ),
+                      borderColor: AppColors.dangerBorder,
+                      borderWidth: 2,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            '약 목록에서 확인하지 못한 이름이 있어요',
+                            style: AppText.cardTitle(
+                              size: 20,
+                              color: AppColors.danger,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            '이 이름은 등록하지 않아요. 다시 찍거나 처방전을 확인해 주세요.',
+                            style: AppText.body(
+                              size: 17,
+                              color: AppColors.textSecondary,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          for (final name in unrecognizedNames)
+                            Padding(
+                              padding: const EdgeInsets.only(bottom: 4),
+                              child: Text(
+                                '· $name  0%',
+                                style: AppText.body(),
+                              ),
+                            ),
+                        ],
+                      ),
                     ),
                     const SizedBox(height: 12),
                   ],
@@ -739,12 +855,19 @@ class _ConfirmScreen extends StatelessWidget {
               padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
               child: Column(
                 children: [
-                  SeniorButton(
-                    label: '이대로 등록하기',
-                    minHeight: 70,
-                    onPressed: onRegister,
-                  ),
-                  SeniorTextButton(label: '다시 찍기', onPressed: onRetake),
+                  if (items.isNotEmpty) ...[
+                    SeniorButton(
+                      label: '이대로 등록하기',
+                      minHeight: 70,
+                      onPressed: onRegister,
+                    ),
+                    SeniorTextButton(label: '다시 찍기', onPressed: onRetake),
+                  ] else
+                    SeniorButton(
+                      label: '다시 찍어드릴게요',
+                      minHeight: 70,
+                      onPressed: onRetake,
+                    ),
                 ],
               ),
             ),
@@ -760,12 +883,14 @@ class _DrugCard extends StatelessWidget {
   final String dosage;
   final String? explanation;
   final bool uncertain;
+  final int? recognitionPct;
 
   const _DrugCard({
     required this.name,
     required this.dosage,
     required this.explanation,
     required this.uncertain,
+    this.recognitionPct,
   });
 
   @override
@@ -781,6 +906,18 @@ class _DrugCard extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Expanded(child: Text(name, style: AppText.cardTitle(size: 21))),
+              if (recognitionPct != null) ...[
+                const SizedBox(width: 8),
+                Text(
+                  '$recognitionPct%',
+                  style: AppText.cardTitle(
+                    size: 20,
+                    color: (recognitionPct ?? 0) >= 85
+                        ? AppColors.point
+                        : AppColors.danger,
+                  ),
+                ),
+              ],
               const SizedBox(width: 12),
               InkWell(
                 onTap: () => ScaffoldMessenger.of(context).showSnackBar(
@@ -823,11 +960,13 @@ class _DrugCard extends StatelessWidget {
 /// 읽지 못했을 때 — 5e 회복 패턴. 3번 실패하면 가족 대행을 권한다.
 class _FailedScreen extends StatelessWidget {
   final int failureCount;
+  final String failureReason;
   final VoidCallback onRetry;
   final VoidCallback onAskFamily;
 
   const _FailedScreen({
     required this.failureCount,
+    required this.failureReason,
     required this.onRetry,
     required this.onAskFamily,
   });
@@ -835,6 +974,10 @@ class _FailedScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tooManyTries = failureCount >= 3;
+    final connectionFail = failureReason.contains('연결') ||
+        failureReason.contains('Socket') ||
+        failureReason.contains('Timeout') ||
+        failureReason.contains('timeout');
     return Scaffold(
       backgroundColor: AppColors.bg,
       body: Column(
@@ -843,12 +986,16 @@ class _FailedScreen extends StatelessWidget {
           Expanded(
             child: RecoveryView(
               title: '지금은 처방전을\n읽지 못하고 있어요',
-              reassurance: '글자 인식에 실패했어요. ',
+              reassurance: connectionFail
+                  ? '서버에 연결하지 못했어요. 같은 와이파이인지, 서버가 켜져 있는지 봐 주세요. '
+                  : (failureReason.isEmpty
+                        ? '흐리거나 흔들리면 약 이름이 잘려 버려질 수 있어요. '
+                        : '$failureReason '),
               reassuranceEmphasis: '잘못 찍으신 게 아니니 걱정하지 마세요.',
               steps: const [
                 '밝은 곳에 처방전을 펼쳐 놓으세요',
                 '종이 네 귀퉁이가 다 보이게 하세요',
-                '전화기를 두 손으로 잡고 찍으세요',
+                '전화기를 두 손으로 잡고 흔들리지 않게 찍으세요',
               ],
               actionLabel: '다시 찍어드릴게요',
               onAction: onRetry,

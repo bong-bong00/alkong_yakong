@@ -27,6 +27,13 @@ from app.services.mfds_drug_permission.db import (
 
 ProgressCb = Callable[[str], None]
 
+SAMPLE_PRIORITY_NAMES = (
+    "프리마란정",
+    "아디팜정",
+    "휴온스시메티딘정200밀리그램",
+    "프레벨액",
+)
+
 
 def sync_permission_list(
     *,
@@ -139,6 +146,136 @@ def sync_permission_details(
     return {"updated": updated, "failed": failed, **stats}
 
 
+def seed_permission_sample(
+    *,
+    target: int = 100,
+    batch_size: int = 4,
+    sleep_seconds: float = 2.5,
+    progress: ProgressCb | None = None,
+) -> dict[str, Any]:
+    """제품 허가 API를 3~4개씩 받아 로컬 DB에 약 100건+상세(주의·알러지 등)를 채운다."""
+    initialize_permission_db()
+    log = progress or (lambda message: None)
+    batch_size = max(1, min(4, int(batch_size)))
+    target = max(len(SAMPLE_PRIORITY_NAMES), int(target))
+    conn = get_permission_connection()
+    listed = 0
+    detailed = 0
+    failed = 0
+    try:
+        for name in SAMPLE_PRIORITY_NAMES:
+            try:
+                payload = fetch_permission_list_page(
+                    page_no=1,
+                    num_of_rows=5,
+                    item_name=name,
+                    timeout=15,
+                )
+            except Exception as error:
+                failed += 1
+                log(f"priority list fail {name}: {type(error).__name__}")
+                time.sleep(sleep_seconds)
+                continue
+            items = extract_items(payload)
+            if not items:
+                log(f"priority empty {name}")
+                time.sleep(sleep_seconds)
+                continue
+            chosen = _pick_priority_item(name, items)
+            upsert_list_item(conn, chosen)
+            conn.commit()
+            listed += 1
+            if _detail_one(conn, chosen, log):
+                detailed += 1
+            else:
+                failed += 1
+            log(f"priority saved {name} -> {chosen.get('ITEM_NAME')}")
+            time.sleep(sleep_seconds)
+
+        page_no = 1
+        while count_stats()["total"] < target:
+            try:
+                payload = fetch_permission_list_page(
+                    page_no=page_no,
+                    num_of_rows=batch_size,
+                    timeout=15,
+                )
+            except Exception as error:
+                failed += 1
+                log(f"list page {page_no} fail {type(error).__name__}")
+                time.sleep(sleep_seconds)
+                page_no += 1
+                if page_no > 80:
+                    break
+                continue
+            items = extract_items(payload)
+            if not items:
+                log(f"list page {page_no} empty; stop")
+                break
+            for item in items:
+                upsert_list_item(conn, item)
+                listed += 1
+            conn.commit()
+            log(f"list page {page_no} +{len(items)} total={count_stats()['total']}")
+            time.sleep(sleep_seconds)
+            page_no += 1
+            if page_no > 80:
+                break
+
+        pending = conn.execute(
+            """
+            SELECT item_seq, item_name FROM products
+            WHERE detail_synced = 0
+            ORDER BY item_seq
+            """
+        ).fetchall()
+        for index, row in enumerate(pending, start=1):
+            item = {"ITEM_SEQ": row["item_seq"], "ITEM_NAME": row["item_name"]}
+            if _detail_one(conn, item, log):
+                detailed += 1
+            else:
+                failed += 1
+            if index % batch_size == 0:
+                log(f"detail {index}/{len(pending)} ok={detailed} fail={failed}")
+                time.sleep(sleep_seconds)
+            else:
+                time.sleep(max(0.8, sleep_seconds / 2))
+        conn.commit()
+    finally:
+        conn.close()
+    stats = count_stats()
+    log(f"sample seed done listed~{listed} detailed~{detailed} failed={failed} {stats}")
+    return {"listed": listed, "detailed": detailed, "failed": failed, **stats}
+
+
+def _pick_priority_item(query: str, items: list[dict[str, Any]]) -> dict[str, Any]:
+    compact = re.sub(r"\s+", "", query)
+    if "시메티딘정" in compact:
+        for item in items:
+            name = re.sub(r"\s+", "", str(item.get("ITEM_NAME") or ""))
+            if "시메티딘정200밀리그램" in name and "주사" not in name:
+                return item
+    return items[0]
+
+
+def _detail_one(conn: Any, item: dict[str, Any], log: ProgressCb) -> bool:
+    item_seq = str(item.get("ITEM_SEQ") or "").strip()
+    item_name = str(item.get("ITEM_NAME") or "").strip()
+    if not item_seq or not item_name:
+        return False
+    try:
+        detail = fetch_permission_detail(item_name)
+    except Exception as error:
+        log(f"detail fail {item_name}: {type(error).__name__}")
+        return False
+    if not detail:
+        log(f"detail empty {item_name}")
+        return False
+    update_detail_item(conn, item_seq, detail)
+    conn.commit()
+    return True
+
+
 def ensure_detail_for_product(item_seq: str, item_name: str) -> bool:
     """Fetch and cache one product detail on demand."""
     initialize_permission_db()
@@ -158,9 +295,11 @@ def ensure_detail_for_product(item_seq: str, item_name: str) -> bool:
 
 
 def _ocr_name_query_variants(name: str, *, similar: bool = False) -> list[str]:
-    """OCR 약명 → 식약처 검색어."""
-    raw = (name or "").strip()
-    if not raw:
+    """OCR 약명 → 식약처 검색어. 기본은 제품명 한 개만."""
+    from app.services.ocr.parser import product_search_name
+
+    product = product_search_name(name)
+    if not product:
         return []
     variants: list[str] = []
 
@@ -169,7 +308,10 @@ def _ocr_name_query_variants(name: str, *, similar: bool = False) -> list[str]:
         if text and text not in variants:
             variants.append(text)
 
-    _add(raw)
+    _add(product)
+    if not similar:
+        return variants
+    raw = product
     stripped = re.sub(
         r"\d+(?:\.\d+)?\s*(?:mg|ml|g|%|밀리그램|밀리그람)",
         "",
@@ -177,24 +319,36 @@ def _ocr_name_query_variants(name: str, *, similar: bool = False) -> list[str]:
         flags=re.IGNORECASE,
     )
     stripped = re.sub(r"\s+", "", stripped)
-    _add(stripped)
+    if stripped and stripped != raw:
+        _add(stripped)
     key = _medicine_key(raw)
     _add(key)
     for suffix in ("정", "캡슐", "액", "시럽", "서방정", "패취", "플라스타"):
         if key:
             _add(key + suffix)
-    # 유사 추론용: 앞부분으로 후보 풀을 넓힘 + 흔한 한 글자 혼동
-    if similar:
-        hangul = re.sub(r"[^가-힣]", "", key or stripped or raw)
-        if len(hangul) >= 4:
-            _add(hangul[:4])
-        if len(hangul) >= 3:
-            _add(hangul[:3])
-        for a, b in (("짓", "짙"), ("짙", "짓"), ("짓", "짇"), ("짙", "짇"), ("짇", "짓"), ("핀", "피"), ("피", "핀")):
-            if a in raw:
-                _add(raw.replace(a, b, 1))
-            if a in (key or ""):
-                _add((key or "").replace(a, b, 1))
+    hangul = re.sub(r"[^가-힣]", "", key or stripped or raw)
+    if len(hangul) >= 4:
+        _add(hangul[:4])
+    if len(hangul) >= 3:
+        _add(hangul[:3])
+    for a, b in (
+        ("짓", "짙"),
+        ("짙", "짓"),
+        ("짓", "짇"),
+        ("짙", "짇"),
+        ("짇", "짓"),
+        ("징", "짙"),
+        ("징", "짓"),
+        ("징", "짇"),
+        ("짙", "징"),
+        ("짓", "징"),
+        ("핀", "피"),
+        ("피", "핀"),
+    ):
+        if a in raw:
+            _add(raw.replace(a, b, 1))
+        if a in (key or ""):
+            _add((key or "").replace(a, b, 1))
     return variants
 
 
@@ -241,9 +395,9 @@ def lookup_permission_by_ocr_name(
     name: str,
     *,
     dosage_hint: str | float | None = None,
-    allow_similar: bool = True,
+    allow_similar: bool = False,
 ) -> dict[str, Any] | None:
-    """OCR 약명 → 식약처 공식명. 1차 정확 매칭, 실패 시 유사 추론."""
+    """OCR 약명 → 식약처 허가 API. 비슷한 이름으로는 확정하지 않는다."""
     initialize_permission_db()
     query = (name or "").strip()
     if not query:
@@ -267,6 +421,7 @@ def lookup_permission_by_ocr_name(
                     page_no=1,
                     num_of_rows=15 if similar else 10,
                     item_name=variant,
+                    timeout=8,
                 )
             except Exception:
                 continue
@@ -308,10 +463,9 @@ def lookup_permission_by_ocr_name(
         row = find_permission_product(chosen)
         if not row:
             continue
-        ensure_detail_for_product(str(row["item_seq"]), str(row["item_name"]))
         matched = _row_matches_query(
             query,
-            find_permission_product(chosen) or row,
+            row,
             dosage_hint=dosage_hint,
             similar=similar,
         )

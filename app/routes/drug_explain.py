@@ -26,7 +26,11 @@ def chat_with_pharmacist(request: DrugExplainChatRequest):
             seen.add(label)
             lexicon.append(label)
 
-    result = run_chat_pipeline(request.message, lexicon=lexicon)
+    result = run_chat_pipeline(
+        request.message,
+        lexicon=lexicon,
+        user_id=request.user_id,
+    )
     payload = {"reply": result.reply, "ok": result.ok, "trace": result.trace}
     source_label = result.trace.get("source_label")
     if source_label:

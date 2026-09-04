@@ -37,8 +37,9 @@ def test_fixture_keeps_only_names_in_raw_text():
     }
     result = filter_to_source(parsed, FIXTURE)
     names = [item["drug_name"] for item in result["items"]]
-    assert names == ["모사피아정", "프로맥정", "니자액스캡슐150mg"]
-    assert "타이레놀정" not in names
+    assert names[:3] == ["모사피아정", "프로맥정", "니자액스캡슐150mg"]
+    extra = next(item for item in result["items"] if item["drug_name"] == "타이레놀정")
+    assert extra.get("uncertain") is True
 
 
 def test_fixture_drops_invented_duration_days():

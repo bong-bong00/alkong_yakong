@@ -24,6 +24,7 @@ def fetch_permission_list_page(
     page_no: int,
     num_of_rows: int = 500,
     item_name: str | None = None,
+    timeout: int | None = None,
 ) -> dict[str, Any]:
     if not MFDS_DRUG_PERMISSION_API_KEY:
         raise RuntimeError("MFDS_DRUG_PERMISSION_API_KEY가 없습니다.")
@@ -35,7 +36,11 @@ def fetch_permission_list_page(
     }
     if item_name:
         params["item_name"] = item_name
-    response = requests.get(LIST_PATH, params=params, timeout=TIMEOUT)
+    response = requests.get(
+        LIST_PATH,
+        params=params,
+        timeout=TIMEOUT if timeout is None else timeout,
+    )
     response.raise_for_status()
     return response.json()
 

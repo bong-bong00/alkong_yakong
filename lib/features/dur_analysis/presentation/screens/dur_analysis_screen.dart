@@ -43,6 +43,7 @@ class _DurAnalysisScreenState extends State<DurAnalysisScreen> {
   bool _loading = true;
   bool _failed = false;
   bool _hasRisk = false;
+  bool _incomplete = false;
   String _message = '';
   List<Map<String, dynamic>> _matches = const [];
   Map<String, Map<String, dynamic>> _byType = const {};
@@ -73,6 +74,7 @@ class _DurAnalysisScreenState extends State<DurAnalysisScreen> {
     setState(() {
       _loading = true;
       _failed = false;
+      _incomplete = false;
     });
 
     final userId = MvpSession.userId.trim();
@@ -121,10 +123,13 @@ class _DurAnalysisScreenState extends State<DurAnalysisScreen> {
         _byType = byType;
         _medicineNames = medicineNames;
         _hasRisk = response['has_risk'] == true || parsedMatches.isNotEmpty;
+        _incomplete = response['incomplete'] == true;
         _message = response['message']?.toString() ??
             (_hasRisk
                 ? '함께 먹을 때 주의가 있어요.'
-                : '지금 등록된 약끼리, 특별한 함께먹기 주의는 없어요.');
+                : (_incomplete
+                    ? '함께먹기 검사를 끝까지 하지 못했어요.'
+                    : '지금 등록된 약끼리, 특별한 함께먹기 주의는 없어요.'));
         _loading = false;
       });
     } catch (_) {
@@ -153,6 +158,22 @@ class _DurAnalysisScreenState extends State<DurAnalysisScreen> {
   }
 
   static String _pairOf(Map<String, dynamic> match) {
+    List<String> namesOf(dynamic raw) {
+      if (raw is List) {
+        return raw.map((e) => e.toString()).where((e) => e.isNotEmpty).toList();
+      }
+      return const [];
+    }
+
+    final firstNames = namesOf(match['medicine_names_a']);
+    final secondNames = namesOf(match['medicine_names_b']);
+    if (firstNames.isNotEmpty) {
+      final first = firstNames.join(', ');
+      if (secondNames.isEmpty) return first;
+      final second = secondNames.join(', ');
+      if (first == second) return first;
+      return '$first과 $second';
+    }
     final first = (match['ingredient_a'] ?? '').toString();
     final second = (match['ingredient_b'] ?? '').toString();
     if (first.isEmpty) return '등록하신 약';
@@ -164,12 +185,16 @@ class _DurAnalysisScreenState extends State<DurAnalysisScreen> {
   List<String> get _safeMedicines {
     final risky = <String>{};
     for (final match in _matches) {
-      for (final key in ['ingredient_a', 'ingredient_b']) {
-        final value = match[key]?.toString();
-        if (value != null && value.isNotEmpty) risky.add(value);
+      for (final key in ['medicine_names_a', 'medicine_names_b']) {
+        final raw = match[key];
+        if (raw is List) {
+          for (final name in raw) {
+            final text = name.toString();
+            if (text.isNotEmpty) risky.add(text);
+          }
+        }
       }
       final reason = match['reason']?.toString() ?? '';
-      // reason에 약 이름이 나열된 경우도 위험 쪽으로 본다
       for (final name in _medicineNames) {
         if (name.isNotEmpty && reason.contains(name)) {
           risky.add(name);
@@ -184,9 +209,7 @@ class _DurAnalysisScreenState extends State<DurAnalysisScreen> {
           ];
     return [
       for (final name in sourceNames)
-        if (!risky.contains(name) &&
-            !risky.any((r) => name.contains(r) || r.contains(name)))
-          name,
+        if (!risky.contains(name)) name,
     ];
   }
 
@@ -257,16 +280,22 @@ class _DurAnalysisScreenState extends State<DurAnalysisScreen> {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
             decoration: BoxDecoration(
-              color: _hasRisk ? AppColors.dangerBorder.withValues(alpha: 0.25) : AppColors.pointTint,
+              color: _hasRisk
+                  ? AppColors.dangerBorder.withValues(alpha: 0.25)
+                  : (_incomplete ? const Color(0xFFFFF3E0) : AppColors.pointTint),
               borderRadius: BorderRadius.circular(20),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  _hasRisk ? '주의가 있어요' : '주의 없음',
+                  _hasRisk
+                      ? '주의가 있어요'
+                      : (_incomplete ? '검사가 덜 됐어요' : '주의 없음'),
                   style: AppText.cardTitle(
-                    color: _hasRisk ? AppColors.danger : AppColors.point,
+                    color: _hasRisk
+                        ? AppColors.danger
+                        : (_incomplete ? AppColors.danger : AppColors.point),
                   ),
                 ),
                 const SizedBox(height: 6),
@@ -326,7 +355,7 @@ class _DurAnalysisScreenState extends State<DurAnalysisScreen> {
             ),
             const SizedBox(height: 12),
           ],
-          if (dangers.isEmpty && cautions.isEmpty) ...[
+          if (dangers.isEmpty && cautions.isEmpty && !_incomplete) ...[
             SeniorCard(
               padding: const EdgeInsets.symmetric(
                 horizontal: 20,

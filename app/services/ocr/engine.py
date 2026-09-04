@@ -8,6 +8,7 @@
 
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeout
 from dataclasses import dataclass
 from io import BytesIO
 
@@ -123,15 +124,22 @@ def _extract_with_gemini(image_bytes: bytes) -> OcrEngineResult:
             "JSON이나 설명 문장 없이 인식한 원문만 반환하세요."
         )
         with genai.Client(api_key=GEMINI_API_KEY) as client:
-            response = client.models.generate_content(
-                model=GEMINI_MODEL,
-                contents=[part, prompt],
-                config={"temperature": 0.0},
-            )
+
+            def _run():
+                return client.models.generate_content(
+                    model=GEMINI_MODEL,
+                    contents=[part, prompt],
+                    config={"temperature": 0.0},
+                )
+
+            with ThreadPoolExecutor(max_workers=1) as pool:
+                response = pool.submit(_run).result(timeout=40)
         raw_text = str(getattr(response, "text", None) or "").strip()
         if not raw_text:
             return OcrEngineResult("", "gemini-vision", None, False, "empty_raw_text")
         return OcrEngineResult(raw_text, "gemini-vision", None, True)
+    except FuturesTimeout:
+        return OcrEngineResult("", "gemini-vision", None, False, "timeout")
     except Exception as error:
         return OcrEngineResult(
             "", "gemini-vision", None, False, _error_code(error)

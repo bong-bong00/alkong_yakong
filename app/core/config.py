@@ -19,7 +19,7 @@ DUR_API_BASE_URL = (
     "https://apis.data.go.kr/1471000/DURIrdntInfoService03"
 )
 
-# 식약처 의약품 제품 허가정보 (e약은요 보조)
+# 식약처 의약품 제품 허가정보
 MFDS_DRUG_PERMISSION_API_KEY = (
     os.getenv("MFDS_DRUG_PERMISSION_API_KEY") or E_DRUG_API_KEY
 )
@@ -52,6 +52,16 @@ EASY_CATEGORY_MAP_DB_PATH = os.getenv(
 CLOVA_OCR_API_URL = os.getenv("CLOVA_OCR_API_URL", "").strip()
 CLOVA_OCR_SECRET_KEY = os.getenv("CLOVA_OCR_SECRET_KEY", "").strip()
 CLOVA_OCR_ENABLED = os.getenv("CLOVA_OCR_ENABLED", "false").lower() == "true"
+
+# 식약처 DUR: 서버 기동·검사 시 자동으로 받아온다 (수동 POST /dur/sync 없이도).
+DUR_AUTO_SYNC = os.getenv("DUR_AUTO_SYNC", "true").lower() == "true"
+_DUR_BOOTSTRAP_PAGES = os.getenv("DUR_BOOTSTRAP_MAX_PAGES", "20").strip().lower()
+if _DUR_BOOTSTRAP_PAGES in {"all", "none", "*"}:
+    DUR_BOOTSTRAP_MAX_PAGES = None
+elif _DUR_BOOTSTRAP_PAGES.isdigit():
+    DUR_BOOTSTRAP_MAX_PAGES = max(1, int(_DUR_BOOTSTRAP_PAGES))
+else:
+    DUR_BOOTSTRAP_MAX_PAGES = 20
 
 # Backward-compatible names used by the existing external route.
 MFDS_SERVICE_KEY = E_DRUG_API_KEY
