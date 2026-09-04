@@ -23,7 +23,7 @@ def test_retrieve_uses_local_permission_only(monkeypatch):
     assert result["source"] == "식약처 의약품 제품 허가정보"
 
 
-def test_retrieve_does_not_call_live_api(monkeypatch):
+def test_retrieve_falls_back_to_live_when_local_misses(monkeypatch):
     order: list[str] = []
 
     monkeypatch.setattr(
@@ -36,4 +36,4 @@ def test_retrieve_does_not_call_live_api(monkeypatch):
     )
 
     assert retrieve_official("없는약정") is None
-    assert order == ["local"]
+    assert order == ["local", "live"]

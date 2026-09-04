@@ -29,8 +29,12 @@ def retrieve_official(
     except Exception:
         pass
 
-    # OCR 공식 찾기: 로컬 허가 DB만. 실시간 API는 시간 초과로 처방전 전체를 실패시킨다.
-    return _find_permission_local(name, dosage_hint=dosage_hint)
+    # 1순위: 로컬 허가 DB (빠르고 안정적)
+    local = _find_permission_local(name, dosage_hint=dosage_hint)
+    if local:
+        return local
+    # 2순위: 실시간 식약처 허가 API. 짧은 타임아웃이라 실패해도 이 약만 미확인 처리된다.
+    return _find_permission_live(name, dosage_hint=dosage_hint)
 
 
 def _find_permission_local(

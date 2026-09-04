@@ -316,7 +316,7 @@ class _PrescriptionScreenState extends ConsumerState<PrescriptionScreen> {
           label: _readinessLabel,
           summary: _readinessSummary,
           meaning: _readinessMeaning,
-          retakeRecommended: _retakeRecommended || _unrecognizedNames.isNotEmpty,
+          retakeRecommended: _retakeRecommended && _items.isEmpty,
           missingHints: _missingHints,
           onNext: () => setState(() => _step = PrescriptionStep.confirm),
           onRetake: () => setState(() {
@@ -628,8 +628,8 @@ class _ReadinessScreen extends StatelessWidget {
                   ),
                   const SizedBox(height: 12),
                   Text(
-                    meaning.isEmpty
-                        ? '이 숫자는 사진 글자를 얼마나 읽었는지가 아니라, 공식 약 이름과 성분에 얼마나 맞췄는지예요.'
+                        meaning.isEmpty
+                        ? '이 숫자는 사진에서 찾은 약을 공식 이름으로 얼마나 맞췄는지예요.'
                         : meaning,
                     textAlign: TextAlign.center,
                     style: AppText.body(),
@@ -817,7 +817,7 @@ class _ConfirmScreen extends StatelessWidget {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            '약 목록에서 확인하지 못한 이름이 있어요',
+                            '사진 인식률이 낮아 읽지 못한 이름이 있어요',
                             style: AppText.cardTitle(
                               size: 20,
                               color: AppColors.danger,
@@ -825,7 +825,7 @@ class _ConfirmScreen extends StatelessWidget {
                           ),
                           const SizedBox(height: 8),
                           Text(
-                            '이 이름은 등록하지 않아요. 다시 찍거나 처방전을 확인해 주세요.',
+                            '이 이름들은 등록에서 빼 두었어요. 밝은 곳에서 흔들리지 않게 다시 찍으면 인식률이 올라가요.',
                             style: AppText.body(
                               size: 17,
                               color: AppColors.textSecondary,
@@ -836,7 +836,7 @@ class _ConfirmScreen extends StatelessWidget {
                             Padding(
                               padding: const EdgeInsets.only(bottom: 4),
                               child: Text(
-                                '· $name  0%',
+                                '· $name  (못 읽음)',
                                 style: AppText.body(),
                               ),
                             ),

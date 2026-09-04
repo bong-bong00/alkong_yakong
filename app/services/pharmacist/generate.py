@@ -208,7 +208,7 @@ def apply_card_guard(parsed: dict[str, Any], source_text: str) -> dict[str, Any]
 def _card_prompt(official_info: dict[str, Any]) -> str:
     official_json = json.dumps(official_info, ensure_ascii=False, indent=2)
     return f"""
-아래에 제공된 공식 e약은요 원문만 근거로 고령자가 읽기 쉬운 약 설명 카드를 작성하세요.
+아래에 제공된 식약처 의약품 허가정보 원문만 근거로 고령자가 읽기 쉬운 약 설명 카드를 작성하세요.
 
 반드시 지킬 조건:
 - 공식 정보에 없는 내용을 추측하거나 일반 의학 지식으로 보충하지 마세요.
@@ -221,6 +221,6 @@ def _card_prompt(official_info: dict[str, Any]) -> str:
 - source_based는 반드시 true로 반환하세요.
 - 지정된 JSON 스키마 이외의 설명이나 마크다운을 출력하지 마세요.
 
-공식 e약은요 정보:
+공식 식약처 허가정보:
 {official_json}
 """.strip()

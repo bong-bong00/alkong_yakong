@@ -40,8 +40,8 @@ def test_readiness_ignores_missing_dosing_and_header_coverage():
         },
     )
     assert result["pct"] == 100
-    assert result["metric"] == "name_ingredient"
-    assert "공식 약 이름과 성분" in result["meaning"]
+    assert result["metric"] == "official_name"
+    assert "공식 약" in result["meaning"]
     assert "하루 횟수" not in result["missing_hints"]
     assert "투약 일수" not in result["missing_hints"]
 
@@ -57,14 +57,13 @@ def test_readiness_penalizes_unmatched_name_and_missing_ingredient():
             }
         ]
     )
-    assert result["pct"] == 24
+    assert result["pct"] == 0
     assert "약 이름 확인" in result["missing_hints"]
-    assert "성분" in result["missing_hints"]
 
 
 def test_discarded_official_names_count_as_misses():
     misses = _druglike_misses(
-        ["프리마란정", "투약량", "비)슈..."],
+        ["프리마란정", "투약량", "비)슈...", "나주", "진정"],
         ["다이크로짙정"],
     )
     assert misses == ["프리마란정"]
@@ -86,5 +85,20 @@ def test_discarded_official_names_count_as_misses():
             },
         ]
     )
-    assert mixed["pct"] < 100
-    assert mixed["pct"] == 62
+    assert mixed["pct"] == 50
+
+
+def test_four_matched_drugs_are_one_hundred():
+    matched = [
+        {
+            "drug_name": name,
+            "product_name": name,
+            "ingredient": "",
+            "match_status": "MATCHED",
+            "uncertain": False,
+        }
+        for name in ("옴니세프캡슐", "헤라신정", "베포렌비정", "덱스노펜세미정")
+    ]
+    result = _user_readiness(matched)
+    assert result["pct"] == 100
+    assert result["label"] == "good"

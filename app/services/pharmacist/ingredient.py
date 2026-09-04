@@ -38,7 +38,14 @@ def clean_ingredient_text(value: Any) -> str:
     if not text or text in _PLACEHOLDERS or text.casefold() in {"none", "null"}:
         return ""
     text = re.sub(r"<[^>]+>", " ", text)
-    text = re.sub(r"\s+", " ", text).strip(" ,;/")
+    # 식약처 원료코드 [M051756] 같은 것은 화면에 보이면 안 된다.
+    text = re.sub(r"\[[A-Za-z]?\d{4,}\]", " ", text)
+    text = re.sub(r"\b[A-Za-z]\d{5,}\b", " ", text)
+    text = re.sub(r"\s+", " ", text).strip(" ,;/|")
+    # "시메티딘| 시메티딘"처럼 같은 성분이 반복되면 하나만 남긴다.
+    parts = [part.strip() for part in re.split(r"[|,/·]", text) if part.strip()]
+    if len(parts) > 1:
+        text = "|".join(dict.fromkeys(parts))
     if text in _PLACEHOLDERS:
         return ""
     return text

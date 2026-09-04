@@ -396,6 +396,7 @@ def lookup_permission_by_ocr_name(
     *,
     dosage_hint: str | float | None = None,
     allow_similar: bool = False,
+    timeout: int = 5,
 ) -> dict[str, Any] | None:
     """OCR 약명 → 식약처 허가 API. 비슷한 이름으로는 확정하지 않는다."""
     initialize_permission_db()
@@ -421,7 +422,7 @@ def lookup_permission_by_ocr_name(
                     page_no=1,
                     num_of_rows=15 if similar else 10,
                     item_name=variant,
-                    timeout=8,
+                    timeout=timeout,
                 )
             except Exception:
                 continue

@@ -49,6 +49,9 @@ def test_rejects_markers_headers_and_thumbnail_fragments():
         "비)바실...",
         "슈",
         "바실",
+        "나주",
+        "진정",
+        "총수납금액",
     )
     assert all(not _is_plausible_drug_candidate(value) for value in rejected)
 
@@ -126,3 +129,21 @@ def test_infers_glued_ocr_rows_without_official_rename(monkeypatch):
     assert prema.get("times_per_take") == 1
     assert prema.get("frequency_per_day") == 2
     assert prema.get("duration_days") == 7
+
+
+def test_compact_scan_does_not_invent_naju_or_jinjung(monkeypatch):
+    monkeypatch.setattr("app.services.ocr.parser.GEMINI_API_KEY", "")
+    from app.services.ocr.parser import parse_prescription_text
+
+    raw = """
+    옴니세프캡슐100밀리그람 | 약효 세균감염증 치료제 | 1캡슐 | 1일 3회 | 4일분
+    헤라신정250밀리그램 | 1정 | 1일 3회 | 4일분
+    주의사항 나주시 진정 취침전
+    """
+    result = parse_prescription_text(raw)
+    assert result is not None
+    names = [item["drug_name"] for item in result["items"]]
+    assert "나주" not in names
+    assert "진정" not in names
+    assert any("옴니세프" in name for name in names)
+    assert any("헤라신" in name for name in names)

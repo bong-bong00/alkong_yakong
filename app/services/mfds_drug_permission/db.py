@@ -425,10 +425,11 @@ def find_permission_product(name: str) -> dict[str, Any] | None:
 def product_to_medicine(row: dict[str, Any]) -> dict[str, Any]:
     from app.services.pharmacist.ingredient import clean_ingredient_text
 
+    # 주성분 우선. ingr_name은 포비돈·유당 같은 부형제까지 섞여 있다.
     ingredient = clean_ingredient_text(
-        row.get("ingr_name")
-        or row.get("main_item_ingr")
+        row.get("main_item_ingr")
         or row.get("item_ingr_name")
+        or row.get("ingr_name")
         or row.get("material_name")
     ) or None
     return {

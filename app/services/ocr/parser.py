@@ -183,18 +183,16 @@ def _parse_with_heuristic(text: str) -> dict[str, Any] | None:
 
     items: list[dict[str, Any]] = []
     seen: set[str] = set()
-    compact = re.sub(r"\s+", "", text)
-    for source in (text, compact):
-        for token in iter_glued_drug_tokens(source):
-            name = token["drug_name"]
-            if not name or name in seen:
-                continue
-            if _looks_like_shape_not_drug(name):
-                continue
-            if not _is_plausible_drug_candidate(name, name):
-                continue
-            seen.add(name)
-            items.append(token)
+    for token in iter_glued_drug_tokens(text):
+        name = token["drug_name"]
+        if not name or name in seen:
+            continue
+        if _looks_like_shape_not_drug(name):
+            continue
+        if not _is_plausible_drug_candidate(name, name):
+            continue
+        seen.add(name)
+        items.append(token)
 
     # 약이름 + 용량 + 횟수 + (일수) 표 줄
     row_re = re.compile(
@@ -479,10 +477,16 @@ def expand_inferred_drug_items(
                 row["duration_days"] = dosing["duration_days"]
             _add(row)
 
-    compact_raw = re.sub(r"\s+", "", raw_text or "")
-    for source in (raw_text or "", compact_raw):
-        for token in iter_glued_drug_tokens(source):
+    # 줄 단위에서만 붙은 약 이름을 추가로 찾는다.
+    # 공백을 지운 전체 원문을 훑으면 '나주' '진정' 같은 조각이 약으로 잡힌다.
+    for line in (raw_text or "").splitlines():
+        for token in iter_glued_drug_tokens(line):
             _add(token)
+    glued = re.sub(r"\s+", "", raw_text or "")
+    if glued and glued != (raw_text or "").strip():
+        for token in iter_glued_drug_tokens(glued):
+            if token.get("times_per_take") or token.get("frequency_per_day") or token.get("duration_days"):
+                _add(token)
 
     result["items"] = items
     return result
@@ -623,7 +627,7 @@ def product_search_name(name: str) -> str:
 
 _INFER_FORM_ALT = (
     "필름코팅정|이알서방정|서방정|연질캡슐|경질캡슐|캡슐|"
-    "현탁액|점안액|주사액|시럽|연고|크림|겔|패취|패치|플라스타|과립|액|정|산|주"
+    "현탁액|점안액|주사액|시럽|연고|크림|겔|패취|패치|플라스타|과립|액|정"
 )
 _GLUED_TOKEN_RE = re.compile(
     rf"(?P<name>[가-힣A-Za-z][가-힣A-Za-z0-9]*?(?:{_INFER_FORM_ALT}))"
@@ -870,6 +874,26 @@ def _is_plausible_drug_candidate(raw_name: str, cleaned_name: str | None = None)
     if not compact or compact in _NON_DRUG_LABELS:
         return False
 
+    # 금액·수납 같은 영수증 단어는 약이 아니다. ('총수납금액'이 '액'으로 끝나 오인됨)
+    if re.search(r"금액|수납|영수|본인부담|진료비|결제", compact):
+        return False
+    # 효능 설명·복약 지시 문구가 약 이름에 붙은 쓰레기
+    # ('세균감염증치료제옴니세프캡슐', '취침전비급여약품명복약안내주')
+    if re.search(
+        r"치료제|감염증|질환|진통제|해열|소염제|항생|소화제|지사제|"
+        r"비급여|급여|복약|안내|취침|식전|식후|약품명|주의사항",
+        compact,
+    ):
+        return False
+    # 표 머리글이 약 이름에 붙은 쓰레기 ('약용사진옴니세프캡슐')
+    if re.match(r"^(약품명?|의약품|약용|약사|복약안내?|주의사항|효능)", compact):
+        return False
+    # 날짜·복용지시 잔여물이 이름 앞/중간에 붙은 쓰레기 ('일분헤라신정', '년08월28일...시럽')
+    if re.match(r"^(\d+일분?|\d+회|\d+번|\d+년|\d+월|일분|일수|년\d|월\d)", compact):
+        return False
+    if re.search(r"\d+(일분|일수|회|번|일)", compact):
+        return False
+
     # '비)' 자체, OCR 사진 칸의 '슈'·'바실' 같은 짧은 조각을 제거한다.
     letters = re.sub(r"[^a-z가-힣]", "", compact)
     if len(letters) < 2:
@@ -877,6 +901,18 @@ def _is_plausible_drug_candidate(raw_name: str, cleaned_name: str | None = None)
     has_form = any(compact.endswith(form.casefold()) for form in _DOSAGE_FORMS)
     if not has_form and len(letters) < 3:
         return False
+    # '나주' '진정'처럼 제형 한 글자만 붙은 일반어는 약이 아니다.
+    # 헤라신정(헤라신+정)처럼 제형 앞 이름이 두 글자 이상이어야 한다.
+    if has_form:
+        stem = compact
+        for form in sorted(_DOSAGE_FORMS, key=len, reverse=True):
+            form_key = form.casefold()
+            if compact.endswith(form_key):
+                stem = compact[: -len(form_key)]
+                break
+        stem_letters = re.sub(r"[^a-z가-힣]", "", stem)
+        if len(stem_letters) < 2:
+            return False
 
     return True
 
