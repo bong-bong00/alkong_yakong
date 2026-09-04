@@ -744,9 +744,30 @@ def _strip_non_drug_markers(name: str) -> str:
     return text.strip(" -/|")
 
 
+def looks_truncated_ocr_name(name: str) -> bool:
+    """글자가 잘리거나 가려진 OCR명인지."""
+    text = str(name or "").strip()
+    if re.search(r"[.…·]{1,}$", text) or text.endswith(".."):
+        return True
+    hangul = re.sub(r"[^가-힣]", "", text)
+    if hangul and len(hangul) < 2:
+        return True
+    return False
+
+
+def _strip_occlusion_noise(name: str) -> str:
+    """가림·잘림 표시(…, □)만 제거하고, 남은 글자는 유지."""
+    text = str(name or "").strip()
+    text = re.sub(r"[.…·]+$", "", text)
+    text = re.sub(r"\.{2,}$", "", text)
+    text = re.sub(r"[□■○●¿?]+", "", text)
+    return text.strip(" -/")
+
+
 def _clean_drug_label(name: str) -> str:
-    """'비)다이크로지정 (이뇨제)' → '다이크로지정'."""
+    """'비)다이크로지정 (이뇨제)' → '다이크로지정'. 가림 표시도 정리."""
     text = _strip_non_drug_markers(str(name or "").strip())
+    text = _strip_occlusion_noise(text)
     text = re.sub(r"\s*\([^)]*\)\s*", " ", text)
     text = re.sub(r"\s*\[[^\]]*\]\s*", " ", text)
     return re.sub(r"\s+", " ", text).strip()

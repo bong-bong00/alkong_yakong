@@ -26,12 +26,21 @@ def retrieve_official(
     name = (drug_name or "").strip()
     if not name:
         return None
+    truncated = False
     try:
-        from app.services.ocr.parser import _clean_drug_label
+        from app.services.ocr.parser import (
+            _clean_drug_label,
+            looks_truncated_ocr_name,
+        )
 
+        truncated = looks_truncated_ocr_name(name)
         cleaned = _clean_drug_label(name)
         if cleaned:
             name = cleaned
+        hangul = "".join(ch for ch in name if "가" <= ch <= "힣")
+        # 가려져서 한글이 거의 안 남으면 추측하지 않음
+        if hangul and len(hangul) < 2:
+            return None
     except Exception:
         pass
 

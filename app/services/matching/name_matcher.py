@@ -244,8 +244,9 @@ def match_medicine_name(
     threshold = SIMILAR_ACCEPT if similar else AUTO_ACCEPT
     method = "similar" if similar else "fuzzy"
     if candidates and candidates[0][1] >= threshold:
-        # 유사 추론은 2등과 격차가 너무 작으면 보류
-        if similar and len(candidates) > 1 and (candidates[0][1] - candidates[1][1]) < 0.03:
+        # 유사 추론은 2등과 격차가 너무 작으면 보류 (가려진 글자면 더 엄격)
+        gap_min = 0.06 if similar else 0.03
+        if similar and len(candidates) > 1 and (candidates[0][1] - candidates[1][1]) < gap_min:
             return MatchResult(raw, None, candidates[0][1], "none", candidates)
         name, score = candidates[0]
         return MatchResult(raw, name, score, method, candidates)
