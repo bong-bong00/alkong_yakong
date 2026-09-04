@@ -86,6 +86,22 @@ def search_drug_info_by_name(
             for item in exact_items
             if _compact_drug_name(item.get("itemName")) == exact_key
         ]
+        exact_result_index = next(
+            (
+                index
+                for index, item in enumerate(exact_items)
+                if _compact_drug_name(item.get("itemName")) == exact_key
+            ),
+            None,
+        )
+        logger.warning(
+            "e약은요 match_diagnostic phase=exact raw_result_count=%d "
+            "exact_match_count=%d selected_match_type=%s selected_result_index=%s",
+            len(exact_items),
+            len(exact_matches),
+            "exact" if exact_matches else "none",
+            exact_result_index,
+        )
         if exact_matches:
             normalized = [_normalize_item(item) for item in exact_matches]
             return {
@@ -107,32 +123,73 @@ def search_drug_info_by_name(
         scored_matches = []
         for item in partial_items:
             candidate_name = _normalize_drug_search_name(item.get("itemName"))
-            if not normalized_query or normalized_query not in candidate_name:
+            if not normalized_query or (
+                normalized_query not in candidate_name
+                and candidate_name not in normalized_query
+            ):
                 continue
+            normalized_equal = candidate_name == normalized_query
             startswith = candidate_name.startswith(normalized_query)
+            manufacturer_prefix = candidate_name.endswith(normalized_query)
+            reverse_contains = candidate_name in normalized_query
             length_ratio = len(normalized_query) / max(len(candidate_name), 1)
-            match_score = (
-                80.0 + (20.0 * length_ratio)
-                if startswith
-                else 50.0 + (20.0 * length_ratio)
-            )
+            if normalized_equal:
+                match_rank = 0
+                match_score = 100.0
+            elif manufacturer_prefix:
+                match_rank = 1
+                match_score = 90.0 + (10.0 * length_ratio)
+            elif startswith or reverse_contains:
+                match_rank = 2
+                match_score = 70.0 + (20.0 * length_ratio)
+            else:
+                match_rank = 3
+                match_score = 50.0 + (20.0 * length_ratio)
             scored_matches.append(
                 (
-                    0 if startswith else 1,
-                    len(_compact_drug_name(item.get("itemName"))),
+                    match_rank,
+                    -match_score,
+                    abs(len(candidate_name) - len(normalized_query)),
                     _compact_drug_name(item.get("itemName")),
-                    match_score,
                     item,
                 )
             )
-        scored_matches.sort(key=lambda match: match[:3])
-        partial_matches = [match[4] for match in scored_matches]
+        scored_matches.sort(key=lambda match: match[:4])
+        best_rank = scored_matches[0][0] if scored_matches else None
+        eligible_matches = [
+            match for match in scored_matches if match[0] == best_rank
+        ]
+        is_ambiguous = len(eligible_matches) > 1
+        partial_matches = [match[4] for match in eligible_matches]
+        if not is_ambiguous:
+            partial_matches = partial_matches[:1]
+        selected_partial_index = (
+            next(
+                (
+                    index
+                    for index, item in enumerate(partial_items)
+                    if item is partial_matches[0]
+                ),
+                None,
+            )
+            if partial_matches
+            else None
+        )
+        logger.warning(
+            "e약은요 match_diagnostic phase=partial raw_result_count=%d "
+            "exact_match_count=0 partial_match_count=%d "
+            "selected_match_type=%s selected_result_index=%s",
+            len(partial_items),
+            len(partial_matches),
+            "ambiguous" if is_ambiguous else "partial" if partial_matches else "none",
+            None if is_ambiguous else selected_partial_index,
+        )
         if scored_matches:
-            best_match = scored_matches[0]
+            best_match = eligible_matches[0]
             logger.info(
                 "match_type=partial matched_name=%s match_score=%.2f",
                 best_match[4].get("itemName"),
-                best_match[3],
+                -best_match[1],
             )
     except requests.Timeout as error:
         raise HTTPException(status_code=504, detail="식약처 API 타임아웃") from error
@@ -150,7 +207,7 @@ def search_drug_info_by_name(
     normalized = [_normalize_item(item) for item in partial_matches]
     response = {"query": name, "count": len(normalized), "items": normalized}
     if normalized:
-        response["match_type"] = "partial"
+        response["match_type"] = "ambiguous" if is_ambiguous else "partial"
     return response
 
 
@@ -261,6 +318,7 @@ def _compact_drug_name(value: Any) -> str:
 
 def _normalize_drug_search_name(value: Any) -> str:
     text = _compact_drug_name(value)
+    text = re.sub(r"\([^)]*\)", "", text)
     text = re.sub(r"\d+(?:\.\d+)?(?:mg|ml)", "", text, flags=re.IGNORECASE)
     text = re.sub(r"(?:mg|ml)", "", text, flags=re.IGNORECASE)
     for dosage_form in ("필름코팅정", "연질캡슐", "캡슐", "정"):
