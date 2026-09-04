@@ -16,9 +16,46 @@ class _DrugExplainScreenState extends State<DrugExplainScreen> {
   final _apiClient = ApiClient();
   final TextEditingController _chatController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
+  final FocusNode _chatFocusNode = FocusNode();
 
   bool _isLoading = false;
+  String? _selectedKeyword;
   final List<Map<String, dynamic>> _messages = [];
+
+  static const List<Map<String, String>> _keywordPrompts = [
+    {
+      'label': '#약효·효능',
+      'prompt': '[약 이름]은 어떤 효능과 효과가 있는지 공식 정보 기준으로 알려주세요.',
+    },
+    {
+      'label': '#복용방법',
+      'prompt': '[약 이름]은 언제, 어떻게 복용해야 하는지 공식 복용법을 알려주세요.',
+    },
+    {
+      'label': '#주의사항',
+      'prompt': '[약 이름]을 복용할 때 주의해야 할 사항을 공식 정보 기준으로 알려주세요.',
+    },
+    {
+      'label': '#부작용',
+      'prompt': '[약 이름]의 공식 부작용과 이상반응 정보를 알려주세요.',
+    },
+    {
+      'label': '#같이 먹는 약',
+      'prompt': '현재 먹는 약들을 같이 복용해도 되는지 기존 DUR 병용금기 분석 결과를 설명해주세요.',
+    },
+    {
+      'label': '#나이별 주의',
+      'prompt': '현재 먹는 약의 나이별 주의사항을 기존 DUR 연령금기 분석 결과로 설명해주세요.',
+    },
+    {
+      'label': '#임신 중 주의',
+      'prompt': '현재 먹는 약의 임신 중 주의사항을 기존 DUR 임부금기 분석 결과로 설명해주세요.',
+    },
+    {
+      'label': '#비슷한 약 중복',
+      'prompt': '현재 먹는 약에 비슷한 효능의 약이 중복되는지 기존 DUR 효능군중복 분석 결과로 설명해주세요.',
+    },
+  ];
 
   static const String _demoTylenolSummaryReply =
       '식약처에 따르면 타이레놀정은 통증을 줄이고 열을 낮추는 데 사용하는 대표적인 해열진통제입니다.\n\n'
@@ -59,7 +96,20 @@ class _DrugExplainScreenState extends State<DrugExplainScreen> {
   void dispose() {
     _chatController.dispose();
     _scrollController.dispose();
+    _chatFocusNode.dispose();
     super.dispose();
+  }
+
+  void _selectKeyword(Map<String, String> keyword) {
+    final label = keyword['label'];
+    final prompt = keyword['prompt'];
+    if (label == null || prompt == null) return;
+
+    setState(() => _selectedKeyword = label);
+    _chatController
+      ..text = prompt
+      ..selection = TextSelection.collapsed(offset: prompt.length);
+    _chatFocusNode.requestFocus();
   }
 
   void _scrollToBottom() {
@@ -81,6 +131,7 @@ class _DrugExplainScreenState extends State<DrugExplainScreen> {
     setState(() {
       _messages.add({'isMe': true, 'text': text});
       _isLoading = true;
+      _selectedKeyword = null;
     });
     _chatController.clear();
     _scrollToBottom();
@@ -148,9 +199,50 @@ class _DrugExplainScreenState extends State<DrugExplainScreen> {
               child: ListView.builder(
                 controller: _scrollController,
                 padding: const EdgeInsets.all(20),
-                itemCount: _messages.length,
+                itemCount: _messages.length + 2,
                 itemBuilder: (context, index) {
-                  final msg = _messages[index];
+                  if (index == 0) {
+                    return const _PharmacistGuide();
+                  }
+                  if (index == 1) {
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 20),
+                      child: Wrap(
+                        spacing: 8,
+                        runSpacing: 10,
+                        children: _keywordPrompts.map((keyword) {
+                          final label = keyword['label']!;
+                          final selected = label == _selectedKeyword;
+                          return ChoiceChip(
+                            label: Text(label),
+                            selected: selected,
+                            onSelected: _isLoading
+                                ? null
+                                : (_) => _selectKeyword(keyword),
+                            labelStyle: TextStyle(
+                              color: selected ? Colors.white : kText,
+                              fontSize: 15,
+                              fontWeight: FontWeight.w600,
+                            ),
+                            backgroundColor: Colors.white,
+                            selectedColor: kPrimary,
+                            side: BorderSide(
+                              color: selected ? kPrimary : kPrimaryLight,
+                            ),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(18),
+                            ),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 8,
+                            ),
+                          );
+                        }).toList(),
+                      ),
+                    );
+                  }
+
+                  final msg = _messages[index - 2];
                   final isMe = msg['isMe'] as bool;
                   return _ChatBubble(isMe: isMe, text: msg['text'] as String);
                 },
@@ -190,6 +282,7 @@ class _DrugExplainScreenState extends State<DrugExplainScreen> {
                     Expanded(
                       child: TextField(
                         controller: _chatController,
+                        focusNode: _chatFocusNode,
                         textInputAction: TextInputAction.send,
                         onSubmitted: (_) => _sendMessage(),
                         decoration: InputDecoration(
@@ -235,6 +328,40 @@ class _DrugExplainScreenState extends State<DrugExplainScreen> {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _PharmacistGuide extends StatelessWidget {
+  const _PharmacistGuide();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 14),
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: kPrimaryLight,
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: const Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'AI 약사에게 궁금한 내용을 물어보세요.',
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.w700,
+              color: kText,
+            ),
+          ),
+          SizedBox(height: 6),
+          Text(
+            '아래 키워드를 선택하거나 직접 질문할 수 있어요.\n답변은 공식 의약품 정보와 기존 DUR 분석 결과를 바탕으로 설명해요.',
+            style: TextStyle(fontSize: 14.5, height: 1.45, color: kTextSub),
+          ),
+        ],
       ),
     );
   }
