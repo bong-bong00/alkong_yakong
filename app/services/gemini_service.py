@@ -491,9 +491,12 @@ def generate_chat_response(message: str, *, user_id: str = "") -> str:
                         }
                 except Exception as e:
                     logger.warning(
-                        "Gemini official_search_failed drug_index=%d error_type=%s",
+                        "Gemini official_search_failed drug_index=%d error_type=%s "
+                        "status_code=%s detail_type=%s",
                         drug_index,
                         type(e).__name__,
+                        getattr(e, "status_code", None),
+                        type(getattr(e, "detail", None)).__name__,
                     )
                 
                 if found_data:
