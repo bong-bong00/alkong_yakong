@@ -123,6 +123,26 @@ def compact_name(value: str) -> str:
     return "".join(str(value or "").casefold().split())
 
 
+PINNED_ITEM_SEQ = {
+    "휴온스시메티딘정": "200403137",
+    "휴온스시메티딘정200밀리그램": "200403137",
+    "휴온스시메티딘정200밀리그람": "200403137",
+}
+
+
+def _pinned_item_seq(name: str) -> str | None:
+    compact = compact_name(name)
+    if compact in PINNED_ITEM_SEQ:
+        return PINNED_ITEM_SEQ[compact]
+    stripped = re.sub(
+        r"\d+(?:\.\d+)?(?:밀리그램|밀리그람|mg).*$",
+        "",
+        compact,
+        flags=re.IGNORECASE,
+    )
+    return PINNED_ITEM_SEQ.get(stripped)
+
+
 def xml_doc_to_text(value: Any) -> str:
     text = str(value or "")
     if not text or text == "None":
@@ -347,6 +367,15 @@ def find_permission_product(name: str) -> dict[str, Any] | None:
     query_key = _medicine_key(name)
     conn = get_permission_connection()
     try:
+        pinned_seq = _pinned_item_seq(name)
+        if pinned_seq:
+            pinned = conn.execute(
+                "SELECT * FROM products WHERE item_seq = ?",
+                (pinned_seq,),
+            ).fetchone()
+            if pinned is not None:
+                return dict(pinned)
+
         row = conn.execute(
             """
             SELECT * FROM products
@@ -382,7 +411,7 @@ def find_permission_product(name: str) -> dict[str, Any] | None:
         if not rows:
             return None
         labels = [str(r["item_name"] or "") for r in rows]
-        match = match_medicine_name(name, labels)
+        match = match_medicine_name(name, labels, similar=False)
         if not match.matched_name:
             return None
         for r in rows:
@@ -394,11 +423,15 @@ def find_permission_product(name: str) -> dict[str, Any] | None:
 
 
 def product_to_medicine(row: dict[str, Any]) -> dict[str, Any]:
-    ingredient = (
+    from app.services.pharmacist.ingredient import clean_ingredient_text
+
+    # 주성분 우선. ingr_name은 포비돈·유당 같은 부형제까지 섞여 있다.
+    ingredient = clean_ingredient_text(
         row.get("main_item_ingr")
         or row.get("item_ingr_name")
+        or row.get("ingr_name")
         or row.get("material_name")
-    )
+    ) or None
     return {
         "medicine_code": row.get("item_seq"),
         "product_name": row.get("item_name"),

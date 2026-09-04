@@ -1,5 +1,3 @@
-import json
-import re
 import uuid
 from collections import defaultdict
 from datetime import date
@@ -8,6 +6,12 @@ from fastapi import HTTPException
 
 from app.database import get_connection
 from app.models.schemas import DurAnalyzeRequest
+from app.services.pharmacist.ingredient import (
+    ingredient_keys,
+    is_usable_ingredient,
+    normalize_ingredient,
+    primary_ingredient_key,
+)
 
 
 HIGH_TYPES = {"병용금기", "중복성분", "효능군중복"}
@@ -15,26 +19,11 @@ MEDIUM_TYPES = {"연령금기", "임부금기"}
 
 
 def _normalize(value: str | None) -> str:
-    """DUR 매칭용: 공백·용량(mg 등)을 걷어 성분 핵심만 남긴다."""
-    text = str(value or "").casefold()
-    text = re.sub(
-        r"\d+(?:\.\d+)?\s*(?:mg|ml|g|㎎|밀리그램|밀리그람|마이크로그램|%|정|캡슐)",
-        "",
-        text,
-    )
-    text = re.sub(r"[^0-9a-z가-힣]", "", text)
-    return text
+    return normalize_ingredient(value)
 
 
 def _is_usable_ingredient(medicine) -> bool:
-    """제품명을 성분란에 넣은 임시/OCR 행은 DUR 성분 매칭에서 뺀다."""
-    ingredient = str(medicine["ingredient"] or "").strip()
-    if not ingredient:
-        return False
-    product = str(medicine["product_name"] or "").strip()
-    if product and _normalize(ingredient) == _normalize(product):
-        return False
-    return bool(_normalize(ingredient))
+    return is_usable_ingredient(medicine["ingredient"], medicine["product_name"])
 
 
 def _grouped_hit(grouped: dict, needle: str | None) -> bool:
@@ -112,6 +101,10 @@ def analyze_dur(request: DurAnalyzeRequest) -> dict:
                 "ingredients": [],
                 "medicine_names": [],
                 "matches": [],
+                "incomplete": True,
+                "incomplete_reasons": ["살펴볼 등록 약이 아직 없어요."],
+                "skipped_medicine_names": [],
+                "taboo_row_count": 0,
             }
 
         ingredients = [
@@ -119,14 +112,29 @@ def analyze_dur(request: DurAnalyzeRequest) -> dict:
             for row in medicines
             if _is_usable_ingredient(row)
         ]
-        normalized_ingredients = defaultdict(list)
+        dur_sync_status = "skipped"
+        dur_sync_upserted = 0
+        dur_sync_fetched = 0
+        if ingredients:
+            from app.services.dur_sync_service import refresh_dur_for_ingredients
+
+            dur_sync = refresh_dur_for_ingredients(ingredients)
+            dur_sync_status = str(dur_sync.get("status") or "failed")
+            dur_sync_upserted = int(dur_sync.get("upserted") or 0)
+            dur_sync_fetched = int(dur_sync.get("fetched") or 0)
+
+        lookup_grouped = defaultdict(list)
+        primary_grouped = defaultdict(list)
         for medicine in medicines:
             if not _is_usable_ingredient(medicine):
                 continue
-            key = _normalize(medicine["ingredient"])
-            if not key:
+            keys = ingredient_keys(medicine["ingredient"])
+            if not keys:
                 continue
-            normalized_ingredients[key].append(medicine)
+            primary = primary_ingredient_key(medicine["ingredient"])
+            primary_grouped[primary].append(medicine)
+            for key in keys:
+                lookup_grouped[key].append(medicine)
 
         age = _age_from_birth_date(user["birth_date"])
         # 요청값 우선, 없으면 회원 프로필 is_pregnant
@@ -136,7 +144,7 @@ def analyze_dur(request: DurAnalyzeRequest) -> dict:
                 is_pregnant = bool(user["is_pregnant"])
             except (KeyError, IndexError, TypeError):
                 is_pregnant = None
-        matches = _duplicate_matches(normalized_ingredients)
+        matches = _duplicate_matches(primary_grouped)
         taboo_rows = [
             row
             for row in cursor.execute("SELECT * FROM dur_taboo").fetchall()
@@ -144,19 +152,19 @@ def analyze_dur(request: DurAnalyzeRequest) -> dict:
         ]
         official_matches = _taboo_matches(
             taboo_rows,
-            normalized_ingredients,
+            lookup_grouped,
             age=age,
             is_pregnant=is_pregnant,
         )
         matches.extend(official_matches)
         matches.extend(
-            _efficacy_duplicate_matches(taboo_rows, normalized_ingredients)
+            _efficacy_duplicate_matches(taboo_rows, lookup_grouped)
         )
 
         # Legacy ingredient rows remain usable when no structured DUR type matched.
         if not official_matches:
             matches.extend(
-                _legacy_matches(taboo_rows, normalized_ingredients)
+                _legacy_matches(taboo_rows, lookup_grouped)
             )
 
         matches = _deduplicate_matches(matches)
@@ -164,11 +172,42 @@ def analyze_dur(request: DurAnalyzeRequest) -> dict:
         by_type = _group_by_type(matches)
         has_risk = len(matches) > 0
         analysis_id = str(uuid.uuid4())
-        description = (
-            f"함께 먹을 때 주의가 {len(matches)}건 있어요."
-            if has_risk
-            else "지금 등록된 약끼리, 특별한 함께먹기 주의는 없어요."
-        )
+        skipped_ingredient = [
+            str(row["product_name"] or row["medicine_code"])
+            for row in medicines
+            if not _is_usable_ingredient(row)
+        ]
+        checkable_n = len(medicines) - len(skipped_ingredient)
+        taboo_n = len(taboo_rows)
+        incomplete_reasons = []
+        if checkable_n == 0:
+            incomplete_reasons.append("등록 약의 성분 정보가 없어 함께먹기 검사를 할 수 없어요.")
+        elif skipped_ingredient:
+            incomplete_reasons.append(
+                f"{len(skipped_ingredient)}개 약은 성분을 몰라 검사에서 빠졌어요."
+            )
+        if taboo_n == 0 and checkable_n > 0:
+            if dur_sync_status == "skipped_missing_key":
+                incomplete_reasons.append(
+                    "식약처 함께먹기 조회 키가 없어 병용·금기 검사는 하지 못했어요."
+                )
+            elif dur_sync_status == "failed":
+                incomplete_reasons.append(
+                    "식약처 함께먹기 기준을 받아오지 못했어요. 잠시 후 다시 살펴봐 주세요."
+                )
+            elif dur_sync_fetched > 0 and dur_sync_upserted == 0:
+                incomplete_reasons.append(
+                    "식약처에서 이 약 성분에 맞는 함께먹기 기준을 찾지 못했어요."
+                )
+        if age is None:
+            incomplete_reasons.append("생년월일이 없어 나이 관련 주의는 살펴보지 못했어요.")
+        incomplete = bool(incomplete_reasons)
+        if has_risk:
+            description = f"함께 먹을 때 주의가 {len(matches)}건 있어요."
+        elif incomplete:
+            description = " ".join(incomplete_reasons)
+        else:
+            description = "지금 등록된 약끼리, 특별한 함께먹기 주의는 없어요."
         cursor.execute(
             """
             INSERT INTO risk_results (
@@ -203,6 +242,11 @@ def analyze_dur(request: DurAnalyzeRequest) -> dict:
             "ingredients": ingredients,
             "medicine_names": [row["product_name"] for row in medicines],
             "matches": matches,
+            "incomplete": incomplete,
+            "incomplete_reasons": incomplete_reasons,
+            "skipped_medicine_names": skipped_ingredient,
+            "taboo_row_count": taboo_n,
+            "dur_sync_status": dur_sync_status,
         }
     except Exception:
         conn.rollback()
@@ -250,14 +294,16 @@ def _duplicate_matches(grouped) -> list[dict]:
         if len(codes) < 2:
             continue
         ingredient = rows[0]["ingredient"]
-        names = ", ".join(row["product_name"] for row in rows)
+        names = [row["product_name"] for row in rows]
         matches.append(
             {
                 "type": "중복성분",
                 "ingredient_a": ingredient,
                 "ingredient_b": ingredient,
+                "medicine_names_a": names,
+                "medicine_names_b": names,
                 "reason": (
-                    f"같은 성분({ingredient})이 여러 약에 들어 있어요: {names}. "
+                    f"같은 성분({ingredient})이 여러 약에 들어 있어요: {', '.join(names)}. "
                     "중복으로 드시는지 약국에 확인해 주세요."
                 ),
                 "source": "활성 복용약 성분 비교",
@@ -390,22 +436,20 @@ def _taboo_matches(
         if risk_type == "임부금기" and is_pregnant is not True:
             continue
         # 사용자 약 이름을 이유에 붙여 화면에서 이해하기 쉽게
-        products_a = ", ".join(
-            r["product_name"] for r in _grouped_rows(grouped, row["ingredient_a"])
-        )
-        products_b = ", ".join(
-            r["product_name"] for r in _grouped_rows(grouped, row["ingredient_b"])
-        )
+        products_a = [r["product_name"] for r in _grouped_rows(grouped, row["ingredient_a"])]
+        products_b = [r["product_name"] for r in _grouped_rows(grouped, row["ingredient_b"])]
         reason = row["description"] or "함께 먹을 때 주의가 필요해요."
         if products_a:
-            reason = f"{products_a}" + (
-                f" ↔ {products_b}" if products_b else ""
+            reason = f"{', '.join(products_a)}" + (
+                f" ↔ {', '.join(products_b)}" if products_b else ""
             ) + f" — {reason}"
         matches.append(
             {
                 "type": risk_type,
                 "ingredient_a": row["ingredient_a"],
                 "ingredient_b": row["ingredient_b"],
+                "medicine_names_a": products_a,
+                "medicine_names_b": products_b,
                 "reason": reason,
                 "source": row["source"] or "식약처 DUR",
                 "external_id": row["external_id"],
@@ -474,12 +518,14 @@ def _deduplicate_matches(matches: list[dict]) -> list[dict]:
     result = []
     seen = set()
     for match in matches:
-        key = (
-            match["type"],
-            _normalize(match.get("ingredient_a")),
-            _normalize(match.get("ingredient_b")),
-            match.get("reason"),
-        )
+        type_name = match["type"]
+        a = _normalize(match.get("ingredient_a"))
+        b = _normalize(match.get("ingredient_b"))
+        if type_name == "병용금기" and a and b:
+            pair = tuple(sorted((a, b)))
+            key = (type_name, pair)
+        else:
+            key = (type_name, a, b, match.get("reason"))
         if key not in seen:
             seen.add(key)
             result.append(match)

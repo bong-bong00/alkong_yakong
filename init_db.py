@@ -1,7 +1,7 @@
 import sqlite3
 from datetime import datetime
 
-from app.database import DB_PATH
+from app.database import DB_PATH, purge_ocr_placeholder_rows
 
 
 TABLE_DEFINITIONS = {
@@ -387,6 +387,7 @@ def initialize_database() -> None:
         cursor.execute(statement)
 
     conn.commit()
+    purge_ocr_placeholder_rows(conn)
     conn.close()
 
 

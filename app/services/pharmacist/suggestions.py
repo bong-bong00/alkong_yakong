@@ -6,7 +6,6 @@ import re
 import time
 
 from app.database import get_connection
-from app.services.external_api_service import search_drug_info_by_name
 from app.services.matching.chosung import is_chosung_query, to_chosung
 from app.services.mfds_drug_permission.db import search_permission_names
 from app.services.pharmacist.easy_category_db import lookup_chat_links
@@ -173,19 +172,6 @@ def _official_names(query: str) -> list[str]:
         for label in search_permission_names(raw, limit=10):
             if label and (
                 _matches_prefix(label, needle) or needle in _compact(label)
-            ):
-                names.append(label)
-    except Exception:
-        pass
-
-    try:
-        result = search_drug_info_by_name(raw, num_of_rows=8)
-        for item in result.get("items") or []:
-            label = str(item.get("product_name") or item.get("medicine_name") or "").strip()
-            if (
-                label
-                and (_matches_prefix(label, needle) or needle in _compact(label))
-                and label not in names
             ):
                 names.append(label)
     except Exception:

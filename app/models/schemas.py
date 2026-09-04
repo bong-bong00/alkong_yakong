@@ -24,6 +24,7 @@ class GuardianCreate(BaseModel):
 
 class OCRMedicineItem(BaseModel):
     drug_name: str
+    ocr_drug_name_raw: Optional[str] = None
     medicine_code: Optional[str] = None
     ingredient: Optional[str] = None
     dosage: Optional[str] = None

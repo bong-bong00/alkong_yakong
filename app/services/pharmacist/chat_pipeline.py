@@ -20,8 +20,29 @@ class ChatPipelineResult:
     trace: dict[str, Any] = field(default_factory=dict)
 
 
-def run_chat_pipeline(message: str, lexicon: list[str] | None = None) -> ChatPipelineResult:
+def run_chat_pipeline(
+    message: str,
+    lexicon: list[str] | None = None,
+    user_id: str | None = None,
+) -> ChatPipelineResult:
     original = (message or "").strip()
+    faq_kind = _faq_kind(original)
+    if faq_kind == "together" and user_id:
+        asked = None
+        compact = "".join(original.casefold().split())
+        if compact not in {"같이먹으면", "같이먹어도", "같이먹어도되나요"}:
+            enriched = _enrich_lexicon(original, lexicon)
+            cands = extract_drug_name_candidates(original, enriched)
+            stop = {"같이", "먹으면", "먹어도", "되나요"}
+            cands = [name for name in cands if name not in stop]
+            if cands:
+                if enriched:
+                    match = match_medicine_name(cands[0], enriched, similar=False)
+                    asked = match.matched_name or cands[0]
+                else:
+                    asked = cands[0]
+        return _together_from_dur(user_id, original, asked_name=asked)
+
     enriched_lexicon = _enrich_lexicon(original, lexicon)
     candidates = extract_drug_name_candidates(original, enriched_lexicon)
     if not candidates:
@@ -78,6 +99,7 @@ def run_chat_pipeline(message: str, lexicon: list[str] | None = None) -> ChatPip
     corrected = official_name or corrected
     source_label = _source_label(official)
     faq_kind = _faq_kind(original)
+    reply = _fixed_db_reply(faq_kind, official, corrected)
     reply = _fixed_db_reply(faq_kind, official, corrected)
     # missed/together 는 안전 안내(추측)라 공식 출처·evidence 100 으로 위장하지 않음
     safety_only = faq_kind in {"missed", "together"}
@@ -162,6 +184,68 @@ def _enrich_lexicon(message: str, lexicon: list[str] | None) -> list[str]:
     return names
 
 
+def _together_from_dur(user_id: str | None, original: str, asked_name: str | None = None) -> ChatPipelineResult:
+    """챗봇 '같이 먹으면'은 추측 문장 대신 실제 DUR 검사 결과를 말한다."""
+    if not user_id:
+        return ChatPipelineResult(
+            False,
+            "지금 드시는 약을 등록한 뒤, 약 함께먹기 주의에서 확인해 주세요.",
+            {"original": original, "stage": "dur", "faq_kind": "together", "evidence_score": 0.0},
+        )
+    try:
+        from app.models.schemas import DurAnalyzeRequest
+        from app.services.dur_service import analyze_dur
+
+        result = analyze_dur(DurAnalyzeRequest(user_id=user_id, medicine_codes=[]))
+    except Exception:
+        return ChatPipelineResult(
+            False,
+            "지금은 함께먹기 검사를 하지 못했어요. 약 함께먹기 주의 화면에서 다시 살펴봐 주세요.",
+            {"original": original, "stage": "dur", "faq_kind": "together", "evidence_score": 0.0},
+        )
+
+    names = [str(name) for name in (result.get("medicine_names") or []) if name]
+    matches = result.get("matches") or []
+    incomplete = bool(result.get("incomplete"))
+    lines: list[str] = []
+    if asked_name:
+        compact_asked = "".join(asked_name.split())
+        in_list = any(compact_asked and compact_asked in "".join(str(n).split()) for n in names)
+        if not in_list:
+            lines.append(f"{asked_name}은(는) 지금 등록된 약 목록에 없어요. 등록된 약 기준으로 살펴봤어요.")
+    if not names:
+        lines.append("살펴볼 등록 약이 아직 없어요. 처방전을 먼저 등록해 주세요.")
+    elif matches:
+        lines.append(str(result.get("message") or "함께 먹을 때 주의가 있어요."))
+        for match in matches[:4]:
+            reason = str(match.get("reason") or "").strip()
+            if reason:
+                lines.append(f"- {reason}")
+        lines.append("자세한 건 약 함께먹기 주의 화면과 의사·약사에게 확인해 주세요.")
+    elif incomplete:
+        lines.append(str(result.get("message") or "함께먹기 검사를 끝까지 하지 못했어요."))
+    else:
+        lines.append("지금 등록된 약끼리, 특별한 함께먹기 주의는 없어요.")
+        if names:
+            lines.append("살펴본 약: " + ", ".join(names[:8]))
+        lines.append("몸이 평소와 다르면 약국에 물어보세요.")
+
+    return ChatPipelineResult(
+        True,
+        "\n".join(lines),
+        {
+            "original": original,
+            "stage": "dur",
+            "faq_kind": "together",
+            "source": "식약처 DUR 검사",
+            "source_label": None,
+            "evidence_score": 0.0,
+            "dur_match_count": len(matches),
+            "incomplete": incomplete,
+        },
+    )
+
+
 def _source_label(official: dict[str, Any]) -> str:
     """사용자에게 보여줄 출처 한 줄 (점수 없이)."""
     source = str(official.get("source") or "").strip()
@@ -223,13 +307,7 @@ def _fixed_db_reply(kind: str | None, official: dict[str, Any], name: str) -> st
         return "\n".join(parts)
 
     if kind == "together":
-        parts = [
-            f"{product}{_object_particle(product)} 다른 약과 같이 드실지는 혼자 판단하지 마세요.",
-            "먹는 약을 모두 알려 드리고 의사·약사에게 확인하세요.",
-        ]
-        if caution:
-            parts.append(f"공식 주의: {caution}")
-        return "\n".join(parts)
+        return None
 
     if kind == "usage":
         if usage:

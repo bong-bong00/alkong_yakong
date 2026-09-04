@@ -66,6 +66,8 @@ def search_drug_info_by_name(
     name: str,
     page_no: int = 1,
     num_of_rows: int = 10,
+    *,
+    product_name_only: bool = False,
 ) -> dict:
     if not E_DRUG_API_KEY:
         raise HTTPException(
@@ -74,11 +76,21 @@ def search_drug_info_by_name(
         )
 
     try:
+        query = name.strip()
         exact_items = _request_drug_items(
-            name.strip(),
+            query,
             page_no=page_no,
             num_of_rows=num_of_rows,
         )
+        if product_name_only:
+            normalized = [_normalize_item(item) for item in exact_items]
+            return {
+                "query": query,
+                "count": len(normalized),
+                "items": normalized,
+                "match_type": "product_name",
+            }
+
         exact_key = _compact_drug_name(name)
         exact_matches = [
             item

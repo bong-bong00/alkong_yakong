@@ -72,10 +72,15 @@ class ApiClient {
     }
 
     final detail = data is Map<String, dynamic> ? data['detail'] : null;
-    throw ApiException(
-      detail?.toString() ?? 'API 요청에 실패했습니다. (${response.statusCode})',
-      statusCode: response.statusCode,
-    );
+    var message = 'API 요청에 실패했습니다. (${response.statusCode})';
+    if (detail is Map) {
+      message = detail['message']?.toString() ??
+          detail['error']?.toString() ??
+          detail.toString();
+    } else if (detail != null) {
+      message = detail.toString();
+    }
+    throw ApiException(message, statusCode: response.statusCode);
   }
 
   static const Map<String, String> _headers = {
