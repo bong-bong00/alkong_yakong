@@ -11,6 +11,7 @@ from app.core.config import E_DRUG_API_KEY, E_DRUG_BASE_URL
 
 logger = logging.getLogger(__name__)
 TIMEOUT_SECONDS = 10
+DRUG_CANDIDATE_LIMIT = 8
 
 
 def fetch_e_drug_info(
@@ -209,6 +210,75 @@ def search_drug_info_by_name(
     if normalized:
         response["match_type"] = "ambiguous" if is_ambiguous else "partial"
     return response
+
+
+def search_drug_candidates(
+    query: str,
+    *,
+    limit: int = DRUG_CANDIDATE_LIMIT,
+) -> dict[str, Any]:
+    cleaned_query = query.strip()
+    if len(cleaned_query) < 2:
+        raise HTTPException(status_code=422, detail="검색어는 2글자 이상이어야 합니다.")
+    if not E_DRUG_API_KEY:
+        raise HTTPException(
+            status_code=503,
+            detail="E_DRUG_API_KEY가 설정되지 않았습니다.",
+        )
+
+    try:
+        raw_items = _request_drug_items(
+            cleaned_query,
+            page_no=1,
+            num_of_rows=max(limit * 2, 10),
+        )
+    except requests.Timeout as error:
+        raise HTTPException(status_code=504, detail="식약처 API 타임아웃") from error
+    except requests.RequestException as error:
+        raise HTTPException(
+            status_code=502,
+            detail="식약처 API 호출에 실패했습니다.",
+        ) from error
+    except (ValueError, TypeError, KeyError) as error:
+        raise HTTPException(
+            status_code=502,
+            detail="식약처 API 응답 형식이 올바르지 않습니다.",
+        ) from error
+
+    compact_query = _compact_drug_name(cleaned_query)
+    candidates: list[tuple[int, int, int, str, dict[str, Any]]] = []
+    seen: set[tuple[str, str]] = set()
+    for item in raw_items:
+        item_name = _clean_text(item.get("itemName"))
+        if not item_name:
+            continue
+        compact_name = _compact_drug_name(item_name)
+        position = compact_name.find(compact_query)
+        if position < 0:
+            continue
+        item_seq = _clean_text(item.get("itemSeq"))
+        dedupe_key = (item_seq or "", compact_name)
+        if dedupe_key in seen:
+            continue
+        seen.add(dedupe_key)
+        candidate = {
+            "item_name": item_name,
+            "manufacturer": _clean_text(item.get("entpName")),
+            "item_seq": item_seq,
+        }
+        candidates.append(
+            (
+                0 if position == 0 else 1,
+                position,
+                len(compact_name),
+                compact_name,
+                candidate,
+            )
+        )
+
+    candidates.sort(key=lambda candidate: candidate[:4])
+    items = [candidate[4] for candidate in candidates[:limit]]
+    return {"query": cleaned_query, "count": len(items), "items": items}
 
 
 def _request_drug_items(

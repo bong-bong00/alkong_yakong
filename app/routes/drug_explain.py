@@ -1,9 +1,14 @@
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, HTTPException, Query
 
 from app.models.schemas import DrugExplainChatRequest
-from app.models.response_schemas import ChatResponse, DrugExplanationResponse
+from app.models.response_schemas import (
+    ChatResponse,
+    DrugExplanationResponse,
+    DrugSearchResponse,
+)
 
 from app.services.drug_explain_service import get_drug_explanation
+from app.services.external_api_service import search_drug_candidates
 
 
 router = APIRouter(prefix="/api/v1", tags=["Drug Explain"])
@@ -14,6 +19,16 @@ def chat_with_pharmacist(request: DrugExplainChatRequest):
     from app.services.gemini_service import generate_chat_response
     reply = generate_chat_response(request.message, user_id=request.user_id)
     return {"reply": reply}
+
+
+@router.get("/drugs/search", response_model=DrugSearchResponse)
+def search_official_drugs(
+    q: str = Query(..., min_length=1, max_length=80, description="의약품 품목명 검색어"),
+):
+    query = q.strip()
+    if len(query) < 2:
+        raise HTTPException(status_code=422, detail="검색어는 2글자 이상이어야 합니다.")
+    return search_drug_candidates(query)
 
 
 @router.get("/drug-explain/{medicine_code}", response_model=DrugExplanationResponse)

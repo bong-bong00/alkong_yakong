@@ -7,6 +7,18 @@ class ApiResponse(BaseModel):
     model_config = ConfigDict(extra="allow")
 
 
+class DrugSearchItemResponse(ApiResponse):
+    item_name: str
+    manufacturer: str | None = None
+    item_seq: str | None = None
+
+
+class DrugSearchResponse(ApiResponse):
+    query: str
+    count: int
+    items: list[DrugSearchItemResponse]
+
+
 class UserCreateResponse(ApiResponse):
     id: str
     name: str

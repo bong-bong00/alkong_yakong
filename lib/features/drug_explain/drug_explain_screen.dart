@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../core/constants/app_colors.dart';
@@ -6,14 +8,16 @@ import '../../core/session/mvp_session.dart';
 import '../../core/widgets/rounded_gradient_app_bar.dart';
 
 class DrugExplainScreen extends StatefulWidget {
-  const DrugExplainScreen({super.key});
+  final ApiClient? apiClient;
+
+  const DrugExplainScreen({super.key, this.apiClient});
 
   @override
   State<DrugExplainScreen> createState() => _DrugExplainScreenState();
 }
 
 class _DrugExplainScreenState extends State<DrugExplainScreen> {
-  final _apiClient = ApiClient();
+  late final ApiClient _apiClient;
   final TextEditingController _chatController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
   final FocusNode _chatFocusNode = FocusNode();
@@ -78,6 +82,7 @@ class _DrugExplainScreenState extends State<DrugExplainScreen> {
   @override
   void initState() {
     super.initState();
+    _apiClient = widget.apiClient ?? ApiClient();
     // 초기 안내 메시지 추가
     _messages.add({
       'isMe': false,
@@ -206,7 +211,7 @@ class _DrugExplainScreenState extends State<DrugExplainScreen> {
   Future<void> _enterOtherMedicine() async {
     final medicine = await showDialog<String>(
       context: context,
-      builder: (_) => const _OtherMedicineDialog(),
+      builder: (_) => _OtherMedicineDialog(apiClient: _apiClient),
     );
     if (!mounted || medicine == null) return;
     setState(() {
@@ -469,7 +474,9 @@ class _DrugExplainScreenState extends State<DrugExplainScreen> {
 }
 
 class _OtherMedicineDialog extends StatefulWidget {
-  const _OtherMedicineDialog();
+  final ApiClient apiClient;
+
+  const _OtherMedicineDialog({required this.apiClient});
 
   @override
   State<_OtherMedicineDialog> createState() => _OtherMedicineDialogState();
@@ -477,39 +484,211 @@ class _OtherMedicineDialog extends StatefulWidget {
 
 class _OtherMedicineDialogState extends State<_OtherMedicineDialog> {
   final TextEditingController _controller = TextEditingController();
+  Timer? _debounce;
+  List<_DrugSearchCandidate> _candidates = const [];
+  bool _isSearching = false;
+  String? _errorMessage;
+  int _requestSequence = 0;
 
   @override
   void dispose() {
+    _debounce?.cancel();
+    _requestSequence++;
     _controller.dispose();
     super.dispose();
   }
 
-  void _submit() {
-    final medicine = _controller.text.trim();
-    if (medicine.isNotEmpty) Navigator.of(context).pop(medicine);
+  void _onQueryChanged(String value) {
+    _debounce?.cancel();
+    final sequence = ++_requestSequence;
+    final query = value.trim();
+    if (query.length < 2) {
+      setState(() {
+        _candidates = const [];
+        _isSearching = false;
+        _errorMessage = null;
+      });
+      return;
+    }
+    _debounce = Timer(
+      const Duration(milliseconds: 400),
+      () => _search(query, sequence),
+    );
+  }
+
+  void _searchNow(String value) {
+    _debounce?.cancel();
+    final query = value.trim();
+    if (query.length < 2) return;
+    _search(query, ++_requestSequence);
+  }
+
+  Future<void> _search(String query, int sequence) async {
+    setState(() {
+      _isSearching = true;
+      _errorMessage = null;
+    });
+    try {
+      final response = await widget.apiClient.get(
+        '/api/v1/drugs/search?q=${Uri.encodeQueryComponent(query)}',
+      );
+      if (!mounted ||
+          sequence != _requestSequence ||
+          _controller.text.trim() != query) {
+        return;
+      }
+      final data = Map<String, dynamic>.from(response as Map);
+      final rawItems = data['items'];
+      final candidates = rawItems is List
+          ? rawItems
+                .whereType<Map>()
+                .map(
+                  (item) => _DrugSearchCandidate.fromJson(
+                    Map<String, dynamic>.from(item),
+                  ),
+                )
+                .where((item) => item.itemName.isNotEmpty)
+                .toList()
+          : <_DrugSearchCandidate>[];
+      setState(() => _candidates = candidates);
+    } on ApiException catch (error) {
+      if (!mounted || sequence != _requestSequence) return;
+      setState(() {
+        _candidates = const [];
+        _errorMessage = error.statusCode == null
+            ? '네트워크 연결을 확인한 후 다시 시도해주세요.'
+            : '의약품 정보를 불러오지 못했습니다. 다시 시도해주세요.';
+      });
+    } catch (_) {
+      if (!mounted || sequence != _requestSequence) return;
+      setState(() {
+        _candidates = const [];
+        _errorMessage = '의약품 정보를 불러오지 못했습니다. 다시 시도해주세요.';
+      });
+    } finally {
+      if (mounted && sequence == _requestSequence) {
+        setState(() => _isSearching = false);
+      }
+    }
+  }
+
+  void _select(_DrugSearchCandidate candidate) {
+    Navigator.of(context).pop(candidate.itemName);
   }
 
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
       title: const Text('다른 약 검색하기'),
-      content: TextField(
-        controller: _controller,
-        autofocus: true,
-        textInputAction: TextInputAction.done,
-        decoration: const InputDecoration(
-          hintText: '정확한 약 이름을 입력하세요',
-          border: OutlineInputBorder(),
+      content: SizedBox(
+        width: double.maxFinite,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              key: const Key('otherMedicineSearchField'),
+              controller: _controller,
+              autofocus: true,
+              textInputAction: TextInputAction.search,
+              decoration: const InputDecoration(
+                hintText: '약 이름을 입력하세요',
+                border: OutlineInputBorder(),
+                prefixIcon: Icon(Icons.search_rounded),
+              ),
+              onChanged: _onQueryChanged,
+              onSubmitted: _searchNow,
+            ),
+            const SizedBox(height: 12),
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxHeight: 300),
+              child: _buildSearchContent(),
+            ),
+          ],
         ),
-        onSubmitted: (_) => _submit(),
       ),
       actions: [
         TextButton(
           onPressed: () => Navigator.of(context).pop(),
           child: const Text('취소'),
         ),
-        FilledButton(onPressed: _submit, child: const Text('선택')),
       ],
+    );
+  }
+
+  Widget _buildSearchContent() {
+    if (_controller.text.trim().length < 2) {
+      return const Align(
+        alignment: Alignment.centerLeft,
+        child: Text('약 이름을 2글자 이상 입력해주세요.'),
+      );
+    }
+    if (_isSearching) {
+      return const Center(
+        child: Padding(
+          padding: EdgeInsets.all(16),
+          child: CircularProgressIndicator(strokeWidth: 3),
+        ),
+      );
+    }
+    if (_errorMessage != null) {
+      return Align(
+        alignment: Alignment.centerLeft,
+        child: Text(_errorMessage!, key: const Key('drugSearchError')),
+      );
+    }
+    if (_candidates.isEmpty) {
+      return const Align(
+        alignment: Alignment.centerLeft,
+        child: Text('검색된 공식 의약품이 없습니다.'),
+      );
+    }
+    return ListView.separated(
+      shrinkWrap: true,
+      itemCount: _candidates.length,
+      separatorBuilder: (_, _) => const Divider(height: 1),
+      itemBuilder: (context, index) {
+        final candidate = _candidates[index];
+        return ListTile(
+          key: ValueKey(
+            'drugCandidate:${candidate.itemSeq ?? candidate.itemName}',
+          ),
+          contentPadding: const EdgeInsets.symmetric(horizontal: 4),
+          title: Text(
+            candidate.itemName,
+            style: const TextStyle(fontWeight: FontWeight.w600),
+          ),
+          subtitle: candidate.manufacturer == null
+              ? null
+              : Text(candidate.manufacturer!),
+          trailing: const Icon(Icons.chevron_right_rounded),
+          onTap: () => _select(candidate),
+        );
+      },
+    );
+  }
+}
+
+class _DrugSearchCandidate {
+  final String itemName;
+  final String? manufacturer;
+  final String? itemSeq;
+
+  const _DrugSearchCandidate({
+    required this.itemName,
+    this.manufacturer,
+    this.itemSeq,
+  });
+
+  factory _DrugSearchCandidate.fromJson(Map<String, dynamic> json) {
+    String? optionalText(dynamic value) {
+      final text = value?.toString().trim();
+      return text == null || text.isEmpty ? null : text;
+    }
+
+    return _DrugSearchCandidate(
+      itemName: json['item_name']?.toString().trim() ?? '',
+      manufacturer: optionalText(json['manufacturer']),
+      itemSeq: optionalText(json['item_seq']),
     );
   }
 }
