@@ -11,6 +11,7 @@ from app.core.config import E_DRUG_API_KEY, E_DRUG_BASE_URL
 
 logger = logging.getLogger(__name__)
 TIMEOUT_SECONDS = 10
+DRUG_CANDIDATE_LIMIT = 8
 
 
 def fetch_e_drug_info(
@@ -23,7 +24,7 @@ def fetch_e_drug_info(
         return None
 
     params: dict[str, Any] = {
-        "ServiceKey": E_DRUG_API_KEY,
+        "serviceKey": E_DRUG_API_KEY,
         "pageNo": 1,
         "numOfRows": 10,
         "type": "json",
@@ -43,8 +44,9 @@ def fetch_e_drug_info(
             params=params,
             timeout=TIMEOUT_SECONDS,
         )
+        payload = _load_e_drug_payload(response, operation="fetch")
+        _log_e_drug_response(response, payload, operation="fetch")
         response.raise_for_status()
-        payload = response.json()
         items = _extract_items(payload)
         if not items:
             logger.info(
@@ -97,6 +99,22 @@ def search_drug_info_by_name(
             for item in exact_items
             if _compact_drug_name(item.get("itemName")) == exact_key
         ]
+        exact_result_index = next(
+            (
+                index
+                for index, item in enumerate(exact_items)
+                if _compact_drug_name(item.get("itemName")) == exact_key
+            ),
+            None,
+        )
+        logger.warning(
+            "e약은요 match_diagnostic phase=exact raw_result_count=%d "
+            "exact_match_count=%d selected_match_type=%s selected_result_index=%s",
+            len(exact_items),
+            len(exact_matches),
+            "exact" if exact_matches else "none",
+            exact_result_index,
+        )
         if exact_matches:
             normalized = [_normalize_item(item) for item in exact_matches]
             return {
@@ -118,32 +136,73 @@ def search_drug_info_by_name(
         scored_matches = []
         for item in partial_items:
             candidate_name = _normalize_drug_search_name(item.get("itemName"))
-            if not normalized_query or normalized_query not in candidate_name:
+            if not normalized_query or (
+                normalized_query not in candidate_name
+                and candidate_name not in normalized_query
+            ):
                 continue
+            normalized_equal = candidate_name == normalized_query
             startswith = candidate_name.startswith(normalized_query)
+            manufacturer_prefix = candidate_name.endswith(normalized_query)
+            reverse_contains = candidate_name in normalized_query
             length_ratio = len(normalized_query) / max(len(candidate_name), 1)
-            match_score = (
-                80.0 + (20.0 * length_ratio)
-                if startswith
-                else 50.0 + (20.0 * length_ratio)
-            )
+            if normalized_equal:
+                match_rank = 0
+                match_score = 100.0
+            elif manufacturer_prefix:
+                match_rank = 1
+                match_score = 90.0 + (10.0 * length_ratio)
+            elif startswith or reverse_contains:
+                match_rank = 2
+                match_score = 70.0 + (20.0 * length_ratio)
+            else:
+                match_rank = 3
+                match_score = 50.0 + (20.0 * length_ratio)
             scored_matches.append(
                 (
-                    0 if startswith else 1,
-                    len(_compact_drug_name(item.get("itemName"))),
+                    match_rank,
+                    -match_score,
+                    abs(len(candidate_name) - len(normalized_query)),
                     _compact_drug_name(item.get("itemName")),
-                    match_score,
                     item,
                 )
             )
-        scored_matches.sort(key=lambda match: match[:3])
-        partial_matches = [match[4] for match in scored_matches]
+        scored_matches.sort(key=lambda match: match[:4])
+        best_rank = scored_matches[0][0] if scored_matches else None
+        eligible_matches = [
+            match for match in scored_matches if match[0] == best_rank
+        ]
+        is_ambiguous = len(eligible_matches) > 1
+        partial_matches = [match[4] for match in eligible_matches]
+        if not is_ambiguous:
+            partial_matches = partial_matches[:1]
+        selected_partial_index = (
+            next(
+                (
+                    index
+                    for index, item in enumerate(partial_items)
+                    if item is partial_matches[0]
+                ),
+                None,
+            )
+            if partial_matches
+            else None
+        )
+        logger.warning(
+            "e약은요 match_diagnostic phase=partial raw_result_count=%d "
+            "exact_match_count=0 partial_match_count=%d "
+            "selected_match_type=%s selected_result_index=%s",
+            len(partial_items),
+            len(partial_matches),
+            "ambiguous" if is_ambiguous else "partial" if partial_matches else "none",
+            None if is_ambiguous else selected_partial_index,
+        )
         if scored_matches:
-            best_match = scored_matches[0]
+            best_match = eligible_matches[0]
             logger.info(
                 "match_type=partial matched_name=%s match_score=%.2f",
                 best_match[4].get("itemName"),
-                best_match[3],
+                -best_match[1],
             )
     except requests.Timeout as error:
         raise HTTPException(status_code=504, detail="식약처 API 타임아웃") from error
@@ -161,8 +220,77 @@ def search_drug_info_by_name(
     normalized = [_normalize_item(item) for item in partial_matches]
     response = {"query": name, "count": len(normalized), "items": normalized}
     if normalized:
-        response["match_type"] = "partial"
+        response["match_type"] = "ambiguous" if is_ambiguous else "partial"
     return response
+
+
+def search_drug_candidates(
+    query: str,
+    *,
+    limit: int = DRUG_CANDIDATE_LIMIT,
+) -> dict[str, Any]:
+    cleaned_query = query.strip()
+    if len(cleaned_query) < 2:
+        raise HTTPException(status_code=422, detail="검색어는 2글자 이상이어야 합니다.")
+    if not E_DRUG_API_KEY:
+        raise HTTPException(
+            status_code=503,
+            detail="E_DRUG_API_KEY가 설정되지 않았습니다.",
+        )
+
+    try:
+        raw_items = _request_drug_items(
+            cleaned_query,
+            page_no=1,
+            num_of_rows=max(limit * 2, 10),
+        )
+    except requests.Timeout as error:
+        raise HTTPException(status_code=504, detail="식약처 API 타임아웃") from error
+    except requests.RequestException as error:
+        raise HTTPException(
+            status_code=502,
+            detail="식약처 API 호출에 실패했습니다.",
+        ) from error
+    except (ValueError, TypeError, KeyError) as error:
+        raise HTTPException(
+            status_code=502,
+            detail="식약처 API 응답 형식이 올바르지 않습니다.",
+        ) from error
+
+    compact_query = _compact_drug_name(cleaned_query)
+    candidates: list[tuple[int, int, int, str, dict[str, Any]]] = []
+    seen: set[tuple[str, str]] = set()
+    for item in raw_items:
+        item_name = _clean_text(item.get("itemName"))
+        if not item_name:
+            continue
+        compact_name = _compact_drug_name(item_name)
+        position = compact_name.find(compact_query)
+        if position < 0:
+            continue
+        item_seq = _clean_text(item.get("itemSeq"))
+        dedupe_key = (item_seq or "", compact_name)
+        if dedupe_key in seen:
+            continue
+        seen.add(dedupe_key)
+        candidate = {
+            "item_name": item_name,
+            "manufacturer": _clean_text(item.get("entpName")),
+            "item_seq": item_seq,
+        }
+        candidates.append(
+            (
+                0 if position == 0 else 1,
+                position,
+                len(compact_name),
+                compact_name,
+                candidate,
+            )
+        )
+
+    candidates.sort(key=lambda candidate: candidate[:4])
+    items = [candidate[4] for candidate in candidates[:limit]]
+    return {"query": cleaned_query, "count": len(items), "items": items}
 
 
 def _request_drug_items(
@@ -172,7 +300,7 @@ def _request_drug_items(
     num_of_rows: int,
 ) -> list[dict[str, Any]]:
     params = {
-        "ServiceKey": E_DRUG_API_KEY,
+        "serviceKey": E_DRUG_API_KEY,
         "pageNo": page_no,
         "numOfRows": num_of_rows,
         "itemName": query,
@@ -183,8 +311,87 @@ def _request_drug_items(
         params=params,
         timeout=TIMEOUT_SECONDS,
     )
+    payload = _load_e_drug_payload(response, operation="search")
+    _log_e_drug_response(response, payload, operation="search")
     response.raise_for_status()
-    return _extract_items(response.json())
+    return _extract_items(payload)
+
+
+def _load_e_drug_payload(
+    response: requests.Response,
+    *,
+    operation: str,
+) -> dict[str, Any]:
+    try:
+        payload = response.json()
+    except ValueError:
+        logger.warning(
+            "e약은요 response operation=%s outcome=invalid_json status=%s "
+            "content_type=%s",
+            operation,
+            response.status_code,
+            response.headers.get("content-type", ""),
+        )
+        raise
+    if not isinstance(payload, dict):
+        logger.warning(
+            "e약은요 response operation=%s outcome=invalid_structure status=%s "
+            "content_type=%s payload_type=%s",
+            operation,
+            response.status_code,
+            response.headers.get("content-type", ""),
+            type(payload).__name__,
+        )
+        raise TypeError("e약은요 response root must be an object")
+    return payload
+
+
+def _log_e_drug_response(
+    response: requests.Response,
+    payload: dict[str, Any],
+    *,
+    operation: str,
+) -> None:
+    envelope = payload.get("response") if isinstance(payload, dict) else None
+    root = envelope if isinstance(envelope, dict) else payload
+    header = root.get("header", {}) if isinstance(root, dict) else {}
+    result_code = header.get("resultCode") if isinstance(header, dict) else None
+    result_message = header.get("resultMsg") if isinstance(header, dict) else None
+    items = _extract_items(payload)
+
+    normalized_message = str(result_message or "").casefold()
+    auth_terms = (
+        "service key",
+        "authentication",
+        "not registered",
+        "access denied",
+        "인증",
+        "권한",
+    )
+    if response.status_code in {401, 403} or any(
+        term in normalized_message for term in auth_terms
+    ):
+        outcome = "authentication_or_permission_failure"
+    elif not response.ok or result_code not in (None, "00"):
+        outcome = "api_error"
+    elif not items:
+        outcome = "no_items"
+    else:
+        outcome = "success"
+
+    log = logger.warning if outcome.endswith("failure") or outcome == "api_error" else logger.info
+    log(
+        "e약은요 response operation=%s outcome=%s status=%s content_type=%s "
+        "result_code=%s result_message=%s items_present=%s item_count=%d",
+        operation,
+        outcome,
+        response.status_code,
+        response.headers.get("content-type", ""),
+        result_code,
+        result_message,
+        bool(items),
+        len(items),
+    )
 
 
 def _compact_drug_name(value: Any) -> str:
@@ -193,6 +400,7 @@ def _compact_drug_name(value: Any) -> str:
 
 def _normalize_drug_search_name(value: Any) -> str:
     text = _compact_drug_name(value)
+    text = re.sub(r"\([^)]*\)", "", text)
     text = re.sub(r"\d+(?:\.\d+)?(?:mg|ml)", "", text, flags=re.IGNORECASE)
     text = re.sub(r"(?:mg|ml)", "", text, flags=re.IGNORECASE)
     for dosage_form in ("필름코팅정", "연질캡슐", "캡슐", "정"):

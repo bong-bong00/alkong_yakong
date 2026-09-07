@@ -1,55 +1,37 @@
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, HTTPException, Query
 
 from app.models.schemas import DrugExplainChatRequest
+from app.models.response_schemas import (
+    ChatResponse,
+    DrugExplanationResponse,
+    DrugSearchResponse,
+)
 
 from app.services.drug_explain_service import get_drug_explanation
-from app.services.pharmacist.chat_pipeline import run_chat_pipeline
-from app.services.pharmacist.suggestions import get_chat_suggestions
+from app.services.external_api_service import search_drug_candidates
 
 
 router = APIRouter(prefix="/api/v1", tags=["Drug Explain"])
 
 
-@router.post("/drug-explain/chat")
+@router.post("/drug-explain/chat", response_model=ChatResponse)
 def chat_with_pharmacist(request: DrugExplainChatRequest):
-    # 오늘 약 + 입력 문장으로 뜨는 자동완성 약 이름을 사전으로 씀.
-    # (아산형: 고른/친 약 이름이 매칭 후보가 됨)
-    base = get_chat_suggestions(user_id=request.user_id)
-    typed = get_chat_suggestions(request.message, user_id=request.user_id)
-    lexicon: list[str] = []
-    seen: set[str] = set()
-    for item in [*base, *typed]:
-        if item.get("type") == "faq":
-            continue
-        label = str(item.get("label") or "").strip()
-        if label and label not in seen:
-            seen.add(label)
-            lexicon.append(label)
-
-    result = run_chat_pipeline(
-        request.message,
-        lexicon=lexicon,
-        user_id=request.user_id,
-    )
-    payload = {"reply": result.reply, "ok": result.ok, "trace": result.trace}
-    source_label = result.trace.get("source_label")
-    if source_label:
-        payload["source_label"] = source_label
-    candidates = result.trace.get("candidates")
-    if isinstance(candidates, list) and candidates:
-        payload["candidates"] = candidates
-    return payload
+    from app.services.gemini_service import generate_chat_response
+    reply = generate_chat_response(request.message, user_id=request.user_id)
+    return {"reply": reply}
 
 
-@router.get("/drug-explain/suggestions")
-def chat_suggestions(
-    q: str = Query(default="", max_length=100),
-    user_id: str | None = Query(default=None, max_length=100),
+@router.get("/drugs/search", response_model=DrugSearchResponse)
+def search_official_drugs(
+    q: str = Query(..., min_length=1, max_length=80, description="의약품 품목명 검색어"),
 ):
-    return {"items": get_chat_suggestions(q, user_id)}
+    query = q.strip()
+    if len(query) < 2:
+        raise HTTPException(status_code=422, detail="검색어는 2글자 이상이어야 합니다.")
+    return search_drug_candidates(query)
 
 
-@router.get("/drug-explain/{medicine_code}")
+@router.get("/drug-explain/{medicine_code}", response_model=DrugExplanationResponse)
 def explain_drug(
     medicine_code: str,
     force_refresh: bool = Query(default=False),
