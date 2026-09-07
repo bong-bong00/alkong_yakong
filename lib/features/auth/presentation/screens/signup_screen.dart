@@ -277,6 +277,10 @@ class _SignupScreenState extends State<SignupScreen> {
       if (birthDate != null) body['birth_date'] = birthDate;
       if (_gender != null) body['gender'] = _gender;
       if (phone != null) body['phone'] = phone;
+      if (_pregnancy != null) {
+        body['pregnancy_status'] = _pregnancy;
+        body['is_pregnant'] = _pregnancy == '임신 중';
+      }
 
       final response = await _apiClient
           .post('/api/v1/users', body: body)
@@ -289,6 +293,9 @@ class _SignupScreenState extends State<SignupScreen> {
       }
 
       MvpSession.userId = userId;
+      if (_pregnancy != null) {
+        MvpSession.isPregnant = _pregnancy == '임신 중';
+      }
       if (!mounted) return;
       await _showSignupCompleteDialog();
       if (!mounted) return;

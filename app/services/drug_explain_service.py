@@ -6,8 +6,16 @@ from fastapi import HTTPException
 
 from app.core.config import GEMINI_MODEL
 from app.database import get_connection
-from app.services.external_api_service import fetch_e_drug_info
-from app.services.gemini_service import generate_easy_explanation
+from app.services.mfds_drug_permission.db import (
+    find_permission_product,
+    product_to_medicine,
+)
+from app.services.mfds_drug_permission.sync import (
+    ensure_detail_for_product,
+    lookup_permission_by_ocr_name,
+)
+from app.services.pharmacist.easy_category import derive_easy_category_from_medicine
+from app.services.pharmacist.generate import generate_card_from_source
 
 
 logger = logging.getLogger(__name__)
@@ -32,7 +40,7 @@ def get_drug_explanation(
         if medicine and cached and not force_refresh:
             return _response(medicine, cached, generated_by="local-cache")
 
-        official_info = fetch_e_drug_info(
+        official_info = _fetch_mfds_info(
             medicine_code=medicine_code,
             medicine_name=medicine.get("product_name") if medicine else None,
         )
@@ -40,7 +48,6 @@ def get_drug_explanation(
             official_info["ingredient"] = (
                 official_info.get("ingredient")
                 or (medicine.get("ingredient") if medicine else None)
-                or MISSING_OFFICIAL_TEXT
             )
             _upsert_medicine(cursor, medicine_code, medicine, official_info)
             document_id = _save_official_document(
@@ -50,21 +57,26 @@ def get_drug_explanation(
             )
             medicine = _get_medicine(cursor, medicine_code)
 
-            generated = generate_easy_explanation(official_info)
-            if generated:
+            generated = None
+            try:
+                generated = generate_card_from_source(official_info)
+            except Exception:
+                generated = None
+            if generated and generated.get("source_based") is not False:
                 card_data = {
                     **generated,
                     "model_name": GEMINI_MODEL,
-                    "generated_by": "e약은요+gemini",
-                    "source": "e약은요",
+                    "generated_by": "식약처+gemini",
+                    "source": "식약처 허가정보",
                     "is_verified": 0,
+                    "source_based": True,
                 }
             else:
                 card_data = {
                     **_official_fallback(official_info),
                     "model_name": "official-fallback",
-                    "generated_by": "e약은요-fallback",
-                    "source": "e약은요",
+                    "generated_by": "식약처-fallback",
+                    "source": "식약처 허가정보",
                     "is_verified": 1,
                 }
 
@@ -84,24 +96,13 @@ def get_drug_explanation(
             raise HTTPException(status_code=404, detail="의약품이 없습니다.")
 
         stale_cache = _get_latest_card(cursor, medicine_code)
-        if stale_cache:
+        if stale_cache and stale_cache.get("source_based"):
             return _response(medicine, stale_cache, generated_by="local-cache")
 
-        card = _save_card(
-            cursor,
-            medicine_code,
-            {
-                **_local_fallback(medicine),
-                "model_name": "mock",
-                "generated_by": "mock",
-                "source": "local",
-                "is_verified": 0,
-                "official_raw_summary": "",
-            },
-            [],
+        raise HTTPException(
+            status_code=404,
+            detail="공식 자료에서 이 약을 찾지 못했습니다.",
         )
-        conn.commit()
-        return _response(medicine, card)
     except HTTPException:
         raise
     except Exception as error:
@@ -112,9 +113,49 @@ def get_drug_explanation(
             error,
             exc_info=True,
         )
-        return _safe_existing_or_fallback(conn, medicine_code)
+        raise HTTPException(
+            status_code=502,
+            detail="공식 약 설명을 만들지 못했습니다.",
+        ) from error
     finally:
         conn.close()
+
+
+def _fetch_mfds_info(
+    medicine_code: str,
+    medicine_name: str | None,
+) -> dict[str, Any] | None:
+    """식약처 의약품 제품 허가정보만 사용. 로컬 DB → 없으면 실시간 허가 API."""
+    row = None
+    if medicine_name:
+        try:
+            row = find_permission_product(medicine_name)
+        except Exception:
+            row = None
+    if not row and medicine_code:
+        try:
+            row = find_permission_product(medicine_code)
+        except Exception:
+            row = None
+    if not row and medicine_name:
+        try:
+            row = lookup_permission_by_ocr_name(medicine_name)
+        except Exception:
+            row = None
+    if not row:
+        return None
+
+    # 상세(효능·복용법·주의사항)가 없으면 허가 상세 API로 한 번 채운다.
+    if not (row.get("efficacy_text") or row.get("usage_text") or row.get("caution_text")):
+        try:
+            ensure_detail_for_product(
+                str(row.get("item_seq") or ""),
+                str(row.get("item_name") or ""),
+            )
+            row = find_permission_product(str(row.get("item_name") or "")) or row
+        except Exception:
+            pass
+    return product_to_medicine(row)
 
 
 def _get_medicine(cursor, medicine_code: str) -> dict[str, Any] | None:
@@ -161,7 +202,7 @@ def _save_official_document(
     existing = cursor.execute(
         """
         SELECT id FROM medicine_documents
-        WHERE medicine_code = ? AND document_type = 'E_DRUG'
+        WHERE medicine_code = ? AND document_type = 'MFDS_PERMISSION'
           AND content = ?
         ORDER BY id DESC LIMIT 1
         """,
@@ -174,13 +215,13 @@ def _save_official_document(
         """
         INSERT INTO medicine_documents (
             medicine_code, document_type, title, content, source_url
-        ) VALUES (?, 'E_DRUG', ?, ?, ?)
+        ) VALUES (?, 'MFDS_PERMISSION', ?, ?, ?)
         """,
         (
             medicine_code,
             official_info.get("product_name") or medicine_code,
             content,
-            "https://www.data.go.kr/data/15075057/openapi.do",
+            "https://nedrug.mfds.go.kr",
         ),
     )
     return cursor.lastrowid
@@ -193,12 +234,22 @@ def _upsert_medicine(
     official: dict[str, Any],
 ) -> None:
     local = local or {}
+    merged = {
+        **local,
+        **{key: value for key, value in official.items() if value},
+        "product_name": official.get("product_name")
+        or local.get("product_name")
+        or medicine_code,
+    }
+    easy_category = derive_easy_category_from_medicine(merged) or local.get(
+        "easy_category"
+    )
     cursor.execute(
         """
         INSERT INTO medicines (
             medicine_code, product_name, ingredient, manufacturer,
-            efficacy, usage, precautions, image_url
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            efficacy, usage, precautions, image_url, easy_category
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(medicine_code) DO UPDATE SET
             product_name = excluded.product_name,
             ingredient = excluded.ingredient,
@@ -207,21 +258,21 @@ def _upsert_medicine(
             usage = excluded.usage,
             precautions = excluded.precautions,
             image_url = excluded.image_url,
+            easy_category = COALESCE(excluded.easy_category, medicines.easy_category),
             updated_at = CURRENT_TIMESTAMP
         """,
         (
             medicine_code,
-            official.get("product_name")
-            or local.get("product_name")
-            or medicine_code,
+            merged["product_name"],
             official.get("ingredient")
             or local.get("ingredient")
-            or MISSING_OFFICIAL_TEXT,
+            or None,
             official.get("manufacturer") or local.get("manufacturer"),
             official.get("efficacy") or local.get("efficacy"),
             official.get("usage") or local.get("usage"),
             official.get("cautions") or local.get("precautions"),
             official.get("image_url") or local.get("image_url"),
+            easy_category,
         ),
     )
 
@@ -279,7 +330,7 @@ def _official_fallback(info: dict[str, Any]) -> dict[str, Any]:
         cautions.append(f"상호작용: {interaction}")
     return {
         "easy_summary": (
-            f"{info.get('product_name') or '이 약'}의 e약은요 공식 정보를 "
+            f"{info.get('product_name') or '이 약'}의 식약처 허가 공식 정보를 "
             "쉬운 항목으로 정리했습니다."
         ),
         "what_it_does": info.get("efficacy") or MISSING_OFFICIAL_TEXT,

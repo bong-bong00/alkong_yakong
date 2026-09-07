@@ -1,6 +1,7 @@
 import json
 import logging
 import re
+import threading
 from typing import Any
 from urllib.parse import quote, unquote, urlencode
 from xml.etree import ElementTree
@@ -8,7 +9,12 @@ from xml.etree import ElementTree
 import requests
 from fastapi import HTTPException
 
-from app.core.config import DUR_API_BASE_URL, DUR_API_KEY
+from app.core.config import (
+    DUR_API_BASE_URL,
+    DUR_API_KEY,
+    DUR_AUTO_SYNC,
+    DUR_BOOTSTRAP_MAX_PAGES,
+)
 from app.database import get_connection
 from app.models.schemas import DurSyncRequest
 
@@ -16,6 +22,10 @@ from app.models.schemas import DurSyncRequest
 logger = logging.getLogger(__name__)
 TIMEOUT_SECONDS = 20
 MFDS_DUR_SOURCE = "식약처 DUR 성분정보 OpenAPI"
+_SYNC_LOCK = threading.Lock()
+_BOOTSTRAP_STARTED = False
+_INGR_QUERY_KEYS = ("ingrKorName", "INGR_KOR_NAME")
+_MAX_INGREDIENT_PAGES = 5
 
 ENDPOINTS = {
     "병용금기": "getUsjntTabooInfoList02",
@@ -213,6 +223,10 @@ def _sync_type(
         )
         stats["total_fetched"] += len(items)
         for item in items:
+            if _is_api_deleted(item):
+                _delete_taboo(cursor, risk_type, item)
+                stats["skipped"] += 1
+                continue
             normalized = _normalize_item(risk_type, item)
             if not normalized:
                 stats["skipped"] += 1
@@ -228,25 +242,221 @@ def _sync_type(
     return stats
 
 
+def start_background_dur_sync() -> None:
+    """서버 기동 시 dur_taboo 가 비어 있으면 식약처 기준을 백그라운드로 받는다."""
+    global _BOOTSTRAP_STARTED
+    if not DUR_AUTO_SYNC or not DUR_API_KEY or _BOOTSTRAP_STARTED:
+        return
+    if _dur_taboo_count() > 0:
+        return
+    _BOOTSTRAP_STARTED = True
+    thread = threading.Thread(
+        target=_bootstrap_dur_sync,
+        name="dur-bootstrap-sync",
+        daemon=True,
+    )
+    thread.start()
+    logger.info("식약처 DUR 기준 백그라운드 동기화를 시작했습니다.")
+
+
+def _bootstrap_dur_sync() -> None:
+    try:
+        with _SYNC_LOCK:
+            if _dur_taboo_count() > 0:
+                return
+            sync_mfds_dur(
+                DurSyncRequest(
+                    page_size=100,
+                    max_pages=DUR_BOOTSTRAP_MAX_PAGES,
+                )
+            )
+            logger.info(
+                "식약처 DUR 기준 동기화 완료 row_count=%s",
+                _dur_taboo_count(),
+            )
+    except Exception:
+        logger.warning("식약처 DUR 백그라운드 동기화 실패", exc_info=True)
+
+
+def refresh_dur_for_ingredients(names: list[str]) -> dict[str, Any]:
+    """검사에 필요한 성분만 식약처에서 받아 dur_taboo 에 넣는다."""
+    queries = _ingredient_query_terms(names)
+    if not queries:
+        return {"status": "no_queries", "fetched": 0, "upserted": 0}
+    if not DUR_API_KEY:
+        return {"status": "skipped_missing_key", "fetched": 0, "upserted": 0}
+    if not DUR_AUTO_SYNC:
+        return {"status": "disabled", "fetched": 0, "upserted": 0}
+
+    fetched = 0
+    upserted = 0
+    errors: list[str] = []
+    try:
+        with _SYNC_LOCK:
+            conn = get_connection()
+            try:
+                cursor = conn.cursor()
+                pending = [
+                    query
+                    for query in queries
+                    if not _has_taboo_for_ingredient(cursor, query)
+                ]
+                for query in pending:
+                    for risk_type in ENDPOINTS:
+                        stats = _sync_ingredient_type(
+                            cursor,
+                            risk_type,
+                            query=query,
+                            api_key=DUR_API_KEY,
+                        )
+                        fetched += stats["fetched"]
+                        upserted += stats["upserted"]
+                        if stats.get("error"):
+                            errors.append(str(stats["error"]))
+                conn.commit()
+            except Exception:
+                conn.rollback()
+                raise
+            finally:
+                conn.close()
+    except Exception as error:
+        logger.warning("성분 DUR 동기화 실패: %s", error, exc_info=True)
+        return {
+            "status": "failed",
+            "fetched": fetched,
+            "upserted": upserted,
+            "error": type(error).__name__,
+        }
+    if errors and upserted == 0 and fetched == 0:
+        return {"status": "failed", "fetched": 0, "upserted": 0, "error": errors[0]}
+    return {"status": "ok", "fetched": fetched, "upserted": upserted}
+
+
+def _ingredient_query_terms(names: list[str]) -> list[str]:
+    from app.services.pharmacist.ingredient import (
+        clean_ingredient_text,
+        primary_ingredient_key,
+    )
+
+    terms: list[str] = []
+    seen: set[str] = set()
+    for name in names:
+        cleaned = clean_ingredient_text(name)
+        for candidate in (cleaned, primary_ingredient_key(name)):
+            text = str(candidate or "").strip()
+            if len(text) < 2 or text in seen:
+                continue
+            seen.add(text)
+            terms.append(text)
+    return terms
+
+
+def _dur_taboo_count() -> int:
+    conn = get_connection()
+    try:
+        row = conn.execute("SELECT COUNT(*) FROM dur_taboo").fetchone()
+        return int(row[0] if row else 0)
+    except Exception:
+        return 0
+    finally:
+        conn.close()
+
+
+def _has_taboo_for_ingredient(cursor, query: str) -> bool:
+    from app.services.pharmacist.ingredient import normalize_ingredient
+
+    key = normalize_ingredient(query)
+    if not key:
+        return False
+    rows = cursor.execute(
+        "SELECT ingredient_a, ingredient_b FROM dur_taboo"
+    ).fetchall()
+    for row in rows:
+        a = normalize_ingredient(row["ingredient_a"])
+        b = normalize_ingredient(row["ingredient_b"])
+        if key == a or key == b:
+            return True
+    return False
+
+
+def _sync_ingredient_type(
+    cursor,
+    risk_type: str,
+    *,
+    query: str,
+    api_key: str,
+) -> dict[str, Any]:
+    stats = {"fetched": 0, "upserted": 0, "error": None}
+    for param_key in _INGR_QUERY_KEYS:
+        page = 1
+        used_filter = False
+        while page <= _MAX_INGREDIENT_PAGES:
+            try:
+                items, total_count = _fetch_page(
+                    ENDPOINTS[risk_type],
+                    api_key=api_key,
+                    page=page,
+                    page_size=100,
+                    extra_params={param_key: query},
+                )
+            except HTTPException as error:
+                stats["error"] = error.detail
+                break
+            stats["fetched"] += len(items)
+            matched = [item for item in items if _item_mentions_ingredient(item, query)]
+            if items and not matched:
+                break
+            used_filter = True
+            for item in matched:
+                if _is_api_deleted(item):
+                    _delete_taboo(cursor, risk_type, item)
+                    continue
+                normalized = _normalize_item(risk_type, item)
+                if not normalized:
+                    continue
+                action = _upsert_taboo(cursor, normalized)
+                if action in {"inserted", "updated"}:
+                    stats["upserted"] += 1
+            if not items or page * 100 >= total_count:
+                break
+            page += 1
+        if used_filter:
+            stats["error"] = None
+            break
+    return stats
+
+
+def _item_mentions_ingredient(item: dict[str, Any], query: str) -> bool:
+    from app.services.pharmacist.ingredient import normalize_ingredient
+
+    needle = normalize_ingredient(query)
+    if not needle:
+        return False
+    blob = normalize_ingredient(json.dumps(item, ensure_ascii=False))
+    return needle in blob
+
+
 def _fetch_page(
     endpoint: str,
     *,
     api_key: str,
     page: int,
     page_size: int,
+    extra_params: dict[str, Any] | None = None,
 ) -> tuple[list[dict[str, Any]], int]:
     url = f"{DUR_API_BASE_URL}/{endpoint}"
+    params = {
+        "serviceKey": unquote(api_key.strip()),
+        "pageNo": page,
+        "numOfRows": page_size,
+        "type": "json",
+    }
+    if extra_params:
+        params.update({key: value for key, value in extra_params.items() if value})
     try:
         response = requests.get(
             url,
-            params={
-                # requests performs URL encoding, so normalize an Encoding key
-                # back to its decoded form to avoid double encoding.
-                "serviceKey": unquote(api_key.strip()),
-                "pageNo": page,
-                "numOfRows": page_size,
-                "type": "json",
-            },
+            params=params,
             timeout=TIMEOUT_SECONDS,
         )
     except requests.RequestException as error:
@@ -381,11 +591,31 @@ def _masked_preview(value: str) -> str:
     )
 
 
+def _is_api_deleted(item: dict[str, Any]) -> bool:
+    del_yn = str(item.get("DEL_YN") or "N").strip()
+    return del_yn.upper() in {"Y", "삭제", "DELETE", "DELETED"} or del_yn == "삭제"
+
+
+def _delete_taboo(cursor, risk_type: str, item: dict[str, Any]) -> None:
+    external_id = _first(item, "DUR_SEQ")
+    if not external_id:
+        return
+    cursor.execute(
+        """
+        DELETE FROM dur_taboo
+        WHERE source = ? AND taboo_type = ? AND external_id = ?
+        """,
+        (MFDS_DUR_SOURCE, risk_type, external_id),
+    )
+
+
 def _normalize_item(
     risk_type: str,
     item: dict[str, Any],
 ) -> dict[str, Any] | None:
-    if str(item.get("DEL_YN") or "N").upper() == "Y":
+    # 식약처는 DEL_YN 에 Y/N 또는 정상/삭제를 씀. 삭제 행은 넣지 않음.
+    del_yn = str(item.get("DEL_YN") or "N").strip()
+    if del_yn.upper() in {"Y", "삭제", "DELETE", "DELETED"} or del_yn == "삭제":
         return None
 
     ingredient_a = _first(
@@ -408,6 +638,9 @@ def _normalize_item(
         ingredient_b_code = _first(item, "MIXTURE_INGR_CODE")
         if not ingredient_b:
             return None
+    elif risk_type == "효능군중복":
+        # 같은 EFFECT_CODE 끼리 겹칠 때만 주의 → 분석 시 그룹 키로 사용
+        ingredient_b = _first(item, "EFFECT_CODE", "SERS_NAME", "CLASS_NAME")
 
     min_age, max_age = _parse_age_base(
         _first(item, "AGE_BASE") if risk_type == "연령금기" else None
@@ -500,16 +733,35 @@ def _upsert_taboo(cursor, item: dict[str, Any]) -> str:
 
 
 def _parse_age_base(value: str | None) -> tuple[int | None, int | None]:
+    """AGE_BASE → (min_age, max_age) 금기 연령대. 파싱 불가면 (None, None)."""
     if not value:
         return None, None
-    match = re.search(r"(\d+)\s*세", value)
+    text = str(value).strip()
+
+    # 개월/주: 연 단위로는 영아(0세)만 해당. 성인 오탐 방지.
+    month_match = re.search(r"(\d+)\s*개월", text)
+    week_match = re.search(r"(\d+)\s*주", text)
+    if month_match or week_match:
+        if "이상" in text or "초과" in text:
+            months = int((month_match or week_match).group(1))
+            if week_match and not month_match:
+                months = max(1, int(week_match.group(1)) // 4)
+            min_age = max(0, months // 12)
+            if "초과" in text and months % 12 == 0:
+                min_age += 1
+            return min_age, None
+        # 미만/이하/그 외 → 만 0세(1세 미만)만 금기로 본다
+        return None, 0
+
+    match = re.search(r"(\d+)\s*세", text)
     if not match:
         return None, None
     age = int(match.group(1))
-    if "이상" in value or "초과" in value:
-        return age + (1 if "초과" in value else 0), None
-    if "미만" in value:
+    if "이상" in text or "초과" in text:
+        return age + (1 if "초과" in text else 0), None
+    if "미만" in text:
         return None, max(age - 1, 0)
+    # "N세 이하" 및 숫자만 있는 경우 → max_age = N
     return None, age
 
 

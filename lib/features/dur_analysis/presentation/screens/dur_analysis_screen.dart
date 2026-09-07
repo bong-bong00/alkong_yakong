@@ -42,7 +42,27 @@ class _DurAnalysisScreenState extends State<DurAnalysisScreen> {
 
   bool _loading = true;
   bool _failed = false;
+  bool _hasRisk = false;
+  bool _incomplete = false;
+  String _message = '';
   List<Map<String, dynamic>> _matches = const [];
+  Map<String, Map<String, dynamic>> _byType = const {};
+  List<String> _medicineNames = const [];
+
+  static const _displayTypes = <String>[
+    '병용금기',
+    '연령금기',
+    '임부금기',
+    '효능군중복',
+    '중복성분',
+  ];
+
+  static String _typeLabel(String type) {
+    return switch (type) {
+      '중복성분' => '같은 성분 중복',
+      _ => type,
+    };
+  }
 
   @override
   void initState() {
@@ -54,23 +74,62 @@ class _DurAnalysisScreenState extends State<DurAnalysisScreen> {
     setState(() {
       _loading = true;
       _failed = false;
+      _incomplete = false;
     });
 
     final userId = MvpSession.userId.trim();
     try {
+      final body = <String, dynamic>{
+        'user_id': userId,
+        'medicine_codes': <String>[],
+      };
+      if (MvpSession.isPregnant != null) {
+        body['is_pregnant'] = MvpSession.isPregnant;
+      }
       final response = await _apiClient.post(
         '/api/v1/dur/analyze',
-        body: {'user_id': userId, 'medicine_codes': <String>[]},
+        body: body,
       );
       if (!mounted) return;
-      final matches = response is Map ? response['matches'] : null;
+      if (response is! Map) {
+        setState(() {
+          _loading = false;
+          _failed = true;
+        });
+        return;
+      }
+      final matches = response['matches'];
+      final byTypeRaw = response['by_type'];
+      final byType = <String, Map<String, dynamic>>{};
+      if (byTypeRaw is Map) {
+        byTypeRaw.forEach((key, value) {
+          if (value is Map) {
+            byType[key.toString()] = Map<String, dynamic>.from(value);
+          }
+        });
+      }
+      final parsedMatches = matches is List
+          ? matches
+                .whereType<Map>()
+                .map((m) => Map<String, dynamic>.from(m))
+                .toList()
+          : <Map<String, dynamic>>[];
+      final namesRaw = response['medicine_names'];
+      final medicineNames = namesRaw is List
+          ? namesRaw.map((e) => e.toString()).where((e) => e.isNotEmpty).toList()
+          : <String>[];
       setState(() {
-        _matches = matches is List
-            ? matches
-                  .whereType<Map>()
-                  .map((m) => Map<String, dynamic>.from(m))
-                  .toList()
-            : const [];
+        _matches = parsedMatches;
+        _byType = byType;
+        _medicineNames = medicineNames;
+        _hasRisk = response['has_risk'] == true || parsedMatches.isNotEmpty;
+        _incomplete = response['incomplete'] == true;
+        _message = response['message']?.toString() ??
+            (_hasRisk
+                ? '함께 먹을 때 주의가 있어요.'
+                : (_incomplete
+                    ? '함께먹기 검사를 끝까지 하지 못했어요.'
+                    : '지금 등록된 약끼리, 특별한 함께먹기 주의는 없어요.'));
         _loading = false;
       });
     } catch (_) {
@@ -80,6 +139,13 @@ class _DurAnalysisScreenState extends State<DurAnalysisScreen> {
         _failed = true;
       });
     }
+  }
+
+  int _countOf(String type) {
+    final bucket = _byType[type];
+    final count = bucket?['count'];
+    if (count is num) return count.toInt();
+    return _matches.where((m) => (m['type']?.toString() ?? '') == type).length;
   }
 
   static DrugRisk _riskOf(Map<String, dynamic> match) {
@@ -92,6 +158,22 @@ class _DurAnalysisScreenState extends State<DurAnalysisScreen> {
   }
 
   static String _pairOf(Map<String, dynamic> match) {
+    List<String> namesOf(dynamic raw) {
+      if (raw is List) {
+        return raw.map((e) => e.toString()).where((e) => e.isNotEmpty).toList();
+      }
+      return const [];
+    }
+
+    final firstNames = namesOf(match['medicine_names_a']);
+    final secondNames = namesOf(match['medicine_names_b']);
+    if (firstNames.isNotEmpty) {
+      final first = firstNames.join(', ');
+      if (secondNames.isEmpty) return first;
+      final second = secondNames.join(', ');
+      if (first == second) return first;
+      return '$first과 $second';
+    }
     final first = (match['ingredient_a'] ?? '').toString();
     final second = (match['ingredient_b'] ?? '').toString();
     if (first.isEmpty) return '등록하신 약';
@@ -103,16 +185,31 @@ class _DurAnalysisScreenState extends State<DurAnalysisScreen> {
   List<String> get _safeMedicines {
     final risky = <String>{};
     for (final match in _matches) {
-      for (final key in ['ingredient_a', 'ingredient_b']) {
-        final value = match[key]?.toString();
-        if (value != null && value.isNotEmpty) risky.add(value);
+      for (final key in ['medicine_names_a', 'medicine_names_b']) {
+        final raw = match[key];
+        if (raw is List) {
+          for (final name in raw) {
+            final text = name.toString();
+            if (text.isNotEmpty) risky.add(text);
+          }
+        }
+      }
+      final reason = match['reason']?.toString() ?? '';
+      for (final name in _medicineNames) {
+        if (name.isNotEmpty && reason.contains(name)) {
+          risky.add(name);
+        }
       }
     }
+    final sourceNames = _medicineNames.isNotEmpty
+        ? _medicineNames
+        : [
+            for (final item in MvpSession.latestOcrItems)
+              if (item['drug_name'] != null) item['drug_name'].toString(),
+          ];
     return [
-      for (final item in MvpSession.latestOcrItems)
-        if (item['drug_name'] != null &&
-            !risky.contains(item['drug_name'].toString()))
-          item['drug_name'].toString(),
+      for (final name in sourceNames)
+        if (!risky.contains(name)) name,
     ];
   }
 
@@ -180,6 +277,63 @@ class _DurAnalysisScreenState extends State<DurAnalysisScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
+            decoration: BoxDecoration(
+              color: _hasRisk
+                  ? AppColors.dangerBorder.withValues(alpha: 0.25)
+                  : (_incomplete ? const Color(0xFFFFF3E0) : AppColors.pointTint),
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  _hasRisk
+                      ? '주의가 있어요'
+                      : (_incomplete ? '검사가 덜 됐어요' : '주의 없음'),
+                  style: AppText.cardTitle(
+                    color: _hasRisk
+                        ? AppColors.danger
+                        : (_incomplete ? AppColors.danger : AppColors.point),
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(_message, style: AppText.body()),
+              ],
+            ),
+          ),
+          const SizedBox(height: 14),
+          for (final type in _displayTypes) ...[
+            SeniorCard(
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      _typeLabel(type),
+                      style: AppText.cardTitle(size: 19),
+                    ),
+                  ),
+                  Text(
+                    _countOf(type) == 0 ? '주의 없음' : '주의 ${_countOf(type)}건',
+                    style: AppText.label(
+                      size: 17,
+                      color: _countOf(type) == 0
+                          ? AppColors.textSecondary
+                          : AppColors.danger,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 10),
+          ],
+          if (dangers.isNotEmpty || cautions.isNotEmpty) ...[
+            const SizedBox(height: 6),
+            Text('자세히', style: AppText.cardTitle(size: 18)),
+            const SizedBox(height: 10),
+          ],
           for (final match in dangers) ...[
             _RiskCard(
               risk: DrugRisk.danger,
@@ -201,7 +355,7 @@ class _DurAnalysisScreenState extends State<DurAnalysisScreen> {
             ),
             const SizedBox(height: 12),
           ],
-          if (dangers.isEmpty && cautions.isEmpty) ...[
+          if (dangers.isEmpty && cautions.isEmpty && !_incomplete) ...[
             SeniorCard(
               padding: const EdgeInsets.symmetric(
                 horizontal: 20,

@@ -1,7 +1,7 @@
 import sqlite3
 from datetime import datetime
 
-from app.database import DB_PATH
+from app.database import DB_PATH, purge_ocr_placeholder_rows
 
 
 TABLE_DEFINITIONS = {
@@ -13,6 +13,8 @@ TABLE_DEFINITIONS = {
             gender TEXT,
             phone TEXT,
             role TEXT NOT NULL DEFAULT 'PATIENT',
+            is_pregnant INTEGER NOT NULL DEFAULT 0,
+            pregnancy_status TEXT,
             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
             updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
         )
@@ -41,6 +43,7 @@ TABLE_DEFINITIONS = {
             usage TEXT,
             precautions TEXT,
             image_url TEXT,
+            easy_category TEXT,
             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
             updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
         )
@@ -367,6 +370,13 @@ ADDITIVE_COLUMNS = {
     "prescription_items": {
         "easy_explanation": "TEXT",
     },
+    "medicines": {
+        "easy_category": "TEXT",
+    },
+    "users": {
+        "is_pregnant": "INTEGER NOT NULL DEFAULT 0",
+        "pregnancy_status": "TEXT",
+    },
 }
 
 
@@ -402,6 +412,7 @@ def initialize_database() -> None:
         cursor.execute(statement)
 
     conn.commit()
+    purge_ocr_placeholder_rows(conn)
     conn.close()
 
 

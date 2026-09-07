@@ -16,12 +16,17 @@ from app.routes import (
     users,
 )
 from init_db import initialize_database
-from app.models.response_schemas import HealthResponse, RootResponse
+from app.services.pharmacist.easy_category_db import initialize_easy_category_map_db
+from app.services.seed_mvp_medicines import ensure_mvp_demo_medicines
+from app.services.dur_sync_service import start_background_dur_sync
 
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     initialize_database()
+    initialize_easy_category_map_db()
+    ensure_mvp_demo_medicines()
+    start_background_dur_sync()
     yield
 
 
@@ -54,11 +59,11 @@ for router in (
     app.include_router(router)
 
 
-@app.get("/", response_model=RootResponse)
+@app.get("/")
 def root():
     return {"message": "알콩약콩 MVP 서버 실행 중", "docs": "/docs"}
 
 
-@app.get("/health", response_model=HealthResponse)
+@app.get("/health")
 def health():
     return {"status": "ok"}
