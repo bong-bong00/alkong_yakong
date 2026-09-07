@@ -143,16 +143,37 @@ def _pinned_item_seq(name: str) -> str | None:
     return PINNED_ITEM_SEQ.get(stripped)
 
 
+_DOC_HEADING_TITLES = {
+    "효능효과",
+    "용법용량",
+    "사용상의 주의사항",
+    "사용상 주의사항",
+    "저장방법",
+    "유효기간",
+}
+
+
 def xml_doc_to_text(value: Any) -> str:
     text = str(value or "")
     if not text or text == "None":
         return ""
     # CDATA 본문을 먼저 뽑는다. 태그 정규식이 CDATA 전체를 지워버리는 것을 막음.
     cdata = re.findall(r"<!\[CDATA\[(.*?)\]\]>", text, flags=re.S)
-    if cdata:
-        return " ".join(" ".join(cdata).split())
-    text = re.sub(r"<[^>]+>", " ", text)
-    return " ".join(text.split())
+    body = " ".join(" ".join(cdata).split()) if cdata else ""
+    if body:
+        return body
+    # 아디팜정처럼 효능이 <ARTICLE title="..."/> 에만 있는 경우
+    titles: list[str] = []
+    for raw_title in re.findall(r'\btitle="([^"]*)"', text):
+        title = " ".join(raw_title.split()).strip()
+        if not title or title in _DOC_HEADING_TITLES:
+            continue
+        if title not in titles:
+            titles.append(title)
+    leftover = " ".join(re.sub(r"<[^>]+>", " ", text).split())
+    if leftover and leftover not in titles:
+        titles.append(leftover)
+    return " ".join(titles)
 
 
 def backfill_plain_texts(conn: sqlite3.Connection | None = None) -> int:
