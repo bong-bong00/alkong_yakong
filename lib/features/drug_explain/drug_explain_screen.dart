@@ -99,7 +99,9 @@ class _DrugExplainScreenState extends State<DrugExplainScreen> {
     super.dispose();
   }
 
-  void _selectKeyword(Map<String, String> keyword) {
+  Future<void> _selectKeyword(Map<String, String> keyword) async {
+    if (_isLoading) return;
+
     final label = keyword['label'];
     final prompt = keyword['prompt'];
     if (label == null || prompt == null) return;
@@ -117,10 +119,7 @@ class _DrugExplainScreenState extends State<DrugExplainScreen> {
 
     setState(() => _selectedKeyword = label);
     final completedPrompt = prompt.replaceAll('{medicine}', medicine);
-    _chatController
-      ..text = completedPrompt
-      ..selection = TextSelection.collapsed(offset: completedPrompt.length);
-    _chatFocusNode.requestFocus();
+    await _sendMessage(message: completedPrompt);
   }
 
   Future<void> _loadMedicines() async {
@@ -233,8 +232,10 @@ class _DrugExplainScreenState extends State<DrugExplainScreen> {
     });
   }
 
-  Future<void> _sendMessage() async {
-    final text = _chatController.text.trim();
+  Future<void> _sendMessage({String? message}) async {
+    if (_isLoading) return;
+
+    final text = (message ?? _chatController.text).trim();
     if (text.isEmpty) return;
 
     setState(() {
@@ -242,7 +243,7 @@ class _DrugExplainScreenState extends State<DrugExplainScreen> {
       _isLoading = true;
       _selectedKeyword = null;
     });
-    _chatController.clear();
+    if (message == null) _chatController.clear();
     _scrollToBottom();
 
     try {
@@ -323,7 +324,9 @@ class _DrugExplainScreenState extends State<DrugExplainScreen> {
                       errorMessage: _medicineLoadError,
                       onSelected: (medicine) {
                         setState(() {
-                          _selectedMedicine = medicine;
+                          _selectedMedicine = _selectedMedicine == medicine
+                              ? null
+                              : medicine;
                           _selectedKeyword = null;
                         });
                       },
