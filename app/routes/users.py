@@ -4,6 +4,7 @@ from fastapi import APIRouter, HTTPException
 
 from app.database import get_connection
 from app.models.schemas import UserCreate
+from app.models.response_schemas import UserCreateResponse, UserResponse
 
 
 router = APIRouter(prefix="/api/v1/users", tags=["Users"])
@@ -20,7 +21,7 @@ def _pregnancy_flag(user: UserCreate) -> tuple[int, str | None]:
     return 0, status
 
 
-@router.post("")
+@router.post("", response_model=UserCreateResponse)
 def create_user(user: UserCreate):
     conn = get_connection()
     try:
@@ -54,7 +55,7 @@ def create_user(user: UserCreate):
         conn.close()
 
 
-@router.get("")
+@router.get("", response_model=list[UserResponse])
 def get_users():
     conn = get_connection()
     try:
@@ -68,7 +69,7 @@ def get_users():
         conn.close()
 
 
-@router.get("/{user_id}")
+@router.get("/{user_id}", response_model=UserResponse)
 def get_user(user_id: str):
     conn = get_connection()
     try:

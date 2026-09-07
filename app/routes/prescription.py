@@ -1,6 +1,7 @@
 from fastapi import APIRouter
 
 from app.models.schemas import PrescriptionConfirmRequest, PrescriptionOCRRequest
+from app.models.response_schemas import PrescriptionResponse
 from app.services.prescription_service import (
     confirm_prescription,
     create_prescription_from_ocr,
@@ -22,6 +23,6 @@ def register_prescription_confirm(request: PrescriptionConfirmRequest):
     return confirm_prescription(request)
 
 
-@router.get("/users/{user_id}/prescriptions")
+@router.get("/users/{user_id}/prescriptions", response_model=list[PrescriptionResponse])
 def list_user_prescriptions(user_id: str):
     return get_user_prescriptions(user_id)

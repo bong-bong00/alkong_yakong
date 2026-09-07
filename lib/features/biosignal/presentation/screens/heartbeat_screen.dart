@@ -4,12 +4,15 @@ import 'package:flutter/material.dart';
 import 'package:permission_handler/permission_handler.dart';
 
 import '../../../../core/constants/app_colors.dart';
+import '../../../../core/network/api_client.dart';
+import '../../../../core/session/mvp_session.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../core/widgets/recovery_view.dart';
 import '../../../../core/widgets/senior_button.dart';
 import '../../../../core/widgets/senior_card.dart';
 import '../../../../core/widgets/senior_header.dart';
 import '../../../medication/domain/medication_models.dart';
+import '../../data/biosignal_dataset_collector.dart';
 import '../../data/polar_service.dart';
 
 /// 4g — 심장 박동.
@@ -35,6 +38,9 @@ class HeartbeatScreen extends StatefulWidget {
 
 class _HeartbeatScreenState extends State<HeartbeatScreen> {
   final PolarService _polar = PolarService();
+  final ApiClient _apiClient = ApiClient();
+  final BiosignalDatasetCollector _datasetCollector =
+      BiosignalDatasetCollector();
   final List<int> _samples = <int>[];
   final List<StreamSubscription<dynamic>> _subscriptions = [];
 
@@ -94,12 +100,23 @@ class _HeartbeatScreenState extends State<HeartbeatScreen> {
       _subscriptions.add(
         _polar.currentBpmStream.listen((bpm) {
           if (!mounted || bpm == null) return;
+          _datasetCollector.addPolarBpm(
+            bpm,
+            deviceId: _deviceId ?? PolarService.defaultDeviceId,
+          );
           setState(() {
             _bpm = bpm;
             _lastReadAt = DateTime.now();
             _samples.add(bpm);
             if (_samples.length > 10) _samples.removeAt(0);
           });
+        }),
+      );
+      _subscriptions.add(
+        _polar.averageBpmStream.listen((average) {
+          if (average != null) {
+            unawaited(_sendAverageBpm(average));
+          }
         }),
       );
       _subscriptions.add(
@@ -123,6 +140,28 @@ class _HeartbeatScreenState extends State<HeartbeatScreen> {
         _connecting = false;
         _disconnected = true;
       });
+    }
+  }
+
+  Future<void> _sendAverageBpm(double average) async {
+    final userId = MvpSession.userId.trim();
+    if (userId.isEmpty) {
+      debugPrint('Skipping average BPM upload: user ID is empty.');
+      return;
+    }
+    try {
+      await _apiClient.post(
+        '/api/v1/biosignal/heart-rate',
+        body: {
+          'user_id': userId,
+          'bpm': average.round(),
+          'device_id': _deviceId ?? PolarService.defaultDeviceId,
+          'source': 'POLAR_30S_AVERAGE',
+        },
+      );
+      debugPrint('[POLAR_UI] avg upload success');
+    } on ApiException catch (error) {
+      debugPrint('[POLAR_UI] avg upload failed: $error');
     }
   }
 
