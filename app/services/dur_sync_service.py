@@ -278,7 +278,12 @@ def _bootstrap_dur_sync() -> None:
         logger.warning("식약처 DUR 백그라운드 동기화 실패", exc_info=True)
 
 
-def refresh_dur_for_ingredients(names: list[str]) -> dict[str, Any]:
+def refresh_dur_for_ingredients(
+    names: list[str],
+    *,
+    risk_types: set[str] | None = None,
+    force_refresh: bool = False,
+) -> dict[str, Any]:
     """검사에 필요한 성분만 식약처에서 받아 dur_taboo 에 넣는다."""
     queries = _ingredient_query_terms(names)
     if not queries:
@@ -296,13 +301,22 @@ def refresh_dur_for_ingredients(names: list[str]) -> dict[str, Any]:
             conn = get_connection()
             try:
                 cursor = conn.cursor()
-                pending = [
-                    query
-                    for query in queries
-                    if not _has_taboo_for_ingredient(cursor, query)
+                pending = (
+                    queries
+                    if force_refresh
+                    else [
+                        query
+                        for query in queries
+                        if not _has_taboo_for_ingredient(cursor, query)
+                    ]
+                )
+                requested_types = [
+                    risk_type
+                    for risk_type in ENDPOINTS
+                    if risk_types is None or risk_type in risk_types
                 ]
                 for query in pending:
-                    for risk_type in ENDPOINTS:
+                    for risk_type in requested_types:
                         stats = _sync_ingredient_type(
                             cursor,
                             risk_type,
@@ -327,7 +341,7 @@ def refresh_dur_for_ingredients(names: list[str]) -> dict[str, Any]:
             "upserted": upserted,
             "error": type(error).__name__,
         }
-    if errors and upserted == 0 and fetched == 0:
+    if errors and (force_refresh or (upserted == 0 and fetched == 0)):
         return {"status": "failed", "fetched": 0, "upserted": 0, "error": errors[0]}
     return {"status": "ok", "fetched": fetched, "upserted": upserted}
 
@@ -335,14 +349,16 @@ def refresh_dur_for_ingredients(names: list[str]) -> dict[str, Any]:
 def _ingredient_query_terms(names: list[str]) -> list[str]:
     from app.services.pharmacist.ingredient import (
         clean_ingredient_text,
-        primary_ingredient_key,
+        ingredient_keys,
     )
 
     terms: list[str] = []
     seen: set[str] = set()
     for name in names:
         cleaned = clean_ingredient_text(name)
-        for candidate in (cleaned, primary_ingredient_key(name)):
+        cleaned_parts = [part.strip() for part in cleaned.split("|") if part.strip()]
+        candidates = cleaned_parts or [cleaned]
+        for candidate in (*candidates, *ingredient_keys(name)):
             text = str(candidate or "").strip()
             if len(text) < 2 or text in seen:
                 continue

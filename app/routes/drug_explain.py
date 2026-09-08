@@ -17,7 +17,15 @@ router = APIRouter(prefix="/api/v1", tags=["Drug Explain"])
 @router.post("/drug-explain/chat", response_model=ChatResponse)
 def chat_with_pharmacist(request: DrugExplainChatRequest):
     from app.services.gemini_service import generate_chat_response
-    reply = generate_chat_response(request.message, user_id=request.user_id)
+    reply = generate_chat_response(
+        request.message,
+        user_id=request.user_id,
+        selected_medicine=(
+            request.selected_medicine.model_dump()
+            if request.selected_medicine is not None
+            else None
+        ),
+    )
     return {"reply": reply}
 
 

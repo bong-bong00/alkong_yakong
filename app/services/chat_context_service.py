@@ -225,6 +225,14 @@ def _enrich_dur_match(conn, match: dict[str, Any]) -> dict[str, Any]:
     return {key: value for key, value in context.items() if value not in (None, "")}
 
 
+def enrich_dur_matches(matches: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    conn = get_connection()
+    try:
+        return [_enrich_dur_match(conn, match) for match in matches]
+    finally:
+        conn.close()
+
+
 def build_grounded_chat_prompt(
     *,
     message: str,

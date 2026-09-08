@@ -26,6 +26,7 @@ class _DrugExplainScreenState extends State<DrugExplainScreen> {
   bool _isLoadingMedicines = false;
   String? _selectedKeyword;
   String? _selectedMedicine;
+  _DrugSearchCandidate? _selectedOfficialMedicine;
   String? _medicineLoadError;
   final List<String> _medicines = [];
   final List<Map<String, dynamic>> _messages = [];
@@ -208,14 +209,17 @@ class _DrugExplainScreenState extends State<DrugExplainScreen> {
   }
 
   Future<void> _enterOtherMedicine() async {
-    final medicine = await showDialog<String>(
+    final medicine = await showDialog<_DrugSearchCandidate>(
       context: context,
       builder: (_) => _OtherMedicineDialog(apiClient: _apiClient),
     );
     if (!mounted || medicine == null) return;
     setState(() {
-      if (!_medicines.contains(medicine)) _medicines.add(medicine);
-      _selectedMedicine = medicine;
+      if (!_medicines.contains(medicine.itemName)) {
+        _medicines.add(medicine.itemName);
+      }
+      _selectedMedicine = medicine.itemName;
+      _selectedOfficialMedicine = medicine;
       _selectedKeyword = null;
     });
   }
@@ -249,9 +253,20 @@ class _DrugExplainScreenState extends State<DrugExplainScreen> {
     try {
       // TODO: 실제 AI 챗봇 API 엔드포인트로 변경 필요
       // 현재는 기존 약물 설명 API 구조를 임시로 챗봇 응답처럼 활용하도록 구성
+      final body = <String, dynamic>{
+        'user_id': MvpSession.userId,
+        'message': text,
+      };
+      final selectedOfficial = _selectedOfficialMedicine;
+      if (selectedOfficial?.itemSeq != null) {
+        body['selected_medicine'] = {
+          'medicine_code': selectedOfficial!.itemSeq,
+          'product_name': selectedOfficial.itemName,
+        };
+      }
       final response = await _apiClient.post(
         '/api/v1/drug-explain/chat', // 가상의 챗봇 엔드포인트
-        body: {'user_id': MvpSession.userId, 'message': text},
+        body: body,
       );
 
       final data = Map<String, dynamic>.from(response as Map);
@@ -366,9 +381,13 @@ class _DrugExplainScreenState extends State<DrugExplainScreen> {
                       errorMessage: _medicineLoadError,
                       onSelected: (medicine) {
                         setState(() {
-                          _selectedMedicine = _selectedMedicine == medicine
-                              ? null
-                              : medicine;
+                          if (_selectedMedicine == medicine) {
+                            _selectedMedicine = null;
+                            _selectedOfficialMedicine = null;
+                          } else {
+                            _selectedMedicine = medicine;
+                            _selectedOfficialMedicine = null;
+                          }
                           _selectedKeyword = null;
                         });
                       },
@@ -567,7 +586,7 @@ class _OtherMedicineDialogState extends State<_OtherMedicineDialog> {
   }
 
   void _select(_DrugSearchCandidate candidate) {
-    Navigator.of(context).pop(candidate.itemName);
+    Navigator.of(context).pop(candidate);
   }
 
   @override

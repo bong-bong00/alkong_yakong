@@ -1,3 +1,4 @@
+import json
 import uuid
 from collections import defaultdict
 from datetime import date
@@ -10,7 +11,7 @@ from app.services.pharmacist.ingredient import (
     ingredient_keys,
     is_usable_ingredient,
     normalize_ingredient,
-    primary_ingredient_key,
+    primary_ingredient_keys,
 )
 
 
@@ -131,8 +132,8 @@ def analyze_dur(request: DurAnalyzeRequest) -> dict:
             keys = ingredient_keys(medicine["ingredient"])
             if not keys:
                 continue
-            primary = primary_ingredient_key(medicine["ingredient"])
-            primary_grouped[primary].append(medicine)
+            for primary in primary_ingredient_keys(medicine["ingredient"]):
+                primary_grouped[primary].append(medicine)
             for key in keys:
                 lookup_grouped[key].append(medicine)
 
@@ -168,6 +169,7 @@ def analyze_dur(request: DurAnalyzeRequest) -> dict:
             )
 
         matches = _deduplicate_matches(matches)
+        matches = [_without_internal_match_fields(match) for match in matches]
         risk_level = _risk_level(matches)
         by_type = _group_by_type(matches)
         has_risk = len(matches) > 0
@@ -255,6 +257,193 @@ def analyze_dur(request: DurAnalyzeRequest) -> dict:
         conn.close()
 
 
+def analyze_dur_consultation(
+    *,
+    user_id: str,
+    selected_medicine: dict,
+    risk_types: set[str],
+) -> dict:
+    """Run an official DUR check without persisting user medication or results."""
+    conn = get_connection()
+    try:
+        cursor = conn.cursor()
+        user = cursor.execute(
+            "SELECT id, birth_date, gender, is_pregnant FROM users WHERE id = ?",
+            (user_id,),
+        ).fetchone()
+        if not user:
+            raise HTTPException(status_code=404, detail="사용자가 없습니다.")
+
+        medicine_code = str(selected_medicine.get("medicine_code") or "").strip()
+        product_name = str(selected_medicine.get("product_name") or "").strip()
+        ingredient = selected_medicine.get("ingredient")
+        consultation_medicine = {
+            "medicine_code": medicine_code,
+            "product_name": product_name,
+            "ingredient": ingredient,
+        }
+        if not medicine_code or not product_name or not _is_usable_ingredient(
+            consultation_medicine
+        ):
+            return {
+                "status": "missing",
+                "items": [],
+                "scope": "consultation",
+                "reason": "official_medicine_unavailable",
+            }
+
+        pairwise_types = {"병용금기", "효능군중복", "중복성분"}
+        medicines = []
+        if risk_types & pairwise_types:
+            medicines.extend(
+                dict(row)
+                for row in _load_medicines(
+                    cursor,
+                    DurAnalyzeRequest(user_id=user_id, medicine_codes=[]),
+                )
+            )
+        medicines.append(consultation_medicine)
+        medicines = list(
+            {
+                medicine["medicine_code"]: medicine
+                for medicine in medicines
+                if medicine.get("medicine_code")
+            }.values()
+        )
+
+        age = _age_from_birth_date(user["birth_date"])
+        if "연령금기" in risk_types and age is None:
+            return {
+                "status": "missing",
+                "items": [],
+                "scope": "consultation",
+                "reason": "missing_birth_date",
+            }
+        try:
+            pregnancy_value = user["is_pregnant"]
+            if pregnancy_value is None and "임부금기" in risk_types:
+                return {
+                    "status": "missing",
+                    "items": [],
+                    "scope": "consultation",
+                    "reason": "missing_pregnancy_status",
+                }
+            is_pregnant = bool(pregnancy_value)
+        except (KeyError, IndexError, TypeError):
+            if "임부금기" in risk_types:
+                return {
+                    "status": "missing",
+                    "items": [],
+                    "scope": "consultation",
+                    "reason": "missing_pregnancy_status",
+                }
+            is_pregnant = None
+
+        ingredients = [
+            medicine["ingredient"]
+            for medicine in medicines
+            if _is_usable_ingredient(medicine)
+        ]
+        from app.services.dur_sync_service import refresh_dur_for_ingredients
+
+        official_risk_types = risk_types & {
+            "병용금기",
+            "연령금기",
+            "임부금기",
+            "효능군중복",
+        }
+        sync_result = (
+            refresh_dur_for_ingredients(
+                ingredients,
+                risk_types=official_risk_types,
+                force_refresh=True,
+            )
+            if official_risk_types
+            else {"status": "ok", "fetched": 0, "upserted": 0}
+        )
+        taboo_rows = [
+            row
+            for row in cursor.execute("SELECT * FROM dur_taboo").fetchall()
+            if not _is_deleted_taboo(row)
+        ]
+        if official_risk_types and sync_result.get("status") != "ok":
+            return {
+                "status": "missing",
+                "items": [],
+                "scope": "consultation",
+                "reason": "dur_data_unavailable",
+            }
+
+        lookup_grouped = defaultdict(list)
+        primary_grouped = defaultdict(list)
+        for medicine in medicines:
+            if not _is_usable_ingredient(medicine):
+                continue
+            keys = ingredient_keys(medicine["ingredient"])
+            if not keys:
+                continue
+            for primary in primary_ingredient_keys(medicine["ingredient"]):
+                primary_grouped[primary].append(medicine)
+            for key in keys:
+                lookup_grouped[key].append(medicine)
+
+        matches = _duplicate_matches(primary_grouped)
+        official_matches = _taboo_matches(
+            taboo_rows,
+            lookup_grouped,
+            age=age,
+            is_pregnant=is_pregnant,
+        )
+        matches.extend(official_matches)
+        matches.extend(_efficacy_duplicate_matches(taboo_rows, lookup_grouped))
+        if not official_matches:
+            matches.extend(_legacy_matches(taboo_rows, lookup_grouped))
+        matches = _deduplicate_matches(matches)
+        matches = [
+            match
+            for match in matches
+            if match.get("type") in risk_types
+            and _match_involves_consultation_medicine(match, consultation_medicine)
+        ]
+        matches = [_without_internal_match_fields(match) for match in matches]
+        return {
+            "status": "current",
+            "items": matches,
+            "scope": "consultation",
+            "reason": None,
+        }
+    finally:
+        conn.close()
+
+
+def _match_involves_consultation_medicine(
+    match: dict,
+    medicine: dict,
+) -> bool:
+    medicine_code = str(medicine.get("medicine_code") or "")
+    related_codes = {str(code) for code in match.get("_medicine_codes") or []}
+    if related_codes:
+        return medicine_code in related_codes
+
+    product_name = str(medicine.get("product_name") or "")
+    names = [
+        str(name)
+        for key in ("medicine_names_a", "medicine_names_b")
+        for name in (match.get(key) or [])
+    ]
+    if product_name and product_name in names:
+        return True
+    consultation_keys = set(ingredient_keys(medicine.get("ingredient")))
+    match_keys = set(match.get("_ingredient_keys") or [])
+    if consultation_keys and match_keys:
+        return bool(consultation_keys & match_keys)
+    return bool(product_name and product_name in str(match.get("reason") or ""))
+
+
+def _without_internal_match_fields(match: dict) -> dict:
+    return {key: value for key, value in match.items() if not key.startswith("_")}
+
+
 def _load_medicines(cursor, request: DurAnalyzeRequest):
     if request.medicine_codes:
         # 요청 코드도 중복 제거 (같은 약 여러 번 넣어도 한 번만)
@@ -302,6 +491,8 @@ def _duplicate_matches(grouped) -> list[dict]:
                 "ingredient_b": ingredient,
                 "medicine_names_a": names,
                 "medicine_names_b": names,
+                "_medicine_codes": sorted(codes),
+                "_ingredient_keys": [key],
                 "reason": (
                     f"같은 성분({ingredient})이 여러 약에 들어 있어요: {', '.join(names)}. "
                     "중복으로 드시는지 약국에 확인해 주세요."
@@ -395,6 +586,14 @@ def _efficacy_duplicate_matches(rows, grouped) -> list[dict]:
                 "reason": reason,
                 "source": taboo_rows[0]["source"] or "식약처 DUR",
                 "external_id": taboo_rows[0]["external_id"],
+                "_medicine_codes": [med["medicine_code"] for med in hit_meds],
+                "_ingredient_keys": sorted(
+                    {
+                        key
+                        for med in hit_meds
+                        for key in ingredient_keys(med["ingredient"])
+                    }
+                ),
             }
         )
     return matches
@@ -438,6 +637,13 @@ def _taboo_matches(
         # 사용자 약 이름을 이유에 붙여 화면에서 이해하기 쉽게
         products_a = [r["product_name"] for r in _grouped_rows(grouped, row["ingredient_a"])]
         products_b = [r["product_name"] for r in _grouped_rows(grouped, row["ingredient_b"])]
+        medicine_codes = {
+            r["medicine_code"]
+            for r in (
+                _grouped_rows(grouped, row["ingredient_a"])
+                + _grouped_rows(grouped, row["ingredient_b"])
+            )
+        }
         reason = row["description"] or "함께 먹을 때 주의가 필요해요."
         if products_a:
             reason = f"{', '.join(products_a)}" + (
@@ -453,6 +659,11 @@ def _taboo_matches(
                 "reason": reason,
                 "source": row["source"] or "식약처 DUR",
                 "external_id": row["external_id"],
+                "_medicine_codes": sorted(medicine_codes),
+                "_ingredient_keys": sorted(
+                    set(ingredient_keys(row["ingredient_a"]))
+                    | set(ingredient_keys(row["ingredient_b"]))
+                ),
             }
         )
     return matches

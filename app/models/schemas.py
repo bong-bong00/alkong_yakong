@@ -116,6 +116,12 @@ class HeartRateCreate(BaseModel):
     source: str = "POLAR"
 
 
+class SelectedMedicine(BaseModel):
+    medicine_code: str
+    product_name: str
+
+
 class DrugExplainChatRequest(BaseModel):
     user_id: str
     message: str
+    selected_medicine: Optional[SelectedMedicine] = None

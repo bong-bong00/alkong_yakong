@@ -117,7 +117,7 @@ void main() {
   });
 
   testWidgets('사용자가 고른 공식 품목명이 선택되고 빠른 질문에 사용된다', (tester) async {
-    Map<String, dynamic>? chatBody;
+    final chatBodies = <Map<String, dynamic>>[];
     final client = MockClient((request) async {
       if (request.url.path.endsWith('/dashboard')) {
         return jsonResponse({
@@ -126,7 +126,7 @@ void main() {
         });
       }
       if (request.url.path.endsWith('/drug-explain/chat')) {
-        chatBody = jsonDecode(request.body) as Map<String, dynamic>;
+        chatBodies.add(jsonDecode(request.body) as Map<String, dynamic>);
         return jsonResponse({'reply': '복용방법 답변'});
       }
       return jsonResponse({
@@ -154,16 +154,23 @@ void main() {
 
     final selectedMedicineChip = find.widgetWithText(ChoiceChip, '게보린정');
     expect(tester.widget<ChoiceChip>(selectedMedicineChip).selected, isTrue);
+    await tester.tap(find.text('#복용방법'));
+    await tester.pumpAndSettle();
+    expect(chatBodies.last['message'], '게보린정의 복용방법을 공식 의약품 정보 기준으로 알려주세요.');
+    expect(chatBodies.last['selected_medicine'], {
+      'medicine_code': '1',
+      'product_name': '게보린정',
+    });
+
     await tester.tap(selectedMedicineChip);
     await tester.pump();
     expect(tester.widget<ChoiceChip>(selectedMedicineChip).selected, isFalse);
     await tester.tap(selectedMedicineChip);
     await tester.pump();
     expect(tester.widget<ChoiceChip>(selectedMedicineChip).selected, isTrue);
-
     await tester.tap(find.text('#복용방법'));
     await tester.pumpAndSettle();
-    expect(chatBody?['message'], '게보린정의 복용방법을 공식 의약품 정보 기준으로 알려주세요.');
+    expect(chatBodies.last.containsKey('selected_medicine'), isFalse);
     expect(find.text('복용방법 답변'), findsOneWidget);
   });
 
@@ -183,10 +190,9 @@ void main() {
         });
       }
       if (request.url.path.endsWith('/drug-explain/chat')) {
-        sentMessages.add(
-          (jsonDecode(request.body) as Map<String, dynamic>)['message']
-              as String,
-        );
+        final body = jsonDecode(request.body) as Map<String, dynamic>;
+        expect(body.containsKey('selected_medicine'), isFalse);
+        sentMessages.add(body['message'] as String);
         return jsonResponse({'reply': '빠른 질문 답변'});
       }
       throw StateError('unexpected request: ${request.url.path}');
@@ -216,6 +222,78 @@ void main() {
       await tester.pump();
     }
     expect(sentMessages, expected.values.toList());
+  });
+
+  testWidgets('검색 약과 기존 복용약의 payload 출처를 구분한다', (tester) async {
+    final chatBodies = <Map<String, dynamic>>[];
+    final client = MockClient((request) async {
+      if (request.url.path.endsWith('/dashboard')) {
+        return jsonResponse({
+          'latest_prescription': null,
+          'today_medications': [
+            {'product_name': '기존약A'},
+          ],
+        });
+      }
+      if (request.url.path.endsWith('/drug-explain/chat')) {
+        chatBodies.add(jsonDecode(request.body) as Map<String, dynamic>);
+        return jsonResponse({'reply': '답변'});
+      }
+      final query = request.url.queryParameters['q'];
+      return jsonResponse({
+        'query': query,
+        'count': 1,
+        'items': [
+          {
+            'item_name': query == '검색D' ? '검색약D' : '검색약C',
+            'manufacturer': '제조사',
+            'item_seq': query == '검색D' ? '4' : '3',
+          },
+        ],
+      });
+    });
+
+    await tester.pumpWidget(appWith(client));
+    await tester.pumpAndSettle();
+
+    Future<void> selectSearchResult(String query, String result) async {
+      await tester.tap(find.text('다른 약 검색하기'));
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const Key('otherMedicineSearchField')),
+        query,
+      );
+      await tester.pump(const Duration(milliseconds: 400));
+      await tester.pump();
+      await tester.tap(find.text(result));
+      await tester.pumpAndSettle();
+    }
+
+    await selectSearchResult('검색C', '검색약C');
+    await tester.tap(find.text('기존약A'));
+    await tester.pump();
+    await tester.tap(find.text('#복용방법'));
+    await tester.pumpAndSettle();
+    expect(chatBodies.last.containsKey('selected_medicine'), isFalse);
+
+    await selectSearchResult('검색D', '검색약D');
+    await tester.tap(find.text('#복용방법'));
+    await tester.pumpAndSettle();
+    expect(chatBodies.last['selected_medicine'], {
+      'medicine_code': '4',
+      'product_name': '검색약D',
+    });
+
+    await tester.tap(find.text('다른 약 검색하기'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('취소'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('#복용방법'));
+    await tester.pumpAndSettle();
+    expect(chatBodies.last['selected_medicine'], {
+      'medicine_code': '4',
+      'product_name': '검색약D',
+    });
   });
 
   testWidgets('약 미선택 시 빠른 질문은 API를 호출하지 않고 안내한다', (tester) async {

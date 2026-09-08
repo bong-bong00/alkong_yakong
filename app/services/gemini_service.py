@@ -304,10 +304,17 @@ def _dur_no_match_reply(intents: set[str]) -> str:
     )
 
 
-def generate_chat_response(message: str, *, user_id: str = "") -> str:
+def generate_chat_response(
+    message: str,
+    *,
+    user_id: str = "",
+    selected_medicine: dict[str, Any] | None = None,
+) -> str:
     from app.services.chat_context_service import (
+        DUR_TYPES_BY_INTENT,
         build_grounded_chat_prompt,
         classify_question,
+        enrich_dur_matches,
         general_conversation_reply,
         is_safety_question,
         load_latest_dur_context,
@@ -330,7 +337,43 @@ def generate_chat_response(message: str, *, user_id: str = "") -> str:
 
     try:
         from google import genai
-        from app.services.external_api_service import search_drug_info_by_name
+        from app.services.dur_service import analyze_dur_consultation
+        from app.services.external_api_service import (
+            fetch_e_drug_info,
+            search_drug_info_by_name,
+        )
+
+        selected_official = None
+        official_data_list = []
+        if selected_medicine is not None:
+            selected_code = str(
+                selected_medicine.get("medicine_code") or ""
+            ).strip()
+            selected_name = str(
+                selected_medicine.get("product_name") or ""
+            ).strip()
+            if selected_code.isdigit() and selected_name:
+                selected_official = fetch_e_drug_info(
+                    medicine_code=selected_code,
+                )
+            if (
+                not selected_official
+                or selected_official.get("medicine_code") != selected_code
+                or "".join(selected_official.get("product_name", "").split()).casefold()
+                != "".join(selected_name.split()).casefold()
+            ):
+                return (
+                    _dur_context_unavailable_reply(intents, "missing")
+                    if safety_question
+                    else unavailable_reply
+                )
+            official_data_list.append(
+                {
+                    "검색된_약품명": selected_official["product_name"],
+                    "match_type": "exact",
+                    "식약처_공식정보": selected_official,
+                }
+            )
 
         with genai.Client(api_key=GEMINI_API_KEY) as client:
             # Step 0 & 1: 오타 교정 및 약품명 추출 (추론 강화)
@@ -365,8 +408,6 @@ def generate_chat_response(message: str, *, user_id: str = "") -> str:
             )
 
             # 2. 식약처 공식 데이터 수집
-            official_data_list = []
-
             for drug_index, name in enumerate(drug_names):
                 found_data = None
                 # 2-1. 먼저 식약처 API 시도
@@ -407,7 +448,11 @@ def generate_chat_response(message: str, *, user_id: str = "") -> str:
                         type(getattr(e, "detail", None)).__name__,
                     )
 
-                if found_data:
+                if found_data and not any(
+                    item["식약처_공식정보"].get("medicine_code")
+                    == found_data["식약처_공식정보"].get("medicine_code")
+                    for item in official_data_list
+                ):
                     official_data_list.append(found_data)
 
             official_contexts = [
@@ -417,7 +462,18 @@ def generate_chat_response(message: str, *, user_id: str = "") -> str:
                 and item.get("식약처_공식정보")
             ]
             official_contexts = [item for item in official_contexts if item]
-            dur_result = load_latest_dur_context(user_id, intents)
+            if safety_question and selected_official is not None:
+                wanted_types = set().union(
+                    *(DUR_TYPES_BY_INTENT.get(intent, set()) for intent in intents)
+                )
+                dur_result = analyze_dur_consultation(
+                    user_id=user_id,
+                    selected_medicine=selected_official,
+                    risk_types=wanted_types,
+                )
+                dur_result["items"] = enrich_dur_matches(dur_result["items"])
+            else:
+                dur_result = load_latest_dur_context(user_id, intents)
 
             if safety_question and dur_result["status"] in {"stale", "missing"}:
                 return _dur_context_unavailable_reply(
