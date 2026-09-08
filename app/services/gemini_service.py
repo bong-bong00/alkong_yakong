@@ -237,6 +237,73 @@ def _finalize_chat_response(response) -> str:
     return reply
 
 
+def _dur_context_unavailable_reply(intents: set[str], status: str) -> str:
+    if intents & {"combination", "interaction"}:
+        if status == "missing":
+            return (
+                "현재 복용약 조합에 대한 DUR 병용금기 분석 결과를 확인할 수 없습니다. "
+                "최신 DUR 분석 후 확인해주세요."
+            )
+        return (
+            "복용 중인 약 정보가 DUR 분석 당시와 달라 최신 병용금기 결과로 "
+            "보기 어렵습니다. DUR 재분석이 필요합니다."
+        )
+    if "age" in intents:
+        if status == "missing":
+            return (
+                "현재 사용자 기준 DUR 연령금기 분석 결과를 확인할 수 없습니다. "
+                "최신 DUR 분석 후 확인해주세요."
+            )
+        return (
+            "현재 복용약 구성이 기존 DUR 분석 당시와 달라 최신 연령금기 결과로 "
+            "보기 어렵습니다. DUR 재분석이 필요합니다."
+        )
+    if "pregnancy" in intents:
+        if status == "missing":
+            return (
+                "현재 사용자 기준 DUR 임부금기 분석 결과를 확인할 수 없습니다. "
+                "최신 DUR 분석 후 확인해주세요."
+            )
+        return (
+            "현재 복용약 구성이 기존 DUR 분석 당시와 달라 최신 임부금기 결과로 "
+            "보기 어렵습니다. DUR 재분석이 필요합니다."
+        )
+    if "duplicate" in intents:
+        if status == "missing":
+            return (
+                "현재 복용 중인 약 조합의 DUR 효능군중복 분석 결과를 확인할 수 "
+                "없습니다. 최신 DUR 분석 후 확인해주세요."
+            )
+        return (
+            "복용 중인 약 정보가 DUR 분석 당시와 달라 최신 효능군중복 결과로 "
+            "보기 어렵습니다. DUR 재분석이 필요합니다."
+        )
+    return (
+        "현재 DUR 분석 결과를 확인할 수 없습니다. "
+        "최신 DUR 분석 후 확인해주세요."
+        if status == "missing"
+        else "현재 복용약 구성이 DUR 분석 당시와 달라 재분석이 필요합니다."
+    )
+
+
+def _dur_no_match_reply(intents: set[str]) -> str:
+    if intents & {"combination", "interaction"}:
+        risk_type = "병용금기"
+    elif "age" in intents:
+        risk_type = "연령금기"
+    elif "pregnancy" in intents:
+        risk_type = "임부금기"
+    elif "duplicate" in intents:
+        risk_type = "효능군중복"
+    else:
+        risk_type = "DUR 주의"
+    return (
+        f"현재 저장된 최신 DUR 분석 결과에서는 {risk_type} 유형의 항목이 "
+        "확인되지 않았습니다. 이 결과만으로 복용이 안전하다고 단정할 수 없으므로, "
+        "정확한 복용 판단은 의사 또는 약사에게 확인해주세요."
+    )
+
+
 def generate_chat_response(message: str, *, user_id: str = "") -> str:
     from app.services.chat_context_service import (
         build_grounded_chat_prompt,
@@ -353,7 +420,16 @@ def generate_chat_response(message: str, *, user_id: str = "") -> str:
             dur_result = load_latest_dur_context(user_id, intents)
 
             if safety_question and dur_result["status"] in {"stale", "missing"}:
-                return unavailable_reply
+                return _dur_context_unavailable_reply(
+                    intents,
+                    dur_result["status"],
+                )
+            if (
+                safety_question
+                and dur_result["status"] == "current"
+                and not dur_result["items"]
+            ):
+                return _dur_no_match_reply(intents)
             if not official_contexts and not dur_result["items"]:
                 return unavailable_reply
 
@@ -377,4 +453,7 @@ def generate_chat_response(message: str, *, user_id: str = "") -> str:
             return _finalize_chat_response(response)
     except Exception as error:
         logger.warning("Gemini chat failed: %s", error, exc_info=True)
-        return unavailable_reply
+        return (
+            "현재 정보를 불러오는 중 문제가 발생했습니다. "
+            "잠시 후 다시 확인해주세요."
+        )

@@ -3,6 +3,10 @@ from collections import Counter
 from typing import Any
 
 from app.database import get_connection
+from app.services.pharmacist.ingredient import (
+    is_usable_ingredient,
+    normalize_ingredient,
+)
 
 
 OFFICIAL_FIELDS_BY_INTENT = {
@@ -122,14 +126,25 @@ def load_latest_dur_context(user_id: str, intents: set[str]) -> dict[str, Any]:
 
         current_rows = conn.execute(
             """
-            SELECT m.ingredient FROM user_medicines um
-            JOIN medicines m ON m.medicine_code = um.medicine_code
-            WHERE um.user_id = ? AND um.is_active = 1
-            ORDER BY um.id
+            SELECT m.*
+            FROM medicines m
+            WHERE m.medicine_code IN (
+                SELECT DISTINCT um.medicine_code
+                FROM user_medicines um
+                WHERE um.user_id = ? AND um.is_active = 1
+            )
+            ORDER BY m.medicine_code
             """,
             (user_id,),
         ).fetchall()
-        current = [item["ingredient"] for item in current_rows if item["ingredient"]]
+        current = [
+            item["ingredient"]
+            for item in current_rows
+            if is_usable_ingredient(
+                item["ingredient"],
+                item["product_name"] if "product_name" in item.keys() else None,
+            )
+        ]
         analyzed = _json_list(row["analyzed_ingredients"])
         if _ingredient_signature(current) != _ingredient_signature(analyzed):
             return {"status": "stale", "items": []}
@@ -160,9 +175,9 @@ def _json_list(value: Any) -> list[Any]:
 
 def _ingredient_signature(values: list[Any]) -> Counter:
     return Counter(
-        "".join(str(value or "").lower().split())
+        normalized
         for value in values
-        if value
+        if (normalized := normalize_ingredient(str(value or "")))
     )
 
 
