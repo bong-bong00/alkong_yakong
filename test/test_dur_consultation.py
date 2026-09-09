@@ -268,16 +268,35 @@ class DurConsultationTest(unittest.TestCase):
         conn.execute("UPDATE users SET birth_date = NULL WHERE id = 'U1'")
         conn.commit()
         conn.close()
-        result = self._analyze(
-            {
-                "medicine_code": "C",
-                "product_name": "Drug C",
-                "ingredient": "ingredientc",
-            },
-            {"연령금기"},
-        )
+        with self.assertLogs(dur_service.logger, level="WARNING") as captured:
+            result = self._analyze(
+                {
+                    "medicine_code": "C",
+                    "product_name": "Drug C",
+                    "ingredient": "ingredientc",
+                },
+                {"연령금기"},
+            )
         self.assertEqual(result["status"], "missing")
         self.assertEqual(result["reason"], "missing_birth_date")
+        output = "\n".join(captured.output)
+        self.assertIn("reason=missing_birth_date", output)
+        self.assertIn("sync_status=not_started", output)
+
+    def test_unusable_selected_ingredient_logs_existing_reason(self):
+        with self.assertLogs(dur_service.logger, level="WARNING") as captured:
+            result = self._analyze(
+                {
+                    "medicine_code": "C",
+                    "product_name": "Drug C",
+                    "ingredient": None,
+                },
+                {"병용금기"},
+            )
+        output = "\n".join(captured.output)
+        self.assertEqual(result["reason"], "official_medicine_unavailable")
+        self.assertIn("ingredient_usable=False", output)
+        self.assertIn("reason=official_medicine_unavailable", output)
 
     def test_missing_pregnancy_status_is_not_reported_as_zero_matches(self):
         conn = self._connect()

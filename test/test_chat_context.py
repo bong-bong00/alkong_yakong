@@ -174,6 +174,34 @@ class ChatContextTest(unittest.TestCase):
         )
         self.assertEqual(enriched["ingredient"], "알마게이트 500mg")
 
+    def test_permission_diagnostic_log_excludes_sensitive_content(self):
+        official = {
+            "medicine_code": "198700430",
+            "product_name": "민감한 질문에 포함된 제품명",
+            "ingredient": None,
+        }
+        with (
+            patch(
+                "app.services.mfds_drug_permission.db.find_permission_product_by_item_seq",
+                return_value=None,
+            ),
+            patch(
+                "app.services.mfds_drug_permission.client.fetch_permission_detail",
+                side_effect=RuntimeError("SECRET_KEY full response body"),
+            ),
+            self.assertLogs(gemini_service.logger, level="WARNING") as captured,
+        ):
+            result = gemini_service._with_official_permission_ingredient(official)
+
+        output = "\n".join(captured.output)
+        self.assertIsNone(result["ingredient"])
+        self.assertIn("permission_api_failed", output)
+        self.assertIn("exception_type=RuntimeError", output)
+        self.assertIn("final_ingredient_usable=false", output.casefold())
+        self.assertNotIn("SECRET_KEY", output)
+        self.assertNotIn("full response body", output)
+        self.assertNotIn("민감한 질문", output)
+
     def test_selected_permission_ingredient_reaches_dur_consultation(self):
         selected = {
             "medicine_code": "198700430",

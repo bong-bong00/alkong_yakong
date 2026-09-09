@@ -3,6 +3,7 @@
 import json
 import logging
 import time
+from pathlib import Path
 from typing import Any
 
 from app.core.config import GEMINI_API_KEY, GEMINI_MODEL
@@ -22,45 +23,107 @@ def _with_official_permission_ingredient(
     """item_seq가 같은 공식 허가정보에서 DUR용 주성분만 보완한다."""
     from app.services.mfds_drug_permission.client import fetch_permission_detail
     from app.services.mfds_drug_permission.db import (
+        DB_PATH,
         find_permission_product_by_item_seq,
         product_to_medicine,
+    )
+    from app.services.pharmacist.ingredient import (
+        ingredient_keys,
+        is_usable_ingredient,
     )
 
     code = str(medicine.get("medicine_code") or "").strip()
     expected_name = _compact_product_name(medicine.get("product_name"))
+    local_db_available = Path(DB_PATH).is_file()
+    local_exact_found = False
+    local_ingredient_usable = False
+    api_fallback_attempted = False
+    api_call_succeeded = False
+    exact_item_seq_match = False
+    exact_product_name_match = False
     if not code or not expected_name:
+        logger.warning(
+            "Permission ingredient diagnostic selected_code_present=%s "
+            "local_db_available=%s local_exact_found=false "
+            "local_ingredient_usable=false api_fallback_attempted=false "
+            "api_call_succeeded=false exact_item_seq_match=false "
+            "exact_product_name_match=false final_ingredient_usable=false "
+            "ingredient_key_count=0",
+            bool(code),
+            local_db_available,
+        )
         return medicine
 
     candidates: list[dict[str, Any]] = []
     try:
         local_row = find_permission_product_by_item_seq(code)
         if local_row:
-            candidates.append(product_to_medicine(local_row))
-    except Exception:
-        pass
+            local_exact_found = True
+            local_medicine = product_to_medicine(local_row)
+            local_ingredient_usable = is_usable_ingredient(
+                local_medicine.get("ingredient"),
+                local_medicine.get("product_name"),
+            )
+            candidates.append(local_medicine)
+    except Exception as error:
+        logger.warning(
+            "Permission ingredient local_lookup_failed exception_type=%s",
+            type(error).__name__,
+        )
 
     if not candidates or not candidates[0].get("ingredient"):
+        api_fallback_attempted = True
         try:
             detail = fetch_permission_detail(
                 str(medicine.get("product_name") or ""),
                 item_seq=code,
             )
+            api_call_succeeded = True
             if detail:
                 normalized_detail = {
                     str(key).lower(): value for key, value in detail.items()
                 }
                 candidates.append(product_to_medicine(normalized_detail))
-        except Exception:
-            pass
+        except Exception as error:
+            logger.warning(
+                "Permission ingredient permission_api_failed exception_type=%s",
+                type(error).__name__,
+            )
 
+    result = medicine
     for candidate in candidates:
-        if (
-            str(candidate.get("medicine_code") or "").strip() == code
-            and _compact_product_name(candidate.get("product_name")) == expected_name
-            and candidate.get("ingredient")
-        ):
-            return {**medicine, "ingredient": candidate["ingredient"]}
-    return medicine
+        code_matches = str(candidate.get("medicine_code") or "").strip() == code
+        name_matches = (
+            _compact_product_name(candidate.get("product_name")) == expected_name
+        )
+        exact_item_seq_match = exact_item_seq_match or code_matches
+        exact_product_name_match = exact_product_name_match or name_matches
+        if code_matches and name_matches and candidate.get("ingredient"):
+            result = {**medicine, "ingredient": candidate["ingredient"]}
+            break
+
+    final_ingredient_usable = is_usable_ingredient(
+        result.get("ingredient"),
+        result.get("product_name"),
+    )
+    logger.warning(
+        "Permission ingredient diagnostic selected_code_present=true "
+        "local_db_available=%s local_exact_found=%s "
+        "local_ingredient_usable=%s api_fallback_attempted=%s "
+        "api_call_succeeded=%s exact_item_seq_match=%s "
+        "exact_product_name_match=%s final_ingredient_usable=%s "
+        "ingredient_key_count=%d",
+        local_db_available,
+        local_exact_found,
+        local_ingredient_usable,
+        api_fallback_attempted,
+        api_call_succeeded,
+        exact_item_seq_match,
+        exact_product_name_match,
+        final_ingredient_usable,
+        len(ingredient_keys(result.get("ingredient"))),
+    )
+    return result
 
 CHAT_EXTRACTION_SCHEMA = {
     "type": "object",

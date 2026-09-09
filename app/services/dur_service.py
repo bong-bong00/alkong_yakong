@@ -286,9 +286,19 @@ def analyze_dur_consultation(
             "product_name": product_name,
             "ingredient": ingredient,
         }
-        if not medicine_code or not product_name or not _is_usable_ingredient(
-            consultation_medicine
-        ):
+        ingredient_usable = _is_usable_ingredient(consultation_medicine)
+        ingredient_key_count = len(ingredient_keys(ingredient))
+        if not medicine_code or not product_name or not ingredient_usable:
+            logger.warning(
+                "DUR consultation diagnostic risk_types=%s selected=%s "
+                "ingredient_usable=%s ingredient_key_count=%d "
+                "active_medicine_count=not_loaded sync_status=not_started "
+                "status=missing reason=official_medicine_unavailable match_count=0",
+                sorted(risk_types),
+                bool(medicine_code and product_name),
+                ingredient_usable,
+                ingredient_key_count,
+            )
             return {
                 "status": "missing",
                 "items": [],
@@ -298,6 +308,7 @@ def analyze_dur_consultation(
 
         pairwise_types = {"병용금기", "효능군중복", "중복성분"}
         medicines = []
+        active_medicine_count = 0
         if risk_types & pairwise_types:
             medicines.extend(
                 dict(row)
@@ -306,6 +317,7 @@ def analyze_dur_consultation(
                     DurAnalyzeRequest(user_id=user_id, medicine_codes=[]),
                 )
             )
+            active_medicine_count = len(medicines)
         medicines.append(consultation_medicine)
         medicines = list(
             {
@@ -317,6 +329,15 @@ def analyze_dur_consultation(
 
         age = _age_from_birth_date(user["birth_date"])
         if "연령금기" in risk_types and age is None:
+            logger.warning(
+                "DUR consultation diagnostic risk_types=%s selected=true "
+                "ingredient_usable=true ingredient_key_count=%d "
+                "active_medicine_count=%d sync_status=not_started "
+                "status=missing reason=missing_birth_date match_count=0",
+                sorted(risk_types),
+                ingredient_key_count,
+                active_medicine_count,
+            )
             return {
                 "status": "missing",
                 "items": [],
@@ -326,6 +347,15 @@ def analyze_dur_consultation(
         try:
             pregnancy_value = user["is_pregnant"]
             if pregnancy_value is None and "임부금기" in risk_types:
+                logger.warning(
+                    "DUR consultation diagnostic risk_types=%s selected=true "
+                    "ingredient_usable=true ingredient_key_count=%d "
+                    "active_medicine_count=%d sync_status=not_started "
+                    "status=missing reason=missing_pregnancy_status match_count=0",
+                    sorted(risk_types),
+                    ingredient_key_count,
+                    active_medicine_count,
+                )
                 return {
                     "status": "missing",
                     "items": [],
@@ -335,6 +365,15 @@ def analyze_dur_consultation(
             is_pregnant = bool(pregnancy_value)
         except (KeyError, IndexError, TypeError):
             if "임부금기" in risk_types:
+                logger.warning(
+                    "DUR consultation diagnostic risk_types=%s selected=true "
+                    "ingredient_usable=true ingredient_key_count=%d "
+                    "active_medicine_count=%d sync_status=not_started "
+                    "status=missing reason=missing_pregnancy_status match_count=0",
+                    sorted(risk_types),
+                    ingredient_key_count,
+                    active_medicine_count,
+                )
                 return {
                     "status": "missing",
                     "items": [],
@@ -371,6 +410,16 @@ def analyze_dur_consultation(
             if not _is_deleted_taboo(row)
         ]
         if official_risk_types and sync_result.get("status") != "ok":
+            logger.warning(
+                "DUR consultation diagnostic risk_types=%s selected=true "
+                "ingredient_usable=true ingredient_key_count=%d "
+                "active_medicine_count=%d sync_status=%s "
+                "status=missing reason=dur_data_unavailable match_count=0",
+                sorted(risk_types),
+                ingredient_key_count,
+                active_medicine_count,
+                sync_result.get("status"),
+            )
             return {
                 "status": "missing",
                 "items": [],
@@ -410,6 +459,17 @@ def analyze_dur_consultation(
             and _match_involves_consultation_medicine(match, consultation_medicine)
         ]
         matches = [_without_internal_match_fields(match) for match in matches]
+        logger.warning(
+            "DUR consultation diagnostic risk_types=%s selected=true "
+            "ingredient_usable=true ingredient_key_count=%d "
+            "active_medicine_count=%d sync_status=%s "
+            "status=current reason=None match_count=%d",
+            sorted(risk_types),
+            ingredient_key_count,
+            active_medicine_count,
+            sync_result.get("status"),
+            len(matches),
+        )
         return {
             "status": "current",
             "items": matches,
