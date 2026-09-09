@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import html
 import re
 import sqlite3
 from pathlib import Path
@@ -157,23 +158,29 @@ def xml_doc_to_text(value: Any) -> str:
     text = str(value or "")
     if not text or text == "None":
         return ""
-    # CDATA 본문을 먼저 뽑는다. 태그 정규식이 CDATA 전체를 지워버리는 것을 막음.
-    cdata = re.findall(r"<!\[CDATA\[(.*?)\]\]>", text, flags=re.S)
-    body = " ".join(" ".join(cdata).split()) if cdata else ""
-    if body:
-        return body
-    # 아디팜정처럼 효능이 <ARTICLE title="..."/> 에만 있는 경우
-    titles: list[str] = []
+
+    def _piece(raw: str) -> str:
+        cleaned = html.unescape(str(raw or ""))
+        cleaned = re.sub(r"<[^>]+>", " ", cleaned)
+        cleaned = cleaned.replace("\xa0", " ")
+        return " ".join(cleaned.split()).strip()
+
+    parts: list[str] = []
     for raw_title in re.findall(r'\btitle="([^"]*)"', text):
-        title = " ".join(raw_title.split()).strip()
+        title = _piece(raw_title)
         if not title or title in _DOC_HEADING_TITLES:
             continue
-        if title not in titles:
-            titles.append(title)
-    leftover = " ".join(re.sub(r"<[^>]+>", " ", text).split())
-    if leftover and leftover not in titles:
-        titles.append(leftover)
-    return " ".join(titles)
+        if title not in parts:
+            parts.append(title)
+    for raw_cdata in re.findall(r"<!\[CDATA\[(.*?)\]\]>", text, flags=re.S):
+        body = _piece(raw_cdata)
+        if not body or body in parts:
+            continue
+        parts.append(body)
+    if parts:
+        return " ".join(parts)
+    leftover = _piece(re.sub(r"<[^>]+>", " ", text))
+    return leftover
 
 
 def backfill_plain_texts(conn: sqlite3.Connection | None = None) -> int:
@@ -445,6 +452,7 @@ def find_permission_product(name: str) -> dict[str, Any] | None:
 
 def product_to_medicine(row: dict[str, Any]) -> dict[str, Any]:
     from app.services.pharmacist.ingredient import clean_ingredient_text
+    from app.services.pharmacist.efficacy_display import display_efficacy_text
 
     # 주성분 우선. ingr_name은 포비돈·유당 같은 부형제까지 섞여 있다.
     ingredient = clean_ingredient_text(
@@ -459,10 +467,10 @@ def product_to_medicine(row: dict[str, Any]) -> dict[str, Any]:
         "medicine_name": row.get("item_name"),
         "ingredient": ingredient,
         "manufacturer": row.get("entp_name"),
-        "efficacy": row.get("efficacy_text"),
+        "efficacy": display_efficacy_text(row.get("efficacy_text")),
         "usage": row.get("usage_text"),
-        "cautions": row.get("caution_text"),
-        "precautions": row.get("caution_text"),
+        "cautions": display_efficacy_text(row.get("caution_text")),
+        "precautions": display_efficacy_text(row.get("caution_text")),
         "storage": row.get("storage_method"),
         "image_url": row.get("big_prdt_img_url"),
         "source": "식약처 의약품 제품 허가정보",

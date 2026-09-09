@@ -49,8 +49,20 @@ class Medicine {
   /// 음성 안내([5d])와 스크린리더 설명에만 쓴다.
   final String? appearance;
 
-  /// 어르신용 쉬운 분류 — "혈압약". 화면에 `이름 (분류)` 로 붙인다.
+  /// 어르신용 짧은 분류. 홈·OCR 카드에는 이 값을 쓴다.
   final String? easyCategory;
+
+  /// 허가 효능을 묶은 쉬운 목적 이름 — 예: "가려움 완화 · 불안·긴장 완화".
+  final String? purposeLabel;
+
+  /// 환자 카드에서 읽을 쉬운 한 문장.
+  final String? shortExplanation;
+
+  /// 공식 주의사항에서 고른 가장 중요한 한 문장.
+  final String? keyCaution;
+
+  /// 식약처 허가 효능 원문. 홈 카드에는 쓰지 않는다.
+  final String? efficacy;
 
   /// 오늘 스케줄 id — 「먹었어요」 서버 기록용.
   final int? scheduleId;
@@ -60,20 +72,42 @@ class Medicine {
     required this.amount,
     this.appearance,
     this.easyCategory,
+    this.purposeLabel,
+    this.shortExplanation,
+    this.keyCaution,
+    this.efficacy,
     this.scheduleId,
   });
 
-  /// 홈·목록에 쓰는 한 줄 — "암로디핀 5mg (혈압약)".
+  /// 홈·OCR 카드에 보여 줄 쉬운 한 줄. 허가 원문은 절대 그대로 쓰지 않는다.
+  String? get cardSpoken {
+    final short = shortExplanation?.trim();
+    if (short != null && short.contains('약이에요')) return short;
+    final spoken = easyCategory?.trim();
+    if (spoken != null && spoken.contains('약이에요')) return spoken;
+    final raw = efficacy?.trim();
+    if (raw != null && raw.contains('약이에요')) return raw;
+    if ((spoken != null && spoken.isNotEmpty) || (raw != null && raw.isNotEmpty)) {
+      return '처방받은 약이에요';
+    }
+    return null;
+  }
+
+  /// 화면에 보여 줄 약 이름. 서버는 제품명을 ingredient에 넣는다.
   String get displayName {
-    final category = easyCategory?.trim();
-    if (category == null || category.isEmpty) return ingredient;
-    return '$ingredient ($category)';
+    final name = ingredient.trim();
+    return name.isEmpty ? '약' : name;
   }
 
   /// 음성으로 읽어줄 때의 한 줄 — "메트포르민 500mg, 흰색 동그란 알약 1알".
-  String get spoken => appearance == null
-      ? '$displayName $amount'
-      : '$displayName, $appearance $amount';
+  String get spoken {
+    final base = appearance == null
+        ? '$displayName $amount'
+        : '$displayName, $appearance $amount';
+    return [base, purposeLabel, cardSpoken, keyCaution]
+        .where((value) => value != null && value.trim().isNotEmpty)
+        .join(', ');
+  }
 }
 
 /// 한 시간대의 복약 상태.

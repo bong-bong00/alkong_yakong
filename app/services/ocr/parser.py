@@ -45,6 +45,66 @@ HEADER_FIELDS = ("hospital_name", "pharmacy_name", "prescribed_date")
 # 사용자 인식 점수는 약품명·성분만 본다. 횟수·일수는 문서에 없을 수 있다.
 SCORE_FIELDS = ("drug_name", "ingredient")
 
+# 제품명 함량(200밀리그램, 0.25%) — 처방 표의 투약량(0.50, 1알)과 구분한다.
+_STRENGTH_DOSAGE_RE = re.compile(
+    r"(?:mg|ml|g|%|밀리그램|밀리그람)\b",
+    re.IGNORECASE,
+)
+
+
+def is_strength_dosage(value: str | None) -> bool:
+    """함량 표기면 True. 0.50 / 1알 / 1정 같은 투약량은 False."""
+    return bool(_STRENGTH_DOSAGE_RE.search(str(value or "").strip()))
+
+
+def persistable_take_dosage(value: str | None) -> str | None:
+    text = str(value or "").strip()
+    if not text or is_strength_dosage(text):
+        return None
+    if re.match(
+        r"^\d+(?:\.\d+)?\s*(T|C|EA|PKG)$",
+        text.replace(" ", ""),
+        re.IGNORECASE,
+    ):
+        return None
+    return text
+
+
+def _should_replace_dosage_with_table(existing: str) -> bool:
+    if not existing:
+        return True
+    if is_strength_dosage(existing):
+        return True
+    return bool(
+        re.match(
+            r"^\d+(?:\.\d+)?\s*(T|C|EA|PKG|정|캡슐)$",
+            existing.replace(" ", ""),
+            re.IGNORECASE,
+        )
+    )
+
+
+def take_amount_for_display(
+    dosage: str | None,
+    *,
+    times_per_take: int | float | None = None,
+) -> str:
+    take = persistable_take_dosage(dosage)
+    if take:
+        return take
+    if times_per_take is not None:
+        try:
+            n = float(times_per_take)
+        except (TypeError, ValueError):
+            n = 0
+        if n > 0:
+            if n == int(n):
+                return f"{int(n)}알"
+            text = f"{n:.2f}".rstrip("0").rstrip(".")
+            return text
+    # 처방전에서 확인하지 못한 복용량을 임의로 "1알"로 만들지 않는다.
+    return ""
+
 
 def parse_prescription_text(raw_text: str) -> dict[str, Any] | None:
     """Gemini 구조화 우선, 실패(할당량 등) 시 휴리스틱 구조화."""
@@ -67,11 +127,7 @@ def parse_prescription_text(raw_text: str) -> dict[str, Any] | None:
 
     filtered = filter_to_source(parsed, text)
     if not filtered.get("items"):
-        # 원문이 붙어 있으면 필터가 전부 지울 수 있다. 그럴 때는 후보를 살린다.
-        filtered = dict(parsed)
-        filtered["discarded_names"] = list(
-            (filtered.get("discarded_names") or [])
-        )
+        return None
     filtered = enrich_dosing_from_raw(filtered, text)
     filtered = correct_drug_names(filtered)
 
@@ -111,8 +167,8 @@ def _parse_with_gemini(text: str) -> dict[str, Any] | None:
             "2-2) 표 머리글, 사업자번호, 약국명, 조제약사, 사진 옆의 "
             "'비)슈...' 같은 잘린 글자는 약으로 뽑지 마세요.\n"
             "3) 표/줄 형식이면 열을 이렇게 매핑하세요.\n"
-            "   - 처방의약품의 명칭 → drug_name (0.25mg 등 이름에 적힌 용량 포함)\n"
-            "   - 약품명에 있는 mg/% → dosage  (예: 0.25mg, 400mg)\n"
+            "   - 처방의약품의 명칭 → drug_name (이름에 적힌 200밀리그램 등은 이름에만 두세요)\n"
+            "   - dosage는 투약량 열입니다. 예: 0.50, 1. 이름에 있는 mg/%/밀리그램은 dosage가 아닙니다.\n"
             "   - '1 T' '1 C' '1 PKG'는 dosage가 아닙니다. unit=T/C/PKG, times_per_take=1\n"
             "   - 1일 투여횟수 → frequency_per_day (정수, 보통 1~3. 총량 60을 넣지 마세요)\n"
             "   - 총 투약 일수 → duration_days (정수, 예: 60)\n"
@@ -297,13 +353,10 @@ def filter_to_source(parsed: dict[str, Any], raw_text: str) -> dict[str, Any]:
             if raw_name:
                 discarded.append(raw_name)
             continue
-        # 머리글·잘린 조각만 버린다. 약처럼 보이면 원문에 없어도 후보로 남긴다.
+        # 약처럼 보이는 이름이라도 OCR 원문에 근거가 없으면 등록 후보로 남기지 않는다.
         if name and not _name_in_source(name, compact_source, source):
             if not _name_in_source(name.split("(")[0].strip(), compact_source, source):
-                cleaned = dict(item)
-                cleaned["drug_name"] = name
-                cleaned["uncertain"] = True
-                items.append(cleaned)
+                discarded.append(name)
                 continue
         cleaned = dict(item)
         cleaned["drug_name"] = name
@@ -328,8 +381,10 @@ def enrich_dosing_from_raw(structured: dict[str, Any], raw_text: str) -> dict[st
         name = str(cleaned.get("drug_name") or "")
         dosing = _dosing_near_name(name, source)
         if dosing:
-            if not cleaned.get("dosage") and dosing.get("dosage"):
-                cleaned["dosage"] = dosing["dosage"]
+            existing = str(cleaned.get("dosage") or "").strip()
+            table_dose = dosing.get("dosage")
+            if table_dose and _should_replace_dosage_with_table(existing):
+                cleaned["dosage"] = table_dose
             if cleaned.get("frequency_per_day") is None and dosing.get("frequency_per_day") is not None:
                 cleaned["frequency_per_day"] = dosing["frequency_per_day"]
             if cleaned.get("duration_days") is None and dosing.get("duration_days") is not None:
@@ -347,7 +402,6 @@ def _normalize_table_dosing(items: list[dict[str, Any]]) -> list[dict[str, Any]]
         if not isinstance(item, dict):
             continue
         cleaned = dict(item)
-        name = str(cleaned.get("drug_name") or "")
         dosage = str(cleaned.get("dosage") or "").strip()
         unit = str(cleaned.get("unit") or "").strip()
 
@@ -363,15 +417,12 @@ def _normalize_table_dosing(items: list[dict[str, Any]]) -> list[dict[str, Any]]
                 except ValueError:
                     cleaned["times_per_take"] = 1
                 cleaned["unit"] = take_match.group(2).upper()
-            strength = re.search(
-                r"(\d+(?:\.\d+)?)\s*(mg|ml|g|%|밀리그램|밀리그람)",
-                name,
-                re.IGNORECASE,
-            )
-            if strength:
-                cleaned["dosage"] = strength.group(0).replace(" ", "")
-            elif take_match:
+            if is_strength_dosage(dosage) or take_match:
                 cleaned.pop("dosage", None)
+
+        leftover = str(cleaned.get("dosage") or "")
+        if is_strength_dosage(leftover) and "%" not in leftover:
+            cleaned.pop("dosage", None)
 
         freq = cleaned.get("frequency_per_day")
         days = cleaned.get("duration_days")
@@ -660,11 +711,11 @@ def peel_glued_dosing(name: str) -> tuple[str, dict[str, Any]]:
         return raw, dosing
     peeled = match.group("name") or raw
     peeled, percent = split_percent_strength(peeled)
-    strength = match.group("strength")
+    strength = match.group("strength") or ""
     if percent:
         dosing["dosage"] = percent
-    if strength:
-        dosing["dosage"] = dosing.get("dosage") or strength
+    elif "%" in strength:
+        dosing["dosage"] = strength
     if match.group("take"):
         dosing["times_per_take"] = int(match.group("take"))
     if match.group("freq"):
@@ -692,7 +743,7 @@ def iter_glued_drug_tokens(text: str) -> list[dict[str, Any]]:
     tokens: list[dict[str, Any]] = []
     for match in _GLUED_TOKEN_RE.finditer(text or ""):
         name = match.group("name") or ""
-        strength = match.group("strength")
+        strength = match.group("strength") or ""
         name, peeled_pct = split_percent_strength(name)
         name = _clean_drug_label(name)
         if not name or _looks_like_shape_not_drug(name):
@@ -700,7 +751,7 @@ def iter_glued_drug_tokens(text: str) -> list[dict[str, Any]]:
         item: dict[str, Any] = {"drug_name": name}
         if peeled_pct:
             item["dosage"] = peeled_pct
-        elif strength:
+        elif "%" in strength:
             item["dosage"] = strength
         if match.group("take"):
             item["times_per_take"] = int(match.group("take"))

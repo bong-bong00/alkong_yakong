@@ -377,9 +377,35 @@ class _MedicineRow extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Expanded(
-            child: Text(
-              medicine.displayName,
-              style: AppText.label(size: 20, color: AppColors.textBody),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  medicine.displayName,
+                  style: AppText.label(size: 20, color: AppColors.textBody),
+                ),
+                if ((medicine.purposeLabel ?? '').trim().isNotEmpty) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    medicine.purposeLabel!,
+                    style: AppText.label(size: 17, color: AppColors.point),
+                  ),
+                ],
+                if (medicine.cardSpoken != null) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    medicine.cardSpoken!,
+                    style: AppText.caption(color: AppColors.textSecondary),
+                  ),
+                ],
+                if ((medicine.keyCaution ?? '').trim().isNotEmpty) ...[
+                  const SizedBox(height: 6),
+                  Text(
+                    '주의: ${medicine.keyCaution!}',
+                    style: AppText.caption(color: AppColors.danger),
+                  ),
+                ],
+              ],
             ),
           ),
           const SizedBox(width: 12),

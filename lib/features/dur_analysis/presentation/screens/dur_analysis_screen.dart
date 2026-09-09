@@ -31,7 +31,14 @@ class DurAnalysisScreen extends StatefulWidget {
   /// 함께 보고 있는 가족.
   final String guardianTitle;
 
-  const DurAnalysisScreen({super.key, this.guardianTitle = '딸 지안 님'});
+  /// 안내 첫 줄에 부르는 환자 이름.
+  final String userName;
+
+  const DurAnalysisScreen({
+    super.key,
+    this.guardianTitle = '딸 지안 님',
+    this.userName = '김복자',
+  });
 
   @override
   State<DurAnalysisScreen> createState() => _DurAnalysisScreenState();
@@ -44,10 +51,12 @@ class _DurAnalysisScreenState extends State<DurAnalysisScreen> {
   bool _failed = false;
   bool _hasRisk = false;
   bool _incomplete = false;
+  String _assessmentStatus = 'INCOMPLETE';
   String _message = '';
   List<Map<String, dynamic>> _matches = const [];
   Map<String, Map<String, dynamic>> _byType = const {};
   List<String> _medicineNames = const [];
+  Set<String> _incompleteTypes = const {};
 
   static const _displayTypes = <String>[
     '병용금기',
@@ -86,10 +95,7 @@ class _DurAnalysisScreenState extends State<DurAnalysisScreen> {
       if (MvpSession.isPregnant != null) {
         body['is_pregnant'] = MvpSession.isPregnant;
       }
-      final response = await _apiClient.post(
-        '/api/v1/dur/analyze',
-        body: body,
-      );
+      final response = await _apiClient.post('/api/v1/dur/analyze', body: body);
       if (!mounted) return;
       if (response is! Map) {
         setState(() {
@@ -116,20 +122,32 @@ class _DurAnalysisScreenState extends State<DurAnalysisScreen> {
           : <Map<String, dynamic>>[];
       final namesRaw = response['medicine_names'];
       final medicineNames = namesRaw is List
-          ? namesRaw.map((e) => e.toString()).where((e) => e.isNotEmpty).toList()
+          ? namesRaw
+                .map((e) => e.toString())
+                .where((e) => e.isNotEmpty)
+                .toList()
           : <String>[];
+      final incompleteTypesRaw = response['incomplete_types'];
+      final incompleteTypes = incompleteTypesRaw is List
+          ? incompleteTypesRaw.map((e) => e.toString()).toSet()
+          : <String>{};
       setState(() {
         _matches = parsedMatches;
         _byType = byType;
         _medicineNames = medicineNames;
         _hasRisk = response['has_risk'] == true || parsedMatches.isNotEmpty;
         _incomplete = response['incomplete'] == true;
-        _message = response['message']?.toString() ??
+        _assessmentStatus =
+            response['assessment_status']?.toString() ??
+            (_hasRisk ? 'RISK_FOUND' : (_incomplete ? 'INCOMPLETE' : 'SAFE'));
+        _incompleteTypes = incompleteTypes;
+        _message =
+            response['message']?.toString() ??
             (_hasRisk
                 ? '함께 먹을 때 주의가 있어요.'
                 : (_incomplete
-                    ? '함께먹기 검사를 끝까지 하지 못했어요.'
-                    : '지금 등록된 약끼리, 특별한 함께먹기 주의는 없어요.'));
+                      ? '함께먹기 검사를 끝까지 하지 못했어요.'
+                      : '지금 등록된 약끼리, 특별한 함께먹기 주의는 없어요.'));
         _loading = false;
       });
     } catch (_) {
@@ -148,6 +166,10 @@ class _DurAnalysisScreenState extends State<DurAnalysisScreen> {
     return _matches.where((m) => (m['type']?.toString() ?? '') == type).length;
   }
 
+  bool _isTypeIncomplete(String type) {
+    return _incompleteTypes.contains(type);
+  }
+
   static DrugRisk _riskOf(Map<String, dynamic> match) {
     final type = (match['type'] ?? match['taboo_type'] ?? '').toString();
     return switch (type) {
@@ -157,10 +179,30 @@ class _DurAnalysisScreenState extends State<DurAnalysisScreen> {
     };
   }
 
-  static String _pairOf(Map<String, dynamic> match) {
+  String _guideMessage(Map<String, dynamic> match, {required bool danger}) {
+    final names = _pairNames(match);
+    final cause = _durCause(match);
+    final closing = danger ? '위험하답니다!' : '조심해야 한답니다!';
+    final clause = cause.isEmpty ? closing : '$cause해서 $closing';
+    final String body;
+    if (names.isEmpty) {
+      body = clause;
+    } else if (names.length == 1) {
+      body = '${names[0]}${_topicJosa(names[0])} $clause';
+    } else {
+      body =
+          '${names[0]}${_andJosa(names[0])}${names[1]}${_topicJosa(names[1])} $clause';
+    }
+    return '${widget.userName}님!\n$body';
+  }
+
+  static List<String> _pairNames(Map<String, dynamic> match) {
     List<String> namesOf(dynamic raw) {
       if (raw is List) {
-        return raw.map((e) => e.toString()).where((e) => e.isNotEmpty).toList();
+        return raw
+            .map((e) => _shortDrugName(e.toString()))
+            .where((e) => e.isNotEmpty)
+            .toList();
       }
       return const [];
     }
@@ -169,16 +211,48 @@ class _DurAnalysisScreenState extends State<DurAnalysisScreen> {
     final secondNames = namesOf(match['medicine_names_b']);
     if (firstNames.isNotEmpty) {
       final first = firstNames.join(', ');
-      if (secondNames.isEmpty) return first;
-      final second = secondNames.join(', ');
-      if (first == second) return first;
-      return '$first과 $second';
+      if (secondNames.isEmpty || first == secondNames.join(', ')) {
+        return [first];
+      }
+      return [first, secondNames.join(', ')];
     }
-    final first = (match['ingredient_a'] ?? '').toString();
-    final second = (match['ingredient_b'] ?? '').toString();
-    if (first.isEmpty) return '등록하신 약';
-    if (second.isEmpty) return first;
-    return '$first과 $second';
+    final first = _shortDrugName((match['ingredient_a'] ?? '').toString());
+    final second = _shortDrugName((match['ingredient_b'] ?? '').toString());
+    if (first.isEmpty) return const [];
+    if (second.isEmpty || first == second) return [first];
+    return [first, second];
+  }
+
+  static String _durCause(Map<String, dynamic> match) {
+    var reason = (match['reason'] ?? '').toString().trim();
+    final sep = reason.indexOf(' — ');
+    if (sep >= 0) {
+      reason = reason.substring(sep + 3).trim();
+    }
+    reason = reason.replaceAll(RegExp(r'[.\s]+$'), '');
+    return reason;
+  }
+
+  static String _shortDrugName(String name) {
+    final trimmed = name.trim();
+    final index = trimmed.indexOf('(');
+    if (index > 0) return trimmed.substring(0, index).trim();
+    return trimmed;
+  }
+
+  static String _andJosa(String word) {
+    return _hasBatchim(word) ? '과' : '와';
+  }
+
+  static String _topicJosa(String word) {
+    return _hasBatchim(word) ? '은' : '는';
+  }
+
+  static bool _hasBatchim(String word) {
+    if (word.isEmpty) return true;
+    final code = word.codeUnitAt(word.length - 1);
+    if (code < 0xAC00 || code > 0xD7A3) return true;
+    return (code - 0xAC00) % 28 != 0;
   }
 
   /// 등록된 약 이름들 — 위험 목록에 없으면 "괜찮아요"에 들어간다.
@@ -269,6 +343,7 @@ class _DurAnalysisScreenState extends State<DurAnalysisScreen> {
       );
     }
 
+    final riskFound = _assessmentStatus == 'RISK_FOUND';
     final dangers = _matches.where((m) => _riskOf(m) == DrugRisk.danger);
     final cautions = _matches.where((m) => _riskOf(m) == DrugRisk.caution);
 
@@ -280,20 +355,20 @@ class _DurAnalysisScreenState extends State<DurAnalysisScreen> {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
             decoration: BoxDecoration(
-              color: _hasRisk
+              color: riskFound
                   ? AppColors.dangerBorder.withValues(alpha: 0.25)
-                  : (_incomplete ? const Color(0xFFFFF3E0) : AppColors.pointTint),
+                  : (_incomplete
+                        ? const Color(0xFFFFF3E0)
+                        : AppColors.pointTint),
               borderRadius: BorderRadius.circular(20),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  _hasRisk
-                      ? '주의가 있어요'
-                      : (_incomplete ? '검사가 덜 됐어요' : '주의 없음'),
+                  riskFound ? '주의가 있어요' : (_incomplete ? '검사가 덜 됐어요' : '주의 없음'),
                   style: AppText.cardTitle(
-                    color: _hasRisk
+                    color: riskFound
                         ? AppColors.danger
                         : (_incomplete ? AppColors.danger : AppColors.point),
                   ),
@@ -316,12 +391,14 @@ class _DurAnalysisScreenState extends State<DurAnalysisScreen> {
                     ),
                   ),
                   Text(
-                    _countOf(type) == 0 ? '주의 없음' : '주의 ${_countOf(type)}건',
+                    _countOf(type) > 0
+                        ? '주의 ${_countOf(type)}건'
+                        : (_isTypeIncomplete(type) ? '확인 못함' : '주의 없음'),
                     style: AppText.label(
                       size: 17,
-                      color: _countOf(type) == 0
-                          ? AppColors.textSecondary
-                          : AppColors.danger,
+                      color: _countOf(type) > 0 || _isTypeIncomplete(type)
+                          ? AppColors.danger
+                          : AppColors.textSecondary,
                     ),
                   ),
                 ],
@@ -337,10 +414,7 @@ class _DurAnalysisScreenState extends State<DurAnalysisScreen> {
           for (final match in dangers) ...[
             _RiskCard(
               risk: DrugRisk.danger,
-              headline: '${_pairOf(match)}을\n같이 드시면 위험해요',
-              detail: match['reason']?.toString() ??
-                  '두 약이 서로 부딪혀 몸에 무리가 갈 수 있어요. '
-                      '약국에 전화해서 이 두 가지를 같이 먹어도 되는지 물어보세요.',
+              headline: _guideMessage(match, danger: true),
               onCall: _callPharmacy,
             ),
             const SizedBox(height: 12),
@@ -348,19 +422,14 @@ class _DurAnalysisScreenState extends State<DurAnalysisScreen> {
           for (final match in cautions) ...[
             _RiskCard(
               risk: DrugRisk.caution,
-              headline: '${_pairOf(match)}은\n조심해서 드셔야 해요',
-              detail: match['reason']?.toString() ??
-                  '드시는 데 문제는 없지만, 몸이 평소와 다르면 약국에 물어보세요.',
+              headline: _guideMessage(match, danger: false),
               onCall: _callPharmacy,
             ),
             const SizedBox(height: 12),
           ],
           if (dangers.isEmpty && cautions.isEmpty && !_incomplete) ...[
             SeniorCard(
-              padding: const EdgeInsets.symmetric(
-                horizontal: 20,
-                vertical: 20,
-              ),
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -377,12 +446,29 @@ class _DurAnalysisScreenState extends State<DurAnalysisScreen> {
             const SizedBox(height: 12),
           ],
 
-          if (_safeMedicines.isNotEmpty) ...[
+          if (_incomplete) ...[
             SeniorCard(
-              padding: const EdgeInsets.symmetric(
-                horizontal: 20,
-                vertical: 18,
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
+              borderColor: AppColors.dangerBorder,
+              borderWidth: 2,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('확인하지 못한 항목이 있어요', style: AppText.cardTitle(size: 19)),
+                  const SizedBox(height: 8),
+                  Text(
+                    '이 화면만 보고 약을 함께 드셔도 안전하다고 판단하지 마세요. 잠시 뒤 다시 확인하거나 약사에게 물어보세요.',
+                    style: AppText.body(size: 17),
+                  ),
+                ],
               ),
+            ),
+            const SizedBox(height: 12),
+          ],
+
+          if (_safeMedicines.isNotEmpty && !_incomplete) ...[
+            SeniorCard(
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
@@ -481,22 +567,20 @@ class _DurAnalysisScreenState extends State<DurAnalysisScreen> {
   }
 
   void _callGuardian() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('${widget.guardianTitle}에게 알려드렸어요')),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text('${widget.guardianTitle}에게 알려드렸어요')));
   }
 }
 
 class _RiskCard extends StatelessWidget {
   final DrugRisk risk;
   final String headline;
-  final String detail;
   final VoidCallback onCall;
 
   const _RiskCard({
     required this.risk,
     required this.headline,
-    required this.detail,
     required this.onCall,
   });
 
@@ -518,16 +602,11 @@ class _RiskCard extends StatelessWidget {
               foreground: isDanger ? Colors.white : AppColors.danger,
               radius: 10,
               fontSize: 17,
-              padding: const EdgeInsets.symmetric(
-                horizontal: 13,
-                vertical: 6,
-              ),
+              padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 6),
             ),
           ),
           const SizedBox(height: 12),
           Text(headline, style: AppText.emphasis()),
-          const SizedBox(height: 12),
-          Text(detail, style: AppText.body()),
           const SizedBox(height: 12),
           SeniorButton(
             label: '약국에 전화하기',

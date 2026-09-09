@@ -3,6 +3,7 @@ from app.services.ocr.parser import (
     _is_plausible_drug_candidate,
     filter_to_source,
     strip_percent_strength,
+    take_amount_for_display,
 )
 
 
@@ -67,6 +68,20 @@ def test_accepts_clean_drug_candidates():
     assert all(_is_plausible_drug_candidate(value) for value in accepted)
 
 
+def test_unknown_take_amount_is_not_replaced_with_one_pill():
+    assert take_amount_for_display(None) == ""
+    assert take_amount_for_display(None, times_per_take=2) == "2알"
+
+
+def test_filter_drops_plausible_but_source_free_drug_name():
+    result = filter_to_source(
+        {"items": [{"drug_name": "타이레놀정", "duration_days": 7}]},
+        "중앙성모의원 처방일 2026-09-09",
+    )
+    assert result["items"] == []
+    assert result["discarded_names"] == ["타이레놀정"]
+
+
 def test_filter_keeps_only_drug_rows_from_images_fixture_shape():
     raw = """
     미래팜약국
@@ -129,6 +144,39 @@ def test_infers_glued_ocr_rows_without_official_rename(monkeypatch):
     assert prema.get("times_per_take") == 1
     assert prema.get("frequency_per_day") == 2
     assert prema.get("duration_days") == 7
+
+
+def test_table_take_amount_not_name_milligrams(monkeypatch):
+    monkeypatch.setattr("app.services.ocr.parser.GEMINI_API_KEY", "")
+    from app.services.ocr.parser import parse_prescription_text
+
+    raw = "휴온스시메티딘정200밀리그램 | 0.50 | 3 | 7"
+    result = parse_prescription_text(raw)
+    assert result is not None
+    item = next(
+        row
+        for row in result["items"]
+        if "시메티딘" in str(row.get("drug_name") or "")
+    )
+    assert item.get("dosage") == "0.50"
+    assert "200" not in str(item.get("dosage") or "")
+    assert "밀리그램" not in str(item.get("dosage") or "")
+
+
+def test_normalize_does_not_copy_milligrams_from_name():
+    from app.services.ocr.parser import _normalize_table_dosing
+
+    items = _normalize_table_dosing(
+        [
+            {
+                "drug_name": "휴온스시메티딘정200밀리그램",
+                "dosage": "1 T",
+                "unit": "T",
+            }
+        ]
+    )
+    assert "밀리그램" not in str(items[0].get("dosage") or "")
+    assert items[0].get("times_per_take") == 1
 
 
 def test_compact_scan_does_not_invent_naju_or_jinjung(monkeypatch):

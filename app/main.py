@@ -18,6 +18,7 @@ from app.routes import (
 from init_db import initialize_database
 from app.services.pharmacist.easy_category_db import initialize_easy_category_map_db
 from app.services.seed_mvp_medicines import ensure_mvp_demo_medicines
+from app.services.pharmacist.retrieve import refresh_app_medicines_from_permission
 from app.services.dur_sync_service import start_background_dur_sync
 
 
@@ -26,6 +27,10 @@ async def lifespan(_: FastAPI):
     initialize_database()
     initialize_easy_category_map_db()
     ensure_mvp_demo_medicines()
+    try:
+        refresh_app_medicines_from_permission()
+    except Exception:
+        pass
     start_background_dur_sync()
     yield
 

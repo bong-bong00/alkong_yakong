@@ -25,9 +25,6 @@ enum PrescriptionStep {
   /// 읽는 중.
   reading,
 
-  /// 공식 약 확인률 % 결과.
-  readiness,
-
   /// 4e — 이렇게 읽었어요.
   confirm,
 
@@ -53,12 +50,6 @@ class _PrescriptionScreenState extends ConsumerState<PrescriptionScreen> {
   PrescriptionStep _step = PrescriptionStep.capture;
   File? _image;
   Map<String, dynamic>? _result;
-  int _readinessPct = 0;
-  String _readinessLabel = 'fair';
-  String _readinessSummary = '';
-  String _readinessMeaning = '';
-  bool _retakeRecommended = false;
-  List<String> _missingHints = const [];
 
   /// 촬영 실패 횟수. 3번 실패하면 가족 대행(5g)을 권한다.
   int _failureCount = 0;
@@ -137,10 +128,10 @@ class _PrescriptionScreenState extends ConsumerState<PrescriptionScreen> {
       final items = mapped['items'];
       final hasOfficial = items is List && items.isNotEmpty
           ? items
-              .whereType<Map>()
-              .map((item) => Map<String, dynamic>.from(item))
-              .where(_isOfficialMatchedItem)
-              .isNotEmpty
+                .whereType<Map>()
+                .map((item) => Map<String, dynamic>.from(item))
+                .where(_isOfficialMatchedItem)
+                .isNotEmpty
           : false;
       final unreadRaw = mapped['unrecognized_names'];
       final hasUnread = unreadRaw is List && unreadRaw.isNotEmpty;
@@ -153,31 +144,10 @@ class _PrescriptionScreenState extends ConsumerState<PrescriptionScreen> {
         return;
       }
 
-      final pctRaw =
-          mapped['recognition_pct'] ?? mapped['user_readiness_pct'];
-      final pct = pctRaw is num ? pctRaw.round() : 0;
-      final hints = mapped['missing_hints'];
       setState(() {
         _result = mapped;
         _failureCount = 0;
-        _readinessPct = pct.clamp(0, 100);
-        _readinessLabel =
-            mapped['recognition_label']?.toString() ??
-            mapped['readiness_label']?.toString() ??
-            'fair';
-        _readinessSummary =
-            mapped['recognition_summary']?.toString() ??
-            mapped['readiness_summary']?.toString() ??
-            '공식 약 이름과 성분을 맞춰 봤어요.';
-        _readinessMeaning =
-            mapped['recognition_meaning']?.toString() ??
-            '이 숫자는 사진 글자를 얼마나 읽었는지가 아니라, 공식 약 이름과 성분에 얼마나 맞췄는지예요.';
-        _retakeRecommended =
-            mapped['retake_recommended'] == true || !hasOfficial;
-        _missingHints = hints is List
-            ? hints.map((e) => e.toString()).where((e) => e.isNotEmpty).toList()
-            : const [];
-        _step = PrescriptionStep.readiness;
+        _step = PrescriptionStep.confirm;
       });
 
       final first = _items.isEmpty ? null : _items.first;
@@ -195,11 +165,11 @@ class _PrescriptionScreenState extends ConsumerState<PrescriptionScreen> {
     }
   }
 
-  Future<void> _register() async {
+  Future<void> _register(List<Map<String, dynamic>> editedItems) async {
     final userId = MvpSession.userId.trim().isEmpty
         ? 'mvp-user'
         : MvpSession.userId.trim();
-    final confirmItems = _items
+    final confirmItems = editedItems
         .where((item) => (item['medicine_code']?.toString() ?? '').isNotEmpty)
         .map(
           (item) => <String, dynamic>{
@@ -248,53 +218,13 @@ class _PrescriptionScreenState extends ConsumerState<PrescriptionScreen> {
       return;
     }
 
-    MvpSession.latestOcrItems = _items;
+    MvpSession.latestOcrItems = editedItems;
     MvpSession.latestOcrRegisteredAt = DateTime.now();
     await ref.read(medicationProvider.notifier).refreshFromServer();
 
-    var hasRisk = false;
-    var durFailed = false;
-    try {
-      final analysisBody = <String, dynamic>{
-        'user_id': userId,
-        'medicine_codes': <String>[],
-      };
-      if (MvpSession.isPregnant != null) {
-        analysisBody['is_pregnant'] = MvpSession.isPregnant;
-      }
-      final analysis = await _apiClient.post(
-        '/api/v1/dur/analyze',
-        body: analysisBody,
-      );
-      if (analysis is Map) {
-        if (analysis['has_risk'] == true) {
-          hasRisk = true;
-        } else {
-          final matches = analysis['matches'];
-          hasRisk = matches is List && matches.isNotEmpty;
-        }
-      }
-    } catch (error) {
-      durFailed = true;
-      debugPrint('등록 직후 약 함께먹기 검사 실패: $error');
-    }
-
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          durFailed
-              ? '약은 등록했어요. 함께먹기 검사는 나중에 다시 확인해 주세요.'
-              : '약을 등록했어요. 시간에 맞춰 알려드릴게요.',
-        ),
-      ),
-    );
-
-    if (hasRisk) {
-      context.push('/dur-analysis');
-    } else {
-      context.pop();
-    }
+    // 홈에 있는 약(코다론)과 방금 찍은 약(아디팜)을 바로 함께먹기 화면에서 본다.
+    context.push('/dur-analysis');
   }
 
   @override
@@ -304,27 +234,12 @@ class _PrescriptionScreenState extends ConsumerState<PrescriptionScreen> {
         return _CaptureScreen(
           onCamera: () => _pick(ImageSource.camera),
           onGallery: () => _pick(ImageSource.gallery),
-          onManual: () => ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('손으로 적기 — 아직 준비 중이에요')),
-          ),
+          onManual: () => ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(const SnackBar(content: Text('손으로 적기 — 아직 준비 중이에요'))),
         );
       case PrescriptionStep.reading:
         return _ReadingScreen(image: _image);
-      case PrescriptionStep.readiness:
-        return _ReadinessScreen(
-          pct: _readinessPct,
-          label: _readinessLabel,
-          summary: _readinessSummary,
-          meaning: _readinessMeaning,
-          retakeRecommended: _retakeRecommended && _items.isEmpty,
-          missingHints: _missingHints,
-          onNext: () => setState(() => _step = PrescriptionStep.confirm),
-          onRetake: () => setState(() {
-            _image = null;
-            _result = null;
-            _step = PrescriptionStep.capture;
-          }),
-        );
       case PrescriptionStep.confirm:
         return _ConfirmScreen(
           items: _items,
@@ -495,7 +410,11 @@ class _CaptureTip extends StatelessWidget {
         Expanded(
           child: Text(
             '$emoji  $text',
-            style: AppText.body(size: 22, color: Colors.white, weight: FontWeight.w500),
+            style: AppText.body(
+              size: 22,
+              color: Colors.white,
+              weight: FontWeight.w500,
+            ),
           ),
         ),
       ],
@@ -567,157 +486,13 @@ class _ReadingScreen extends StatelessWidget {
   }
 }
 
-/// 촬영 후 공식 약 확인률을 보여 준 뒤 확인 화면으로 보냄.
-class _ReadinessScreen extends StatelessWidget {
-  final int pct;
-  final String label;
-  final String summary;
-  final String meaning;
-  final bool retakeRecommended;
-  final List<String> missingHints;
-  final VoidCallback onNext;
-  final VoidCallback onRetake;
-
-  const _ReadinessScreen({
-    required this.pct,
-    required this.label,
-    required this.summary,
-    required this.meaning,
-    required this.retakeRecommended,
-    required this.missingHints,
-    required this.onNext,
-    required this.onRetake,
-  });
-
-  Color get _accent {
-    if (label == 'good' || pct >= 85) return AppColors.point;
-    if (label == 'poor' || pct < 60) return AppColors.danger;
-    return const Color(0xFFC9A227);
-  }
-
-  String get _title {
-    if (pct >= 85 && !retakeRecommended) return '공식 약으로 잘 맞췄어요';
-    if (pct >= 60) return '일부 약은 아직 공식 목록에 못 맞췄어요';
-    return '공식 약으로 맞춘 비율이 낮아요';
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final emphasizeRetake = retakeRecommended || pct < 60;
-    return Scaffold(
-      backgroundColor: AppColors.bg,
-      body: Column(
-        children: [
-          const SeniorBackHeader(title: '약 확인 결과'),
-          Expanded(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.fromLTRB(22, 24, 22, 20),
-              child: Column(
-                children: [
-                  Text('공식 약 확인', style: AppText.cardTitle()),
-                  const SizedBox(height: 8),
-                  Text(
-                    '$pct%',
-                    style: AppText.hero(size: 72, color: _accent),
-                  ),
-                  const SizedBox(height: 10),
-                  Text(
-                    _title,
-                    textAlign: TextAlign.center,
-                    style: AppText.emphasis(color: _accent),
-                  ),
-                  const SizedBox(height: 12),
-                  Text(
-                        meaning.isEmpty
-                        ? '이 숫자는 사진에서 찾은 약을 공식 이름으로 얼마나 맞췄는지예요.'
-                        : meaning,
-                    textAlign: TextAlign.center,
-                    style: AppText.body(),
-                  ),
-                  const SizedBox(height: 10),
-                  Text(
-                    summary,
-                    textAlign: TextAlign.center,
-                    style: AppText.body(color: AppColors.textSecondary),
-                  ),
-                  if (emphasizeRetake) ...[
-                    const SizedBox(height: 16),
-                    SeniorCard(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 18,
-                        vertical: 14,
-                      ),
-                      borderColor: AppColors.dangerBorder,
-                      borderWidth: 2,
-                      child: Text(
-                        '사진이 흐리거나 흔들리면 약 이름이 잘려서 버려질 수 있어요. 밝은 곳에서 다시 찍어 주세요.',
-                        style: AppText.body(),
-                      ),
-                    ),
-                  ],
-                  if (missingHints.isNotEmpty) ...[
-                    const SizedBox(height: 16),
-                    SeniorCard(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 18,
-                        vertical: 14,
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text('확인이 약한 항목', style: AppText.cardTitle(size: 18)),
-                          const SizedBox(height: 8),
-                          for (final hint in missingHints)
-                            Padding(
-                              padding: const EdgeInsets.only(bottom: 4),
-                              child: Text('· $hint', style: AppText.body()),
-                            ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ],
-              ),
-            ),
-          ),
-          SafeArea(
-            top: false,
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
-              child: Column(
-                children: [
-                  if (!emphasizeRetake) ...[
-                    SeniorButton(
-                      label: '다음',
-                      minHeight: 70,
-                      onPressed: onNext,
-                    ),
-                    SeniorTextButton(label: '다시 찍기', onPressed: onRetake),
-                  ] else ...[
-                    SeniorButton(
-                      label: '다시 찍어드릴게요',
-                      minHeight: 70,
-                      onPressed: onRetake,
-                    ),
-                    SeniorTextButton(label: '그래도 다음', onPressed: onNext),
-                  ],
-                ],
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 // ════════════════════════════════════════════════════════════════
 //  4e — 이렇게 읽었어요
 // ════════════════════════════════════════════════════════════════
-class _ConfirmScreen extends StatelessWidget {
+class _ConfirmScreen extends StatefulWidget {
   final List<Map<String, dynamic>> items;
   final List<String> unrecognizedNames;
-  final VoidCallback onRegister;
+  final Future<void> Function(List<Map<String, dynamic>> items) onRegister;
   final VoidCallback onRetake;
 
   const _ConfirmScreen({
@@ -727,10 +502,27 @@ class _ConfirmScreen extends StatelessWidget {
     required this.onRetake,
   });
 
+  @override
+  State<_ConfirmScreen> createState() => _ConfirmScreenState();
+}
+
+class _ConfirmScreenState extends State<_ConfirmScreen> {
+  late final List<Map<String, dynamic>> _editedItems = [
+    for (final item in widget.items) Map<String, dynamic>.from(item),
+  ];
+  bool _registering = false;
+
   static String _dosage(Map<String, dynamic> item) {
+    final amount = item['dosage']?.toString().trim() ?? '';
+    final timesPerTake = item['times_per_take'];
     final perDay = item['frequency_per_day'];
     final days = item['duration_days'];
     final parts = <String>[];
+    if (amount.isNotEmpty) {
+      parts.add('한 번에 $amount');
+    } else if (timesPerTake is num && timesPerTake > 0) {
+      parts.add('한 번에 ${timesPerTake.toInt()}알');
+    }
     if (perDay is num) {
       parts.add('하루 ${perDay.toInt()}번');
       parts.add(switch (perDay.toInt()) {
@@ -744,11 +536,183 @@ class _ConfirmScreen extends StatelessWidget {
     return parts.join(' · ');
   }
 
+  static String _shortDrugName(String name) {
+    return name.replaceAll(RegExp(r'\(수출명\s*[:：][^)]*\)'), '').trim();
+  }
+
+  static String? _seniorExplanation(Map<String, dynamic> item) {
+    final raw =
+        item['short_explanation']?.toString().trim() ??
+        item['easy_explanation']?.toString().trim() ??
+        item['easy_category']?.toString().trim() ??
+        '';
+    if (raw.isEmpty) return null;
+    if (raw.contains('약이에요')) return raw;
+    return '처방받은 약이에요';
+  }
+
   static bool _uncertain(Map<String, dynamic> item) {
     if (item['uncertain'] == true) return true;
     if (item['match_status']?.toString() == 'UNMATCHED') return true;
     final confidence = item['confidence'];
     return confidence is num && confidence < 0.7;
+  }
+
+  static bool _hasCompleteDosing(Map<String, dynamic> item) {
+    final amount = item['dosage']?.toString().trim() ?? '';
+    final timesPerTake = item['times_per_take'];
+    final frequency = item['frequency_per_day'];
+    final duration = item['duration_days'];
+    final hasAmount =
+        amount.isNotEmpty || (timesPerTake is num && timesPerTake > 0);
+    final hasFrequency =
+        frequency is num && frequency.toInt() >= 1 && frequency.toInt() <= 3;
+    final hasDuration =
+        duration is num && duration.toInt() >= 1 && duration.toInt() <= 365;
+    return hasAmount && hasFrequency && hasDuration;
+  }
+
+  bool get _allDosingConfirmed => _editedItems.every(_hasCompleteDosing);
+
+  Future<void> _editItem(int index) async {
+    final item = _editedItems[index];
+    final existingAmount = item['dosage']?.toString().trim() ?? '';
+    final timesPerTake = item['times_per_take'];
+    final amountController = TextEditingController(
+      text: existingAmount.isNotEmpty
+          ? existingAmount
+          : (timesPerTake is num && timesPerTake > 0
+                ? '${timesPerTake.toInt()}알'
+                : ''),
+    );
+    final duration = item['duration_days'];
+    final durationController = TextEditingController(
+      text: duration is num && duration > 0 ? duration.toInt().toString() : '',
+    );
+    final rawFrequency = item['frequency_per_day'];
+    int? frequency =
+        rawFrequency is num &&
+            rawFrequency.toInt() >= 1 &&
+            rawFrequency.toInt() <= 3
+        ? rawFrequency.toInt()
+        : null;
+
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: AppColors.bg,
+      builder: (sheetContext) => StatefulBuilder(
+        builder: (context, setSheetState) => SafeArea(
+          child: SingleChildScrollView(
+            padding: EdgeInsets.fromLTRB(
+              22,
+              22,
+              22,
+              22 + MediaQuery.viewInsetsOf(context).bottom,
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  _shortDrugName(item['drug_name']?.toString() ?? '약'),
+                  style: AppText.emphasis(size: 24),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  '처방전에 적힌 내용 그대로 확인해 주세요.',
+                  style: AppText.body(size: 17, color: AppColors.textSecondary),
+                ),
+                const SizedBox(height: 18),
+                TextField(
+                  controller: amountController,
+                  textInputAction: TextInputAction.next,
+                  style: AppText.body(size: 20),
+                  decoration: const InputDecoration(
+                    labelText: '한 번에 먹는 양',
+                    hintText: '예: 1알 또는 0.5정',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 14),
+                DropdownButtonFormField<int>(
+                  initialValue: frequency,
+                  style: AppText.body(size: 20, color: AppColors.textPrimary),
+                  decoration: const InputDecoration(
+                    labelText: '하루 복용 횟수',
+                    border: OutlineInputBorder(),
+                  ),
+                  items: const [
+                    DropdownMenuItem(value: 1, child: Text('하루 1번')),
+                    DropdownMenuItem(value: 2, child: Text('하루 2번')),
+                    DropdownMenuItem(value: 3, child: Text('하루 3번')),
+                  ],
+                  onChanged: (value) => setSheetState(() => frequency = value),
+                ),
+                const SizedBox(height: 14),
+                TextField(
+                  controller: durationController,
+                  keyboardType: TextInputType.number,
+                  style: AppText.body(size: 20),
+                  decoration: const InputDecoration(
+                    labelText: '복용 일수',
+                    hintText: '예: 7',
+                    suffixText: '일',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 20),
+                SeniorButton(
+                  label: '확인했어요',
+                  minHeight: 66,
+                  onPressed: () {
+                    final amount = amountController.text.trim();
+                    final days = int.tryParse(durationController.text.trim());
+                    if (amount.isEmpty ||
+                        frequency == null ||
+                        days == null ||
+                        days < 1 ||
+                        days > 365) {
+                      ScaffoldMessenger.of(sheetContext).showSnackBar(
+                        const SnackBar(
+                          content: Text('복용량, 하루 횟수, 복용 일수를 모두 확인해 주세요.'),
+                        ),
+                      );
+                      return;
+                    }
+                    setState(() {
+                      _editedItems[index] = {
+                        ...item,
+                        'dosage': amount,
+                        'times_per_take': null,
+                        'frequency_per_day': frequency,
+                        'duration_days': days,
+                      };
+                    });
+                    Navigator.of(sheetContext).pop();
+                  },
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+    amountController.dispose();
+    durationController.dispose();
+  }
+
+  Future<void> _tryRegister() async {
+    if (_registering) return;
+    if (!_allDosingConfirmed) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('빨간 약 카드의 복용 정보를 먼저 확인해 주세요.')),
+      );
+      return;
+    }
+    setState(() => _registering = true);
+    await widget.onRegister(_editedItems);
+    if (mounted) setState(() => _registering = false);
   }
 
   @override
@@ -777,14 +741,16 @@ class _ConfirmScreen extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          items.isEmpty
+                          _editedItems.isEmpty
                               ? '글자는 읽었는데, 공식 약과 아직 못 맞췄어요'
-                              : '약 ${items.length}가지를 찾았어요',
+                              : '약 ${_editedItems.length}가지를 찾았어요',
                           style: AppText.cardTitle(color: AppColors.point),
                         ),
                         const SizedBox(height: 4),
                         Text(
-                          '틀린 곳이 있으면 눌러서 고쳐주세요.',
+                          _allDosingConfirmed
+                              ? '약 이름과 복용 정보를 꼭 확인해 주세요.'
+                              : '빨간 카드를 눌러 빠진 복용 정보를 확인해 주세요.',
                           style: AppText.caption(
                             color: const Color(0xFF3A4590),
                           ),
@@ -793,19 +759,33 @@ class _ConfirmScreen extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(height: 12),
-                  for (final item in items) ...[
-                    _DrugCard(
-                      name: item['drug_name']?.toString() ?? '이름을 못 읽었어요',
-                      dosage: _dosage(item),
-                      explanation: item['easy_explanation']?.toString(),
-                      uncertain: _uncertain(item),
-                      recognitionPct: item['recognition_pct'] is num
-                          ? (item['recognition_pct'] as num).round()
-                          : null,
+                  for (int index = 0; index < _editedItems.length; index++) ...[
+                    Builder(
+                      builder: (context) {
+                        final item = _editedItems[index];
+                        final needsDosingConfirmation = !_hasCompleteDosing(
+                          item,
+                        );
+                        return _DrugCard(
+                          name: _shortDrugName(
+                            item['drug_name']?.toString() ?? '이름을 못 읽었어요',
+                          ),
+                          dosage: _dosage(item),
+                          purposeLabel: item['purpose_label']?.toString(),
+                          explanation: _seniorExplanation(item),
+                          keyCaution: item['key_caution']?.toString(),
+                          uncertain: _uncertain(item),
+                          needsDosingConfirmation: needsDosingConfirmation,
+                          recognitionPct: item['recognition_pct'] is num
+                              ? (item['recognition_pct'] as num).round()
+                              : null,
+                          onEdit: () => _editItem(index),
+                        );
+                      },
                     ),
                     const SizedBox(height: 12),
                   ],
-                  if (unrecognizedNames.isNotEmpty) ...[
+                  if (widget.unrecognizedNames.isNotEmpty) ...[
                     SeniorCard(
                       padding: const EdgeInsets.symmetric(
                         horizontal: 22,
@@ -832,7 +812,7 @@ class _ConfirmScreen extends StatelessWidget {
                             ),
                           ),
                           const SizedBox(height: 8),
-                          for (final name in unrecognizedNames)
+                          for (final name in widget.unrecognizedNames)
                             Padding(
                               padding: const EdgeInsets.only(bottom: 4),
                               child: Text(
@@ -855,18 +835,25 @@ class _ConfirmScreen extends StatelessWidget {
               padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
               child: Column(
                 children: [
-                  if (items.isNotEmpty) ...[
+                  if (_editedItems.isNotEmpty) ...[
                     SeniorButton(
-                      label: '이대로 등록하기',
+                      label: _registering
+                          ? '등록하고 있어요'
+                          : (_allDosingConfirmed
+                                ? '이대로 등록하기'
+                                : '복용 정보 확인 후 등록하기'),
                       minHeight: 70,
-                      onPressed: onRegister,
+                      onPressed: _registering ? null : _tryRegister,
                     ),
-                    SeniorTextButton(label: '다시 찍기', onPressed: onRetake),
+                    SeniorTextButton(
+                      label: '다시 찍기',
+                      onPressed: widget.onRetake,
+                    ),
                   ] else
                     SeniorButton(
                       label: '다시 찍어드릴게요',
                       minHeight: 70,
-                      onPressed: onRetake,
+                      onPressed: widget.onRetake,
                     ),
                 ],
               ),
@@ -881,15 +868,23 @@ class _ConfirmScreen extends StatelessWidget {
 class _DrugCard extends StatelessWidget {
   final String name;
   final String dosage;
+  final String? purposeLabel;
   final String? explanation;
+  final String? keyCaution;
   final bool uncertain;
+  final bool needsDosingConfirmation;
   final int? recognitionPct;
+  final VoidCallback onEdit;
 
   const _DrugCard({
     required this.name,
     required this.dosage,
+    required this.purposeLabel,
     required this.explanation,
+    required this.keyCaution,
     required this.uncertain,
+    required this.needsDosingConfirmation,
+    required this.onEdit,
     this.recognitionPct,
   });
 
@@ -897,7 +892,9 @@ class _DrugCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return SeniorCard(
       padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 20),
-      borderColor: uncertain ? AppColors.dangerBorder : null,
+      borderColor: uncertain || needsDosingConfirmation
+          ? AppColors.dangerBorder
+          : null,
       borderWidth: 2,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -920,9 +917,7 @@ class _DrugCard extends StatelessWidget {
               ],
               const SizedBox(width: 12),
               InkWell(
-                onTap: () => ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('고치기 — 아직 준비 중이에요')),
-                ),
+                onTap: onEdit,
                 child: Container(
                   constraints: const BoxConstraints(minHeight: 48),
                   alignment: Alignment.center,
@@ -942,14 +937,38 @@ class _DrugCard extends StatelessWidget {
               style: AppText.body(size: 18, color: AppColors.textSecondary),
             ),
           ],
+          if ((purposeLabel ?? '').trim().isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Text(
+              purposeLabel!,
+              style: AppText.label(size: 17.5, color: AppColors.point),
+            ),
+          ],
           if (explanation != null && explanation!.isNotEmpty) ...[
             const SizedBox(height: 8),
-            Text(explanation!, style: AppText.caption()),
+            Text(
+              explanation!,
+              style: AppText.body(size: 17, color: AppColors.textSecondary),
+            ),
+          ],
+          if ((keyCaution ?? '').trim().isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Text(
+              '주의: $keyCaution',
+              style: AppText.label(size: 17, color: AppColors.danger),
+            ),
           ],
           if (uncertain) ...[
             const SizedBox(height: 10),
             Text(
               '약 이름 인식이 불확실해요',
+              style: AppText.label(size: 17.5, color: AppColors.danger),
+            ),
+          ],
+          if (needsDosingConfirmation) ...[
+            const SizedBox(height: 10),
+            Text(
+              '복용량·하루 횟수·복용 일수를 확인해 주세요',
               style: AppText.label(size: 17.5, color: AppColors.danger),
             ),
           ],
@@ -976,7 +995,8 @@ class _FailedScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tooManyTries = failureCount >= 3;
-    final connectionFail = failureReason.contains('연결') ||
+    final connectionFail =
+        failureReason.contains('연결') ||
         failureReason.contains('Socket') ||
         failureReason.contains('Timeout') ||
         failureReason.contains('timeout');
@@ -1003,9 +1023,7 @@ class _FailedScreen extends StatelessWidget {
               onAction: onRetry,
               stillWorksTitle: '지금 드시는 약은 그대로예요',
               stillWorksBody: '이미 등록된 약과 알림은 아무 영향이 없어요.',
-              helperText: tooManyTries
-                  ? '어려우시면\n가족이 대신 찍어드릴 수 있어요'
-                  : null,
+              helperText: tooManyTries ? '어려우시면\n가족이 대신 찍어드릴 수 있어요' : null,
               onCallHelper: tooManyTries ? onAskFamily : null,
             ),
           ),

@@ -1,0 +1,121 @@
+from datetime import date
+
+import pytest
+from fastapi import HTTPException
+
+from app.models.schemas import PrescriptionConfirmItem
+from app.models.schemas import OCRMedicineItem, PrescriptionOCRRequest
+from app.database import get_connection
+import app.services.prescription_service as prescription_service
+from app.services.prescription_service import (
+    _schedule_dates,
+    _validated_confirm_dosage,
+)
+
+
+def _item(**overrides):
+    values = {
+        "medicine_code": "TEST-001",
+        "drug_name": "테스트정",
+        "dosage": "1알",
+        "frequency_per_day": 2,
+        "duration_days": 7,
+    }
+    values.update(overrides)
+    return PrescriptionConfirmItem(**values)
+
+
+def test_confirm_rejects_missing_dosing_fields():
+    with pytest.raises(HTTPException) as caught:
+        _validated_confirm_dosage(
+            _item(dosage=None, frequency_per_day=None, duration_days=None),
+            "테스트정",
+        )
+
+    assert caught.value.status_code == 422
+    assert "1회 복용량" in caught.value.detail
+    assert "하루 복용 횟수" in caught.value.detail
+    assert "복용 일수" in caught.value.detail
+
+
+def test_confirm_accepts_user_checked_dosing_fields():
+    assert _validated_confirm_dosage(_item(), "테스트정") == "1알"
+
+
+def test_missing_duration_never_creates_a_default_one_day_range():
+    assert _schedule_dates(None, None, None) == []
+    assert _schedule_dates("2026-09-09", None, 2) == [
+        date(2026, 9, 9),
+        date(2026, 9, 10),
+    ]
+
+
+def test_prescription_expiry_never_extends_confirmed_duration():
+    assert _schedule_dates("2026-09-09", "2026-12-31", 2) == [
+        date(2026, 9, 9),
+        date(2026, 9, 10),
+    ]
+
+
+def test_ocr_preview_returns_multi_purpose_patient_guidance(monkeypatch):
+    user_id = "test-guidance-preview"
+    conn = get_connection()
+    conn.execute(
+        "INSERT OR IGNORE INTO users (id, name, role) VALUES (?, '테스트', 'PATIENT')",
+        (user_id,),
+    )
+    conn.execute(
+        """
+        INSERT INTO medicines (
+            medicine_code, product_name, ingredient, efficacy, precautions, easy_category
+        ) VALUES (?, ?, ?, ?, ?, ?)
+        ON CONFLICT(medicine_code) DO UPDATE SET
+            product_name = excluded.product_name,
+            ingredient = excluded.ingredient,
+            efficacy = excluded.efficacy,
+            precautions = excluded.precautions
+        """,
+        (
+            "TEST-ADIPHARM",
+            "아디팜정(히드록시진염산염)",
+            "히드록시진염산염",
+            "신경증에서의 불안, 긴장, 초조. 두드러기, 피부질환에 수반하는 가려움",
+            "졸음이 올 수 있으며 운전 및 기계조작을 피한다.",
+            "가려움 약",
+        ),
+    )
+    conn.commit()
+    conn.close()
+
+    monkeypatch.setattr(
+        prescription_service,
+        "_extract_items",
+        lambda _request: (
+            [
+                OCRMedicineItem(
+                    drug_name="아디팜정",
+                    medicine_code="TEST-ADIPHARM",
+                    dosage="1알",
+                    frequency_per_day=1,
+                    duration_days=1,
+                )
+            ],
+            "아디팜정 1정 1회 1일",
+            {},
+            {},
+        ),
+    )
+    result = prescription_service.create_prescription_from_ocr(
+        PrescriptionOCRRequest(user_id=user_id, ocr_text="테스트")
+    )
+    item = result["items"][0]
+    assert item["purpose_label"] == "가려움 완화 · 불안·긴장 완화"
+    assert len(item["easy_purposes"]) == 2
+    assert "운전" in item["key_caution"]
+    assert "처방받은 이유" in item["purpose_notice"]
+
+    conn = get_connection()
+    conn.execute("DELETE FROM users WHERE id = ?", (user_id,))
+    conn.execute("DELETE FROM medicines WHERE medicine_code = 'TEST-ADIPHARM'")
+    conn.commit()
+    conn.close()

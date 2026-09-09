@@ -70,6 +70,10 @@ class MedicationController extends Notifier<TodayMedication> {
                 ingredient: ingredient,
                 amount: m['amount']?.toString() ?? '1알',
                 easyCategory: m['easy_category']?.toString(),
+                purposeLabel: m['purpose_label']?.toString(),
+                shortExplanation: m['short_explanation']?.toString(),
+                keyCaution: m['key_caution']?.toString(),
+                efficacy: m['efficacy']?.toString(),
                 scheduleId: scheduleId,
               ),
             );
@@ -108,55 +112,31 @@ class MedicationController extends Notifier<TodayMedication> {
   }
 
   TodayMedication _demoToday() {
+    const meds = [
+      Medicine(
+        ingredient: '코다론정(아미오다론염산염)',
+        amount: '1알',
+        appearance: '흰색 알약',
+        easyCategory: '심장 박동을 고르게 하는 약이에요',
+      ),
+      Medicine(
+        ingredient: '부루펜정200밀리그램(이부프로펜)',
+        amount: '1알',
+        appearance: '흰색 알약',
+        easyCategory: '열나고 아플 때 먹는 약이에요',
+      ),
+      Medicine(
+        ingredient: '게루삼정',
+        amount: '1알',
+        appearance: '흰색 알약',
+        easyCategory: '속쓰릴 때 먹는 약이에요',
+      ),
+    ];
     return const TodayMedication(
       doses: [
-        DoseEntry(
-          slot: DoseSlot.morning,
-          medicines: [
-            Medicine(
-              ingredient: '암로디핀 5mg',
-              amount: '1알',
-              appearance: '노란 길쭉한 알약',
-              easyCategory: '혈압 낮춤',
-            ),
-            Medicine(
-              ingredient: '아스피린 100mg',
-              amount: '1알',
-              appearance: '흰색 동그란 알약',
-              easyCategory: '피 묽게',
-            ),
-          ],
-          taken: true,
-        ),
-        DoseEntry(
-          slot: DoseSlot.lunch,
-          medicines: [
-            Medicine(
-              ingredient: '메트포르민 500mg',
-              amount: '1알',
-              appearance: '흰색 동그란 알약',
-              easyCategory: '혈당 조절',
-            ),
-          ],
-          taken: true,
-        ),
-        DoseEntry(
-          slot: DoseSlot.dinner,
-          medicines: [
-            Medicine(
-              ingredient: '메트포르민 500mg',
-              amount: '1알',
-              appearance: '흰색 동그란 알약',
-              easyCategory: '혈당 조절',
-            ),
-            Medicine(
-              ingredient: '암로디핀 5mg',
-              amount: '1알',
-              appearance: '노란 길쭉한 알약',
-              easyCategory: '혈압 낮춤',
-            ),
-          ],
-        ),
+        DoseEntry(slot: DoseSlot.morning, medicines: meds, taken: true),
+        DoseEntry(slot: DoseSlot.lunch, medicines: meds, taken: true),
+        DoseEntry(slot: DoseSlot.dinner, medicines: meds),
       ],
       guardianRelation: '딸',
       guardianName: '지안',

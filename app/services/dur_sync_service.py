@@ -296,13 +296,12 @@ def refresh_dur_for_ingredients(names: list[str]) -> dict[str, Any]:
             conn = get_connection()
             try:
                 cursor = conn.cursor()
-                pending = [
-                    query
-                    for query in queries
-                    if not _has_taboo_for_ingredient(cursor, query)
-                ]
-                for query in pending:
+                for query in queries:
                     for risk_type in ENDPOINTS:
+                        if _has_taboo_for_ingredient(
+                            cursor, query, risk_type=risk_type
+                        ):
+                            continue
                         stats = _sync_ingredient_type(
                             cursor,
                             risk_type,
@@ -327,8 +326,15 @@ def refresh_dur_for_ingredients(names: list[str]) -> dict[str, Any]:
             "upserted": upserted,
             "error": type(error).__name__,
         }
-    if errors and upserted == 0 and fetched == 0:
-        return {"status": "failed", "fetched": 0, "upserted": 0, "error": errors[0]}
+    if errors:
+        status = "failed" if upserted == 0 and fetched == 0 else "partial"
+        return {
+            "status": status,
+            "fetched": fetched,
+            "upserted": upserted,
+            "error": errors[0],
+            "error_count": len(errors),
+        }
     return {"status": "ok", "fetched": fetched, "upserted": upserted}
 
 
@@ -362,16 +368,25 @@ def _dur_taboo_count() -> int:
         conn.close()
 
 
-def _has_taboo_for_ingredient(cursor, query: str) -> bool:
+def _has_taboo_for_ingredient(
+    cursor,
+    query: str,
+    *,
+    risk_type: str | None = None,
+) -> bool:
     from app.services.pharmacist.ingredient import normalize_ingredient
 
     key = normalize_ingredient(query)
     if not key:
         return False
     rows = cursor.execute(
-        "SELECT ingredient_a, ingredient_b FROM dur_taboo"
+        """
+        SELECT ingredient_a, ingredient_b, taboo_type FROM dur_taboo
+        """
     ).fetchall()
     for row in rows:
+        if risk_type and str(row["taboo_type"] or "") != risk_type:
+            continue
         a = normalize_ingredient(row["ingredient_a"])
         b = normalize_ingredient(row["ingredient_b"])
         if key == a or key == b:
@@ -771,3 +786,151 @@ def _first(item: dict[str, Any], *keys: str) -> str | None:
         if value is not None and str(value).strip():
             return str(value).strip()
     return None
+
+
+def import_combination_partners_from_api(ingredient: str) -> dict[str, Any]:
+    """병용금기 상대를 DUR DB에 넣고, 허가 제품 1개씩 미러·앱 medicines에 복사한다."""
+    from app.services.mfds_drug_permission.client import (
+        extract_items,
+        fetch_permission_list_page,
+    )
+    from app.services.mfds_drug_permission.db import (
+        get_permission_connection,
+        upsert_list_item,
+    )
+    from app.services.mfds_drug_permission.sync import (
+        ensure_detail_for_product,
+        initialize_permission_db,
+    )
+    from app.services.pharmacist.ingredient import normalize_ingredient
+    from app.services.pharmacist.retrieve import (
+        retrieve_official,
+        upsert_official_app_medicine,
+    )
+
+    query = (ingredient or "").strip()
+    if not query or not DUR_API_KEY:
+        return {"status": "skipped", "dur_upserted": 0, "products": []}
+
+    with _SYNC_LOCK:
+        conn = get_connection()
+        try:
+            stats = _sync_ingredient_type(
+                conn.cursor(),
+                "병용금기",
+                query=query,
+                api_key=DUR_API_KEY,
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+    key = normalize_ingredient(query)
+    conn = get_connection()
+    try:
+        rows = conn.execute(
+            """
+            SELECT ingredient_a, ingredient_b FROM dur_taboo
+            WHERE taboo_type = '병용금기'
+            """
+        ).fetchall()
+    finally:
+        conn.close()
+
+    partners: list[str] = []
+    seen: set[str] = set()
+    for row in rows:
+        a = str(row["ingredient_a"] or "")
+        b = str(row["ingredient_b"] or "")
+        other = ""
+        if normalize_ingredient(a) == key:
+            other = b
+        elif normalize_ingredient(b) == key:
+            other = a
+        if other and other not in seen:
+            seen.add(other)
+            partners.append(other)
+
+    initialize_permission_db()
+    imported: list[str] = []
+    failed: list[str] = []
+    for partner in partners:
+        chosen = None
+        for variant in _partner_search_names(partner):
+            try:
+                payload = fetch_permission_list_page(
+                    page_no=1,
+                    num_of_rows=15,
+                    item_name=variant,
+                    timeout=15,
+                )
+            except Exception:
+                continue
+            chosen = _prefer_oral_product(partner, extract_items(payload))
+            if chosen:
+                break
+        if not chosen:
+            failed.append(partner)
+            continue
+        seq = str(chosen.get("ITEM_SEQ") or "")
+        name = str(chosen.get("ITEM_NAME") or "")
+        perm = get_permission_connection()
+        try:
+            upsert_list_item(perm, chosen)
+            perm.commit()
+        finally:
+            perm.close()
+        if seq and name:
+            ensure_detail_for_product(seq, name)
+        official = retrieve_official(name)
+        if not official:
+            failed.append(partner)
+            continue
+        upsert_official_app_medicine(official)
+        imported.append(name)
+
+    return {
+        "status": "ok",
+        "dur_fetched": stats.get("fetched", 0),
+        "dur_upserted": stats.get("upserted", 0),
+        "partners": partners,
+        "products": imported,
+        "failed": failed,
+    }
+
+
+def _partner_search_names(partner: str) -> list[str]:
+    names = [partner, f"{partner}정"]
+    if partner == "시탈로프람":
+        names = ["시탈로프람정", "시탈로프람"]
+    if partner == "토레미펜":
+        names = ["토레미펜", "토레미펜정", "패레스톤"]
+    return list(dict.fromkeys(names))
+
+
+def _prefer_oral_product(query: str, items: list[dict[str, Any]]) -> dict[str, Any] | None:
+    if not items:
+        return None
+    needle = "".join(query.split())
+    ranked: list[tuple[int, int, dict[str, Any]]] = []
+    for item in items:
+        name = str(item.get("ITEM_NAME") or "")
+        compact = "".join(name.split())
+        score = 0
+        idx = compact.find(needle) if needle else -1
+        if idx >= 0:
+            score += 8 - min(idx, 6)
+        else:
+            score -= 4
+        if query == "시탈로프람" and "에스시탈로프람" in compact:
+            score -= 12
+        if "주사" in name:
+            score -= 4
+        if "정" in name or "캡슐" in name:
+            score += 2
+        ranked.append((score, len(name), item))
+    ranked.sort(key=lambda row: (-row[0], row[1]))
+    best = ranked[0]
+    if best[0] < 0:
+        return None
+    return best[2]

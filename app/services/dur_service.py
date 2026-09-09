@@ -1,3 +1,4 @@
+import json
 import uuid
 from collections import defaultdict
 from datetime import date
@@ -6,6 +7,7 @@ from fastapi import HTTPException
 
 from app.database import get_connection
 from app.models.schemas import DurAnalyzeRequest
+from app.services.pharmacist.efficacy_display import display_efficacy_text
 from app.services.pharmacist.ingredient import (
     ingredient_keys,
     is_usable_ingredient,
@@ -16,6 +18,12 @@ from app.services.pharmacist.ingredient import (
 
 HIGH_TYPES = {"병용금기", "중복성분", "효능군중복"}
 MEDIUM_TYPES = {"연령금기", "임부금기"}
+OFFICIAL_DUR_TYPES = {"병용금기", "연령금기", "임부금기", "효능군중복"}
+ALL_CHECK_TYPES = OFFICIAL_DUR_TYPES | {"중복성분"}
+
+
+def _official_reason(value: str | None, fallback: str) -> str:
+    return display_efficacy_text(value) or (value or "").strip() or fallback
 
 
 def _normalize(value: str | None) -> str:
@@ -91,7 +99,9 @@ def analyze_dur(request: DurAnalyzeRequest) -> dict:
                 "risk_result_id": None,
                 "analysis_id": None,
                 "user_id": request.user_id,
-                "risk_level": "LOW",
+                "risk_level": "UNKNOWN",
+                "assessment_status": "INCOMPLETE",
+                "analysis_complete": False,
                 "has_risk": False,
                 "total_matches": 0,
                 "total_count": 0,
@@ -103,8 +113,12 @@ def analyze_dur(request: DurAnalyzeRequest) -> dict:
                 "matches": [],
                 "incomplete": True,
                 "incomplete_reasons": ["살펴볼 등록 약이 아직 없어요."],
+                "incomplete_types": sorted(ALL_CHECK_TYPES),
                 "skipped_medicine_names": [],
                 "taboo_row_count": 0,
+                "dur_sync_status": "no_medicines",
+                "dur_sync_fetched": 0,
+                "dur_sync_upserted": 0,
             }
 
         ingredients = [
@@ -180,30 +194,49 @@ def analyze_dur(request: DurAnalyzeRequest) -> dict:
         checkable_n = len(medicines) - len(skipped_ingredient)
         taboo_n = len(taboo_rows)
         incomplete_reasons = []
+        incomplete_types: set[str] = set()
         if checkable_n == 0:
             incomplete_reasons.append("등록 약의 성분 정보가 없어 함께먹기 검사를 할 수 없어요.")
+            incomplete_types.update(ALL_CHECK_TYPES)
         elif skipped_ingredient:
             incomplete_reasons.append(
                 f"{len(skipped_ingredient)}개 약은 성분을 몰라 검사에서 빠졌어요."
             )
-        if taboo_n == 0 and checkable_n > 0:
+            incomplete_types.update(ALL_CHECK_TYPES)
+        if checkable_n > 0:
             if dur_sync_status == "skipped_missing_key":
                 incomplete_reasons.append(
-                    "식약처 함께먹기 조회 키가 없어 병용·금기 검사는 하지 못했어요."
+                    "식약처 함께먹기 조회 키가 없어 최신 병용·금기 기준을 확인하지 못했어요."
                 )
-            elif dur_sync_status == "failed":
+                incomplete_types.update(OFFICIAL_DUR_TYPES)
+            elif dur_sync_status in {"failed", "partial"}:
                 incomplete_reasons.append(
-                    "식약처 함께먹기 기준을 받아오지 못했어요. 잠시 후 다시 살펴봐 주세요."
+                    "식약처 함께먹기 기준을 전부 받아오지 못했어요. 잠시 후 다시 살펴봐 주세요."
                 )
-            elif dur_sync_fetched > 0 and dur_sync_upserted == 0:
+                incomplete_types.update(OFFICIAL_DUR_TYPES)
+            elif dur_sync_status == "disabled":
                 incomplete_reasons.append(
-                    "식약처에서 이 약 성분에 맞는 함께먹기 기준을 찾지 못했어요."
+                    "최신 식약처 함께먹기 기준 조회가 꺼져 있어 검사를 끝내지 못했어요."
                 )
+                incomplete_types.update(OFFICIAL_DUR_TYPES)
+            elif dur_sync_status == "no_queries":
+                incomplete_reasons.append(
+                    "약 성분을 식약처 조회용 이름으로 바꾸지 못해 검사를 끝내지 못했어요."
+                )
+                incomplete_types.update(OFFICIAL_DUR_TYPES)
         if age is None:
             incomplete_reasons.append("생년월일이 없어 나이 관련 주의는 살펴보지 못했어요.")
+            incomplete_types.add("연령금기")
         incomplete = bool(incomplete_reasons)
+        assessment_status = (
+            "RISK_FOUND" if has_risk else "INCOMPLETE" if incomplete else "SAFE"
+        )
+        if incomplete and not has_risk:
+            risk_level = "UNKNOWN"
         if has_risk:
             description = f"함께 먹을 때 주의가 {len(matches)}건 있어요."
+            if incomplete:
+                description += " 일부 검사는 끝까지 확인하지 못했어요."
         elif incomplete:
             description = " ".join(incomplete_reasons)
         else:
@@ -233,6 +266,8 @@ def analyze_dur(request: DurAnalyzeRequest) -> dict:
             "analysis_id": analysis_id,
             "user_id": request.user_id,
             "risk_level": risk_level,
+            "assessment_status": assessment_status,
+            "analysis_complete": not incomplete,
             "has_risk": has_risk,
             "total_matches": len(matches),
             "total_count": len(matches),
@@ -244,9 +279,12 @@ def analyze_dur(request: DurAnalyzeRequest) -> dict:
             "matches": matches,
             "incomplete": incomplete,
             "incomplete_reasons": incomplete_reasons,
+            "incomplete_types": sorted(incomplete_types),
             "skipped_medicine_names": skipped_ingredient,
             "taboo_row_count": taboo_n,
             "dur_sync_status": dur_sync_status,
+            "dur_sync_fetched": dur_sync_fetched,
+            "dur_sync_upserted": dur_sync_upserted,
         }
     except Exception:
         conn.rollback()
@@ -439,6 +477,7 @@ def _taboo_matches(
         products_a = [r["product_name"] for r in _grouped_rows(grouped, row["ingredient_a"])]
         products_b = [r["product_name"] for r in _grouped_rows(grouped, row["ingredient_b"])]
         reason = row["description"] or "함께 먹을 때 주의가 필요해요."
+        reason = _official_reason(reason, "함께 먹을 때 주의가 필요해요.")
         if products_a:
             reason = f"{', '.join(products_a)}" + (
                 f" ↔ {', '.join(products_b)}" if products_b else ""
@@ -507,7 +546,7 @@ def _legacy_matches(rows, grouped) -> list[dict]:
                 "type": _risk_type(row["taboo_type"]),
                 "ingredient_a": row["ingredient_a"],
                 "ingredient_b": row["ingredient_b"],
-                "reason": row["description"],
+                "reason": _official_reason(row["description"], "함께 먹을 때 주의가 필요해요."),
                 "source": row["source"] or "기존 ingredient DUR",
             }
         )

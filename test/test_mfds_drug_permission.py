@@ -33,6 +33,34 @@ def test_xml_article_title_to_text():
     assert "효능효과" not in text
 
 
+def test_xml_title_and_cdata_keep_official_wording():
+    raw = """
+    <DOC title="효능효과" type="EE">
+      <SECTION title="">
+        <ARTICLE title="">
+          <PARAGRAPH><![CDATA[&nbsp;]]></PARAGRAPH>
+        </ARTICLE>
+        <ARTICLE title="다음 질환의 진통 및 해열시 단기치료:">
+          <PARAGRAPH><![CDATA[- 두통, 치통]]></PARAGRAPH>
+        </ARTICLE>
+      </SECTION>
+    </DOC>
+    """
+    text = xml_doc_to_text(raw)
+    assert "다음 질환의 진통 및 해열시 단기치료:" in text
+    assert "두통, 치통" in text
+    assert "&nbsp;" not in text
+
+
+def test_xml_strips_html_tags():
+    raw = '<ARTICLE title="위&lt;sup&gt;.&lt;/sup&gt;십이지장궤양" />'
+    text = xml_doc_to_text(raw)
+    assert "위" in text
+    assert "십이지장궤양" in text
+    assert "<sup>" not in text
+    assert "&lt;" not in text
+
+
 def test_permission_db_has_full_list():
     stats = count_stats()
     assert stats["total"] >= 40000

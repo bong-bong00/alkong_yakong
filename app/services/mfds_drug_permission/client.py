@@ -45,23 +45,36 @@ def fetch_permission_list_page(
     return response.json()
 
 
-def fetch_permission_detail(item_name: str) -> dict[str, Any] | None:
+def fetch_permission_detail(
+    item_name: str,
+    *,
+    item_seq: str | None = None,
+) -> dict[str, Any] | None:
     if not MFDS_DRUG_PERMISSION_API_KEY:
         raise RuntimeError("MFDS_DRUG_PERMISSION_API_KEY가 없습니다.")
-    response = requests.get(
-        DETAIL_PATH,
-        params={
+
+    def _request(extra: dict[str, str]) -> dict[str, Any] | None:
+        params: dict[str, Any] = {
             "serviceKey": MFDS_DRUG_PERMISSION_API_KEY,
             "pageNo": 1,
             "numOfRows": 1,
             "type": "json",
-            "item_name": item_name,
-        },
-        timeout=TIMEOUT,
-    )
-    response.raise_for_status()
-    items = extract_items(response.json())
-    return items[0] if items else None
+            **extra,
+        }
+        response = requests.get(DETAIL_PATH, params=params, timeout=TIMEOUT)
+        response.raise_for_status()
+        items = extract_items(response.json())
+        return items[0] if items else None
+
+    seq = str(item_seq or "").strip()
+    if seq:
+        hit = _request({"item_seq": seq})
+        if hit:
+            return hit
+    name = str(item_name or "").strip()
+    if name:
+        return _request({"item_name": name})
+    return None
 
 
 def extract_items(payload: dict[str, Any]) -> list[dict[str, Any]]:

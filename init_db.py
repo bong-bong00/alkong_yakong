@@ -48,6 +48,43 @@ TABLE_DEFINITIONS = {
             updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
         )
     """,
+    "medicine_purposes": """
+        CREATE TABLE medicine_purposes (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            medicine_code TEXT NOT NULL,
+            purpose_code TEXT NOT NULL,
+            easy_label TEXT NOT NULL,
+            easy_sentence TEXT NOT NULL,
+            evidence_type TEXT NOT NULL,
+            evidence_text TEXT,
+            source TEXT NOT NULL,
+            confidence TEXT NOT NULL DEFAULT 'MEDIUM',
+            review_status TEXT NOT NULL DEFAULT 'DERIVED',
+            classifier_version TEXT NOT NULL DEFAULT '2.0',
+            priority INTEGER NOT NULL DEFAULT 100,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (medicine_code) REFERENCES medicines(medicine_code) ON DELETE CASCADE,
+            UNIQUE (medicine_code, purpose_code)
+        )
+    """,
+    "medicine_key_cautions": """
+        CREATE TABLE medicine_key_cautions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            medicine_code TEXT NOT NULL,
+            caution_code TEXT NOT NULL,
+            short_sentence TEXT NOT NULL,
+            evidence_text TEXT,
+            source TEXT NOT NULL,
+            severity TEXT NOT NULL DEFAULT 'CAUTION',
+            review_status TEXT NOT NULL DEFAULT 'DERIVED',
+            classifier_version TEXT NOT NULL DEFAULT '2.0',
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (medicine_code) REFERENCES medicines(medicine_code) ON DELETE CASCADE,
+            UNIQUE (medicine_code, caution_code)
+        )
+    """,
     "dur_taboo": """
         CREATE TABLE dur_taboo (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -311,6 +348,8 @@ REQUIRED_COLUMNS = {
 INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_guardians_user_id ON guardians(user_id)",
     "CREATE INDEX IF NOT EXISTS idx_medicines_ingredient ON medicines(ingredient)",
+    "CREATE INDEX IF NOT EXISTS idx_medicine_purposes_code ON medicine_purposes(medicine_code, priority)",
+    "CREATE INDEX IF NOT EXISTS idx_medicine_cautions_code ON medicine_key_cautions(medicine_code)",
     "CREATE INDEX IF NOT EXISTS idx_dur_taboo_ingredients ON dur_taboo(ingredient_a, ingredient_b)",
     """
     CREATE UNIQUE INDEX IF NOT EXISTS idx_dur_taboo_source_external
@@ -372,6 +411,7 @@ ADDITIVE_COLUMNS = {
     },
     "medicines": {
         "easy_category": "TEXT",
+        "usage": "TEXT",
     },
     "users": {
         "is_pregnant": "INTEGER NOT NULL DEFAULT 0",
@@ -413,9 +453,18 @@ def initialize_database() -> None:
 
     conn.commit()
     purge_ocr_placeholder_rows(conn)
+    # 기존 의약품도 새 복수 목적/핵심 주의 구조로 채운다.
+    # REVIEWED 행은 동기화 함수가 보존하므로 운영 검토값이 다시 덮이지 않는다.
+    from app.services.pharmacist.easy_category import sync_medicine_guidance
+
+    rows = cursor.execute("SELECT * FROM medicines").fetchall()
+    columns = [item[0] for item in cursor.description] if cursor.description else []
+    for row in rows:
+        sync_medicine_guidance(cursor, dict(zip(columns, row)))
+    conn.commit()
     conn.close()
 
 
 if __name__ == "__main__":
     initialize_database()
-    print(f"알콩약콩 MVP 16개 테이블 생성 완료: {DB_PATH}")
+    print(f"알콩약콩 MVP {len(TABLE_DEFINITIONS)}개 테이블 생성 완료: {DB_PATH}")

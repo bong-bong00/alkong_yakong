@@ -9,6 +9,7 @@ from app.services.matching.name_matcher import match_medicine_name
 from app.services.mfds_drug_permission.db import search_permission_names
 from app.services.pharmacist.generate import generate_from_source
 from app.services.pharmacist.guard import guard_reply
+from app.services.pharmacist.efficacy_display import display_efficacy_text
 from app.services.pharmacist.retrieve import retrieve_official
 from app.services.pharmacist.spell import extract_drug_name_candidates
 
@@ -291,11 +292,13 @@ def _fixed_db_reply(kind: str | None, official: dict[str, Any], name: str) -> st
     """DB/공식 필드만으로 정해진 답을 만든다. 추측 문장 금지."""
     med = official.get("medicine") or {}
     product = str(med.get("product_name") or name).strip()
-    efficacy = _short_field(med.get("efficacy") or med.get("efficacy_text"))
+    efficacy = display_efficacy_text(
+        med.get("efficacy") or med.get("efficacy_text")
+    ) or ""
     usage = _short_field(med.get("usage") or med.get("usage_text"))
-    caution = _short_field(
+    caution = display_efficacy_text(
         med.get("cautions") or med.get("caution_text") or med.get("precautions")
-    )
+    ) or ""
 
     if kind == "missed":
         parts = [
@@ -339,7 +342,9 @@ def _fixed_db_reply(kind: str | None, official: dict[str, Any], name: str) -> st
 def _official_excerpt_reply(official: dict[str, Any], name: str) -> str | None:
     med = official.get("medicine") or {}
     product = str(med.get("product_name") or name).strip()
-    efficacy = _short_field(med.get("efficacy") or med.get("efficacy_text"))
+    efficacy = display_efficacy_text(
+        med.get("efficacy") or med.get("efficacy_text")
+    ) or ""
     usage = _short_field(med.get("usage") or med.get("usage_text"))
     if not efficacy and not usage:
         return None
