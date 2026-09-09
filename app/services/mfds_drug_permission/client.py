@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 import requests
@@ -17,6 +18,38 @@ BASE_URL = MFDS_DRUG_PERMISSION_BASE_URL
 LIST_PATH = f"{BASE_URL}{MFDS_DRUG_PERMISSION_LIST_PATH}"
 DETAIL_PATH = f"{BASE_URL}{MFDS_DRUG_PERMISSION_DETAIL_PATH}"
 TIMEOUT = 30
+
+logger = logging.getLogger(__name__)
+
+
+def _http_error_category(status_code: object) -> str:
+    if not isinstance(status_code, int):
+        return "unknown"
+    if status_code == 400:
+        return "bad_request"
+    if status_code == 401:
+        return "authentication"
+    if status_code == 403:
+        return "authorization"
+    if status_code == 404:
+        return "not_found"
+    if status_code == 429:
+        return "rate_limit"
+    if 500 <= status_code <= 599:
+        return "upstream_server_error"
+    if 400 <= status_code <= 499:
+        return "client_error"
+    return "none"
+
+
+def _log_http_diagnostic(response: requests.Response) -> None:
+    logger.warning(
+        "MFDS permission HTTP diagnostic status=%s content_type=%s "
+        "error_category=%s",
+        response.status_code,
+        response.headers.get("content-type", "unknown"),
+        _http_error_category(response.status_code),
+    )
 
 
 def fetch_permission_list_page(
@@ -69,6 +102,7 @@ def fetch_permission_detail(
         params=params,
         timeout=TIMEOUT,
     )
+    _log_http_diagnostic(response)
     response.raise_for_status()
     items = extract_items(response.json())
     if item_seq:
