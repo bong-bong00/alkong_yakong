@@ -117,6 +117,11 @@ class DurMatchResponse(ApiResponse):
     external_id: str | None = None
 
 
+class DurTypeGroupResponse(ApiResponse):
+    count: int
+    items: list[DurMatchResponse]
+
+
 class DurAnalyzeResponse(ApiResponse):
     risk_result_id: int
     analysis_id: str
@@ -144,6 +149,13 @@ class DurLatestResponse(ApiResponse):
     created_at: str
     matches: list[DurMatchResponse]
     representative_type: str | None = None
+    total_count: int | None = None
+    has_risk: bool | None = None
+    by_type: dict[str, DurTypeGroupResponse] | None = None
+    message: str | None = None
+    data_status: str | None = None
+    incomplete: bool | None = None
+    incomplete_reasons: list[str] | None = None
 
 
 class DurSyncStatsResponse(ApiResponse):

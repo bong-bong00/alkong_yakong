@@ -1,4 +1,5 @@
 import json
+import logging
 import uuid
 from collections import defaultdict
 from datetime import date
@@ -13,6 +14,9 @@ from app.services.pharmacist.ingredient import (
     normalize_ingredient,
     primary_ingredient_keys,
 )
+
+
+logger = logging.getLogger(__name__)
 
 
 HIGH_TYPES = {"병용금기", "중복성분", "효능군중복"}
@@ -785,25 +789,95 @@ def get_latest_dur(user_id: str) -> dict:
         if not latest:
             raise HTTPException(status_code=404, detail="DUR 분석 결과가 없습니다.")
         result = dict(latest)
-        result["analyzed_ingredients"] = _json_value(
+        row_id = result.get("id")
+        required_invalid = (
+            not isinstance(row_id, int)
+            or isinstance(row_id, bool)
+            or not isinstance(result.get("user_id"), str)
+            or not result.get("user_id", "").strip()
+            or not isinstance(result.get("risk_level"), str)
+            or not result.get("risk_level", "").strip()
+            or not isinstance(result.get("created_at"), str)
+            or not result.get("created_at", "").strip()
+        )
+        if required_invalid:
+            logger.warning(
+                "DUR latest required_field_invalid row_id=%s created_at_null=%s",
+                row_id,
+                result.get("created_at") is None,
+            )
+            raise HTTPException(
+                status_code=503,
+                detail="저장된 DUR 분석 결과를 해석할 수 없습니다. DUR 분석을 다시 실행해주세요.",
+            )
+
+        ingredients, ingredients_meta = _normalized_json_list(
             result.get("analyzed_ingredients"),
-            [],
+            item_kind="ingredient",
         )
-        matches = _json_value(result.get("matches_json"), [])
+        matches, matches_meta = _normalized_json_list(
+            result.get("matches_json"),
+            item_kind="match",
+        )
+        total_matches_value = result.get("total_matches")
+        total_matches_invalid = (
+            not isinstance(total_matches_value, int)
+            or isinstance(total_matches_value, bool)
+            or total_matches_value < 0
+        )
+        malformed = (
+            ingredients_meta["malformed"]
+            or matches_meta["malformed"]
+            or total_matches_invalid
+        )
+
+        result["analyzed_ingredients"] = ingredients
         result["matches"] = matches
-        result["total_matches"] = result.get("total_matches") or len(matches)
-        result["total_count"] = result["total_matches"]
-        result["has_risk"] = bool(matches)
-        result["by_type"] = _group_by_type(matches)
-        result["message"] = result.get("description") or (
-            f"함께 먹을 때 주의가 {len(matches)}건 있어요."
-            if matches
-            else "지금 등록된 약끼리, 특별한 함께먹기 주의는 없어요."
+        result["total_matches"] = (
+            len(matches)
+            if total_matches_invalid
+            else (total_matches_value or len(matches))
         )
+        result["total_count"] = result["total_matches"]
+        result["by_type"] = _group_by_type(matches)
         result["representative_type"] = (
             result.get("risk_type")
             or (matches[0]["type"] if matches else None)
         )
+        if malformed:
+            reasons = []
+            if ingredients_meta["malformed"]:
+                reasons.append("analyzed_ingredients")
+            if matches_meta["malformed"]:
+                reasons.append("matches_json")
+            if total_matches_invalid:
+                reasons.append("total_matches")
+            logger.warning(
+                "DUR latest malformed row_id=%s ingredients_type=%s matches_type=%s "
+                "invalid_ingredients=%s invalid_matches=%s invalid_total_matches=%s",
+                row_id,
+                ingredients_meta["decoded_type"],
+                matches_meta["decoded_type"],
+                ingredients_meta["invalid_count"],
+                matches_meta["invalid_count"],
+                total_matches_invalid,
+            )
+            result["matches_json"] = None
+            result["data_status"] = "malformed"
+            result["incomplete"] = True
+            result["incomplete_reasons"] = reasons
+            result["has_risk"] = True if matches else None
+            result["message"] = (
+                "저장된 DUR 분석 데이터를 완전히 해석할 수 없어 위험 여부를 "
+                "확인할 수 없습니다. DUR 분석을 다시 실행해주세요."
+            )
+        else:
+            result["has_risk"] = bool(matches)
+            result["message"] = result.get("description") or (
+                f"함께 먹을 때 주의가 {len(matches)}건 있어요."
+                if matches
+                else "지금 등록된 약끼리, 특별한 함께먹기 주의는 없어요."
+            )
         return result
     finally:
         conn.close()
@@ -816,3 +890,37 @@ def _json_value(value: str | None, fallback):
         return json.loads(value)
     except json.JSONDecodeError:
         return fallback
+
+
+def _normalized_json_list(value, *, item_kind: str) -> tuple[list, dict]:
+    """Decode legacy JSON lists while retaining an explicit malformed signal."""
+    try:
+        decoded = json.loads(value) if isinstance(value, str) else value
+    except (json.JSONDecodeError, TypeError):
+        return [], {"malformed": True, "decoded_type": "decode_error", "invalid_count": 0}
+
+    decoded_type = type(decoded).__name__
+    if not isinstance(decoded, list):
+        return [], {"malformed": True, "decoded_type": decoded_type, "invalid_count": 0}
+
+    normalized = []
+    invalid_count = 0
+    for item in decoded:
+        if item_kind == "ingredient":
+            valid = isinstance(item, str) and bool(item.strip())
+        else:
+            valid = (
+                isinstance(item, dict)
+                and isinstance(item.get("type"), str)
+                and bool(item["type"].strip())
+            )
+        if valid:
+            normalized.append(item)
+        else:
+            invalid_count += 1
+
+    return normalized, {
+        "malformed": invalid_count > 0,
+        "decoded_type": decoded_type,
+        "invalid_count": invalid_count,
+    }
