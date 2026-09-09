@@ -11,6 +11,57 @@ from app.services.pharmacist.generate import generate_card_from_source
 
 logger = logging.getLogger(__name__)
 
+
+def _compact_product_name(value: object) -> str:
+    return "".join(str(value or "").split()).casefold()
+
+
+def _with_official_permission_ingredient(
+    medicine: dict[str, Any],
+) -> dict[str, Any]:
+    """item_seq가 같은 공식 허가정보에서 DUR용 주성분만 보완한다."""
+    from app.services.mfds_drug_permission.client import fetch_permission_detail
+    from app.services.mfds_drug_permission.db import (
+        find_permission_product_by_item_seq,
+        product_to_medicine,
+    )
+
+    code = str(medicine.get("medicine_code") or "").strip()
+    expected_name = _compact_product_name(medicine.get("product_name"))
+    if not code or not expected_name:
+        return medicine
+
+    candidates: list[dict[str, Any]] = []
+    try:
+        local_row = find_permission_product_by_item_seq(code)
+        if local_row:
+            candidates.append(product_to_medicine(local_row))
+    except Exception:
+        pass
+
+    if not candidates or not candidates[0].get("ingredient"):
+        try:
+            detail = fetch_permission_detail(
+                str(medicine.get("product_name") or ""),
+                item_seq=code,
+            )
+            if detail:
+                normalized_detail = {
+                    str(key).lower(): value for key, value in detail.items()
+                }
+                candidates.append(product_to_medicine(normalized_detail))
+        except Exception:
+            pass
+
+    for candidate in candidates:
+        if (
+            str(candidate.get("medicine_code") or "").strip() == code
+            and _compact_product_name(candidate.get("product_name")) == expected_name
+            and candidate.get("ingredient")
+        ):
+            return {**medicine, "ingredient": candidate["ingredient"]}
+    return medicine
+
 CHAT_EXTRACTION_SCHEMA = {
     "type": "object",
     "properties": {
@@ -359,14 +410,17 @@ def generate_chat_response(
             if (
                 not selected_official
                 or selected_official.get("medicine_code") != selected_code
-                or "".join(selected_official.get("product_name", "").split()).casefold()
-                != "".join(selected_name.split()).casefold()
+                or _compact_product_name(selected_official.get("product_name"))
+                != _compact_product_name(selected_name)
             ):
                 return (
                     _dur_context_unavailable_reply(intents, "missing")
                     if safety_question
                     else unavailable_reply
                 )
+            selected_official = _with_official_permission_ingredient(
+                selected_official
+            )
             official_data_list.append(
                 {
                     "검색된_약품명": selected_official["product_name"],

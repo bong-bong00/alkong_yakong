@@ -45,22 +45,42 @@ def fetch_permission_list_page(
     return response.json()
 
 
-def fetch_permission_detail(item_name: str) -> dict[str, Any] | None:
+def fetch_permission_detail(
+    item_name: str | None = None,
+    *,
+    item_seq: str | None = None,
+) -> dict[str, Any] | None:
     if not MFDS_DRUG_PERMISSION_API_KEY:
         raise RuntimeError("MFDS_DRUG_PERMISSION_API_KEY가 없습니다.")
+    params: dict[str, Any] = {
+        "serviceKey": MFDS_DRUG_PERMISSION_API_KEY,
+        "pageNo": 1,
+        "numOfRows": 100 if item_seq else 1,
+        "type": "json",
+    }
+    if item_name:
+        params["item_name"] = item_name
+    elif item_seq:
+        params["item_seq"] = item_seq
+    else:
+        raise ValueError("item_name 또는 item_seq가 필요합니다.")
     response = requests.get(
         DETAIL_PATH,
-        params={
-            "serviceKey": MFDS_DRUG_PERMISSION_API_KEY,
-            "pageNo": 1,
-            "numOfRows": 1,
-            "type": "json",
-            "item_name": item_name,
-        },
+        params=params,
         timeout=TIMEOUT,
     )
     response.raise_for_status()
     items = extract_items(response.json())
+    if item_seq:
+        expected = str(item_seq).strip()
+        return next(
+            (
+                item
+                for item in items
+                if str(item.get("ITEM_SEQ") or "").strip() == expected
+            ),
+            None,
+        )
     return items[0] if items else None
 
 

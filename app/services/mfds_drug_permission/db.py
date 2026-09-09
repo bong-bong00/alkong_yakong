@@ -422,6 +422,22 @@ def find_permission_product(name: str) -> dict[str, Any] | None:
         conn.close()
 
 
+def find_permission_product_by_item_seq(item_seq: str) -> dict[str, Any] | None:
+    """품목기준코드로 로컬 허가정보를 정확히 조회한다."""
+    code = str(item_seq or "").strip()
+    if not code or not Path(DB_PATH).is_file():
+        return None
+    conn = get_permission_connection()
+    try:
+        row = conn.execute(
+            "SELECT * FROM products WHERE item_seq = ?",
+            (code,),
+        ).fetchone()
+        return dict(row) if row is not None else None
+    finally:
+        conn.close()
+
+
 def product_to_medicine(row: dict[str, Any]) -> dict[str, Any]:
     from app.services.pharmacist.ingredient import clean_ingredient_text
 

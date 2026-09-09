@@ -1,9 +1,14 @@
 import json
+import os
 import sqlite3
+import tempfile
 import unittest
-from unittest.mock import patch
+from types import SimpleNamespace
+from unittest.mock import MagicMock, patch
 
 from app.services import chat_context_service, gemini_service
+from app.services.mfds_drug_permission import client as permission_client
+from app.services.mfds_drug_permission import db as permission_db
 from app.services.chat_context_service import (
     build_grounded_chat_prompt,
     classify_question,
@@ -42,6 +47,177 @@ def _database(*, current, analyzed=None, matches=None, include_result=True):
 
 
 class ChatContextTest(unittest.TestCase):
+    def test_permission_db_item_seq_lookup_is_exact(self):
+        handle = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
+        db_path = handle.name
+        handle.close()
+        try:
+            with patch.object(permission_db, "DB_PATH", db_path):
+                permission_db.initialize_permission_db()
+                conn = permission_db.get_permission_connection()
+                try:
+                    conn.execute(
+                        """
+                        INSERT INTO products (
+                            item_seq, item_name, name_compact,
+                            main_item_ingr, item_ingr_name
+                        ) VALUES (?, ?, ?, ?, ?)
+                        """,
+                        (
+                            "198700430",
+                            "알마겔정(알마게이트)(수출명:유한가스트라겔정)",
+                            "알마겔정(알마게이트)(수출명:유한가스트라겔정)",
+                            "알마게이트 500mg",
+                            "알마게이트",
+                        ),
+                    )
+                    conn.commit()
+                finally:
+                    conn.close()
+
+                row = permission_db.find_permission_product_by_item_seq(
+                    "198700430"
+                )
+                missing = permission_db.find_permission_product_by_item_seq(
+                    "198700431"
+                )
+
+            self.assertEqual(row["main_item_ingr"], "알마게이트 500mg")
+            self.assertIsNone(missing)
+        finally:
+            os.unlink(db_path)
+
+    def test_permission_detail_filters_name_results_by_exact_item_seq(self):
+        response = MagicMock()
+        response.json.return_value = {
+            "body": {
+                "items": [
+                    {"ITEM_SEQ": "OTHER", "ITEM_NAME": "동명이품목"},
+                    {"ITEM_SEQ": "198700430", "ITEM_NAME": "알마겔정"},
+                ]
+            }
+        }
+        with (
+            patch.object(permission_client, "MFDS_DRUG_PERMISSION_API_KEY", "key"),
+            patch.object(permission_client.requests, "get", return_value=response) as get,
+        ):
+            item = permission_client.fetch_permission_detail(
+                "알마겔정",
+                item_seq="198700430",
+            )
+
+        response.raise_for_status.assert_called_once_with()
+        self.assertEqual(item["ITEM_SEQ"], "198700430")
+        params = get.call_args.kwargs["params"]
+        self.assertEqual(params["item_name"], "알마겔정")
+        self.assertNotIn("item_seq", params)
+        self.assertEqual(params["numOfRows"], 100)
+
+    def test_selected_medicine_ingredient_uses_exact_permission_item_seq(self):
+        official = {
+            "medicine_code": "198700430",
+            "product_name": "알마겔정(알마게이트)(수출명:유한가스트라겔정)",
+            "ingredient": None,
+            "efficacy": "공식 효능",
+            "source": "e약은요",
+        }
+        permission_row = {
+            "item_seq": "198700430",
+            "item_name": "알마겔정(알마게이트)(수출명:유한가스트라겔정)",
+            "main_item_ingr": "알마게이트 500mg",
+            "item_ingr_name": "알마게이트",
+        }
+        with (
+            patch(
+                "app.services.mfds_drug_permission.db.find_permission_product_by_item_seq",
+                return_value=permission_row,
+            ) as find_by_seq,
+            patch(
+                "app.services.mfds_drug_permission.client.fetch_permission_detail"
+            ) as fetch_detail,
+        ):
+            enriched = gemini_service._with_official_permission_ingredient(official)
+
+        find_by_seq.assert_called_once_with("198700430")
+        fetch_detail.assert_not_called()
+        self.assertEqual(enriched["ingredient"], "알마게이트 500mg")
+        self.assertEqual(enriched["efficacy"], "공식 효능")
+        self.assertEqual(enriched["source"], "e약은요")
+
+    def test_permission_api_fallback_requires_exact_code_and_name(self):
+        official = {
+            "medicine_code": "198700430",
+            "product_name": "알마겔정(알마게이트)(수출명:유한가스트라겔정)",
+            "ingredient": None,
+        }
+        api_detail = {
+            "ITEM_SEQ": "198700430",
+            "ITEM_NAME": "알마겔정(알마게이트)(수출명:유한가스트라겔정)",
+            "MAIN_ITEM_INGR": "알마게이트 500mg",
+            "ITEM_INGR_NAME": "알마게이트",
+        }
+        with (
+            patch(
+                "app.services.mfds_drug_permission.db.find_permission_product_by_item_seq",
+                return_value=None,
+            ),
+            patch(
+                "app.services.mfds_drug_permission.client.fetch_permission_detail",
+                return_value=api_detail,
+            ) as fetch_detail,
+        ):
+            enriched = gemini_service._with_official_permission_ingredient(official)
+
+        fetch_detail.assert_called_once_with(
+            "알마겔정(알마게이트)(수출명:유한가스트라겔정)",
+            item_seq="198700430",
+        )
+        self.assertEqual(enriched["ingredient"], "알마게이트 500mg")
+
+    def test_selected_permission_ingredient_reaches_dur_consultation(self):
+        selected = {
+            "medicine_code": "198700430",
+            "product_name": "알마겔정(알마게이트)(수출명:유한가스트라겔정)",
+        }
+        e_drug = {**selected, "ingredient": None, "source": "e약은요"}
+        enriched = {**e_drug, "ingredient": "알마게이트 500mg"}
+        fake_client = MagicMock()
+        fake_client.__enter__.return_value = fake_client
+        fake_client.__exit__.return_value = False
+        with (
+            patch.object(gemini_service, "GEMINI_API_KEY", "configured"),
+            patch("google.genai.Client", return_value=fake_client),
+            patch.object(
+                gemini_service,
+                "_generate_content_with_retry",
+                return_value=SimpleNamespace(parsed={"drug_names": []}),
+            ),
+            patch(
+                "app.services.external_api_service.fetch_e_drug_info",
+                return_value=e_drug,
+            ),
+            patch.object(
+                gemini_service,
+                "_with_official_permission_ingredient",
+                return_value=enriched,
+            ),
+            patch(
+                "app.services.dur_service.analyze_dur_consultation",
+                return_value={"status": "current", "items": []},
+            ) as analyze,
+        ):
+            reply = gemini_service.generate_chat_response(
+                "같이 먹어도 돼?",
+                user_id="U1",
+                selected_medicine=selected,
+            )
+
+        self.assertIn("확인되지 않았습니다", reply)
+        self.assertEqual(
+            analyze.call_args.kwargs["selected_medicine"]["ingredient"],
+            "알마게이트 500mg",
+        )
+
     def test_question_intents_and_minimal_official_fields(self):
         self.assertIn("combination", classify_question("A약과 B약 같이 먹어도 돼?"))
         self.assertTrue(is_safety_question(classify_question("임신 중 먹어도 돼?")))
