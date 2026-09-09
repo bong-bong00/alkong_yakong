@@ -283,6 +283,26 @@ class DurConsultationTest(unittest.TestCase):
         self.assertIn("reason=missing_birth_date", output)
         self.assertIn("sync_status=not_started", output)
 
+    def test_combination_does_not_require_birth_date(self):
+        conn = self._connect()
+        conn.execute("UPDATE users SET birth_date = NULL WHERE id = 'U1'")
+        conn.commit()
+        conn.close()
+        before = self._snapshot()
+
+        result = self._analyze(
+            {
+                "medicine_code": "C",
+                "product_name": "Drug C",
+                "ingredient": "ingredientc",
+            },
+            {"병용금기"},
+        )
+
+        self.assertEqual(result["status"], "current")
+        self.assertNotEqual(result.get("reason"), "missing_birth_date")
+        self.assertEqual(self._snapshot(), before)
+
     def test_unusable_selected_ingredient_logs_existing_reason(self):
         with self.assertLogs(dur_service.logger, level="WARNING") as captured:
             result = self._analyze(

@@ -32,26 +32,46 @@ class _DrugExplainScreenState extends State<DrugExplainScreen> {
   final List<Map<String, dynamic>> _messages = [];
 
   static const List<Map<String, String>> _keywordPrompts = [
-    {'label': '#약효·효능', 'prompt': '{medicine}의 약효와 효능을 공식 의약품 정보 기준으로 알려주세요.'},
-    {'label': '#복용방법', 'prompt': '{medicine}의 복용방법을 공식 의약품 정보 기준으로 알려주세요.'},
-    {'label': '#주의사항', 'prompt': '{medicine} 복용 시 주의사항을 알려주세요.'},
-    {'label': '#부작용', 'prompt': '{medicine}의 공식 부작용을 알려주세요.'},
+    {
+      'label': '#약효·효능',
+      'prompt': '{medicine}의 약효와 효능을 공식 의약품 정보 기준으로 알려주세요.',
+      'intent': 'efficacy',
+    },
+    {
+      'label': '#복용방법',
+      'prompt': '{medicine}의 복용방법을 공식 의약품 정보 기준으로 알려주세요.',
+      'intent': 'dosage',
+    },
+    {
+      'label': '#주의사항',
+      'prompt': '{medicine} 복용 시 주의사항을 알려주세요.',
+      'intent': 'precautions',
+    },
+    {
+      'label': '#부작용',
+      'prompt': '{medicine}의 공식 부작용을 알려주세요.',
+      'intent': 'side_effects',
+    },
     {
       'label': '#같이 먹는 약',
       'prompt': '{medicine}과 현재 먹는 약들을 같이 복용해도 되는지 기존 DUR 병용금기 분석 결과를 설명해주세요.',
+      'intent': 'combination',
     },
     {
       'label': '#나이별 주의',
       'prompt': '{medicine}의 나이별 주의사항을 기존 DUR 연령금기 분석 결과로 설명해주세요.',
+      'intent': 'age',
     },
     {
       'label': '#임신 중 주의',
       'prompt': '{medicine}의 임신 중 복용 주의사항을 기존 DUR 임부금기 분석 결과로 설명해주세요.',
+      'intent': 'pregnancy',
     },
     {
       'label': '#비슷한 약 중복',
       'prompt':
           '{medicine}과 현재 먹는 약에 비슷한 효능의 약이 중복되는지 기존 DUR 효능군중복 분석 결과로 설명해주세요.',
+      'intent': 'duplicate',
     },
   ];
 
@@ -105,7 +125,8 @@ class _DrugExplainScreenState extends State<DrugExplainScreen> {
 
     final label = keyword['label'];
     final prompt = keyword['prompt'];
-    if (label == null || prompt == null) return;
+    final intent = keyword['intent'];
+    if (label == null || prompt == null || intent == null) return;
 
     final medicine = _selectedMedicine;
     if (medicine == null || medicine.isEmpty) {
@@ -120,7 +141,7 @@ class _DrugExplainScreenState extends State<DrugExplainScreen> {
 
     setState(() => _selectedKeyword = label);
     final completedPrompt = prompt.replaceAll('{medicine}', medicine);
-    await _sendMessage(message: completedPrompt);
+    await _sendMessage(message: completedPrompt, intent: intent);
   }
 
   Future<void> _loadMedicines() async {
@@ -236,7 +257,7 @@ class _DrugExplainScreenState extends State<DrugExplainScreen> {
     });
   }
 
-  Future<void> _sendMessage({String? message}) async {
+  Future<void> _sendMessage({String? message, String? intent}) async {
     if (_isLoading) return;
 
     final text = (message ?? _chatController.text).trim();
@@ -257,6 +278,7 @@ class _DrugExplainScreenState extends State<DrugExplainScreen> {
         'user_id': MvpSession.userId,
         'message': text,
       };
+      if (intent != null) body['intent'] = intent;
       final selectedOfficial = _selectedOfficialMedicine;
       if (selectedOfficial?.itemSeq != null) {
         body['selected_medicine'] = {

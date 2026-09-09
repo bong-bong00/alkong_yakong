@@ -1,4 +1,4 @@
-from typing import List, Optional
+from typing import List, Literal, Optional
 
 from pydantic import BaseModel, Field
 
@@ -125,3 +125,15 @@ class DrugExplainChatRequest(BaseModel):
     user_id: str
     message: str
     selected_medicine: Optional[SelectedMedicine] = None
+    intent: Optional[
+        Literal[
+            "efficacy",
+            "dosage",
+            "precautions",
+            "side_effects",
+            "combination",
+            "age",
+            "pregnancy",
+            "duplicate",
+        ]
+    ] = None

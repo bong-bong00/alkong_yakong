@@ -25,6 +25,7 @@ def chat_with_pharmacist(request: DrugExplainChatRequest):
             if request.selected_medicine is not None
             else None
         ),
+        intent=request.intent,
     )
     return {"reply": reply}
 

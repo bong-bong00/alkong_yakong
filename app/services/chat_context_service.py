@@ -12,6 +12,7 @@ from app.services.pharmacist.ingredient import (
 OFFICIAL_FIELDS_BY_INTENT = {
     "overview": ("product_name", "ingredient", "manufacturer", "efficacy"),
     "efficacy": ("product_name", "ingredient", "efficacy"),
+    "dosage": ("product_name", "usage"),
     "usage": ("product_name", "usage"),
     "precautions": ("product_name", "cautions"),
     "side_effects": ("product_name", "side_effects"),
@@ -34,6 +35,18 @@ DUR_TYPES_BY_INTENT = {
 }
 
 SAFETY_INTENTS = frozenset(DUR_TYPES_BY_INTENT)
+EXPLICIT_QUESTION_INTENTS = frozenset(
+    {
+        "efficacy",
+        "dosage",
+        "precautions",
+        "side_effects",
+        "combination",
+        "age",
+        "pregnancy",
+        "duplicate",
+    }
+)
 
 
 def general_conversation_reply(message: str) -> str | None:
@@ -82,6 +95,15 @@ def classify_question(message: str) -> set[str]:
     if not intents or any(term in normalized for term in ("무슨약", "뭐야", "설명")):
         intents.add("overview")
     return intents
+
+
+def resolve_question_intents(
+    message: str,
+    explicit_intent: str | None = None,
+) -> set[str]:
+    if explicit_intent in EXPLICIT_QUESTION_INTENTS:
+        return {explicit_intent}
+    return classify_question(message)
 
 
 def is_safety_question(intents: set[str]) -> bool:

@@ -180,6 +180,7 @@ void main() {
     addTearDown(() => MvpSession.userId = originalUserId);
 
     final sentMessages = <String>[];
+    final sentIntents = <String>[];
     final client = MockClient((request) async {
       if (request.url.path.endsWith('/dashboard')) {
         return jsonResponse({
@@ -193,6 +194,7 @@ void main() {
         final body = jsonDecode(request.body) as Map<String, dynamic>;
         expect(body.containsKey('selected_medicine'), isFalse);
         sentMessages.add(body['message'] as String);
+        sentIntents.add(body['intent'] as String);
         return jsonResponse({'reply': '빠른 질문 답변'});
       }
       throw StateError('unexpected request: ${request.url.path}');
@@ -208,6 +210,16 @@ void main() {
       '#비슷한 약 중복':
           '게보린정과 현재 먹는 약에 비슷한 효능의 약이 중복되는지 기존 DUR 효능군중복 분석 결과로 설명해주세요.',
     };
+    const expectedIntents = <String, String>{
+      '#약효·효능': 'efficacy',
+      '#복용방법': 'dosage',
+      '#주의사항': 'precautions',
+      '#부작용': 'side_effects',
+      '#같이 먹는 약': 'combination',
+      '#나이별 주의': 'age',
+      '#임신 중 주의': 'pregnancy',
+      '#비슷한 약 중복': 'duplicate',
+    };
 
     for (final entry in expected.entries) {
       await tester.pumpWidget(appWith(client));
@@ -218,10 +230,35 @@ void main() {
       chip.onSelected!(true);
       await tester.pumpAndSettle();
       expect(sentMessages.last, entry.value);
+      expect(sentIntents.last, expectedIntents[entry.key]);
       await tester.pumpWidget(const SizedBox.shrink());
       await tester.pump();
     }
     expect(sentMessages, expected.values.toList());
+    expect(sentIntents, expectedIntents.values.toList());
+  });
+
+  testWidgets('자유 질문 전송에는 explicit intent를 포함하지 않는다', (tester) async {
+    Map<String, dynamic>? chatBody;
+    final client = MockClient((request) async {
+      if (request.url.path.endsWith('/dashboard')) {
+        return jsonResponse({
+          'latest_prescription': null,
+          'today_medications': [],
+        });
+      }
+      chatBody = jsonDecode(request.body) as Map<String, dynamic>;
+      return jsonResponse({'reply': '자유 질문 답변'});
+    });
+
+    await tester.pumpWidget(appWith(client));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField), '이 약은 식후에 먹나요?');
+    await tester.tap(find.byIcon(Icons.send_rounded));
+    await tester.pumpAndSettle();
+
+    expect(chatBody?['message'], '이 약은 식후에 먹나요?');
+    expect(chatBody?.containsKey('intent'), isFalse);
   });
 
   testWidgets('검색 약과 기존 복용약의 payload 출처를 구분한다', (tester) async {

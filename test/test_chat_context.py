@@ -15,6 +15,7 @@ from app.services.chat_context_service import (
     general_conversation_reply,
     is_safety_question,
     load_latest_dur_context,
+    resolve_question_intents,
     select_official_context,
 )
 
@@ -238,6 +239,7 @@ class ChatContextTest(unittest.TestCase):
                 "같이 먹어도 돼?",
                 user_id="U1",
                 selected_medicine=selected,
+                intent="combination",
             )
 
         self.assertIn("확인되지 않았습니다", reply)
@@ -245,6 +247,7 @@ class ChatContextTest(unittest.TestCase):
             analyze.call_args.kwargs["selected_medicine"]["ingredient"],
             "알마게이트 500mg",
         )
+        self.assertEqual(analyze.call_args.kwargs["risk_types"], {"병용금기"})
 
     def test_question_intents_and_minimal_official_fields(self):
         self.assertIn("combination", classify_question("A약과 B약 같이 먹어도 돼?"))
@@ -254,6 +257,61 @@ class ChatContextTest(unittest.TestCase):
             {"usage"},
         )
         self.assertEqual(selected, {"medicine_code": "1", "product_name": "약", "usage": "용법", "source": "e약은요"})
+
+    def test_explicit_quick_intents_override_natural_language_classification(self):
+        cases = {
+            "combination": {"병용금기"},
+            "age": {"연령금기"},
+            "pregnancy": {"임부금기"},
+            "duplicate": {"중복성분", "효능군중복"},
+        }
+        for explicit_intent, expected_risk_types in cases.items():
+            with self.subTest(explicit_intent=explicit_intent):
+                intents = resolve_question_intents(
+                    "이 약 같이 먹어도 돼? 안전한가요?",
+                    explicit_intent,
+                )
+                self.assertEqual(intents, {explicit_intent})
+                self.assertEqual(
+                    set().union(
+                        *(
+                            chat_context_service.DUR_TYPES_BY_INTENT.get(
+                                intent,
+                                set(),
+                            )
+                            for intent in intents
+                        )
+                    ),
+                    expected_risk_types,
+                )
+
+    def test_free_text_keeps_existing_question_classification(self):
+        self.assertEqual(
+            resolve_question_intents("이 약 같이 먹어도 돼?"),
+            classify_question("이 약 같이 먹어도 돼?"),
+        )
+
+    def test_explicit_edrug_intents_select_only_requested_fields(self):
+        official = {
+            "medicine_code": "1",
+            "product_name": "약",
+            "efficacy": "효능",
+            "usage": "용법",
+            "cautions": "주의",
+            "side_effects": "부작용",
+            "source": "e약은요",
+        }
+        expected_fields = {
+            "efficacy": "efficacy",
+            "dosage": "usage",
+            "precautions": "cautions",
+            "side_effects": "side_effects",
+        }
+        for intent, field in expected_fields.items():
+            with self.subTest(intent=intent):
+                selected = select_official_context(official, {intent})
+                self.assertIn(field, selected)
+                self.assertFalse(is_safety_question({intent}))
 
     def test_current_accepts_reordered_multiset(self):
         conn = _database(current=["성분A", "성분B", "성분A"], analyzed=["성분A", " 성분a ", "성분B"])

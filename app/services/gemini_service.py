@@ -423,22 +423,23 @@ def generate_chat_response(
     *,
     user_id: str = "",
     selected_medicine: dict[str, Any] | None = None,
+    intent: str | None = None,
 ) -> str:
     from app.services.chat_context_service import (
         DUR_TYPES_BY_INTENT,
         build_grounded_chat_prompt,
-        classify_question,
         enrich_dur_matches,
         general_conversation_reply,
         is_safety_question,
         load_latest_dur_context,
+        resolve_question_intents,
         select_official_context,
     )
 
     if general_reply := general_conversation_reply(message):
         return general_reply
 
-    intents = classify_question(message)
+    intents = resolve_question_intents(message, intent)
     safety_question = is_safety_question(intents)
     unavailable_reply = (
         "현재 확인된 식약처 정보만으로는 확인하기 어렵습니다. "
