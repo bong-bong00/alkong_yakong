@@ -296,6 +296,48 @@ class _DrugExplainScreenState extends State<DrugExplainScreen> {
     return _demoTylenolSummaryReply;
   }
 
+  Widget _buildKeywordBar() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Row(
+          children: _keywordPrompts.map((keyword) {
+            final label = keyword['label']!;
+            final selected = label == _selectedKeyword;
+            return Padding(
+              padding: const EdgeInsets.only(right: 8),
+              child: ChoiceChip(
+                label: Text(label),
+                selected: selected,
+                onSelected: _isLoading
+                    ? null
+                    : (_) => _selectKeyword(keyword),
+                labelStyle: TextStyle(
+                  color: selected ? Colors.white : kText,
+                  fontSize: 15,
+                  fontWeight: FontWeight.w600,
+                ),
+                backgroundColor: Colors.white,
+                selectedColor: kPrimary,
+                side: BorderSide(
+                  color: selected ? kPrimary : kPrimaryLight,
+                ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(18),
+                ),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 8,
+                  vertical: 8,
+                ),
+              ),
+            );
+          }).toList(),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -311,7 +353,7 @@ class _DrugExplainScreenState extends State<DrugExplainScreen> {
                 padding: const EdgeInsets.all(20),
                 keyboardDismissBehavior:
                     ScrollViewKeyboardDismissBehavior.onDrag,
-                itemCount: _messages.length + 3,
+                itemCount: _messages.length + 2,
                 itemBuilder: (context, index) {
                   if (index == 0) {
                     return const _PharmacistGuide();
@@ -333,59 +375,7 @@ class _DrugExplainScreenState extends State<DrugExplainScreen> {
                       onEnterOther: _enterOtherMedicine,
                     );
                   }
-                  if (index == 2) {
-                    return Padding(
-                      padding: const EdgeInsets.only(bottom: 20),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text(
-                            '궁금한 내용을 선택하세요.',
-                            style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w700,
-                              color: kText,
-                            ),
-                          ),
-                          const SizedBox(height: 10),
-                          Wrap(
-                            spacing: 8,
-                            runSpacing: 10,
-                            children: _keywordPrompts.map((keyword) {
-                              final label = keyword['label']!;
-                              final selected = label == _selectedKeyword;
-                              return ChoiceChip(
-                                label: Text(label),
-                                selected: selected,
-                                onSelected: _isLoading
-                                    ? null
-                                    : (_) => _selectKeyword(keyword),
-                                labelStyle: TextStyle(
-                                  color: selected ? Colors.white : kText,
-                                  fontSize: 15,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                                backgroundColor: Colors.white,
-                                selectedColor: kPrimary,
-                                side: BorderSide(
-                                  color: selected ? kPrimary : kPrimaryLight,
-                                ),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(18),
-                                ),
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 8,
-                                  vertical: 8,
-                                ),
-                              );
-                            }).toList(),
-                          ),
-                        ],
-                      ),
-                    );
-                  }
-
-                  final msg = _messages[index - 3];
+                  final msg = _messages[index - 2];
                   final isMe = msg['isMe'] as bool;
                   return _ChatBubble(isMe: isMe, text: msg['text'] as String);
                 },
@@ -399,6 +389,7 @@ class _DrugExplainScreenState extends State<DrugExplainScreen> {
                   style: TextStyle(fontSize: 12, color: kTextSub),
                 ),
               ),
+            _buildKeywordBar(),
             // 하단 입력창 (플로팅 스타일)
             Padding(
               // 하단바와 겹치지 않도록 좌, 우, 아래에 여백을 주어 띄웁니다.
@@ -581,32 +572,44 @@ class _OtherMedicineDialogState extends State<_OtherMedicineDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final mediaQuery = MediaQuery.of(context);
+    final availableHeight =
+        mediaQuery.size.height - mediaQuery.viewInsets.bottom;
+    final maxContentHeight = (availableHeight - 200)
+        .clamp(120.0, 368.0)
+        .toDouble();
+
     return AlertDialog(
       title: const Text('다른 약 검색하기'),
-      content: SizedBox(
-        width: double.maxFinite,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              key: const Key('otherMedicineSearchField'),
-              controller: _controller,
-              autofocus: true,
-              textInputAction: TextInputAction.search,
-              decoration: const InputDecoration(
-                hintText: '약 이름을 입력하세요',
-                border: OutlineInputBorder(),
-                prefixIcon: Icon(Icons.search_rounded),
+      content: ConstrainedBox(
+        constraints: BoxConstraints(maxHeight: maxContentHeight),
+        child: SizedBox(
+          width: double.maxFinite,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                key: const Key('otherMedicineSearchField'),
+                controller: _controller,
+                autofocus: true,
+                textInputAction: TextInputAction.search,
+                decoration: const InputDecoration(
+                  hintText: '약 이름을 입력하세요',
+                  border: OutlineInputBorder(),
+                  prefixIcon: Icon(Icons.search_rounded),
+                ),
+                onChanged: _onQueryChanged,
+                onSubmitted: _searchNow,
               ),
-              onChanged: _onQueryChanged,
-              onSubmitted: _searchNow,
-            ),
-            const SizedBox(height: 12),
-            ConstrainedBox(
-              constraints: const BoxConstraints(maxHeight: 300),
-              child: _buildSearchContent(),
-            ),
-          ],
+              const SizedBox(height: 12),
+              Flexible(
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxHeight: 300),
+                  child: _buildSearchContent(),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
       actions: [
