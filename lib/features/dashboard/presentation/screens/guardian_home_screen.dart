@@ -8,7 +8,7 @@ import '../../../../core/widgets/senior_bottom_nav.dart';
 import '../../../../core/widgets/senior_button.dart';
 import '../../../../core/widgets/senior_card.dart';
 import '../../../../core/widgets/senior_header.dart';
-import '../../../biosignal/presentation/screens/heartbeat_screen.dart';
+import '../../../biosignal/presentation/screens/heart_screen.dart';
 import '../../../profile/presentation/screens/mypage_screen.dart';
 import 'medication_record_screen.dart';
 import 'patient_data.dart';
@@ -233,7 +233,7 @@ class GuardianStatusTab extends StatelessWidget {
                   ),
                   onTap: () => Navigator.of(context).push(
                     MaterialPageRoute<void>(
-                      builder: (_) => HeartbeatScreen(
+                      builder: (_) => HeartScreen(
                         guardianTitle: '${patient.relation} ${patient.name} 님',
                       ),
                     ),

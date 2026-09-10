@@ -1,6 +1,11 @@
 import 'package:alkong_yakong/core/theme/app_theme.dart';
 import 'package:alkong_yakong/core/widgets/recovery_view.dart';
-import 'package:alkong_yakong/features/biosignal/presentation/screens/heartbeat_screen.dart';
+import 'package:alkong_yakong/features/biosignal/presentation/screens/heart_screen.dart';
+import 'package:alkong_yakong/features/biosignal/presentation/screens/measure_screen.dart';
+import 'package:alkong_yakong/features/biosignal/presentation/screens/monthly_heart_screen.dart';
+import 'package:alkong_yakong/features/biosignal/presentation/screens/polar_screen.dart';
+import 'package:alkong_yakong/features/biosignal/presentation/screens/saved_screen.dart';
+import 'package:alkong_yakong/features/biosignal/domain/heart_data.dart';
 import 'package:alkong_yakong/features/dur_analysis/presentation/screens/dur_analysis_screen.dart';
 import 'package:alkong_yakong/features/medication/domain/medication_models.dart';
 import 'package:alkong_yakong/features/prescription/presentation/screens/prescription_screen.dart';
@@ -35,7 +40,11 @@ void main() {
   final screens = <String, Widget Function()>{
     '처방전 찍기 (4d)': () => const PrescriptionScreen(),
     '약 함께먹기 주의 (4f)': () => const DurAnalysisScreen(),
-    '심장 박동 (4g)': () => const HeartbeatScreen(),
+    '심박수 관리 (24)': () => const HeartScreen(),
+    '폴라 센서 (25)': () => const PolarScreen(data: HeartData.demo),
+    '한 달 기록 (26)': () => const MonthlyHeartScreen(data: HeartData.demo),
+    '심박수 재는 중 (27)': () => const MeasureScreen(),
+    '기록 저장 (30)': () => const SavedScreen(bpm: 72),
     '계정 관리': () => const AccountScreen(),
     '잠금화면 알림 (5b)': () => LockScreenAlert(
       dose: dose,

@@ -149,7 +149,7 @@ class RecoveryView extends StatelessWidget {
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: Text(
-                        '전화',
+                        '알리기',
                         style: AppText.cardTitle(
                           size: 18,
                           color: AppColors.point,

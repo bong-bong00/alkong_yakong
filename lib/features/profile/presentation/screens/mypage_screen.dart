@@ -145,15 +145,6 @@ class _MyPageScreenState extends ConsumerState<MyPageScreen> {
                       ),
                       const SeniorDivider(),
                       SeniorListRow(
-                        label: '듣고 말하기',
-                        icon: TablerIcons.volume_2,
-                        value: '켜기',
-                        valueColor: AppColors.point,
-                        trailing: const SeniorChevron(),
-                        onTap: () => context.push('/voice'),
-                      ),
-                      const SeniorDivider(),
-                      SeniorListRow(
                         label: '알림 소리 · 크게',
                         icon: TablerIcons.bell,
                         trailing: SeniorToggle(

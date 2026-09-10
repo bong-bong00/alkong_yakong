@@ -285,3 +285,33 @@ class SeniorToggle extends StatelessWidget {
     );
   }
 }
+
+/// 라벨과 값을 한 줄에 두되, **글자가 커지면 두 줄로 접는다.**
+///
+/// 시스템 글자 크기를 최대로 올려도 값이 잘리지 않아야 한다는 요건 때문에,
+/// 가로 배치를 고집하지 않고 배율이 커지면 세로로 전환한다.
+class LabelValueRow extends StatelessWidget {
+  final Widget label;
+  final Widget value;
+
+  const LabelValueRow({super.key, required this.label, required this.value});
+
+  @override
+  Widget build(BuildContext context) {
+    final scaled = MediaQuery.textScalerOf(context).scale(18);
+    if (scaled > 26) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [label, const SizedBox(height: 6), value],
+      );
+    }
+    return Row(
+      children: [
+        Expanded(child: label),
+        const SizedBox(width: 12),
+        Flexible(child: value),
+      ],
+    );
+  }
+}

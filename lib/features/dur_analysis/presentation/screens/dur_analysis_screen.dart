@@ -9,6 +9,7 @@ import '../../../../core/theme/app_typography.dart';
 import '../../../../core/widgets/recovery_view.dart';
 import '../../../../core/widgets/senior_button.dart';
 import '../../../../core/widgets/senior_card.dart';
+import '../../../../core/widgets/senior_feedback.dart';
 import '../../../../core/widgets/senior_header.dart';
 
 /// 위험도 3단. **등급 숫자나 점수는 노출하지 않는다.**
@@ -43,6 +44,9 @@ class _DurAnalysisScreenState extends State<DurAnalysisScreen> {
   bool _loading = true;
   bool _failed = false;
   List<Map<String, dynamic>> _matches = const [];
+
+  /// 보호자에게 이 주의 내용을 보냈는지. 보내고 나면 버튼이 카드로 바뀐다.
+  bool _shared = false;
 
   @override
   void initState() {
@@ -168,7 +172,7 @@ class _DurAnalysisScreenState extends State<DurAnalysisScreen> {
         stillWorksTitle: '약 알림은 그대로 와요',
         stillWorksBody: '인터넷이 끊겨도 복약 알림에는 영향이 없어요.',
         helperText: '그래도 안 되면\n${widget.guardianTitle}에게 도움 청하기',
-        onCallHelper: _callGuardian,
+        onCallHelper: _shareWithGuardian,
       );
     }
 
@@ -186,8 +190,7 @@ class _DurAnalysisScreenState extends State<DurAnalysisScreen> {
               headline: '${_pairOf(match)}을\n같이 드시면 위험해요',
               detail: match['reason']?.toString() ??
                   '두 약이 서로 부딪혀 몸에 무리가 갈 수 있어요. '
-                      '약국에 전화해서 이 두 가지를 같이 먹어도 되는지 물어보세요.',
-              onCall: _callPharmacy,
+                      '두 약을 함께 드시기 전에 꼭 약사님께 물어보세요.',
             ),
             const SizedBox(height: 12),
           ],
@@ -196,8 +199,7 @@ class _DurAnalysisScreenState extends State<DurAnalysisScreen> {
               risk: DrugRisk.caution,
               headline: '${_pairOf(match)}은\n조심해서 드셔야 해요',
               detail: match['reason']?.toString() ??
-                  '드시는 데 문제는 없지만, 몸이 평소와 다르면 약국에 물어보세요.',
-              onCall: _callPharmacy,
+                  '드시는 데 문제는 없지만, 몸이 평소와 다르면 약사님께 물어보세요.',
             ),
             const SizedBox(height: 12),
           ],
@@ -307,29 +309,27 @@ class _DurAnalysisScreenState extends State<DurAnalysisScreen> {
           ),
           const SizedBox(height: 16),
 
-          SeniorButton(
-            label: '${widget.guardianTitle}에게 알리기',
-            kind: SeniorButtonKind.secondary,
-            minHeight: 64,
-            fontSize: 21,
-            onPressed: _callGuardian,
-          ),
+          if (_shared)
+            _SharedCard(guardianTitle: widget.guardianTitle)
+          else
+            SeniorButton(
+              label: '${widget.guardianTitle}에게 알리기',
+              kind: SeniorButtonKind.secondary,
+              minHeight: 68,
+              fontSize: 20,
+              onPressed: _shareWithGuardian,
+            ),
         ],
       ),
     );
   }
 
-  void _callPharmacy() {
-    // TODO: 등록된 약국 번호로 전화 연결.
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(const SnackBar(content: Text('약국에 전화를 겁니다')));
-  }
-
-  void _callGuardian() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('${widget.guardianTitle}에게 알려드렸어요')),
-    );
+  /// 어르신 화면에는 전화 걸기 버튼을 두지 않는다.
+  /// 앱이 대신 보내고, 보냈다는 사실만 스낵바로 알린다.
+  void _shareWithGuardian() {
+    // TODO: 보호자 알림 발송 API 연동.
+    setState(() => _shared = true);
+    showSeniorSnackbar(context, '${widget.guardianTitle}에게 보냈어요');
   }
 }
 
@@ -337,13 +337,11 @@ class _RiskCard extends StatelessWidget {
   final DrugRisk risk;
   final String headline;
   final String detail;
-  final VoidCallback onCall;
 
   const _RiskCard({
     required this.risk,
     required this.headline,
     required this.detail,
-    required this.onCall,
   });
 
   @override
@@ -374,13 +372,47 @@ class _RiskCard extends StatelessWidget {
           Text(headline, style: AppText.emphasis()),
           const SizedBox(height: 12),
           Text(detail, style: AppText.body()),
-          const SizedBox(height: 12),
-          SeniorButton(
-            label: '약국에 전화하기',
-            kind: SeniorButtonKind.danger,
-            minHeight: 66,
-            fontSize: 22,
-            onPressed: onCall,
+        ],
+      ),
+    );
+  }
+}
+
+/// 보호자에게 주의 내용을 보낸 뒤 버튼 자리를 대신하는 카드.
+class _SharedCard extends StatelessWidget {
+  final String guardianTitle;
+  const _SharedCard({required this.guardianTitle});
+
+  @override
+  Widget build(BuildContext context) {
+    return SeniorCard(
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
+      child: Row(
+        children: [
+          Container(
+            width: 44,
+            height: 44,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: AppColors.pointTint,
+              borderRadius: BorderRadius.circular(22),
+            ),
+            child: Text(
+              '✓',
+              style: AppText.cardTitle(size: 20, color: AppColors.point),
+            ),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('$guardianTitle에게 알렸어요',
+                    style: AppText.cardTitle(size: 19)),
+                Text('이 주의 내용이 그대로 전달됐어요',
+                    style: AppText.caption()),
+              ],
+            ),
           ),
         ],
       ),

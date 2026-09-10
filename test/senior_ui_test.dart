@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:alkong_yakong/core/theme/app_theme.dart';
 import 'package:alkong_yakong/features/auth/presentation/screens/login_screen.dart';
 import 'package:alkong_yakong/features/dashboard/presentation/screens/guardian_home_screen.dart';
@@ -7,7 +8,6 @@ import 'package:alkong_yakong/features/medication/domain/medication_models.dart'
 import 'package:alkong_yakong/features/onboarding/presentation/screens/first_run_screen.dart';
 import 'package:alkong_yakong/features/profile/presentation/screens/mypage_screen.dart';
 import 'package:alkong_yakong/features/reminder/domain/reminder_ladder.dart';
-import 'package:alkong_yakong/features/voice/presentation/screens/voice_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -22,6 +22,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 /// 특히 5h — 시스템 글자 크기를 최대로 올렸을 때도 레이아웃이 버텨야 한다.
 /// 어떤 화면도 오버플로로 터지면 안 된다.
 void main() {
+  _forbiddenFeatureTests();
   _easyModeTests();
   Widget wrap(Widget child, {double textScale = 1.0}) {
     return ProviderScope(
@@ -41,7 +42,6 @@ void main() {
     '내 정보 (4h)': () => const MyPageScreen(),
     '로그인 (4i)': () => const LoginScreen(),
     '첫 사용 (5g)': () => const FirstRunScreen(),
-    '듣고 말하기 (5d)': () => const VoiceScreen(),
     '보호자 (4j·4k)': () => const GuardianHomeScreen(),
   };
 
@@ -223,4 +223,49 @@ class _EasyMode extends AppModeNotifier {
   _EasyMode() {
     state = AppMode.easy;
   }
+}
+
+// ════════════════════════════════════════════════════════════════
+//  핸드오프가 금지한 것들 — 되살아나면 여기서 걸린다
+// ════════════════════════════════════════════════════════════════
+
+void _forbiddenFeatureTests() {
+  final libDir = Directory('lib');
+
+  List<File> dartFiles() => libDir
+      .listSync(recursive: true)
+      .whereType<File>()
+      .where((f) => f.path.endsWith('.dart'))
+      .toList();
+
+  test('음성으로 복약을 기록하는 화면이 없다', () {
+    final voiceDir = Directory('lib/features/voice');
+    expect(voiceDir.existsSync(), isFalse, reason: '음성 기능은 제거 대상이다');
+
+    for (final file in dartFiles()) {
+      final text = file.readAsStringSync();
+      expect(text.contains('VoiceScreen'), isFalse, reason: file.path);
+      expect(text.contains("'/voice'"), isFalse, reason: file.path);
+    }
+  });
+
+  test('어르신 화면에 전화 거는 버튼이 없다', () {
+    // 보호자 화면의 "전화 드리기"는 방향이 반대라 허용된다.
+    const guardianOnly = 'guardian_home_screen.dart';
+    for (final file in dartFiles()) {
+      if (file.path.endsWith(guardianOnly)) continue;
+      final text = file.readAsStringSync();
+      for (final banned in ["label: '약국에 전화하기'", "전화를 겁니다"]) {
+        expect(text.contains(banned), isFalse,
+            reason: '${file.path}에 "$banned"가 남아 있다');
+      }
+    }
+  });
+
+  test('보호자 연락은 스낵바로 알린다', () {
+    final dur = File(
+      'lib/features/dur_analysis/presentation/screens/dur_analysis_screen.dart',
+    ).readAsStringSync();
+    expect(dur.contains('showSeniorSnackbar'), isTrue);
+  });
 }

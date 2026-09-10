@@ -5,7 +5,7 @@ import '../../../core/constants/app_colors.dart';
 import '../../../core/mode/app_mode.dart';
 import '../../../core/theme/app_typography.dart';
 import '../../../core/widgets/senior_button.dart';
-import '../../biosignal/presentation/screens/heartbeat_screen.dart';
+import '../../biosignal/presentation/screens/heart_screen.dart';
 import '../../dashboard/presentation/screens/medication_record_screen.dart';
 import '../../dashboard/presentation/screens/patient_home_screen.dart';
 import '../../dur_analysis/presentation/screens/dur_analysis_screen.dart';
@@ -65,7 +65,7 @@ class _EasyFlowShellState extends ConsumerState<EasyFlowShell> {
       case EasyScreen.record:
         return const MedicationRecordScreen();
       case EasyScreen.heartbeat:
-        return const HeartbeatScreen();
+        return const HeartScreen();
       case EasyScreen.myInfo:
         return const MyPageScreen();
     }
