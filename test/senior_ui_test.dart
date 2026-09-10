@@ -33,6 +33,7 @@ void main() {
   _easyModeTests();
   _signupTests();
   _sensorTests();
+  _shippingTests();
   _calendarTests();
   Widget wrap(Widget child, {double textScale = 1.0}) {
     return ProviderScope(
@@ -570,5 +571,34 @@ void _sensorTests() {
     expect(sensor.normal, isTrue);
     expect(sensor.lowest, isNull);
     expect(sensor.highest, isNull);
+  });
+}
+
+
+/// 넘기기 전에 되돌려야 할 것들.
+void _shippingTests() {
+  test('로그인 화면을 건너뛰지 않는다', () {
+    // 화면을 훑어보려고 잠시 껐던 것. 켠 채로 넘기면 아무나 들어온다.
+    final main = File('lib/main.dart').readAsStringSync();
+    expect(
+      main.contains("bool.fromEnvironment('SKIP_LOGIN', defaultValue: true)"),
+      isFalse,
+      reason: '로그인 건너뛰기가 기본값으로 켜져 있다',
+    );
+  });
+
+  test('눌러도 아무 일 없는 버튼을 남기지 않는다', () {
+    // "고쳐주세요"라고 적어 놓고 고칠 방법이 없으면 틀린 채로 등록한다.
+    final confirm = File(
+      'lib/features/prescription/presentation/screens/prescription_screen.dart',
+    ).readAsStringSync();
+    expect(confirm.contains('showFixNameSheet'), isTrue);
+    expect(confirm.contains("'고치기 — 아직 준비 중이에요'"), isFalse);
+
+    final profile = File(
+      'lib/features/profile/presentation/screens/mypage_screen.dart',
+    ).readAsStringSync();
+    expect(profile.contains('showAddCareSheet'), isTrue);
+    expect(profile.contains('ProfileEditScreen'), isTrue);
   });
 }

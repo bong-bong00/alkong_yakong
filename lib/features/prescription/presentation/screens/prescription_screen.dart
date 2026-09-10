@@ -18,6 +18,7 @@ import '../../../../core/widgets/senior_feedback.dart';
 import '../../../medication/application/medication_controller.dart';
 import '../../../onboarding/presentation/screens/first_run_screen.dart';
 import 'add_medicine_screen.dart';
+import '../widgets/fix_name_sheet.dart';
 import 'manual_medicine_screen.dart';
 
 /// 처방전 등록 흐름의 단계.
@@ -162,6 +163,21 @@ class _PrescriptionScreenState extends ConsumerState<PrescriptionScreen> {
         _step = PrescriptionStep.failed;
       });
     }
+  }
+
+  /// 잘못 읽은 이름을 고친다.
+  ///
+  /// 이름을 손으로 고치면 그 약은 더 이상 "흐려서 확인이 필요"하지 않다.
+  /// 사람이 확인해 준 것이므로 경고를 내린다.
+  void _fixName(int index, String name) {
+    if (index < 0 || index >= _items.length) return;
+    setState(() {
+      _items[index] = {
+        ..._items[index],
+        'drug_name': name,
+        'match_status': 'USER_FIXED',
+      };
+    });
   }
 
   Future<void> _register() async {
@@ -313,6 +329,7 @@ class _PrescriptionScreenState extends ConsumerState<PrescriptionScreen> {
         return _ConfirmScreen(
           items: _items,
           onRegister: _register,
+          onFixName: _fixName,
           onRetake: () => setState(() {
             _image = null;
             _step = PrescriptionStep.capture;
@@ -526,10 +543,14 @@ class _ConfirmScreen extends StatelessWidget {
   final VoidCallback onRegister;
   final VoidCallback onRetake;
 
+  /// 잘못 읽은 이름을 고쳤을 때. 몇 번째 약인지와 새 이름을 넘긴다.
+  final void Function(int index, String name) onFixName;
+
   const _ConfirmScreen({
     required this.items,
     required this.onRegister,
     required this.onRetake,
+    required this.onFixName,
   });
 
   static String _dosage(Map<String, dynamic> item) {
@@ -550,6 +571,8 @@ class _ConfirmScreen extends StatelessWidget {
   }
 
   static bool _uncertain(Map<String, dynamic> item) {
+    // 사람이 손으로 고쳐 준 이름은 더 이상 의심하지 않는다.
+    if (item['match_status'] == 'USER_FIXED') return false;
     if (item['uncertain'] == true) return true;
     final confidence = item['confidence'];
     return confidence is num && confidence < 0.7;
@@ -595,12 +618,14 @@ class _ConfirmScreen extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(height: 12),
-                  for (final item in items) ...[
+                  for (int i = 0; i < items.length; i++) ...[
                     _DrugCard(
-                      name: item['drug_name']?.toString() ?? '이름을 못 읽었어요',
-                      dosage: _dosage(item),
-                      explanation: item['easy_explanation']?.toString(),
-                      uncertain: _uncertain(item),
+                      name: items[i]['drug_name']?.toString() ??
+                          '이름을 못 읽었어요',
+                      dosage: _dosage(items[i]),
+                      explanation: items[i]['easy_explanation']?.toString(),
+                      uncertain: _uncertain(items[i]),
+                      onFix: (name) => onFixName(i, name),
                     ),
                     const SizedBox(height: 12),
                   ],
@@ -635,12 +660,14 @@ class _DrugCard extends StatelessWidget {
   final String dosage;
   final String? explanation;
   final bool uncertain;
+  final ValueChanged<String> onFix;
 
   const _DrugCard({
     required this.name,
     required this.dosage,
     required this.explanation,
     required this.uncertain,
+    required this.onFix,
   });
 
   @override
@@ -658,9 +685,10 @@ class _DrugCard extends StatelessWidget {
               Expanded(child: Text(name, style: AppText.cardTitle(size: 21))),
               const SizedBox(width: 12),
               InkWell(
-                onTap: () => ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('고치기 — 아직 준비 중이에요')),
-                ),
+                onTap: () async {
+                  final fixed = await showFixNameSheet(context, current: name);
+                  if (fixed != null && fixed != name) onFix(fixed);
+                },
                 child: Container(
                   constraints: const BoxConstraints(minHeight: 48),
                   alignment: Alignment.center,
