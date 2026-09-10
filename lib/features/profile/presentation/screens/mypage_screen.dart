@@ -11,7 +11,10 @@ import '../../../../core/widgets/senior_button.dart';
 import '../../../../core/widgets/senior_card.dart';
 import '../../../../core/widgets/senior_feedback.dart';
 import '../../../../core/widgets/senior_header.dart';
+import '../../../dashboard/presentation/screens/profile_edit_screen.dart';
 import '../../../dashboard/presentation/screens/settings_menu.dart';
+import '../../../guardian/data/guardian_repository.dart';
+import '../../../guardian/presentation/widgets/add_care_sheet.dart';
 import '../../../medication/application/medication_controller.dart';
 import '../../../reminder/presentation/screens/alarm_settings_screen.dart';
 import '../../../../core/session/auth_session.dart';
@@ -55,9 +58,22 @@ class _MyPageScreenState extends ConsumerState<MyPageScreen> {
     if (mounted) context.go('/login');
   }
 
-  void _todo(String name) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('$name — 아직 준비 중이에요')),
+  /// 39 시트를 그대로 쓴다. 보호자 화면에 있는 것과 같은 길이다.
+  Future<void> _inviteFamily() async {
+    final draft = await showAddCareSheet(context);
+    if (draft == null || !mounted) return;
+    final result = await GuardianRepository().invite(
+      name: draft.name,
+      relation: draft.relation,
+      phone: draft.phone,
+    );
+    if (!mounted) return;
+    // 서버가 받아 준 뒤에만 보냈다고 말한다.
+    showSeniorSnackbar(
+      context,
+      result.isSent
+          ? '${draft.name} 님에게 초대를 보냈어요'
+          : result.error ?? '초대를 보내지 못했어요',
     );
   }
 
@@ -119,7 +135,13 @@ class _MyPageScreenState extends ConsumerState<MyPageScreen> {
                         expand: false,
                         color: AppColors.point,
                         fontSize: 18,
-                        onPressed: () => _todo('내 정보 고치기'),
+                        onPressed: () => Navigator.of(context).push(
+                          MaterialPageRoute<void>(
+                            builder: (_) => ProfileEditScreen(
+                              isGuardian: widget.isGuardian,
+                            ),
+                          ),
+                        ),
                       ),
                     ],
                   ),
@@ -292,7 +314,7 @@ class _MyPageScreenState extends ConsumerState<MyPageScreen> {
                         kind: SeniorButtonKind.secondary,
                         minHeight: 58,
                         fontSize: 20,
-                        onPressed: () => _todo('가족 초대'),
+                        onPressed: _inviteFamily,
                       ),
                     ],
                   ),

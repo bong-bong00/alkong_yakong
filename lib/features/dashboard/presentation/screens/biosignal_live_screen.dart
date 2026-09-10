@@ -6,6 +6,7 @@ import 'package:permission_handler/permission_handler.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/network/api_client.dart';
 import '../../../../core/session/mvp_session.dart';
+import '../../../biosignal/data/biosignal_dataset_collector.dart';
 import '../../../biosignal/data/polar_service.dart';
 
 /// 실시간 심박 모니터링 화면 (흐르는 애니메이션 버전).
@@ -63,6 +64,8 @@ class _BiosignalLiveScreenState extends State<BiosignalLiveScreen>
   Timer? _usualHrTimer;
   late final AnimationController _anim; // 매 프레임 다시 그리기 + 흐름 진행도(0~1)
   final PolarService _polarService = PolarService();
+  final BiosignalDatasetCollector _datasetCollector =
+      BiosignalDatasetCollector();
   final ApiClient _apiClient = ApiClient();
   StreamSubscription<int?>? _currentBpmSub;
   StreamSubscription<double?>? _averageBpmSub;
@@ -242,6 +245,7 @@ class _BiosignalLiveScreenState extends State<BiosignalLiveScreen>
   void _handleCurrentBpm(int? bpm) {
     if (!mounted || _isDisposed) return;
     if (bpm == null) {
+      _datasetCollector.clearSignalWindow();
       _usualHrTimer?.cancel();
       setState(() {
         _currentHr = null;
@@ -259,6 +263,10 @@ class _BiosignalLiveScreenState extends State<BiosignalLiveScreen>
       return;
     }
     debugPrint('[POLAR_UI] bpm received: $bpm');
+    _datasetCollector.addPolarBpm(
+      bpm,
+      deviceId: _activeDeviceId ?? _targetDeviceId,
+    );
     setState(() {
       if (_hr.isEmpty) {
         _hr.addAll(List<double>.filled(2, bpm.toDouble()));

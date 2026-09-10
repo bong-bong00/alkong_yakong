@@ -32,6 +32,11 @@ class PolarService {
   Stream<String> get deviceDisconnectedStream =>
       _polar.deviceDisconnected.map((event) => event.info.deviceId);
 
+  /// 남은 배터리 (0~100). SDK가 연결 직후와 값이 바뀔 때 보내 준다.
+  /// 우리가 물어보는 것이 아니라 기기가 알려주는 값이다.
+  Stream<int> get batteryLevelStream =>
+      _polar.batteryLevel.map((event) => event.level);
+
   Future<String> findDeviceId({
     required String targetName,
     required String targetDeviceId,
