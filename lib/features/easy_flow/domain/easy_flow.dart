@@ -1,73 +1,79 @@
 import 'package:flutter/foundation.dart';
 
-/// 쉬운 모드에서 지나가는 화면 하나.
+/// 쉬운 모드가 지나가는 화면.
 ///
-/// **새 화면을 만들지 않는다.** 일반 모드가 쓰는 화면을 그대로 불러오고,
-/// 순서와 버튼만 이 목록이 정한다.
-@immutable
-class EasyStep {
-  /// 단계 제목. 화면 위에 "지금 무엇을 하는 중인지" 알려준다.
-  final String title;
-
-  /// 어떤 화면을 부를지.
-  final EasyScreen screen;
-
-  /// 다음으로 넘어가는 버튼에 쓸 말.
-  /// 마지막 단계면 처음으로 돌아간다.
-  final String nextLabel;
-
-  /// 이 단계에서 할 일을 한 줄로 설명. 제목만으로 부족할 때만 쓴다.
-  final String? hint;
-
-  const EasyStep({
-    required this.title,
-    required this.screen,
-    required this.nextLabel,
-    this.hint,
-  });
+/// **새 화면을 만들지 않는다.** 일반 모드가 쓰는 화면을 그대로 부르고,
+/// 순서와 버튼 라벨만 이 목록이 정한다.
+enum EasyScreen {
+  today,
+  done,
+  record,
+  heart,
+  medicines,
+  prescription,
+  interaction,
+  myInfo,
+  chat,
+  measure,
 }
 
-/// 쉬운 모드가 부를 수 있는 화면들. 전부 일반 모드에도 있는 화면이다.
-enum EasyScreen { today, prescription, interaction, record, heartbeat, myInfo }
+/// 한 걸음.
+@immutable
+class EasyStep {
+  final EasyScreen screen;
 
-/// 쉬운 모드의 화면 순서.
+  /// 하단 바 버튼에 쓸 말. "다음 한 걸음"이 무엇인지 그대로 적는다.
+  final String nextLabel;
+
+  const EasyStep({required this.screen, required this.nextLabel});
+}
+
+/// 다음 한 걸음 순서.
 ///
-/// 순서를 정한 기준은 **하루에 실제로 일어나는 차례**다.
-/// 약을 먹고 → 새 처방전이 생기면 등록하고 → 같이 먹어도 되는지 보고 →
-/// 그동안 잘 드셨는지 보고 → 몸 상태를 보고 → 내 정보를 확인한다.
-///
-/// 순서를 바꾸려면 이 목록만 고치면 된다. 화면 코드는 건드리지 않는다.
+/// 하루에 실제로 일어나는 차례를 따른다.
+/// 흐름 밖 화면에서는 라벨이 "오늘 화면으로 가기"가 된다.
 const List<EasyStep> kEasyFlow = [
-  EasyStep(
-    title: '오늘 약 드시기',
-    screen: EasyScreen.today,
-    nextLabel: '다음 · 약 등록하기',
-    hint: '드실 약이 있으면 "먹었어요"를 눌러 주세요',
-  ),
-  EasyStep(
-    title: '약 등록하기',
-    screen: EasyScreen.prescription,
-    nextLabel: '다음 · 함께 먹어도 되는지 보기',
-    hint: '처방전을 찍으면 약이 저장돼요',
-  ),
-  EasyStep(
-    title: '함께 먹어도 되는지 보기',
-    screen: EasyScreen.interaction,
-    nextLabel: '다음 · 그동안 기록 보기',
-  ),
-  EasyStep(
-    title: '그동안 기록 보기',
-    screen: EasyScreen.record,
-    nextLabel: '다음 · 심장 박동 보기',
-  ),
-  EasyStep(
-    title: '심장 박동 보기',
-    screen: EasyScreen.heartbeat,
-    nextLabel: '다음 · 내 정보 보기',
-  ),
-  EasyStep(
-    title: '내 정보 보기',
-    screen: EasyScreen.myInfo,
-    nextLabel: '처음으로 돌아가기',
-  ),
+  EasyStep(screen: EasyScreen.today, nextLabel: '복약 완료 보기'),
+  EasyStep(screen: EasyScreen.done, nextLabel: '복약 기록 보기'),
+  EasyStep(screen: EasyScreen.record, nextLabel: '심박수 보기'),
+  EasyStep(screen: EasyScreen.heart, nextLabel: '내 약 목록 보기'),
+  EasyStep(screen: EasyScreen.medicines, nextLabel: '오늘 화면으로 가기'),
 ];
+
+/// 흐름 밖 화면에서 쓰는 라벨.
+const String kEasyFallbackLabel = '오늘 화면으로 가기';
+
+/// 쉬운 모드 메뉴에서 바로 갈 수 있는 곳.
+///
+/// 흐름을 따라가다 길을 잃어도 여기서 원하는 화면으로 바로 간다.
+const List<EasyDestination> kEasyMenu = [
+  EasyDestination('오늘 먹을 약', EasyScreen.today),
+  EasyDestination('복약 기록', EasyScreen.record),
+  EasyDestination('내 약 설명', EasyScreen.medicines),
+  EasyDestination('AI 약사 상담', EasyScreen.chat),
+  EasyDestination('심박수 관리', EasyScreen.heart),
+  EasyDestination('심박수 재기', EasyScreen.measure),
+  EasyDestination('처방전 넣기', EasyScreen.prescription),
+  EasyDestination('함께먹기 주의', EasyScreen.interaction),
+  EasyDestination('복약 완료', EasyScreen.done),
+  EasyDestination('내 정보', EasyScreen.myInfo),
+];
+
+@immutable
+class EasyDestination {
+  final String label;
+  final EasyScreen screen;
+
+  const EasyDestination(this.label, this.screen);
+}
+
+/// 하단 바를 숨길 화면.
+///
+/// 측정 중이거나 심박수가 이상한 상황에서는 "다음 한 걸음"이 방해가 된다.
+/// 그 화면들은 자기 흐름을 끝까지 마쳐야 한다.
+bool showsEasyBar(EasyScreen screen) =>
+    screen != EasyScreen.measure;
+
+/// 하단 바가 뜰 때 스크롤 아래에 둘 여백.
+/// 바가 마지막 카드를 가리지 않게 한다.
+const double kEasyBarScrollPadding = 140;

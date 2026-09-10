@@ -12,6 +12,8 @@ import '../../../../core/widgets/senior_header.dart';
 import '../../../medication/application/medication_controller.dart';
 import '../../../medication/domain/medication_models.dart';
 import '../../../medication/presentation/widgets/dose_flow_sheets.dart';
+import '../../../easy_flow/domain/easy_flow.dart';
+import '../../../easy_flow/presentation/easy_flow_shell.dart';
 import '../../../medication/presentation/widgets/dose_guard_sheets.dart';
 
 /// 12 / 15 · 오늘 · 홈.
@@ -38,6 +40,13 @@ class PatientHomeScreen extends ConsumerStatefulWidget {
   /// 복약을 기록한 뒤 완료 화면으로.
   final VoidCallback? onDone;
 
+  /// 쉬운 모드인지. 헤더의 아바타가 "메뉴" 버튼으로 바뀌고
+  /// 스크롤 아래 여백이 하단 바만큼 늘어난다.
+  final bool easyMode;
+
+  /// 쉬운 모드에서 메뉴를 열 때.
+  final VoidCallback? onOpenMenu;
+
   const PatientHomeScreen({
     super.key,
     this.onOpenRecord,
@@ -48,6 +57,8 @@ class PatientHomeScreen extends ConsumerStatefulWidget {
     this.onOpenDrug,
     this.onMeasure,
     this.onDone,
+    this.easyMode = false,
+    this.onOpenMenu,
   });
 
   @override
@@ -151,10 +162,21 @@ class _PatientHomeScreenState extends ConsumerState<PatientHomeScreen> {
 
     return Column(
       children: [
-        _Header(userName: '김복자', date: now),
+        _Header(
+          userName: '김복자',
+          date: now,
+          easyMode: widget.easyMode,
+          onOpenMenu: widget.onOpenMenu,
+        ),
         Expanded(
           child: SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(20, 16, 20, 28),
+            padding: EdgeInsets.fromLTRB(
+              20,
+              16,
+              20,
+              // 쉬운 모드의 하단 바가 마지막 카드를 가리지 않게 한다.
+              widget.easyMode ? kEasyBarScrollPadding : 28,
+            ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
@@ -203,8 +225,15 @@ class _PatientHomeScreenState extends ConsumerState<PatientHomeScreen> {
 class _Header extends StatelessWidget {
   final String userName;
   final DateTime date;
+  final bool easyMode;
+  final VoidCallback? onOpenMenu;
 
-  const _Header({required this.userName, required this.date});
+  const _Header({
+    required this.userName,
+    required this.date,
+    this.easyMode = false,
+    this.onOpenMenu,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -241,7 +270,10 @@ class _Header extends StatelessWidget {
           const SizedBox(width: 10),
           const ModeBadge(),
           const SizedBox(width: 10),
-          InitialAvatar(name: userName, size: 52, background: AppColors.bg),
+          if (easyMode && onOpenMenu != null)
+            EasyMenuButton(onTap: onOpenMenu!)
+          else
+            InitialAvatar(name: userName, size: 52, background: AppColors.bg),
         ],
       ),
     );

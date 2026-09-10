@@ -6,20 +6,26 @@ import '../../../core/mode/app_mode.dart';
 import '../../../core/theme/app_typography.dart';
 import '../../../core/widgets/senior_button.dart';
 import '../../biosignal/presentation/screens/heart_screen.dart';
+import '../../biosignal/presentation/screens/measure_screen.dart';
 import '../../dashboard/presentation/screens/medication_record_screen.dart';
 import '../../dashboard/presentation/screens/patient_home_screen.dart';
 import '../../dur_analysis/presentation/screens/dur_analysis_screen.dart';
+import '../../medication/application/medication_controller.dart';
+import '../../medication/domain/medication_models.dart';
+import '../../medication/presentation/screens/dose_done_screen.dart';
+import '../../medicines/presentation/screens/my_medicines_screen.dart';
+import '../../medicines/presentation/screens/pharmacist_chat_screen.dart';
 import '../../prescription/presentation/screens/prescription_screen.dart';
 import '../../profile/presentation/screens/mypage_screen.dart';
 import '../domain/easy_flow.dart';
+import 'widgets/easy_sheets.dart';
 
 /// 쉬운 모드 쉘.
 ///
-/// 화면은 일반 모드와 **완전히 같은 것**을 부른다. 다른 것은 두 가지뿐이다.
-/// 1. 아래 탭 대신 "다음" 버튼 하나가 있고, 화면이 한 줄로 이어진다.
-/// 2. 지금 몇 번째인지 점으로 보여준다.
-///
-/// 순서는 [kEasyFlow]가 정한다. 순서를 바꿀 때 이 파일은 고치지 않는다.
+/// 구성은 일반 모드와 **동일**하다. 달라지는 것은 셋뿐이다.
+/// 1. 헤더의 모드 배지가 파랑으로 차고, 아바타 자리가 "메뉴"가 된다.
+/// 2. 하단에 "다음 한 걸음" 버튼 하나가 붙는다.
+/// 3. 화면 안의 주 버튼 일부를 숨긴다 — 하단 바가 그 역할을 대신하기 때문.
 class EasyFlowShell extends ConsumerStatefulWidget {
   const EasyFlowShell({super.key});
 
@@ -28,44 +34,120 @@ class EasyFlowShell extends ConsumerStatefulWidget {
 }
 
 class _EasyFlowShellState extends ConsumerState<EasyFlowShell> {
-  int _index = 0;
+  EasyScreen _screen = EasyScreen.today;
 
-  EasyStep get _step => kEasyFlow[_index];
+  /// 지나온 화면. "이전"에서 하나씩 꺼낸다.
+  final List<EasyScreen> _history = <EasyScreen>[];
 
-  void _next() {
+  /// 흐름 안에서 지금 화면이 몇 번째인지. 흐름 밖이면 -1.
+  int get _flowIndex =>
+      kEasyFlow.indexWhere((step) => step.screen == _screen);
+
+  String get _nextLabel {
+    final index = _flowIndex;
+    if (index < 0) return kEasyFallbackLabel;
+    return kEasyFlow[index].nextLabel;
+  }
+
+  void _goTo(EasyScreen screen) {
+    if (screen == _screen) return;
     setState(() {
-      // 마지막 단계에서 누르면 처음으로 돌아간다. 끝나서 막히는 곳이 없다.
-      _index = (_index + 1) % kEasyFlow.length;
+      _history.add(_screen);
+      if (_history.length > 40) _history.removeAt(0);
+      _screen = screen;
     });
   }
 
   void _back() {
-    if (_index == 0) return;
-    setState(() => _index -= 1);
+    if (_history.isEmpty) return;
+    setState(() => _screen = _history.removeLast());
   }
 
-  void _jumpTo(EasyScreen screen) {
-    final target = kEasyFlow.indexWhere((s) => s.screen == screen);
-    if (target >= 0) setState(() => _index = target);
+  /// 다음 한 걸음.
+  Future<void> _next() async {
+    final index = _flowIndex;
+
+    // 흐름 밖이면 오늘 화면으로 되돌린다.
+    if (index < 0) {
+      _goTo(EasyScreen.today);
+      return;
+    }
+
+    // 오늘 화면에서 저녁 약을 아직 안 눌렀는데 넘어가려 하면 한 번 묻는다.
+    if (_screen == EasyScreen.today) {
+      final dose = ref.read(medicationProvider).doseOf(DoseSlot.dinner);
+      if (!dose.taken) {
+        final choice = await showSkipConfirmSheet(
+          context,
+          slotLabel: dose.slot.label,
+        );
+        if (!mounted) return;
+        switch (choice) {
+          case SkipChoice.stay:
+            return;
+          case SkipChoice.takeAndContinue:
+            ref.read(medicationProvider.notifier).takeAnyway(DoseSlot.dinner);
+          case SkipChoice.skip:
+            break;
+        }
+      }
+    }
+
+    final nextIndex = index + 1;
+    _goTo(
+      nextIndex < kEasyFlow.length
+          ? kEasyFlow[nextIndex].screen
+          : EasyScreen.today,
+    );
+  }
+
+  Future<void> _openMenu() async {
+    final result = await showEasyMenuSheet(context, userName: '복자');
+    if (!mounted || result == null) return;
+    if (result.leaveEasyMode) {
+      await ref.read(appModeProvider.notifier).set(AppMode.normal);
+      return;
+    }
+    if (result.screen != null) _goTo(result.screen!);
   }
 
   /// 일반 모드가 쓰는 화면을 그대로 부른다.
   Widget _buildScreen() {
-    switch (_step.screen) {
+    switch (_screen) {
       case EasyScreen.today:
         return PatientHomeScreen(
-          onOpenRecord: () => _jumpTo(EasyScreen.record),
-          onOpenHeartbeat: () => _jumpTo(EasyScreen.heartbeat),
+          easyMode: true,
+          onOpenMenu: _openMenu,
+          onOpenRecord: () => _goTo(EasyScreen.record),
+          onOpenHeartbeat: () => _goTo(EasyScreen.heart),
+          onOpenMedicines: () => _goTo(EasyScreen.medicines),
+          onOpenChat: () => _goTo(EasyScreen.chat),
+          onOpenPrescription: () => _goTo(EasyScreen.prescription),
+          onDone: () => _goTo(EasyScreen.done),
+          onMeasure: () => _goTo(EasyScreen.measure),
         );
-      case EasyScreen.prescription:
-        // 등록이 끝나면 손대지 않아도 다음 화면으로 넘어간다.
-        return PrescriptionScreen(onCompleted: _next);
-      case EasyScreen.interaction:
-        return const DurAnalysisScreen();
+      case EasyScreen.done:
+        return DoseDoneScreen(
+          slot: DoseSlot.dinner,
+          onUndone: () => _goTo(EasyScreen.today),
+        );
       case EasyScreen.record:
         return const MedicationRecordScreen();
-      case EasyScreen.heartbeat:
+      case EasyScreen.heart:
         return const HeartScreen();
+      case EasyScreen.medicines:
+        return const MyMedicinesScreen();
+      case EasyScreen.prescription:
+        // 등록이 끝나면 손대지 않아도 함께먹기 주의로 넘어간다.
+        return PrescriptionScreen(
+          onCompleted: () => _goTo(EasyScreen.interaction),
+        );
+      case EasyScreen.interaction:
+        return const DurAnalysisScreen();
+      case EasyScreen.chat:
+        return const PharmacistChatScreen();
+      case EasyScreen.measure:
+        return const MeasureScreen();
       case EasyScreen.myInfo:
         return const MyPageScreen();
     }
@@ -73,102 +155,82 @@ class _EasyFlowShellState extends ConsumerState<EasyFlowShell> {
 
   @override
   Widget build(BuildContext context) {
+    final showBar = showsEasyBar(_screen);
     return Scaffold(
       backgroundColor: AppColors.bg,
       body: KeyedSubtree(
-        // 단계마다 새로 만든다. 심박 화면이 보이지도 않는데 센서를 잡고 있는
-        // 일이 없도록, 지나간 화면은 남겨두지 않는다.
-        key: ValueKey(_step.screen),
-        child: _buildScreen(),
+        // 화면마다 새로 만든다. 보이지도 않는 화면이 센서를 잡고 있지 않도록.
+        key: ValueKey(_screen),
+        child: MediaQuery.removePadding(
+          context: context,
+          removeBottom: true,
+          child: _buildScreen(),
+        ),
       ),
-      bottomNavigationBar: _EasyFlowBar(
-        index: _index,
-        total: kEasyFlow.length,
-        step: _step,
-        onNext: _next,
-        onBack: _index == 0 ? null : _back,
-        onLeave: () =>
-            ref.read(appModeProvider.notifier).set(AppMode.normal),
-      ),
+      bottomNavigationBar: showBar
+          ? _EasyFlowBar(
+              label: _nextLabel,
+              onNext: _next,
+              onBack: _history.isEmpty ? null : _back,
+            )
+          : null,
     );
   }
 }
 
+/// 다음 한 걸음 바.
 class _EasyFlowBar extends StatelessWidget {
-  final int index;
-  final int total;
-  final EasyStep step;
+  final String label;
   final VoidCallback onNext;
   final VoidCallback? onBack;
-  final VoidCallback onLeave;
 
   const _EasyFlowBar({
-    required this.index,
-    required this.total,
-    required this.step,
+    required this.label,
     required this.onNext,
     required this.onBack,
-    required this.onLeave,
   });
 
   @override
   Widget build(BuildContext context) {
     return Container(
       decoration: const BoxDecoration(
-        color: AppColors.headerBg,
-        border: Border(top: BorderSide(color: AppColors.border, width: 1)),
+        color: AppColors.surface,
+        border: Border(top: BorderSide(color: Color(0xFFDDDDE6), width: 1)),
+        boxShadow: [
+          BoxShadow(
+            color: Color(0x2914161E),
+            blurRadius: 34,
+            offset: Offset(0, -12),
+          ),
+        ],
       ),
       child: SafeArea(
         top: false,
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 14, 20, 10),
+          padding: const EdgeInsets.fromLTRB(18, 14, 18, 14),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              // ── 지금 몇 번째인지 ──
-              Row(
-                children: [
-                  _StepDots(index: index, total: total),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Text(
-                      '$total단계 중 ${index + 1}번째',
-                      style: AppText.caption(size: 17),
-                    ),
+              if (onBack != null) ...[
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: SeniorTextButton(
+                    label: '이전으로',
+                    expand: false,
+                    fontSize: 17,
+                    onPressed: onBack,
                   ),
-                  // 막다른 곳이 없도록 나가는 길을 항상 열어 둔다.
-                  Semantics(
-                    button: true,
-                    child: InkWell(
-                      onTap: onLeave,
-                      borderRadius: BorderRadius.circular(12),
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 10,
-                          vertical: 12,
-                        ),
-                        child: Text(
-                          '일반 모드로',
-                          style: AppText.label(
-                            size: 17,
-                            color: AppColors.point,
-                            weight: FontWeight.w700,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              if (step.hint != null) ...[
-                const SizedBox(height: 2),
-                Text(step.hint!, style: AppText.caption(size: 17)),
+                ),
+                const SizedBox(height: 4),
               ],
-              const SizedBox(height: 10),
-              SeniorButton(label: step.nextLabel, onPressed: onNext),
-              if (onBack != null)
-                SeniorTextButton(label: '이전으로', onPressed: onBack),
+              SeniorButton(
+                label: label,
+                minHeight: 76,
+                fontSize: 24,
+                radius: 20,
+                onPressed: onNext,
+              ),
             ],
           ),
         ),
@@ -177,31 +239,29 @@ class _EasyFlowBar extends StatelessWidget {
   }
 }
 
-/// 진행 점. 지나온 단계는 채워지고, 지금 단계는 길쭉해진다.
-class _StepDots extends StatelessWidget {
-  final int index;
-  final int total;
+/// 헤더 오른쪽의 "메뉴" 버튼. 쉬운 모드에서 아바타 자리를 대신한다.
+class EasyMenuButton extends StatelessWidget {
+  final VoidCallback onTap;
 
-  const _StepDots({required this.index, required this.total});
+  const EasyMenuButton({super.key, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
-    return ExcludeSemantics(
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          for (int i = 0; i < total; i++) ...[
-            if (i > 0) const SizedBox(width: 5),
-            Container(
-              width: i == index ? 22 : 9,
-              height: 9,
-              decoration: BoxDecoration(
-                color: i <= index ? AppColors.point : AppColors.chipBg,
-                borderRadius: BorderRadius.circular(5),
-              ),
-            ),
-          ],
-        ],
+    return Semantics(
+      button: true,
+      label: '메뉴 열기',
+      child: GestureDetector(
+        onTap: onTap,
+        child: Container(
+          constraints: const BoxConstraints(minHeight: 52),
+          alignment: Alignment.center,
+          padding: const EdgeInsets.symmetric(horizontal: 17),
+          decoration: BoxDecoration(
+            color: AppColors.bg,
+            borderRadius: BorderRadius.circular(26),
+          ),
+          child: Text('메뉴', style: AppText.cardTitle(size: 19)),
+        ),
       ),
     );
   }

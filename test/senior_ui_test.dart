@@ -208,7 +208,7 @@ void main() {
 // ════════════════════════════════════════════════════════════════
 
 void _easyModeTests() {
-  testWidgets('쉬운 모드는 탭 대신 "다음" 버튼 하나로 넘어간다', (tester) async {
+  testWidgets('쉬운 모드는 탭 대신 "다음 한 걸음" 버튼 하나를 쓴다 (40)', (tester) async {
     SharedPreferences.setMockInitialValues({});
     await tester.pumpWidget(
       ProviderScope(
@@ -218,15 +218,15 @@ void _easyModeTests() {
     );
     await tester.pump();
 
-    // 아래 탭바가 없다.
     expect(find.byType(SeniorBottomNav), findsNothing);
-    // 첫 단계의 다음 버튼이 보인다.
     expect(find.text(kEasyFlow.first.nextLabel), findsOneWidget);
-    // 첫 단계에는 "이전으로"가 없다.
-    expect(find.text('이전으로'), findsNothing);
+    // 아바타 자리가 메뉴 버튼으로 바뀐다.
+    expect(find.text('메뉴'), findsOneWidget);
+    // 모드 배지는 파랑으로 차 있다.
+    expect(find.text('쉬운 화면'), findsOneWidget);
   });
 
-  testWidgets('다음을 누르면 흐름 순서대로 넘어가고 되돌아올 수 있다', (tester) async {
+  testWidgets('약을 안 눌렀는데 넘어가려 하면 한 번 묻는다 (42)', (tester) async {
     SharedPreferences.setMockInitialValues({});
     await tester.pumpWidget(
       ProviderScope(
@@ -236,27 +236,20 @@ void _easyModeTests() {
     );
     await tester.pump();
 
-    await tester.tap(find.text(kEasyFlow[0].nextLabel));
-    await tester.pump();
-    expect(find.text(kEasyFlow[1].nextLabel), findsOneWidget);
-    expect(find.text('이전으로'), findsOneWidget);
+    await tester.tap(find.text(kEasyFlow.first.nextLabel));
+    await tester.pumpAndSettle();
 
-    await tester.tap(find.text('이전으로'));
-    await tester.pump();
-    expect(find.text(kEasyFlow[0].nextLabel), findsOneWidget);
-  });
-
-  test('마지막 단계에서 다음을 누르면 처음으로 돌아간다 — 막다른 곳이 없다', () {
-    final last = kEasyFlow.length - 1;
-    expect((last + 1) % kEasyFlow.length, 0);
+    // 자동으로 "안 드셨어요"로 확정하지 않는다.
+    expect(find.textContaining('아직 안 누르셨어요'), findsOneWidget);
+    expect(find.text('먹었어요 · 다음으로'), findsOneWidget);
+    expect(find.text('그냥 넘어갈게요'), findsOneWidget);
+    expect(find.text('이 화면에 그대로 있기'), findsOneWidget);
   });
 
   test('쉬운 모드가 부르는 화면은 모두 일반 모드에도 있는 화면이다', () {
-    // 흐름에 일반 모드가 모르는 화면이 섞이면 "앱 두 개"가 된다.
     for (final step in kEasyFlow) {
       expect(EasyScreen.values.contains(step.screen), isTrue);
     }
-    // 같은 화면을 두 번 지나가지 않는다.
     final screens = kEasyFlow.map((s) => s.screen).toList();
     expect(screens.toSet().length, screens.length);
   });
@@ -264,8 +257,18 @@ void _easyModeTests() {
   test('모든 단계에 다음 버튼 라벨이 있다', () {
     for (final step in kEasyFlow) {
       expect(step.nextLabel.trim(), isNotEmpty);
-      expect(step.title.trim(), isNotEmpty);
     }
+  });
+
+  test('측정 중에는 하단 바를 숨긴다', () {
+    // 자기 흐름을 끝까지 마쳐야 하는 화면에서는 "다음"이 방해가 된다.
+    expect(showsEasyBar(EasyScreen.measure), isFalse);
+    expect(showsEasyBar(EasyScreen.today), isTrue);
+  });
+
+  test('메뉴에서 갈 수 있는 곳이 흐름보다 넓다', () {
+    // 한 줄로만 갈 수 있으면 그것대로 갇힌다.
+    expect(kEasyMenu.length, greaterThan(kEasyFlow.length));
   });
 }
 
