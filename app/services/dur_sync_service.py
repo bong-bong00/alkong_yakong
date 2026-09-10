@@ -321,13 +321,14 @@ def refresh_dur_for_ingredients(
                     for risk_type in ENDPOINTS
                     if risk_types is None or risk_type in risk_types
                 ]
-                for query in pending:
+                for query_variant_index, query in enumerate(pending):
                     for risk_type in requested_types:
                         stats = _sync_ingredient_type(
                             cursor,
                             risk_type,
                             query=query,
                             api_key=DUR_API_KEY,
+                            query_variant_index=query_variant_index,
                         )
                         fetched += stats["fetched"]
                         upserted += stats["upserted"]
@@ -407,9 +408,17 @@ def _sync_ingredient_type(
     *,
     query: str,
     api_key: str,
+    query_variant_index: int | None = None,
 ) -> dict[str, Any]:
+    from app.services.pharmacist.ingredient import normalize_ingredient
+
     stats = {"fetched": 0, "upserted": 0, "error": None}
     ingredient_mention_pass_count = 0
+    ingr_name_present_count = 0
+    ingr_name_normalized_match_count = 0
+    ingr_eng_name_present_count = 0
+    ingr_code_present_count = 0
+    whole_item_mention_match_count = 0
     deleted_item_count = 0
     normalize_success_count = 0
     normalize_rejected_missing_ingredient_count = 0
@@ -430,7 +439,27 @@ def _sync_ingredient_type(
                 stats["error"] = error.detail
                 break
             stats["fetched"] += len(items)
-            matched = [item for item in items if _item_mentions_ingredient(item, query)]
+            normalized_query = normalize_ingredient(query)
+            item_matches = [
+                (item, _item_mentions_ingredient(item, query)) for item in items
+            ]
+            for item, whole_item_match in item_matches:
+                ingr_name = _first(item, "INGR_NAME")
+                ingr_eng_name = _first(item, "INGR_ENG_NAME")
+                ingr_code = _first(item, "INGR_CODE")
+                if ingr_name:
+                    ingr_name_present_count += 1
+                    if normalized_query and normalized_query in normalize_ingredient(
+                        ingr_name
+                    ):
+                        ingr_name_normalized_match_count += 1
+                if ingr_eng_name:
+                    ingr_eng_name_present_count += 1
+                if ingr_code:
+                    ingr_code_present_count += 1
+                if whole_item_match:
+                    whole_item_mention_match_count += 1
+            matched = [item for item, is_match in item_matches if is_match]
             ingredient_mention_pass_count += len(matched)
             if items and not matched:
                 break
@@ -473,14 +502,23 @@ def _sync_ingredient_type(
             stats["error"] = None
             break
     logger.warning(
-        "DUR sync diagnostic risk_type=%s fetched_count=%d "
+        "DUR sync diagnostic risk_type=%s query_variant_index=%s fetched_count=%d "
+        "ingr_name_present_count=%d ingr_name_normalized_match_count=%d "
+        "ingr_eng_name_present_count=%d ingr_code_present_count=%d "
+        "whole_item_mention_match_count=%d "
         "ingredient_mention_pass_count=%d deleted_item_count=%d "
         "normalize_success_count=%d "
         "normalize_rejected_missing_ingredient_count=%d "
         "normalize_rejected_other_count=%d upserted_count=%d "
         "error_present=%s",
         risk_type,
+        query_variant_index,
         stats["fetched"],
+        ingr_name_present_count,
+        ingr_name_normalized_match_count,
+        ingr_eng_name_present_count,
+        ingr_code_present_count,
+        whole_item_mention_match_count,
         ingredient_mention_pass_count,
         deleted_item_count,
         normalize_success_count,

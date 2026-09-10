@@ -114,7 +114,7 @@ def test_zero_results_do_not_retry_with_non_official_parameter():
     assert fetch.call_args.kwargs["extra_params"] == {"ingrName": "테스트성분"}
 
 
-def _sync_diagnostic_for_item(item):
+def _sync_diagnostic_for_item(item, *, query="테스트성분"):
     with (
         patch.object(dur_sync_service, "_fetch_page", return_value=([item], 1)),
         patch.object(
@@ -127,8 +127,9 @@ def _sync_diagnostic_for_item(item):
         result = dur_sync_service._sync_ingredient_type(
             MagicMock(),
             "임부금기",
-            query="테스트성분",
+            query=query,
             api_key="test-key",
+            query_variant_index=0,
         )
     message = warning.call_args.args[0] % warning.call_args.args[1:]
     return result, message, upsert.call_count
@@ -141,9 +142,49 @@ def test_sync_diagnostic_counts_ingredient_mention_failure():
 
     assert result == {"fetched": 1, "upserted": 0, "error": None}
     assert "ingredient_mention_pass_count=0" in message
+    assert "query_variant_index=0" in message
+    assert "ingr_name_present_count=1" in message
+    assert "ingr_name_normalized_match_count=0" in message
+    assert "whole_item_mention_match_count=0" in message
     assert "deleted_item_count=0" in message
     assert "normalize_success_count=0" in message
     assert "normalize_rejected_missing_ingredient_count=0" in message
+    assert write_count == 0
+
+
+def test_sync_diagnostic_counts_matching_ingr_name():
+    result, message, write_count = _sync_diagnostic_for_item(
+        {"INGR_NAME": "테스트성분", "DEL_YN": "N", "DUR_SEQ": "DUR-1"}
+    )
+
+    assert result == {"fetched": 1, "upserted": 1, "error": None}
+    assert "ingr_name_present_count=1" in message
+    assert "ingr_name_normalized_match_count=1" in message
+    assert "whole_item_mention_match_count=1" in message
+    assert write_count == 1
+
+
+def test_sync_diagnostic_counts_english_name_without_korean_name():
+    result, message, write_count = _sync_diagnostic_for_item(
+        {"INGR_ENG_NAME": "test ingredient", "DEL_YN": "N"}
+    )
+
+    assert result == {"fetched": 1, "upserted": 0, "error": None}
+    assert "ingr_name_present_count=0" in message
+    assert "ingr_eng_name_present_count=1" in message
+    assert "whole_item_mention_match_count=0" in message
+    assert write_count == 0
+
+
+def test_sync_diagnostic_counts_ingredient_code_without_name():
+    result, message, write_count = _sync_diagnostic_for_item(
+        {"INGR_CODE": "D000001", "DEL_YN": "N"}
+    )
+
+    assert result == {"fetched": 1, "upserted": 0, "error": None}
+    assert "ingr_name_present_count=0" in message
+    assert "ingr_code_present_count=1" in message
+    assert "whole_item_mention_match_count=0" in message
     assert write_count == 0
 
 
