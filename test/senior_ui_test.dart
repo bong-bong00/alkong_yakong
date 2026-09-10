@@ -335,10 +335,14 @@ void _signupTests() {
         child: MaterialApp(theme: AppTheme.build(), home: child),
       );
 
-  testWidgets('회원가입은 일곱 걸음이고 걸음마다 어디쯤인지 알려준다 (02~05)',
-      (tester) async {
+  /// 걸음 수는 역할과 성별에 따라 달라진다(임신 단계는 여성에게만 뜬다).
+  /// 그러니 총 개수를 박지 않고 "지금 몇 번째인지 늘 보인다"만 지킨다.
+  final stepLabel = RegExp(r'^\d+ / \d+$');
+
+  testWidgets('걸음마다 지금 어디쯤인지 알려준다 (02~05)', (tester) async {
     await tester.pumpWidget(wrap(const SignupScreen()));
-    expect(find.text('1 / 7'), findsOneWidget);
+    expect(find.textContaining(stepLabel), findsOneWidget);
+    expect(find.text('1 / 10'), findsOneWidget);
     expect(find.text('어떤 분이신가요?'), findsOneWidget);
   });
 
@@ -348,7 +352,7 @@ void _signupTests() {
     await tester.pump();
     expect(find.text('어떤 분인지 골라주세요'), findsOneWidget);
     // 오류가 떠도 화면은 그대로다 — 다음으로 넘어가지 않는다.
-    expect(find.text('1 / 7'), findsOneWidget);
+    expect(find.text('어떤 분이신가요?'), findsOneWidget);
   });
 
   test('"잘 모르겠어요"를 누르면 고른 약 이름이 비워진다 (05)', () {
@@ -385,7 +389,82 @@ void _signupTests() {
     await tester.tap(find.text('다음'));
     await tester.pumpAndSettle();
 
-    expect(find.text('3 / 7'), findsOneWidget);
+    expect(find.text('생년월일과 성별을\n알려주세요'), findsOneWidget);
+  });
+
+  testWidgets('보호자는 건강 질문을 받지 않는다', (tester) async {
+    await tester.pumpWidget(wrap(const SignupScreen()));
+    // 보호자는 남의 복약을 지켜볼 뿐이라 자기 지병을 물을 이유가 없다.
+    await tester.tap(find.text('돌보는 가족'));
+    await tester.pump();
+    expect(find.text('1 / 3'), findsOneWidget);
+  });
+
+  testWidgets('되살린 건강 질문들이 글자 2배에서도 버틴다 (5h)', (tester) async {
+    await tester.pumpWidget(
+      ProviderScope(
+        child: MaterialApp(
+          theme: AppTheme.build(),
+          home: MediaQuery(
+            data: const MediaQueryData(textScaler: TextScaler.linear(2.0)),
+            child: const SignupScreen(),
+          ),
+        ),
+      ),
+    );
+
+    // 0단계 · 역할
+    await tester.tap(find.text('약을 드시는 분'));
+    await tester.pump();
+    await tester.tap(find.text('다음'));
+    await tester.pumpAndSettle();
+
+    // 1단계 · 기본 정보
+    await tester.enterText(find.byType(TextField).at(0), '김복자');
+    await tester.enterText(find.byType(TextField).at(1), '01012345678');
+    await tester.enterText(find.byType(TextField).at(2), 'abc123');
+    await tester.enterText(find.byType(TextField).at(3), 'abc123');
+    await tester.tap(find.text('다음'));
+    await tester.pumpAndSettle();
+
+    // 2단계 · 생년월일과 성별
+    await tester.tap(find.text('생년월일'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('확인'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('여성'));
+    await tester.pump();
+    await tester.tap(find.text('다음'));
+    await tester.pumpAndSettle();
+
+    // 3단계 · 키·몸무게·혈액형. 여기서 터지면 혈액형 여덟 칸이 범인이다.
+    expect(find.text('혈액형'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+
+    await tester.tap(find.text('다음'));
+    await tester.pumpAndSettle();
+
+    // 4단계 · 임신 (여성일 때만 나온다)
+    expect(find.text('임신 준비중'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  test('약을 고를 때 참고할 것들을 빠짐없이 묻는다', () {
+    final source = File(
+      'lib/features/auth/presentation/screens/signup_screen.dart',
+    ).readAsStringSync();
+    // 임신·수유는 병용금기 판정을 통째로 바꾼다. 빠지면 안 된다.
+    for (final question in [
+      "title: '키, 몸무게, 혈액형을",
+      "title: '임신 계획이",
+      "title: '담배와 술을",
+      "title: '약물 알레르기가",
+      "title: '지금 앓고 있는",
+      "title: '과거에 앓았거나",
+      "title: '보호자 연락처를",
+    ]) {
+      expect(source.contains(question), isTrue, reason: '$question 단계가 없다');
+    }
   });
 }
 

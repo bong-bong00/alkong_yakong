@@ -40,10 +40,24 @@ class _SignupScreenState extends State<SignupScreen> {
   DateTime? _birth;
   String? _gender;
 
+  final _height = TextEditingController();
+  final _weight = TextEditingController();
+  String? _blood;
+
+  String? _pregnancy;
+  String? _smoking;
+  String? _drinking;
+
 
 
   bool? _allergyYes;
   final Set<String> _allergens = {};
+  final _allergyOther = TextEditingController();
+
+  final _diseaseOther = TextEditingController();
+
+  bool? _pastYes;
+  bool? _familyYes;
 
   final Set<String> _diseases = {};
 
@@ -66,6 +80,7 @@ class _SignupScreenState extends State<SignupScreen> {
     '아스피린',
     '소염진통제',
     '조영제',
+    '기타',
     '잘 모르겠어요',
   ];
   static const _diseaseOptions = [
@@ -74,6 +89,7 @@ class _SignupScreenState extends State<SignupScreen> {
     '고지혈증',
     '심장병',
     '콩팥병',
+    '기타',
     '없어요',
   ];
 
@@ -85,6 +101,10 @@ class _SignupScreenState extends State<SignupScreen> {
     _phone.dispose();
     _pw.dispose();
     _pw2.dispose();
+    _height.dispose();
+    _weight.dispose();
+    _allergyOther.dispose();
+    _diseaseOther.dispose();
     super.dispose();
   }
 
@@ -387,57 +407,175 @@ class _SignupScreenState extends State<SignupScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              GestureDetector(
-                onTap: _pickBirth,
-                child: Container(
-                  height: 54,
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  alignment: Alignment.centerLeft,
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(14),
-                    border: Border.all(color: Colors.grey[300]!),
-                  ),
-                  child: Row(
-                    children: [
-                      Icon(
-                        Icons.calendar_today_rounded,
-                        size: 18,
-                        color: Colors.grey[500],
+              Semantics(
+                button: true,
+                label: _birth == null
+                    ? '생년월일 고르기'
+                    : '생년월일 ${_birth!.year}년 ${_birth!.month}월 '
+                        '${_birth!.day}일, 바꾸기',
+                child: GestureDetector(
+                  onTap: _pickBirth,
+                  child: ExcludeSemantics(
+                    child: Container(
+                      constraints: const BoxConstraints(minHeight: 66),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 20,
+                        vertical: 14,
                       ),
-                      const SizedBox(width: 10),
-                      Text(
-                        _birth == null
-                            ? '생년월일 선택'
-                            : '${_birth!.year}년 ${_birth!.month}월 ${_birth!.day}일',
-                        style: TextStyle(
-                          fontSize: 15,
-                          color: _birth == null ? Colors.grey[500] : kText,
+                      decoration: BoxDecoration(
+                        color: AppColors.bg,
+                        borderRadius: BorderRadius.circular(18),
+                        border: Border.all(
+                          color: AppColors.border,
+                          width: 2,
                         ),
                       ),
-                    ],
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              _birth == null
+                                  ? '생년월일'
+                                  : '${_birth!.year}년 ${_birth!.month}월 '
+                                      '${_birth!.day}일',
+                              style: AppText.label(
+                                size: 22,
+                                color: _birth == null
+                                    ? AppColors.textTertiary
+                                    : AppColors.textPrimary,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          const Icon(
+                            TablerIcons.calendar_month,
+                            size: 24,
+                            color: AppColors.textTertiary,
+                          ),
+                        ],
+                      ),
+                    ),
                   ),
                 ),
               ),
               const SizedBox(height: 14),
-              Row(
-                children: [
-                  Expanded(
-                    child: _pill(
-                      '남성',
-                      _gender == 'M',
-                      () => setState(() => _gender = 'M'),
+              IntrinsicHeight(
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Expanded(
+                      child: _pill(
+                        '남성',
+                        _gender == 'M',
+                        () => setState(() => _gender = 'M'),
+                      ),
                     ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: _pill(
-                      '여성',
-                      _gender == 'F',
-                      () => setState(() => _gender = 'F'),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: _pill(
+                        '여성',
+                        _gender == 'F',
+                        () => setState(() => _gender = 'F'),
+                      ),
                     ),
-                  ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+        _StepDef(
+          title: '키, 몸무게, 혈액형을\n알려주세요',
+          subtitle: '모르시면 비워두고 넘어가셔도 됩니다.',
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // 두 칸을 나란히 두되 각자 최소 높이를 지킨다.
+              IntrinsicHeight(
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Expanded(
+                      child: _field(
+                        _height,
+                        hint: '키',
+                        keyboard: TextInputType.number,
+                        suffixText: 'cm',
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: _field(
+                        _weight,
+                        hint: '몸무게',
+                        keyboard: TextInputType.number,
+                        suffixText: 'kg',
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 18),
+              _sectionLabel('혈액형'),
+              _grid(
+                const [
+                  'RH+ A',
+                  'RH- A',
+                  'RH+ B',
+                  'RH- B',
+                  'RH+ O',
+                  'RH- O',
+                  'RH+ AB',
+                  'RH- AB',
                 ],
+                _blood,
+                (v) => setState(() => _blood = v),
+              ),
+            ],
+          ),
+        ),
+      ]);
+
+      // 임신·수유 여부는 병용금기 판정을 통째로 바꾼다. 건너뛰지 않는다.
+      if (_gender == 'F') {
+        steps.add(
+          _StepDef(
+            title: '임신 계획이\n있으신가요?',
+            subtitle: '임신 상황에 따라 주의할 약이 달라요.',
+            validate: () => _pregnancy == null ? '해당하는 것을 골라주세요' : null,
+            child: _grid(
+              const ['계획 없음', '임신 준비중', '임신 중', '수유 중'],
+              _pregnancy,
+              (v) => setState(() => _pregnancy = v),
+            ),
+          ),
+        );
+      }
+
+      steps.addAll([
+        _StepDef(
+          title: '담배와 술을\n알려주세요',
+          subtitle: '약이 몸에서 빠지는 속도가 달라집니다.',
+          validate: () {
+            if (_smoking == null) return '담배를 피우시는지 골라주세요';
+            if (_drinking == null) return '술을 얼마나 드시는지 골라주세요';
+            return null;
+          },
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _sectionLabel('담배를 피우시나요?'),
+              _vlist(
+                const ['아니요', '예', '과거에 폈지만 끊었어요'],
+                _smoking,
+                (v) => setState(() => _smoking = v),
+              ),
+              const SizedBox(height: 18),
+              _sectionLabel('술을 일주일에 얼마나 드시나요?'),
+              _grid(
+                const ['거의 안 마심', '주 1~2일', '주 3~4일', '주 5~7일'],
+                _drinking,
+                (v) => setState(() => _drinking = v),
               ),
             ],
           ),
@@ -452,6 +590,10 @@ class _SignupScreenState extends State<SignupScreen> {
             }
             if (_allergens.length > 1 && _allergens.contains('잘 모르겠어요')) {
               return '"잘 모르겠어요"는 약 이름과 함께 고를 수 없어요';
+            }
+            if (_allergens.contains('기타') &&
+                _allergyOther.text.trim().isEmpty) {
+              return '어떤 약인지 적어 주세요';
             }
             return null;
           },
@@ -471,6 +613,10 @@ class _SignupScreenState extends State<SignupScreen> {
                   _allergens,
                   (o) => _toggle(_allergens, o),
                 ),
+                if (_allergens.contains('기타')) ...[
+                  const SizedBox(height: 12),
+                  _field(_allergyOther, hint: '어떤 약인지 적어 주세요'),
+                ],
               ],
             ],
           ),
@@ -487,6 +633,10 @@ class _SignupScreenState extends State<SignupScreen> {
             if (_diseases.length > 1 && _diseases.contains('없어요')) {
               return '지병과 "없어요"는 함께 고를 수 없어요';
             }
+            if (_diseases.contains('기타') &&
+                _diseaseOther.text.trim().isEmpty) {
+              return '어떤 병인지 적어 주세요';
+            }
             return null;
           },
           child: Column(
@@ -497,10 +647,36 @@ class _SignupScreenState extends State<SignupScreen> {
                 _diseases,
                 (o) => _toggle(_diseases, o),
               ),
+              if (_diseases.contains('기타')) ...[
+                const SizedBox(height: 12),
+                _field(_diseaseOther, hint: '어떤 병인지 적어 주세요'),
+              ],
             ],
           ),
         ),
       ]);
+      steps.add(
+        _StepDef(
+          title: '과거에 앓았거나\n가족이 앓는 병이 있나요?',
+          subtitle: '지금은 낫았어도 약을 고를 때 참고합니다.',
+          validate: () {
+            if (_pastYes == null) return '과거에 앓았던 병이 있는지 골라주세요';
+            if (_familyYes == null) return '가족력이 있는지 골라주세요';
+            return null;
+          },
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _sectionLabel('과거에 앓았던 병이 있나요?'),
+              _yesNo(_pastYes, (v) => setState(() => _pastYes = v)),
+              const SizedBox(height: 18),
+              _sectionLabel('가족 중에 같은 병을 앓는 분이 있나요?'),
+              _yesNo(_familyYes, (v) => setState(() => _familyYes = v)),
+            ],
+          ),
+        ),
+      );
+
       steps.add(
         _StepDef(
           title: '보호자 연락처를\n알려주세요',
@@ -884,6 +1060,75 @@ class _SignupScreenState extends State<SignupScreen> {
           ),
         ),
       ),
+    );
+  }
+
+  /// 단계 안의 작은 제목. 한 걸음에 두 가지를 물을 때만 쓴다.
+  Widget _sectionLabel(String text) => Padding(
+        padding: const EdgeInsets.only(bottom: 8),
+        child: Text(text, style: AppText.label(size: 18)),
+      );
+
+  /// 두 칸씩 늘어놓는 단일 선택.
+  Widget _grid(
+    List<String> options,
+    String? selected,
+    ValueChanged<String> onSelect,
+  ) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        for (int i = 0; i < options.length; i += 2)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            // 글자가 커져도 두 칸의 키가 맞는다.
+            child: IntrinsicHeight(
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Expanded(
+                    child: _pill(
+                      options[i],
+                      selected == options[i],
+                      () => onSelect(options[i]),
+                      minHeight: 64,
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  if (i + 1 < options.length)
+                    Expanded(
+                      child: _pill(
+                        options[i + 1],
+                        selected == options[i + 1],
+                        () => onSelect(options[i + 1]),
+                        minHeight: 64,
+                      ),
+                    )
+                  else
+                    const Expanded(child: SizedBox()),
+                ],
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+
+  /// 한 줄에 하나씩 놓는 단일 선택. 보기가 길어 두 칸에 안 들어갈 때 쓴다.
+  Widget _vlist(
+    List<String> options,
+    String? selected,
+    ValueChanged<String> onSelect,
+  ) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        for (final o in options)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: _pill(o, selected == o, () => onSelect(o), minHeight: 64),
+          ),
+      ],
     );
   }
 
