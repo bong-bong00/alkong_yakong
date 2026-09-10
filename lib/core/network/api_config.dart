@@ -13,7 +13,7 @@ abstract final class ApiConfig {
     }
 
     return switch (defaultTargetPlatform) {
-      TargetPlatform.android => 'https://alkong-yakong.onrender.com',
+      TargetPlatform.android => 'http://172.16.42.121:8000',
       _ => 'http://localhost:8000',
     };
   }

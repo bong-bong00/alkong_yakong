@@ -7,7 +7,9 @@ import '../../../../core/theme/app_typography.dart';
 import '../../../../core/widgets/senior_card.dart';
 import '../../../../core/widgets/senior_header.dart';
 import '../../../medication/application/medication_controller.dart';
+import '../../../dur_analysis/presentation/screens/dur_analysis_screen.dart';
 import '../../../medication/domain/medication_models.dart';
+import 'month_calendar_screen.dart';
 import 'patient_data.dart';
 
 /// 4c — 기록 탭.
@@ -55,9 +57,36 @@ class MedicationRecordScreen extends ConsumerWidget {
               children: [
                 _MonthCard(rate: _monthRate(days)),
                 const SizedBox(height: 12),
-                _WeekCard(days: _weekStatuses(days, today)),
+                _WeekCard(
+                  days: _weekStatuses(days, today),
+                  onOpenCalendar: () => Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (_) => const MonthCalendarScreen(),
+                    ),
+                  ),
+                ),
                 const SizedBox(height: 12),
                 _TodayCard(rows: _todayRows(days, today)),
+                const SizedBox(height: 12),
+                SeniorCard(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 22,
+                    vertical: 4,
+                  ),
+                  child: SeniorListRow(
+                    label: '약 함께먹기 주의',
+                    icon: TablerIcons.alert_triangle,
+                    iconColor: AppColors.danger,
+                    value: '1건',
+                    valueColor: AppColors.danger,
+                    trailing: const SeniorChevron(),
+                    onTap: () => Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) => const DurAnalysisScreen(),
+                      ),
+                    ),
+                  ),
+                ),
               ],
             ),
           ),
@@ -239,7 +268,11 @@ class _MonthCard extends StatelessWidget {
 /// 카드 2 — 이번 주.
 class _WeekCard extends StatelessWidget {
   final List<_DayStatus> days;
-  const _WeekCard({required this.days});
+
+  /// 한 주에서 한 달로 넓혀 보기.
+  final VoidCallback onOpenCalendar;
+
+  const _WeekCard({required this.days, required this.onOpenCalendar});
 
   static const List<String> _labels = ['월', '화', '수', '목', '금', '토', '일'];
 
@@ -257,10 +290,45 @@ class _WeekCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          IconTitle(
-            icon: TablerIcons.calendar,
-            text: '이번 주',
-            style: AppText.cardTitle(),
+          Semantics(
+            button: true,
+            label: '이번 주 · 달력으로 보기',
+            child: GestureDetector(
+              onTap: onOpenCalendar,
+              behavior: HitTestBehavior.opaque,
+              child: ExcludeSemantics(
+                child: Container(
+                  constraints: const BoxConstraints(minHeight: 48),
+                  // 글자가 커지면 "달력으로 보기"가 제목 아래로 내려간다.
+                  child: LabelValueRow(
+                    label: IconTitle(
+                      icon: TablerIcons.calendar,
+                      text: '이번 주',
+                      style: AppText.cardTitle(),
+                    ),
+                    value: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Flexible(
+                          child: Text(
+                            '달력으로 보기',
+                            style: AppText.cardTitle(
+                              size: 17.5,
+                              color: AppColors.point,
+                            ),
+                          ),
+                        ),
+                        const Icon(
+                          TablerIcons.chevron_right,
+                          size: 26,
+                          color: AppColors.point,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
           ),
           const SizedBox(height: 13),
           Row(

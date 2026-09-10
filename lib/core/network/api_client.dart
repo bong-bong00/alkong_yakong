@@ -35,12 +35,11 @@ class ApiClient {
   Future<dynamic> post(
     String path, {
     required Map<String, dynamic> body,
-    Duration timeout = const Duration(seconds: 45),
   }) async {
     try {
       final response = await _client
           .post(_uri(path), headers: _headers, body: jsonEncode(body))
-          .timeout(timeout);
+          .timeout(const Duration(seconds: 45));
       return _decodeResponse(response);
     } on ApiException {
       rethrow;
@@ -72,15 +71,10 @@ class ApiClient {
     }
 
     final detail = data is Map<String, dynamic> ? data['detail'] : null;
-    var message = 'API 요청에 실패했습니다. (${response.statusCode})';
-    if (detail is Map) {
-      message = detail['message']?.toString() ??
-          detail['error']?.toString() ??
-          detail.toString();
-    } else if (detail != null) {
-      message = detail.toString();
-    }
-    throw ApiException(message, statusCode: response.statusCode);
+    throw ApiException(
+      detail?.toString() ?? 'API 요청에 실패했습니다. (${response.statusCode})',
+      statusCode: response.statusCode,
+    );
   }
 
   static const Map<String, String> _headers = {
