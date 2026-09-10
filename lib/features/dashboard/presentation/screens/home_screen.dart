@@ -7,6 +7,11 @@ import '../../../../core/constants/app_colors.dart';
 import '../../../../core/mode/app_mode.dart';
 import '../../../easy_flow/presentation/easy_flow_shell.dart';
 import '../../../../core/widgets/senior_bottom_nav.dart';
+import '../../../../core/widgets/senior_feedback.dart';
+import '../../../biosignal/presentation/screens/measure_screen.dart';
+import '../../../medication/domain/medication_models.dart';
+import '../../../medication/presentation/screens/dose_done_screen.dart';
+import '../../../prescription/presentation/screens/prescription_screen.dart';
 import '../../../profile/presentation/screens/mypage_screen.dart';
 import 'medication_record_screen.dart';
 import 'patient_home_screen.dart';
@@ -25,6 +30,9 @@ class HomeScreen extends ConsumerStatefulWidget {
 
 class _HomeScreenState extends ConsumerState<HomeScreen> {
   int _index = 0;
+
+  /// 방금 기록한 시간대. null이 아니면 오늘 탭이 완료 화면을 그린다.
+  DoseSlot? _justRecorded;
 
   static const List<SeniorNavItem> _tabs = [
     SeniorNavItem(icon: TablerIcons.pill, label: '오늘'),
@@ -45,10 +53,40 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       body: IndexedStack(
         index: _index,
         children: [
-          PatientHomeScreen(
-            onOpenRecord: () => setState(() => _index = 1),
-            onOpenHeartbeat: () => context.push('/biosignal'),
-          ),
+          _justRecorded == null
+              ? PatientHomeScreen(
+                  onOpenRecord: () => setState(() => _index = 1),
+                  onOpenHeartbeat: () => context.push('/biosignal'),
+                  onOpenPrescription: () => Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => const PrescriptionScreen(),
+                    ),
+                  ),
+                  onOpenChat: () => showSeniorSnackbar(
+                    context,
+                    'AI 약사 상담은 곧 열려요',
+                  ),
+                  onOpenMedicines: () => showSeniorSnackbar(
+                    context,
+                    '내 약 목록은 곧 열려요',
+                  ),
+                  onDone: () =>
+                      setState(() => _justRecorded = DoseSlot.dinner),
+                  onMeasure: () async {
+                    await Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => const MeasureScreen(),
+                      ),
+                    );
+                    if (mounted) {
+                      setState(() => _justRecorded = DoseSlot.dinner);
+                    }
+                  },
+                )
+              : DoseDoneScreen(
+                  slot: _justRecorded!,
+                  onUndone: () => setState(() => _justRecorded = null),
+                ),
           const MedicationRecordScreen(),
           const MyPageScreen(),
         ],

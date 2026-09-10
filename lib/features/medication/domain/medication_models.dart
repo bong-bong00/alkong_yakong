@@ -44,15 +44,21 @@ class Medicine {
   /// "1알".
   final String amount;
 
-  /// 생김새 — "흰색 동그란 알약".
-  /// 3a는 약 사진을 쓰지 않으므로 화면에 크게 띄우지 않고,
-  /// 음성 안내([5d])와 스크린리더 설명에만 쓴다.
+  /// 생김새 — "흰색 동그란 알약". 어르신은 약을 이름이 아니라 모양으로 기억한다.
   final String? appearance;
+
+  /// 효능 한 줄 — "혈당 낮추는 약". 성분명 옆에 늘 붙는다.
+  final String? effect;
+
+  /// 약 설명 화면을 찾을 키 — 'met' / 'aml' / 'asp'.
+  final String? key;
 
   const Medicine({
     required this.ingredient,
     required this.amount,
     this.appearance,
+    this.effect,
+    this.key,
   });
 
   /// 음성으로 읽어줄 때의 한 줄 — "메트포르민 500mg, 흰색 동그란 알약 1알".
@@ -129,13 +135,22 @@ class TodayMedication {
   final int heartRate;
   final bool heartRateNormal;
 
+  /// 이 처방이 며칠 남았는지. 0이면 오늘로 끝난다.
+  final int daysLeft;
+
   const TodayMedication({
     required this.doses,
     required this.guardianRelation,
     required this.guardianName,
     required this.heartRate,
     required this.heartRateNormal,
+    this.daysLeft = 3,
   });
+
+  /// 잔여일을 어떻게 말할지. 0일이면 문구 자체가 바뀐다.
+  String get daysLeftPhrase => daysLeft == 0
+      ? '이 처방이 오늘로 끝나요'
+      : '이 처방 $daysLeft일치 남았어요';
 
   /// "딸 지안 님".
   String get guardianTitle => '$guardianRelation $guardianName 님';
@@ -163,11 +178,13 @@ class TodayMedication {
     return '${done.join('·')} 다 드셨어요';
   }
 
-  TodayMedication copyWith({List<DoseEntry>? doses}) => TodayMedication(
-    doses: doses ?? this.doses,
-    guardianRelation: guardianRelation,
-    guardianName: guardianName,
-    heartRate: heartRate,
-    heartRateNormal: heartRateNormal,
-  );
+  TodayMedication copyWith({List<DoseEntry>? doses, int? daysLeft}) =>
+      TodayMedication(
+        doses: doses ?? this.doses,
+        guardianRelation: guardianRelation,
+        guardianName: guardianName,
+        heartRate: heartRate,
+        heartRateNormal: heartRateNormal,
+        daysLeft: daysLeft ?? this.daysLeft,
+      );
 }

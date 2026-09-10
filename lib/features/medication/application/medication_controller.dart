@@ -32,11 +32,15 @@ class MedicationController extends Notifier<TodayMedication> {
               ingredient: '암로디핀 5mg',
               amount: '1알',
               appearance: '노란 길쭉한 알약',
+              effect: '혈압 내리는 약',
+              key: 'aml',
             ),
             Medicine(
               ingredient: '아스피린 100mg',
               amount: '1알',
-              appearance: '흰색 동그란 알약',
+              appearance: '작은 흰색 알약',
+              effect: '피를 묽게 하는 약',
+              key: 'asp',
             ),
           ],
           taken: true,
@@ -48,6 +52,8 @@ class MedicationController extends Notifier<TodayMedication> {
               ingredient: '메트포르민 500mg',
               amount: '1알',
               appearance: '흰색 동그란 알약',
+              effect: '혈당 낮추는 약',
+              key: 'met',
             ),
           ],
           taken: true,
@@ -59,11 +65,15 @@ class MedicationController extends Notifier<TodayMedication> {
               ingredient: '메트포르민 500mg',
               amount: '1알',
               appearance: '흰색 동그란 알약',
+              effect: '혈당 낮추는 약',
+              key: 'met',
             ),
             Medicine(
               ingredient: '암로디핀 5mg',
               amount: '1알',
               appearance: '노란 길쭉한 알약',
+              effect: '혈압 내리는 약',
+              key: 'aml',
             ),
           ],
         ),
@@ -72,7 +82,30 @@ class MedicationController extends Notifier<TodayMedication> {
       guardianName: '지안',
       heartRate: 72,
       heartRateNormal: true,
+      daysLeft: 3,
     );
+  }
+
+  /// 오늘 리필 시트를 이미 물어봤는지. 하루에 한 번만 뜬다.
+  bool _refillAsked = false;
+
+  bool get refillAsked => _refillAsked;
+
+  /// 잔여일이 0인데 아직 안 물어봤으면 홈에서 자동으로 시트를 연다.
+  bool get shouldAskRefill => state.daysLeft == 0 && !_refillAsked;
+
+  void markRefillAsked() => _refillAsked = true;
+
+  /// 잔여일을 하루 줄인다. (프로토타입 데모용 — 실제로는 서버가 센다.)
+  void decrementDaysLeft() {
+    if (state.daysLeft <= 0) return;
+    state = state.copyWith(daysLeft: state.daysLeft - 1);
+  }
+
+  /// 새 처방전을 등록하면 잔여일이 다시 채워진다.
+  void refill({int days = 21}) {
+    _refillAsked = false;
+    state = state.copyWith(daysLeft: days);
   }
 
   /// 이 시간대에 보호자 알림이 나갔는지. 되돌리면 취소된다.

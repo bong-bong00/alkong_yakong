@@ -15,6 +15,7 @@ import 'package:alkong_yakong/features/dashboard/presentation/screens/home_scree
 import 'package:alkong_yakong/features/easy_flow/domain/easy_flow.dart';
 import 'package:alkong_yakong/core/widgets/senior_bottom_nav.dart';
 import 'package:alkong_yakong/core/mode/app_mode.dart';
+import 'package:alkong_yakong/features/medication/presentation/screens/dose_done_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// 시니어 리디자인의 QA 기준을 코드로 굳힌 테스트.
@@ -74,7 +75,7 @@ void main() {
     });
   });
 
-  testWidgets('먹었어요를 누르면 기록되고, 되돌리기로 되돌아온다 (4b)', (tester) async {
+  testWidgets('먹었어요는 바로 기록하지 않고 센서 착용부터 묻는다 (13)', (tester) async {
     tester.view.physicalSize = const Size(390, 844);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.reset);
@@ -86,14 +87,64 @@ void main() {
     await tester.tap(find.text('먹었어요'));
     await tester.pumpAndSettle();
 
-    // 제목 앞에 이모지가 붙어 있어 부분 일치로 찾는다.
-    expect(find.textContaining('잘하셨어요'), findsOneWidget);
+    // 기록보다 시트가 먼저다. 띠를 차고 계시면 심박수를 잴 기회이기 때문이다.
+    expect(find.textContaining('가슴 띠를'), findsOneWidget);
+    expect(find.text('차고 있어요 · 재기'), findsOneWidget);
+    expect(find.text('안 차고 있어요 · 복약만 기록'), findsOneWidget);
+    expect(find.text('그만두기'), findsOneWidget);
+  });
 
-    // 되돌리기는 시간 제한 없이 노출된다.
-    await tester.tap(find.text('잘못 눌렀어요 · 되돌리기'));
+  testWidgets('그만두기를 고르면 아무것도 기록되지 않는다 (13)', (tester) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+
+    var done = 0;
+    await tester.pumpWidget(
+      wrap(PatientHomeScreen(onDone: () => done++)),
+    );
+    await tester.pump();
+
+    await tester.tap(find.text('먹었어요'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('그만두기'));
     await tester.pumpAndSettle();
 
+    expect(done, 0);
     expect(find.text('먹었어요'), findsOneWidget);
+  });
+
+  testWidgets('복약만 기록을 고르면 완료로 넘어간다 (14)', (tester) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+
+    var done = 0;
+    await tester.pumpWidget(
+      wrap(PatientHomeScreen(onDone: () => done++)),
+    );
+    await tester.pump();
+
+    await tester.tap(find.text('먹었어요'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('안 차고 있어요 · 복약만 기록'));
+    await tester.pumpAndSettle();
+
+    expect(done, 1);
+  });
+
+  testWidgets('완료 화면의 되돌리기는 시간 제한 없이 있다 (14)', (tester) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+
+    await tester.pumpWidget(
+      wrap(const DoseDoneScreen(slot: DoseSlot.morning)),
+    );
+    await tester.pump();
+
+    expect(find.textContaining('잘하셨어요'), findsOneWidget);
+    expect(find.text('잘못 눌렀어요 · 되돌리기'), findsOneWidget);
   });
 
   test('재알림 사다리는 0·15·45분 뒤 어르신, 60분 뒤 보호자다 (5c)', () {
