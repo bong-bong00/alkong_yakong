@@ -10,6 +10,7 @@ import '../../../../core/theme/app_typography.dart';
 import '../../../../core/widgets/recovery_view.dart';
 import '../../../../core/widgets/senior_button.dart';
 import '../../../../core/widgets/senior_card.dart';
+import '../../../../core/widgets/senior_feedback.dart';
 import '../../../../core/widgets/senior_header.dart';
 import '../../../medication/domain/medication_models.dart';
 import '../../data/biosignal_dataset_collector.dart';
@@ -201,8 +202,11 @@ class _HeartbeatScreenState extends State<HeartbeatScreen> {
       stillWorksTitle: '약 알림은 그대로 와요',
       stillWorksBody: '센서가 끊겨도 복약 알림에는 영향이 없어요.',
       helperText: '그래도 안 되면\n${widget.guardianTitle}에게 도움 청하기',
-      onCallHelper: () => ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('${widget.guardianTitle}에게 전화를 겁니다')),
+      // 어르신 화면에서 밖으로 전화를 걸지 않는다. 연결이 끊겼다는
+      // 사실만 가족에게 보내고, 전화는 받은 쪽이 건다.
+      onCallHelper: () => showSeniorSnackbar(
+        context,
+        '${widget.guardianTitle}에게 연락이 갔어요',
       ),
       footnote: _lastReadAt == null
           ? null

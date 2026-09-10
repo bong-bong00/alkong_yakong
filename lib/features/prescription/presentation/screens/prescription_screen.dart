@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 
@@ -14,6 +15,7 @@ import '../../../../core/widgets/senior_button.dart';
 import '../../../../core/widgets/senior_card.dart';
 import '../../../../core/widgets/senior_header.dart';
 import '../../../../core/widgets/senior_feedback.dart';
+import '../../../medication/application/medication_controller.dart';
 import '../../../onboarding/presentation/screens/first_run_screen.dart';
 import 'add_medicine_screen.dart';
 import 'manual_medicine_screen.dart';
@@ -43,7 +45,7 @@ enum PrescriptionStep {
 ///
 /// "처방전 OCR 인식"이라는 말을 쓰지 않는다.
 /// 읽지 못했을 때도 사용자를 탓하지 않는다 — "다시 찍어드릴게요".
-class PrescriptionScreen extends StatefulWidget {
+class PrescriptionScreen extends ConsumerStatefulWidget {
   /// 함께 보는 가족 — "딸 지안 님".
   final String guardianTitle;
 
@@ -60,10 +62,10 @@ class PrescriptionScreen extends StatefulWidget {
   });
 
   @override
-  State<PrescriptionScreen> createState() => _PrescriptionScreenState();
+  ConsumerState<PrescriptionScreen> createState() => _PrescriptionScreenState();
 }
 
-class _PrescriptionScreenState extends State<PrescriptionScreen> {
+class _PrescriptionScreenState extends ConsumerState<PrescriptionScreen> {
   final ImagePicker _picker = ImagePicker();
   final ApiClient _apiClient = ApiClient();
 
@@ -163,31 +165,97 @@ class _PrescriptionScreenState extends State<PrescriptionScreen> {
   }
 
   Future<void> _register() async {
+    final userId = MvpSession.userId.trim().isEmpty
+        ? 'mvp-user'
+        : MvpSession.userId.trim();
+
+    final confirmItems = _items
+        .where((item) => (item['medicine_code']?.toString() ?? '').isNotEmpty)
+        .map(
+          (item) => <String, dynamic>{
+            'medicine_code': item['medicine_code'],
+            'drug_name': item['drug_name'] ?? item['product_name'] ?? '',
+            'dosage': item['dosage'],
+            'unit': item['unit'],
+            'frequency_per_day': item['frequency_per_day'],
+            'times_per_take': item['times_per_take'],
+            'duration_days': item['duration_days'],
+            'administration_times': item['administration_times'] is List
+                ? item['administration_times']
+                : <String>[],
+            'match_status': item['match_status'],
+            'easy_explanation': item['easy_explanation'],
+            'warning_note': item['warning_note'],
+          },
+        )
+        .toList();
+
+    // 읽어낸 약이 하나도 없으면 등록하지 않는다.
+    // 빈 처방을 저장해 두면 "등록됐다"는 말만 남고 약은 없다.
+    if (confirmItems.isEmpty) {
+      if (!mounted) return;
+      showSeniorSnackbar(context, '등록할 약을 찾지 못했어요. 다시 찍어 주세요.');
+      return;
+    }
+
+    try {
+      await _apiClient.post(
+        '/api/v1/prescriptions/confirm',
+        body: {
+          'user_id': userId,
+          'items': confirmItems,
+          'hospital_name': _result?['hospital_name'],
+          'pharmacy_name': _result?['pharmacy_name'],
+          'prescribed_date': _result?['prescribed_date'],
+        },
+      );
+    } catch (error) {
+      debugPrint('처방 확정 등록 실패: $error');
+      if (!mounted) return;
+      showSeniorSnackbar(context, '약 등록에 실패했어요. 잠시 후 다시 시도해 주세요.');
+      return;
+    }
+
     MvpSession.latestOcrItems = _items;
     MvpSession.latestOcrRegisteredAt = DateTime.now();
+    await ref.read(medicationProvider.notifier).refreshFromServer();
 
     var hasRisk = false;
-    final userId = MvpSession.userId.trim();
-    if (userId.isNotEmpty) {
-      try {
-        // 등록 직후 약 함께먹기 검사를 자동으로 돌린다.
-        // 사용자가 찾아가게 하지 않는다.
-        final analysis = await _apiClient.post(
-          '/api/v1/dur/analyze',
-          body: {'user_id': userId, 'medicine_codes': <String>[]},
-        );
-        if (analysis is Map) {
+    var durFailed = false;
+    try {
+      // 등록 직후 약 함께먹기 검사를 자동으로 돌린다.
+      // 사용자가 찾아가게 하지 않는다.
+      final analysisBody = <String, dynamic>{
+        'user_id': userId,
+        'medicine_codes': <String>[],
+      };
+      if (MvpSession.isPregnant != null) {
+        analysisBody['is_pregnant'] = MvpSession.isPregnant;
+      }
+      final analysis = await _apiClient.post(
+        '/api/v1/dur/analyze',
+        body: analysisBody,
+      );
+      if (analysis is Map) {
+        if (analysis['has_risk'] == true) {
+          hasRisk = true;
+        } else {
           final matches = analysis['matches'];
           hasRisk = matches is List && matches.isNotEmpty;
         }
-      } catch (error) {
-        debugPrint('등록 직후 약 함께먹기 검사 실패: $error');
       }
+    } catch (error) {
+      durFailed = true;
+      debugPrint('등록 직후 약 함께먹기 검사 실패: $error');
     }
 
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('약을 등록했어요. 시간에 맞춰 알려드릴게요.')),
+    // 검사가 실패했으면 그 사실을 숨기지 않는다.
+    showSeniorSnackbar(
+      context,
+      durFailed
+          ? '약은 등록했어요. 함께먹기 검사는 나중에 다시 확인해 주세요.'
+          : '약을 등록했어요. 시간에 맞춰 알려드릴게요.',
     );
 
     // 쉬운 모드에서는 다음 단계가 곧 "함께 먹어도 되는지" 화면이라

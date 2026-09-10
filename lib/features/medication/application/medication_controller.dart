@@ -1,5 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/network/api_client.dart';
+import '../../../core/session/mvp_session.dart';
 import '../../reminder/domain/reminder_ladder.dart';
 import '../domain/medication_models.dart';
 
@@ -17,12 +19,117 @@ final medicationProvider =
 
 /// 오늘 복약 상태를 들고 있는 컨트롤러.
 ///
-/// 이 클래스가 "실패를 설계한다"는 원칙이 사는 자리다 —
-/// 되돌리기, 중복 복용 차단, 재알림 사다리 취소가 전부 여기를 지난다.
+/// 서버 응답을 우선한다. 서버가 빈 목록을 주면 데모약을 치운다.
+/// (빈 응답인데 데모를 남기면 가짜 약이 실약처럼 보임)
+/// 네트워크 실패 시에만 기존(또는 데모) 상태를 유지한다.
 class MedicationController extends Notifier<TodayMedication> {
-  // TODO: 백엔드 복약 스케줄 API로 교체한다.
+  final _api = ApiClient();
+
   @override
   TodayMedication build() {
+    Future.microtask(refreshFromServer);
+    return _demoToday();
+  }
+
+  /// 오늘 리필 시트를 이미 물어봤는지. 하루에 한 번만 뜬다.
+  bool _refillAsked = false;
+
+  bool get refillAsked => _refillAsked;
+
+  /// 처방이 오늘로 끝나는데 아직 안 물어봤으면 물어본다.
+  bool get shouldAskRefill => state.daysLeft == 0 && !_refillAsked;
+
+  void markRefillAsked() => _refillAsked = true;
+
+  /// 하루가 지나면 남은 날수를 하나 줄인다.
+  void decrementDaysLeft() {
+    if (state.daysLeft <= 0) return;
+    state = state.copyWith(daysLeft: state.daysLeft - 1);
+  }
+
+  /// 새 처방을 받으면 날수를 다시 채우고 리필 질문도 풀어 둔다.
+  void refill({int days = 21}) {
+    _refillAsked = false;
+    state = state.copyWith(daysLeft: days);
+  }
+
+  Future<void> refreshFromServer() async {
+    try {
+      final userId = Uri.encodeComponent(MvpSession.userId);
+      final response = await _api.get('/api/v1/users/$userId/today-medicines');
+      if (response is! Map) return;
+      final parsed = _fromServer(Map<String, dynamic>.from(response));
+      // 서버가 정상 응답했으면 비어 있어도 그대로 반영 (데모 유지 금지)
+      state = parsed;
+    } catch (_) {
+      // 서버 불가면 현재 상태(최초엔 데모) 유지
+    }
+  }
+
+  TodayMedication _fromServer(Map<String, dynamic> data) {
+    final rawDoses = data['doses'];
+    final doses = <DoseEntry>[];
+    if (rawDoses is List) {
+      for (final raw in rawDoses) {
+        if (raw is! Map) continue;
+        final slot = _slotOf(raw['slot']?.toString());
+        if (slot == null) continue;
+        final meds = <Medicine>[];
+        final rawMeds = raw['medicines'];
+        if (rawMeds is List) {
+          for (final m in rawMeds) {
+            if (m is! Map) continue;
+            final ingredient =
+                m['ingredient']?.toString() ??
+                m['product_name']?.toString() ??
+                '약';
+            final scheduleRaw = m['schedule_id'];
+            final scheduleId = scheduleRaw is num
+                ? scheduleRaw.toInt()
+                : int.tryParse(scheduleRaw?.toString() ?? '');
+            meds.add(
+              Medicine(
+                ingredient: ingredient,
+                amount: m['amount']?.toString() ?? '1알',
+                easyCategory: m['easy_category']?.toString(),
+                scheduleId: scheduleId,
+              ),
+            );
+          }
+        }
+        if (meds.isEmpty) continue;
+        doses.add(
+          DoseEntry(
+            slot: slot,
+            medicines: meds,
+            taken: raw['taken'] == true,
+          ),
+        );
+      }
+    }
+    return TodayMedication(
+      doses: doses,
+      guardianRelation: data['guardian_relation']?.toString() ?? '보호자',
+      guardianName: data['guardian_name']?.toString() ?? '가족',
+      heartRate: 72,
+      heartRateNormal: true,
+    );
+  }
+
+  DoseSlot? _slotOf(String? raw) {
+    switch ((raw ?? '').toLowerCase()) {
+      case 'morning':
+        return DoseSlot.morning;
+      case 'lunch':
+        return DoseSlot.lunch;
+      case 'dinner':
+        return DoseSlot.dinner;
+      default:
+        return null;
+    }
+  }
+
+  TodayMedication _demoToday() {
     return const TodayMedication(
       doses: [
         DoseEntry(
@@ -32,6 +139,7 @@ class MedicationController extends Notifier<TodayMedication> {
               ingredient: '암로디핀 5mg',
               amount: '1알',
               appearance: '노란 길쭉한 알약',
+              easyCategory: '혈압 낮춤',
               effect: '혈압 내리는 약',
               key: 'aml',
             ),
@@ -39,6 +147,7 @@ class MedicationController extends Notifier<TodayMedication> {
               ingredient: '아스피린 100mg',
               amount: '1알',
               appearance: '작은 흰색 알약',
+              easyCategory: '피 묽게',
               effect: '피를 묽게 하는 약',
               key: 'asp',
             ),
@@ -52,6 +161,7 @@ class MedicationController extends Notifier<TodayMedication> {
               ingredient: '메트포르민 500mg',
               amount: '1알',
               appearance: '흰색 동그란 알약',
+              easyCategory: '혈당 조절',
               effect: '혈당 낮추는 약',
               key: 'met',
             ),
@@ -65,6 +175,7 @@ class MedicationController extends Notifier<TodayMedication> {
               ingredient: '메트포르민 500mg',
               amount: '1알',
               appearance: '흰색 동그란 알약',
+              easyCategory: '혈당 조절',
               effect: '혈당 낮추는 약',
               key: 'met',
             ),
@@ -72,6 +183,7 @@ class MedicationController extends Notifier<TodayMedication> {
               ingredient: '암로디핀 5mg',
               amount: '1알',
               appearance: '노란 길쭉한 알약',
+              easyCategory: '혈압 낮춤',
               effect: '혈압 내리는 약',
               key: 'aml',
             ),
@@ -82,47 +194,14 @@ class MedicationController extends Notifier<TodayMedication> {
       guardianName: '지안',
       heartRate: 72,
       heartRateNormal: true,
-      daysLeft: 3,
     );
   }
 
-  /// 오늘 리필 시트를 이미 물어봤는지. 하루에 한 번만 뜬다.
-  bool _refillAsked = false;
-
-  bool get refillAsked => _refillAsked;
-
-  /// 잔여일이 0인데 아직 안 물어봤으면 홈에서 자동으로 시트를 연다.
-  bool get shouldAskRefill => state.daysLeft == 0 && !_refillAsked;
-
-  void markRefillAsked() => _refillAsked = true;
-
-  /// 잔여일을 하루 줄인다. (프로토타입 데모용 — 실제로는 서버가 센다.)
-  void decrementDaysLeft() {
-    if (state.daysLeft <= 0) return;
-    state = state.copyWith(daysLeft: state.daysLeft - 1);
-  }
-
-  /// 새 처방전을 등록하면 잔여일이 다시 채워진다.
-  void refill({int days = 21}) {
-    _refillAsked = false;
-    state = state.copyWith(daysLeft: days);
-  }
-
-  /// 이 시간대에 보호자 알림이 나갔는지. 되돌리면 취소된다.
   final Set<DoseSlot> _guardianNotified = <DoseSlot>{};
-
-  /// "30분 뒤에 다시"를 누른 횟수. 사다리가 그만큼 뒤로 밀린다.
   final Map<DoseSlot, int> _snoozeCount = <DoseSlot, int>{};
 
   bool guardianNotifiedFor(DoseSlot slot) => _guardianNotified.contains(slot);
 
-  /// "먹었어요"를 눌렀을 때 무엇을 해야 하는지 판정한다.
-  ///
-  /// - 이미 기록된 시간대 → [DoseCheckOutcome.alreadyTaken] (5f 차단 시트)
-  /// - 복약 시각에서 4시간 이상 지남 → [DoseCheckOutcome.tooLate] (지연 시트)
-  /// - 그 외 → 기록하고 [DoseCheckOutcome.recorded]
-  ///
-  /// **사후 안내가 아니라 사전 차단이다.** 판정이 기록보다 먼저다.
   DoseCheckOutcome take(DoseSlot slot, {DateTime? now}) {
     final at = now ?? DateTime.now();
     final dose = state.doseOf(slot);
@@ -138,7 +217,6 @@ class MedicationController extends Notifier<TodayMedication> {
     return DoseCheckOutcome.recorded;
   }
 
-  /// 지연 복약 시트에서 "그래도 먹었어요"를 골랐을 때.
   void takeAnyway(DoseSlot slot, {DateTime? now}) {
     _record(slot, now ?? DateTime.now());
   }
@@ -153,16 +231,30 @@ class MedicationController extends Notifier<TodayMedication> {
             dose,
       ],
     );
-    // 어느 단계에서든 기록되면 이후 알림은 전부 취소된다.
     ref.read(reminderSchedulerProvider).cancelSlot(slot);
     _snoozeCount.remove(slot);
     _guardianNotified.add(slot);
+    _postTakenLogs(slot);
   }
 
-  /// 되돌리기 (4b).
-  ///
-  /// **시간 제한 없이** 되돌릴 수 있다 — 시니어는 실수를 늦게 발견한다.
-  /// 되돌리면 보호자에게 나간 알림도 함께 취소된다.
+  Future<void> _postTakenLogs(DoseSlot slot) async {
+    final dose = state.doseOf(slot);
+    final userId = MvpSession.userId.trim();
+    if (userId.isEmpty) return;
+    for (final med in dose.medicines) {
+      final scheduleId = med.scheduleId;
+      if (scheduleId == null || scheduleId <= 0) continue;
+      try {
+        await _api.post(
+          '/api/v1/medication-logs',
+          body: {'user_id': userId, 'schedule_id': scheduleId},
+        );
+      } catch (_) {
+        // 로컬 기록은 유지. 서버 실패는 다음에 동기화 가능.
+      }
+    }
+  }
+
   void undo(DoseSlot slot) {
     state = state.copyWith(
       doses: [
@@ -177,8 +269,6 @@ class MedicationController extends Notifier<TodayMedication> {
     _scheduleLadder(slot);
   }
 
-  /// "30분 뒤에 다시 알려주기".
-  /// 사다리 전체가 30분 뒤로 밀린다 — 단계를 건너뛰지 않는다.
   DateTime snooze(DoseSlot slot, {DateTime? now}) {
     final at = now ?? DateTime.now();
     final count = (_snoozeCount[slot] ?? 0) + 1;

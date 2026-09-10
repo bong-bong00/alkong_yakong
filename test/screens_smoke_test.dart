@@ -1,11 +1,27 @@
 import 'package:alkong_yakong/core/theme/app_theme.dart';
 import 'package:alkong_yakong/core/widgets/recovery_view.dart';
+import 'package:alkong_yakong/features/biosignal/presentation/screens/heart_screen.dart';
 import 'package:alkong_yakong/features/biosignal/presentation/screens/heartbeat_screen.dart';
+import 'package:alkong_yakong/features/biosignal/presentation/screens/measure_screen.dart';
+import 'package:alkong_yakong/features/biosignal/presentation/screens/monthly_heart_screen.dart';
+import 'package:alkong_yakong/features/biosignal/presentation/screens/polar_screen.dart';
+import 'package:alkong_yakong/features/biosignal/presentation/screens/saved_screen.dart';
+import 'package:alkong_yakong/features/biosignal/domain/heart_data.dart';
+import 'package:alkong_yakong/features/auth/presentation/screens/signup_screen.dart';
+import 'package:alkong_yakong/features/dashboard/presentation/screens/month_calendar_screen.dart';
 import 'package:alkong_yakong/features/dur_analysis/presentation/screens/dur_analysis_screen.dart';
+import 'package:alkong_yakong/features/guardian/presentation/screens/care_family_screen.dart';
+import 'package:alkong_yakong/features/reminder/presentation/screens/alarm_settings_screen.dart';
 import 'package:alkong_yakong/features/medication/domain/medication_models.dart';
 import 'package:alkong_yakong/features/prescription/presentation/screens/prescription_screen.dart';
 import 'package:alkong_yakong/features/profile/presentation/screens/account_screen.dart';
 import 'package:alkong_yakong/features/reminder/presentation/screens/lock_screen_alert.dart';
+import 'package:alkong_yakong/features/medicines/domain/drug_info.dart';
+import 'package:alkong_yakong/features/medicines/presentation/screens/drug_detail_screen.dart';
+import 'package:alkong_yakong/features/medicines/presentation/screens/my_medicines_screen.dart';
+import 'package:alkong_yakong/features/medicines/presentation/screens/pharmacist_chat_screen.dart';
+import 'package:alkong_yakong/features/prescription/presentation/screens/add_medicine_screen.dart';
+import 'package:alkong_yakong/features/prescription/presentation/screens/manual_medicine_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -35,7 +51,25 @@ void main() {
   final screens = <String, Widget Function()>{
     '처방전 찍기 (4d)': () => const PrescriptionScreen(),
     '약 함께먹기 주의 (4f)': () => const DurAnalysisScreen(),
-    '심장 박동 (4g)': () => const HeartbeatScreen(),
+    '약 넣기 방법 고르기 (07)': () => AddMedicineScreen(onPick: (_) {}),
+    '손으로 적기 (10)': () => const ManualMedicineScreen(),
+    '내 약 목록 (20)': () => const MyMedicinesScreen(),
+    '약 설명 (21)': () => const DrugDetailScreen(drug: DrugInfo.metformin),
+    'AI 약사 상담 (22)': () => const PharmacistChatScreen(),
+    '심박수 관리 (24)': () => const HeartScreen(),
+    // 새 디자인이 아직 못 덮은 화면. 폴라 센서·백엔드 배선이 여기 살아 있다.
+    '심박 측정 (센서 배선)': () => const HeartbeatScreen(),
+    '폴라 센서 (25)': () => const PolarScreen(data: HeartData.demo),
+    '한 달 기록 (26)': () => const MonthlyHeartScreen(data: HeartData.demo),
+    '심박수 재는 중 (27)': () => const MeasureScreen(),
+    '기록 저장 (30)': () => const SavedScreen(bpm: 72),
+    '회원가입 (02~05)': () => const SignupScreen(),
+    '가입 완료': () => const SignupDoneScreen(name: '김복자'),
+    '이번 달 달력 (19)': () => const MonthCalendarScreen(),
+    '복약 알림 (32)': () => const AlarmSettingsScreen(),
+    '돌보는 분 목록 (36)': () => Scaffold(
+      body: CareFamilyScreen(onOpenPatient: (_) {}),
+    ),
     '계정 관리': () => const AccountScreen(),
     '잠금화면 알림 (5b)': () => LockScreenAlert(
       dose: dose,
