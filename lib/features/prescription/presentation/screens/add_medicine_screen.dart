@@ -21,11 +21,15 @@ class AddMedicineScreen extends StatefulWidget {
   /// 부탁을 마친 뒤 오늘 화면으로 돌아가는 길.
   final VoidCallback? onGoHome;
 
+  /// 이미 부탁을 마치고 들어왔는지. 첫 사용 화면에서 넘어올 때 true다.
+  final bool familyAsked;
+
   const AddMedicineScreen({
     super.key,
     required this.onPick,
     this.guardianTitle = '딸 지안 님',
     this.onGoHome,
+    this.familyAsked = false,
   });
 
   @override
@@ -34,7 +38,7 @@ class AddMedicineScreen extends StatefulWidget {
 
 class _AddMedicineScreenState extends State<AddMedicineScreen> {
   /// 가족에게 부탁했는지. 화면을 옮기지 않고 자리에서 카드로 바뀐다.
-  bool _asked = false;
+  late bool _asked = widget.familyAsked;
 
   @override
   Widget build(BuildContext context) {

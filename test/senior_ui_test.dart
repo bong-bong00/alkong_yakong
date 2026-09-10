@@ -1,6 +1,8 @@
 import 'dart:io';
 import 'package:alkong_yakong/core/theme/app_theme.dart';
 import 'package:alkong_yakong/features/auth/presentation/screens/login_screen.dart';
+import 'package:alkong_yakong/features/auth/domain/exclusive_choice.dart';
+import 'package:alkong_yakong/features/auth/presentation/screens/signup_screen.dart';
 import 'package:alkong_yakong/features/dashboard/presentation/screens/guardian_home_screen.dart';
 import 'package:alkong_yakong/features/dashboard/presentation/screens/medication_record_screen.dart';
 import 'package:alkong_yakong/features/dashboard/presentation/screens/patient_home_screen.dart';
@@ -25,6 +27,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 void main() {
   _forbiddenFeatureTests();
   _easyModeTests();
+  _signupTests();
+  _calendarTests();
   Widget wrap(Widget child, {double textScale = 1.0}) {
     return ProviderScope(
       child: MaterialApp(
@@ -321,5 +325,91 @@ void _forbiddenFeatureTests() {
       'lib/features/dur_analysis/presentation/screens/dur_analysis_screen.dart',
     ).readAsStringSync();
     expect(dur.contains('showSeniorSnackbar'), isTrue);
+  });
+}
+
+
+/// 회원가입 — 한 화면에 하나만 묻고, 배타 선택을 지킨다.
+void _signupTests() {
+  Widget wrap(Widget child) => ProviderScope(
+        child: MaterialApp(theme: AppTheme.build(), home: child),
+      );
+
+  testWidgets('회원가입은 일곱 걸음이고 걸음마다 어디쯤인지 알려준다 (02~05)',
+      (tester) async {
+    await tester.pumpWidget(wrap(const SignupScreen()));
+    expect(find.text('1 / 7'), findsOneWidget);
+    expect(find.text('어떤 분이신가요?'), findsOneWidget);
+  });
+
+  testWidgets('역할을 고르지 않으면 버튼 위에 이유가 뜬다 (02)', (tester) async {
+    await tester.pumpWidget(wrap(const SignupScreen()));
+    await tester.tap(find.text('다음'));
+    await tester.pump();
+    expect(find.text('어떤 분인지 골라주세요'), findsOneWidget);
+    // 오류가 떠도 화면은 그대로다 — 다음으로 넘어가지 않는다.
+    expect(find.text('1 / 7'), findsOneWidget);
+  });
+
+  test('"잘 모르겠어요"를 누르면 고른 약 이름이 비워진다 (05)', () {
+    final picked = toggleChoice({'페니실린', '아스피린'}, '잘 모르겠어요');
+    expect(picked, {'잘 모르겠어요'});
+  });
+
+  test('"잘 모르겠어요" 뒤에 약을 고르면 그쪽이 빠진다 (05)', () {
+    final picked = toggleChoice({'잘 모르겠어요'}, '페니실린');
+    expect(picked, {'페니실린'});
+  });
+
+  test('"없어요"도 같은 규칙을 따른다 (05)', () {
+    expect(toggleChoice({'고혈압', '당뇨'}, '없어요'), {'없어요'});
+    expect(toggleChoice({'없어요'}, '고혈압'), {'고혈압'});
+  });
+
+  test('한 번 더 누르면 풀린다', () {
+    expect(toggleChoice({'고혈압', '당뇨'}, '당뇨'), {'고혈압'});
+  });
+
+  testWidgets('기본 정보를 채우면 다음 걸음으로 넘어간다 (03)', (tester) async {
+    await tester.pumpWidget(wrap(const SignupScreen()));
+
+    await tester.tap(find.text('약을 드시는 분'));
+    await tester.pump();
+    await tester.tap(find.text('다음'));
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.byType(TextField).at(0), '김복자');
+    await tester.enterText(find.byType(TextField).at(1), '01012345678');
+    await tester.enterText(find.byType(TextField).at(2), 'abc123');
+    await tester.enterText(find.byType(TextField).at(3), 'abc123');
+    await tester.tap(find.text('다음'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('3 / 7'), findsOneWidget);
+  });
+}
+
+/// 달력은 색과 표시만 쓴다. 칸 안에서 숫자를 세게 하지 않는다.
+void _calendarTests() {
+  test('달력 칸에는 복용 횟수를 적지 않는다 (19)', () {
+    final source = File(
+      'lib/features/dashboard/presentation/screens/month_calendar_screen.dart',
+    ).readAsStringSync();
+    // 칸이 가질 수 있는 상태는 네 가지뿐이다.
+    expect(source.contains('enum DayMark { done, missed, today, future }'),
+        isTrue);
+    // 빠뜨린 날은 색으로 끝내지 않고 글로 다시 적는다.
+    expect(source.contains('_MissedCard'), isTrue);
+  });
+
+  test('로그아웃 시트는 안전한 쪽이 주 버튼이다 (35)', () {
+    final source = File(
+      'lib/features/profile/presentation/widgets/logout_sheet.dart',
+    ).readAsStringSync();
+    final safe = source.indexOf("label: '그대로 쓸게요'");
+    final logout = source.indexOf("label: '로그아웃'");
+    expect(safe, greaterThan(-1));
+    expect(logout, greaterThan(safe), reason: '로그아웃이 주 버튼보다 앞에 오면 안 된다');
+    expect(source.contains('SeniorButtonKind.dangerQuiet'), isTrue);
   });
 }

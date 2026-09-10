@@ -6,6 +6,7 @@ import 'package:alkong_yakong/features/biosignal/presentation/screens/monthly_he
 import 'package:alkong_yakong/features/biosignal/presentation/screens/polar_screen.dart';
 import 'package:alkong_yakong/features/biosignal/presentation/screens/saved_screen.dart';
 import 'package:alkong_yakong/features/biosignal/domain/heart_data.dart';
+import 'package:alkong_yakong/features/auth/presentation/screens/signup_screen.dart';
 import 'package:alkong_yakong/features/dashboard/presentation/screens/month_calendar_screen.dart';
 import 'package:alkong_yakong/features/dur_analysis/presentation/screens/dur_analysis_screen.dart';
 import 'package:alkong_yakong/features/guardian/presentation/screens/care_family_screen.dart';
@@ -59,6 +60,8 @@ void main() {
     '한 달 기록 (26)': () => const MonthlyHeartScreen(data: HeartData.demo),
     '심박수 재는 중 (27)': () => const MeasureScreen(),
     '기록 저장 (30)': () => const SavedScreen(bpm: 72),
+    '회원가입 (02~05)': () => const SignupScreen(),
+    '가입 완료': () => const SignupDoneScreen(name: '김복자'),
     '이번 달 달력 (19)': () => const MonthCalendarScreen(),
     '복약 알림 (32)': () => const AlarmSettingsScreen(),
     '돌보는 분 목록 (36)': () => Scaffold(

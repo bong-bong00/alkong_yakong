@@ -5,6 +5,7 @@ import '../../../../core/constants/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../core/widgets/senior_button.dart';
 import '../../../../core/widgets/senior_card.dart';
+import '../../../prescription/presentation/screens/add_medicine_screen.dart';
 
 /// 5g — 첫 사용 · 가족이 대신 설정.
 ///
@@ -13,11 +14,19 @@ import '../../../../core/widgets/senior_card.dart';
 class FirstRunScreen extends StatelessWidget {
   const FirstRunScreen({super.key});
 
+  /// 부탁을 마친 상태로 약 넣기 화면에 들어간다.
+  /// 거기서 "딸 지안 님에게 부탁했어요" 확인 카드가 그 자리에 뜬다.
+  // TODO: 가족에게 SMS/카카오톡 초대 링크 발송 → 가족이 자기 기기에서
+  //       촬영·확인 → 어르신 앱에 "약이 등록됐어요" 알림.
   void _askFamily(BuildContext context) {
-    // TODO: 가족에게 SMS/카카오톡 초대 링크 발송 → 가족이 자기 기기에서
-    //       촬영·확인 → 어르신 앱에 "약이 등록됐어요" 알림.
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('가족에게 보낼 초대 문자를 준비하고 있어요')),
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => AddMedicineScreen(
+          familyAsked: true,
+          onPick: (_) {},
+          onGoHome: () => context.go('/'),
+        ),
+      ),
     );
   }
 
@@ -115,18 +124,15 @@ class FirstRunScreen extends StatelessWidget {
               ),
               const SizedBox(height: 22),
 
-              SeniorTextButton(
-                label: '약 이름을 손으로 적을게요',
-                color: AppColors.point,
-                fontSize: 19,
-                onPressed: () => ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('손으로 적기 — 아직 준비 중이에요')),
-                ),
-              ),
-              Text(
-                '나중에 바꿀 수 있어요',
-                textAlign: TextAlign.center,
-                style: AppText.caption(size: 17),
+              // 지금 안 해도 된다는 말을 버튼 안에 넣는다.
+              // 따로 떨어진 회색 안내문은 읽히지 않는다.
+              SeniorButton(
+                label: '건너뛰기',
+                subLabel: '나중에 넣어도 됩니다',
+                kind: SeniorButtonKind.secondary,
+                minHeight: 66,
+                fontSize: 21,
+                onPressed: () => context.go('/'),
               ),
             ],
           ),
