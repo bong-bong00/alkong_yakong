@@ -46,12 +46,20 @@ class HeartSensor extends ChangeNotifier {
 
   HeartSensorStatus _status = HeartSensorStatus.idle;
   int? _bpm;
+  int? _battery;
   String? _deviceId;
   DateTime? _lastReadAt;
   bool _disposed = false;
 
   HeartSensorStatus get status => _status;
   int? get bpm => _bpm;
+
+  /// 남은 배터리 (0~100). 기기가 아직 안 알려줬으면 null이다.
+  /// **0으로 두지 않는다** — 0%는 "다 닳았다"는 뜻이라 모른다는 것과 다르다.
+  int? get battery => _battery;
+
+  /// 20% 아래면 미리 알려 준다. 재는 중에 꺼지면 그 측정을 잃는다.
+  bool get batteryLow => _battery != null && _battery! <= 20;
   String? get deviceId => _deviceId;
   DateTime? get lastReadAt => _lastReadAt;
 
@@ -117,6 +125,13 @@ class HeartSensor extends ChangeNotifier {
         }),
       );
       _subscriptions.add(
+        _polar.batteryLevelStream.listen((level) {
+          if (_disposed) return;
+          _battery = level;
+          notifyListeners();
+        }),
+      );
+      _subscriptions.add(
         _polar.deviceDisconnectedStream.listen((_) {
           _set(HeartSensorStatus.disconnected);
         }),
@@ -152,6 +167,27 @@ class HeartSensor extends ChangeNotifier {
     } on ApiException catch (error) {
       debugPrint('[POLAR_UI] avg upload failed: $error');
     }
+  }
+
+  /// 연결을 끊되 이 객체는 다시 쓸 수 있게 남겨 둔다.
+  ///
+  /// [dispose]와 다르다. 어르신이 "연결 끊기"를 누른 뒤 다시 "기기 찾기"를
+  /// 누를 수 있어야 하므로, 여기서 스트림 컨트롤러까지 닫지는 않는다.
+  Future<void> stop() async {
+    for (final subscription in _subscriptions) {
+      await subscription.cancel();
+    }
+    _subscriptions.clear();
+    await _polar.stopStreaming();
+    final deviceId = _deviceId;
+    if (deviceId != null) {
+      await _polar.disconnectFromDevice(deviceId);
+    }
+    _deviceId = null;
+    _bpm = null;
+    _battery = null;
+    _samples.clear();
+    _set(HeartSensorStatus.idle);
   }
 
   @override

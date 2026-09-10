@@ -9,6 +9,7 @@ import '../../../../core/widgets/senior_button.dart';
 import '../../../../core/widgets/senior_card.dart';
 import '../../../../core/widgets/senior_feedback.dart';
 import '../../../../core/widgets/senior_header.dart';
+import '../../application/heart_sensor.dart';
 import '../../data/heart_repository.dart';
 import '../../domain/heart_data.dart';
 import '../widgets/dumbbell_chart.dart';
@@ -27,11 +28,16 @@ class HeartScreen extends StatefulWidget {
   /// 기록을 읽어 올 곳. 없으면 이 화면이 하나 만들어 쓴다.
   final HeartRepository? repository;
 
+  /// 지금 붙어 있는 센서. 배터리와 연결 상태가 여기서 온다.
+  /// 없으면 이 화면은 센서를 붙잡지 않는다 — 목록만 보는 화면이기 때문이다.
+  final HeartSensor? sensor;
+
   const HeartScreen({
     super.key,
     this.data = HeartData.demo,
     this.guardianTitle = '딸 지안 님',
     this.repository,
+    this.sensor,
   });
 
   @override
@@ -51,7 +57,26 @@ class _HeartScreenState extends State<HeartScreen> {
   @override
   void initState() {
     super.initState();
+    widget.sensor?.addListener(_onSensor);
     unawaited(_load());
+  }
+
+  /// 센서가 알려주는 것만 화면 값에 얹는다. 기록은 서버 쪽이 채운다.
+  void _onSensor() {
+    final sensor = widget.sensor;
+    if (!mounted || sensor == null) return;
+    setState(() {
+      _data = _data.copyWith(
+        sensorConnected: sensor.status == HeartSensorStatus.streaming,
+        sensorBattery: sensor.battery,
+      );
+    });
+  }
+
+  @override
+  void dispose() {
+    widget.sensor?.removeListener(_onSensor);
+    super.dispose();
   }
 
   Future<void> _load() async {
@@ -361,6 +386,16 @@ class _SensorRow extends StatelessWidget {
 
   const _SensorRow({required this.data, required this.onTap});
 
+  /// 아는 것만 잇는다. 배터리도 마지막 측정도 없으면 아무 말도 만들지 않는다.
+  String _connectedLine(HeartData data) {
+    final parts = <String>[
+      if (data.sensorBattery != null) '배터리 ${data.sensorBattery}%',
+      if (data.sensorLastReadAt.isNotEmpty)
+        '${data.sensorLastReadAt}에 잰 것이 마지막이에요',
+    ];
+    return parts.isEmpty ? '연결되어 있어요' : parts.join(' · ');
+  }
+
   @override
   Widget build(BuildContext context) {
     final connected = data.sensorConnected;
@@ -392,10 +427,8 @@ class _SensorRow extends StatelessWidget {
                   style: AppText.cardTitle(size: 19),
                 ),
                 Text(
-                  connected
-                      ? '배터리 ${data.sensorBattery}% · '
-                          '${data.sensorLastReadAt}에 잰 것이 마지막이에요'
-                      : '가슴 띠를 차고 다시 연결해 주세요',
+                  // 모르는 값을 숫자로 지어내지 않는다.
+                  connected ? _connectedLine(data) : '가슴 띠를 차고 다시 연결해 주세요',
                   style: AppText.caption(size: 17.5),
                 ),
               ],

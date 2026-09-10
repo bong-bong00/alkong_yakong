@@ -48,7 +48,7 @@ class HeartRepository {
       // 센서 상태는 기록이 아니라 지금 붙어 있는지의 문제라
       // 여기서 말하지 않는다. HeartSensor 쪽이 채운다.
       sensorConnected: false,
-      sensorBattery: 0,
+      sensorBattery: null,
       sensorLastReadAt: json['after_at']?.toString() ?? '',
       notifyGuardian: true,
     );

@@ -3,7 +3,9 @@ import 'package:alkong_yakong/core/theme/app_theme.dart';
 import 'package:alkong_yakong/features/auth/presentation/screens/login_screen.dart';
 import 'package:alkong_yakong/features/auth/domain/exclusive_choice.dart';
 import 'package:alkong_yakong/features/biosignal/application/heart_sensor.dart';
+import 'package:alkong_yakong/features/biosignal/domain/heart_data.dart';
 import 'package:alkong_yakong/features/biosignal/presentation/screens/measure_screen.dart';
+import 'package:alkong_yakong/features/biosignal/presentation/screens/polar_screen.dart';
 import 'package:alkong_yakong/features/auth/presentation/screens/signup_screen.dart';
 import 'package:alkong_yakong/features/dashboard/presentation/screens/guardian_home_screen.dart';
 import 'package:alkong_yakong/features/dashboard/presentation/screens/medication_record_screen.dart';
@@ -537,6 +539,28 @@ void _sensorTests() {
     expect(sensor.bpm, isNull);
     expect(find.text('–'), findsOneWidget);
     expect(tester.takeException(), isNull);
+  });
+
+  test('배터리를 모르는 것과 0%는 다르다', () {
+    final sensor = HeartSensor();
+    addTearDown(sensor.dispose);
+    // 기기가 알려주기 전에는 null. 0으로 두면 "다 닳았다"로 읽힌다.
+    expect(sensor.battery, isNull);
+    expect(sensor.batteryLow, isFalse);
+  });
+
+  testWidgets('배터리를 모르면 빈 막대에 0%를 그리지 않는다 (25)', (tester) async {
+    await tester.pumpWidget(
+      wrap(
+        PolarScreen(
+          data: HeartData.demo.copyWith(sensorConnected: true),
+          sensor: HeartSensor(),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    // 데모 값 82%가 그대로 보인다 — 센서가 값을 주기 전이므로.
+    expect(find.text('82%'), findsOneWidget);
   });
 
   test('정상 범위를 벗어나면 정상이라고 말하지 않는다', () {

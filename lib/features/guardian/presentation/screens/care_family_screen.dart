@@ -8,6 +8,7 @@ import '../../../../core/widgets/senior_card.dart';
 import '../../../../core/widgets/senior_feedback.dart';
 import '../../../../core/widgets/senior_header.dart';
 import '../../../dashboard/presentation/screens/patient_data.dart';
+import '../../data/guardian_repository.dart';
 import '../widgets/add_care_sheet.dart';
 
 /// 36 · 보호자 · 돌보는 분 목록.
@@ -21,10 +22,14 @@ class CareFamilyScreen extends StatefulWidget {
   /// 어르신 카드를 눌렀을 때. 목록에서 몇 번째인지 넘긴다.
   final ValueChanged<int> onOpenPatient;
 
+  /// 초대를 보낼 곳. 없으면 이 화면이 하나 만들어 쓴다.
+  final GuardianRepository? repository;
+
   const CareFamilyScreen({
     super.key,
     this.patients = DemoPatients.all,
     required this.onOpenPatient,
+    this.repository,
   });
 
   @override
@@ -34,19 +39,33 @@ class CareFamilyScreen extends StatefulWidget {
 class _CareFamilyScreenState extends State<CareFamilyScreen> {
   late List<PendingInvite> _pending = List.of(DemoPatients.pending);
 
+  late final GuardianRepository _repository =
+      widget.repository ?? GuardianRepository();
+
   /// 오늘 약이 남은 분들. 목록 맨 위에 이름만 먼저 올린다.
   List<PatientData> get _needAttention => widget.patients
       .where((p) => p.takenCount < p.totalCount)
       .toList();
 
   Future<void> _add() async {
-    final invite = await showAddCareSheet(context);
-    if (invite == null || !mounted) return;
-    setState(() => _pending = [..._pending, invite]);
-    showSeniorSnackbar(
-      context,
-      '${invite.name} 님에게 초대를 보냈어요',
+    final draft = await showAddCareSheet(context);
+    if (draft == null || !mounted) return;
+
+    final result = await _repository.invite(
+      name: draft.name,
+      relation: draft.relation,
+      phone: draft.phone,
     );
+    if (!mounted) return;
+
+    // 서버가 받아 준 뒤에만 목록에 올린다. 실패했는데 올려 두면
+    // 어르신은 초대를 받은 적이 없는데 보호자만 기다리게 된다.
+    if (!result.isSent) {
+      showSeniorSnackbar(context, result.error ?? '초대를 보내지 못했어요');
+      return;
+    }
+    setState(() => _pending = [..._pending, result.invite!]);
+    showSeniorSnackbar(context, '${result.invite!.name} 님에게 초대를 보냈어요');
   }
 
   void _cancel(PendingInvite invite) {

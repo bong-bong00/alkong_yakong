@@ -77,7 +77,10 @@ class HeartData {
 
   /// 센서 상태.
   final bool sensorConnected;
-  final int sensorBattery;
+
+  /// 남은 배터리 (0~100). 기기가 아직 안 알려줬으면 null.
+  /// **0으로 두지 않는다** — 0%는 "다 닳았다"는 뜻이라 모른다는 것과 다르다.
+  final int? sensorBattery;
   final String sensorLastReadAt;
 
   /// 심박수가 빠르면 보호자에게 자동으로 알릴지.
@@ -107,6 +110,7 @@ class HeartData {
     bool? sensorConnected,
     bool? notifyGuardian,
     HeartPair? today,
+    int? sensorBattery,
   }) => HeartData(
     today: today ?? this.today,
     todaySlotLabel: todaySlotLabel,
@@ -118,7 +122,7 @@ class HeartData {
     bestStreakDays: bestStreakDays,
     anomaly: anomaly,
     sensorConnected: sensorConnected ?? this.sensorConnected,
-    sensorBattery: sensorBattery,
+    sensorBattery: sensorBattery ?? this.sensorBattery,
     sensorLastReadAt: sensorLastReadAt,
     notifyGuardian: notifyGuardian ?? this.notifyGuardian,
   );
