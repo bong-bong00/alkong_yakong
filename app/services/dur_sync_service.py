@@ -24,7 +24,6 @@ TIMEOUT_SECONDS = 20
 MFDS_DUR_SOURCE = "식약처 DUR 성분정보 OpenAPI"
 _SYNC_LOCK = threading.Lock()
 _BOOTSTRAP_STARTED = False
-_INGR_QUERY_KEYS = ("ingrKorName", "INGR_KOR_NAME")
 _MAX_INGREDIENT_PAGES = 5
 
 ENDPOINTS = {
@@ -32,6 +31,13 @@ ENDPOINTS = {
     "연령금기": "getSpcifyAgrdeTabooInfoList02",
     "임부금기": "getPwnmTabooInfoList02",
     "효능군중복": "getEfcyDplctInfoList02",
+}
+
+DUR_INGREDIENT_QUERY_PARAM = {
+    "병용금기": "ingrKorName",
+    "연령금기": "ingrName",
+    "임부금기": "ingrName",
+    "효능군중복": "ingrName",
 }
 
 
@@ -403,7 +409,7 @@ def _sync_ingredient_type(
     api_key: str,
 ) -> dict[str, Any]:
     stats = {"fetched": 0, "upserted": 0, "error": None}
-    for param_key in _INGR_QUERY_KEYS:
+    for param_key in (DUR_INGREDIENT_QUERY_PARAM[risk_type],):
         page = 1
         used_filter = False
         while page <= _MAX_INGREDIENT_PAGES:
