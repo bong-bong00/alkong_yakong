@@ -167,9 +167,13 @@ Future<void> showDuplicateDoseSheet({
           fontSize: 23,
           onPressed: () => Navigator.of(context).pop(),
         ),
-        SeniorTextButton(
+        const SizedBox(height: 12),
+        // 회색 텍스트 링크를 액션으로 쓰지 않는다. 눌리는 면을 준다.
+        SeniorButton(
           label: '기록이 잘못됐어요 · 되돌리기',
-          fontSize: 18.5,
+          kind: SeniorButtonKind.secondary,
+          minHeight: 62,
+          fontSize: 19,
           onPressed: () {
             Navigator.of(context).pop();
             onUndo();

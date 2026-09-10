@@ -8,7 +8,8 @@ import '../../../../core/widgets/senior_bottom_nav.dart';
 import '../../../../core/widgets/senior_button.dart';
 import '../../../../core/widgets/senior_card.dart';
 import '../../../../core/widgets/senior_header.dart';
-import '../../../biosignal/presentation/screens/heartbeat_screen.dart';
+import '../../../biosignal/presentation/screens/heart_screen.dart';
+import '../../../guardian/presentation/screens/care_family_screen.dart';
 import '../../../profile/presentation/screens/mypage_screen.dart';
 import 'medication_record_screen.dart';
 import 'patient_data.dart';
@@ -29,6 +30,7 @@ class _GuardianHomeScreenState extends ConsumerState<GuardianHomeScreen> {
   int _patientIndex = 0;
 
   static const List<SeniorNavItem> _tabs = [
+    SeniorNavItem(icon: TablerIcons.users, label: '돌보는 분'),
     SeniorNavItem(icon: TablerIcons.heart, label: '현황'),
     SeniorNavItem(icon: TablerIcons.bell, label: '알림'),
     SeniorNavItem(icon: TablerIcons.user, label: '내 정보'),
@@ -36,47 +38,12 @@ class _GuardianHomeScreenState extends ConsumerState<GuardianHomeScreen> {
 
   PatientData get _patient => DemoPatients.all[_patientIndex];
 
-  Future<void> _switchPatient() async {
-    final picked = await showModalBottomSheet<int>(
-      context: context,
-      backgroundColor: Colors.transparent,
-      builder: (sheetContext) => Container(
-        decoration: const BoxDecoration(
-          color: AppColors.surface,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(30)),
-        ),
-        child: SafeArea(
-          top: false,
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(24, 24, 24, 24),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Text('누구를 보실까요?', style: AppText.emphasis()),
-                const SizedBox(height: 16),
-                for (int i = 0; i < DemoPatients.all.length; i++)
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 10),
-                    child: SeniorButton(
-                      label:
-                          '${DemoPatients.all[i].relation} · '
-                          '${DemoPatients.all[i].name}',
-                      kind: i == _patientIndex
-                          ? SeniorButtonKind.primary
-                          : SeniorButtonKind.secondary,
-                      minHeight: 64,
-                      fontSize: 21,
-                      onPressed: () => Navigator.of(sheetContext).pop(i),
-                    ),
-                  ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-    if (picked != null) setState(() => _patientIndex = picked);
+  /// 돌보는 분 목록에서 한 분을 고르면 현황 탭으로 넘어간다.
+  void _openPatient(int index) {
+    setState(() {
+      _patientIndex = index;
+      _index = 1;
+    });
   }
 
   @override
@@ -86,10 +53,13 @@ class _GuardianHomeScreenState extends ConsumerState<GuardianHomeScreen> {
       body: IndexedStack(
         index: _index,
         children: [
+          CareFamilyScreen(onOpenPatient: _openPatient),
           GuardianStatusTab(
             patient: _patient,
-            onSwitchPatient: _switchPatient,
-            onOpenAlerts: () => setState(() => _index = 1),
+            position: _patientIndex + 1,
+            total: DemoPatients.all.length,
+            onBackToFamily: () => setState(() => _index = 0),
+            onOpenAlerts: () => setState(() => _index = 2),
           ),
           GuardianAlertsTab(patient: _patient),
           const MyPageScreen(isGuardian: true),
@@ -112,13 +82,20 @@ class _GuardianHomeScreenState extends ConsumerState<GuardianHomeScreen> {
 /// **대신 복약 체크는 할 수 없다** — 오기록을 막기 위해서다.
 class GuardianStatusTab extends StatelessWidget {
   final PatientData patient;
-  final VoidCallback onSwitchPatient;
+
+  /// 목록에서 몇 번째 분인지. "3명 중 1번째"로 읽힌다.
+  final int position;
+  final int total;
+
+  final VoidCallback onBackToFamily;
   final VoidCallback onOpenAlerts;
 
   const GuardianStatusTab({
     super.key,
     required this.patient,
-    required this.onSwitchPatient,
+    required this.position,
+    required this.total,
+    required this.onBackToFamily,
     required this.onOpenAlerts,
   });
 
@@ -132,34 +109,21 @@ class GuardianStatusTab extends StatelessWidget {
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              SeniorBackButton(onTap: onBackToFamily),
+              const SizedBox(width: 14),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('보호자 화면', style: AppText.label(size: 17)),
+                    Text(
+                      '보호자 화면 · $total명 중 $position번째',
+                      style: AppText.label(size: 17),
+                    ),
                     Text(
                       '${patient.relation} · ${patient.name}',
                       style: AppText.screenTitle(size: 26),
                     ),
                   ],
-                ),
-              ),
-              const SizedBox(width: 12),
-              InkWell(
-                onTap: onSwitchPatient,
-                borderRadius: BorderRadius.circular(14),
-                child: Container(
-                  constraints: const BoxConstraints(minHeight: 48),
-                  alignment: Alignment.center,
-                  padding: const EdgeInsets.symmetric(horizontal: 15),
-                  decoration: BoxDecoration(
-                    color: AppColors.surface,
-                    borderRadius: BorderRadius.circular(14),
-                  ),
-                  child: Text(
-                    '바꾸기',
-                    style: AppText.cardTitle(size: 17, color: AppColors.point),
-                  ),
                 ),
               ),
             ],
@@ -233,7 +197,7 @@ class GuardianStatusTab extends StatelessWidget {
                   ),
                   onTap: () => Navigator.of(context).push(
                     MaterialPageRoute<void>(
-                      builder: (_) => HeartbeatScreen(
+                      builder: (_) => HeartScreen(
                         guardianTitle: '${patient.relation} ${patient.name} 님',
                       ),
                     ),
@@ -502,14 +466,27 @@ class _GuardianAlertsTabState extends State<GuardianAlertsTab> {
         Expanded(
           child: ListView.separated(
             padding: const EdgeInsets.fromLTRB(20, 16, 20, 28),
-            itemCount: alerts.length,
+            itemCount: alerts.length + 1,
             separatorBuilder: (_, _) => const SizedBox(height: 12),
-            itemBuilder: (context, index) => _AlertCard(
-              alert: alerts[index],
-              patientName: widget.patient.name,
-              acknowledged: _acknowledged.contains(index),
-              onAcknowledge: () => setState(() => _acknowledged.add(index)),
-            ),
+            itemBuilder: (context, index) {
+              if (index == alerts.length) {
+                return Padding(
+                  padding: const EdgeInsets.only(top: 4),
+                  child: Text(
+                    '"확인했어요"는 읽음 처리만 합니다.\n'
+                    '어르신 쪽 재알림은 계속 진행돼요.',
+                    textAlign: TextAlign.center,
+                    style: AppText.caption(size: 17),
+                  ),
+                );
+              }
+              return _AlertCard(
+                alert: alerts[index],
+                patientName: widget.patient.name,
+                acknowledged: _acknowledged.contains(index),
+                onAcknowledge: () => setState(() => _acknowledged.add(index)),
+              );
+            },
           ),
         ),
       ],
@@ -530,12 +507,34 @@ class _AlertCard extends StatelessWidget {
     required this.onAcknowledge,
   });
 
-  bool get _isDanger => alert.type == 'miss' || alert.type == 'alert';
+  bool get _isDanger =>
+      alert.type == 'miss' ||
+      alert.type == 'alert' ||
+      alert.type == 'refill';
+
+  IconData get _icon {
+    switch (alert.type) {
+      case 'miss':
+      case 'alert':
+        return TablerIcons.alert_triangle_filled;
+      case 'refill':
+        return TablerIcons.pill;
+      case 'shared':
+        return TablerIcons.message_2;
+      case 'prescription':
+        return TablerIcons.file_text;
+      case 'past':
+        return TablerIcons.heart;
+      default:
+        return TablerIcons.circle_check_filled;
+    }
+  }
 
   Color get _barColor {
     if (_isDanger) return AppColors.danger;
-    if (alert.type == 'done') return AppColors.point;
-    return AppColors.strongBorder;
+    // 지난 것은 회색으로 뒤로 물린다. 지우지는 않는다.
+    if (alert.type == 'past') return AppColors.strongLine;
+    return AppColors.point;
   }
 
   @override
@@ -567,9 +566,7 @@ class _AlertCard extends StatelessWidget {
             children: [
               Expanded(
                 child: IconTitle(
-                  icon: _isDanger
-                      ? TablerIcons.alert_triangle_filled
-                      : TablerIcons.circle_check_filled,
+                  icon: _icon,
                   color: _barColor,
                   text: alert.title,
                   style: AppText.cardTitle(size: 18, color: _barColor),

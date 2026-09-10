@@ -11,21 +11,33 @@ import '../theme/app_typography.dart';
 class SeniorHeader extends StatelessWidget {
   final Widget child;
 
-  const SeniorHeader({super.key, required this.child});
+  /// 기본은 흰색. 심박수 이상 화면만 붉은 톤 헤더를 쓴다.
+  final Color? background;
+  final Color? borderColor;
+
+  const SeniorHeader({
+    super.key,
+    required this.child,
+    this.background,
+    this.borderColor,
+  });
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      decoration: const BoxDecoration(
-        color: AppColors.headerBg,
+      decoration: BoxDecoration(
+        color: background ?? AppColors.surface,
         border: Border(
-          bottom: BorderSide(color: AppColors.border, width: 1),
+          bottom: BorderSide(
+            color: borderColor ?? AppColors.border,
+            width: 1,
+          ),
         ),
       ),
       child: SafeArea(
         bottom: false,
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(22, 16, 22, 14),
+          padding: const EdgeInsets.fromLTRB(22, 14, 22, 15),
           child: child,
         ),
       ),
@@ -108,6 +120,12 @@ class SeniorBackButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // 쉬운 모드처럼 화면이 쉘 안에 얹혀 있으면 돌아갈 곳이 없다.
+    // 눌러도 아무 일이 없는 버튼은 그리지 않는다.
+    if (onTap == null && !Navigator.of(context).canPop()) {
+      return const SizedBox(width: 4);
+    }
+
     return Semantics(
       button: true,
       label: '뒤로 가기',
@@ -123,7 +141,7 @@ class SeniorBackButton extends StatelessWidget {
             height: 44,
             alignment: Alignment.center,
             decoration: BoxDecoration(
-              color: onDark ? AppColors.darkSurface : AppColors.surface,
+              color: onDark ? AppColors.camChip : AppColors.surface,
               shape: BoxShape.circle,
             ),
             child: Text(

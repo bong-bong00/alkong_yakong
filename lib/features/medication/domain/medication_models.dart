@@ -4,6 +4,8 @@
 /// 복약 완료 → "다 드셨어요", 미복약 → "아직 안 드셨어요".
 library;
 
+import 'package:flutter/material.dart';
+
 /// 하루 세 번의 복약 시간대.
 enum DoseSlot {
   morning('아침', 8),
@@ -44,36 +46,46 @@ class Medicine {
   /// "1알".
   final String amount;
 
-  /// 생김새 — "흰색 동그란 알약".
-  /// 3a는 약 사진을 쓰지 않으므로 화면에 크게 띄우지 않고,
-  /// 음성 안내([5d])와 스크린리더 설명에만 쓴다.
+  /// 생김새 — "흰색 동그란 알약". 어르신은 약을 이름이 아니라 모양으로 기억한다.
   final String? appearance;
 
-  /// 어르신용 쉬운 분류 — "혈압약". 화면에 `이름 (분류)` 로 붙인다.
-  final String? easyCategory;
+  /// 효능 한 줄 — "혈당 낮추는 약". 성분명 옆에 늘 붙는다.
+  final String? effect;
 
-  /// 오늘 스케줄 id — 「먹었어요」 서버 기록용.
-  final int? scheduleId;
+  /// 약 설명 화면을 찾을 키 — 'met' / 'aml' / 'asp'.
+  final String? key;
 
   const Medicine({
     required this.ingredient,
     required this.amount,
     this.appearance,
-    this.easyCategory,
-    this.scheduleId,
+    this.effect,
+    this.key,
   });
-
-  /// 홈·목록에 쓰는 한 줄 — "암로디핀 5mg (혈압약)".
-  String get displayName {
-    final category = easyCategory?.trim();
-    if (category == null || category.isEmpty) return ingredient;
-    return '$ingredient ($category)';
-  }
 
   /// 음성으로 읽어줄 때의 한 줄 — "메트포르민 500mg, 흰색 동그란 알약 1알".
   String get spoken => appearance == null
-      ? '$displayName $amount'
-      : '$displayName, $appearance $amount';
+      ? '$ingredient $amount'
+      : '$ingredient, $appearance $amount';
+
+  /// "흰색 알약 1알" — 이름 대신 생김새로 부르는 한 줄.
+  /// 잠결이나 알림에서는 성분명보다 이쪽이 먼저 읽힌다.
+  String get shapePhrase =>
+      appearance == null ? '$ingredient $amount' : '$appearance $amount';
+
+  /// 미리보기 동그라미 색. 사진이 붙기 전까지 생김새 글에서 뽑아 쓴다.
+  // TODO: 식약처 낱알식별 이미지가 붙으면 이 자리를 사진으로 바꾼다.
+  Color get pillColor {
+    final look = appearance ?? '';
+    if (look.contains('노란') || look.contains('노랑')) {
+      return const Color(0xFFF3D98B);
+    }
+    if (look.contains('분홍') || look.contains('붉은')) {
+      return const Color(0xFFEFC0BA);
+    }
+    if (look.contains('파란')) return const Color(0xFFB9C4F2);
+    return const Color(0xFFF0F0F4);
+  }
 }
 
 /// 한 시간대의 복약 상태.
@@ -144,13 +156,22 @@ class TodayMedication {
   final int heartRate;
   final bool heartRateNormal;
 
+  /// 이 처방이 며칠 남았는지. 0이면 오늘로 끝난다.
+  final int daysLeft;
+
   const TodayMedication({
     required this.doses,
     required this.guardianRelation,
     required this.guardianName,
     required this.heartRate,
     required this.heartRateNormal,
+    this.daysLeft = 3,
   });
+
+  /// 잔여일을 어떻게 말할지. 0일이면 문구 자체가 바뀐다.
+  String get daysLeftPhrase => daysLeft == 0
+      ? '이 처방이 오늘로 끝나요'
+      : '이 처방 $daysLeft일치 남았어요';
 
   /// "딸 지안 님".
   String get guardianTitle => '$guardianRelation $guardianName 님';
@@ -178,11 +199,13 @@ class TodayMedication {
     return '${done.join('·')} 다 드셨어요';
   }
 
-  TodayMedication copyWith({List<DoseEntry>? doses}) => TodayMedication(
-    doses: doses ?? this.doses,
-    guardianRelation: guardianRelation,
-    guardianName: guardianName,
-    heartRate: heartRate,
-    heartRateNormal: heartRateNormal,
-  );
+  TodayMedication copyWith({List<DoseEntry>? doses, int? daysLeft}) =>
+      TodayMedication(
+        doses: doses ?? this.doses,
+        guardianRelation: guardianRelation,
+        guardianName: guardianName,
+        heartRate: heartRate,
+        heartRateNormal: heartRateNormal,
+        daysLeft: daysLeft ?? this.daysLeft,
+      );
 }

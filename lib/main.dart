@@ -7,7 +7,7 @@ import 'core/session/auth_session.dart';
 import 'core/theme/app_theme.dart';
 import 'features/auth/presentation/screens/login_screen.dart';
 import 'features/auth/presentation/screens/signup_screen.dart';
-import 'features/biosignal/presentation/screens/heartbeat_screen.dart';
+import 'features/biosignal/presentation/screens/heart_screen.dart';
 import 'features/dashboard/presentation/screens/dashboard_screen.dart';
 import 'features/dashboard/presentation/screens/guardian_home_screen.dart';
 import 'features/dashboard/presentation/screens/home_screen.dart';
@@ -17,7 +17,6 @@ import 'features/medication/application/medication_controller.dart';
 import 'features/onboarding/presentation/screens/first_run_screen.dart';
 import 'features/prescription/presentation/screens/prescription_screen.dart';
 import 'features/reminder/presentation/screens/lock_screen_alert.dart';
-import 'features/voice/presentation/screens/voice_screen.dart';
 
 /// 화면을 둘러보는 동안 로그인을 건너뛴다.
 ///
@@ -52,9 +51,8 @@ final _router = GoRouter(
     ),
     GoRoute(
       path: '/biosignal',
-      builder: (context, state) => const HeartbeatScreen(),
+      builder: (context, state) => const HeartScreen(),
     ),
-    GoRoute(path: '/voice', builder: (context, state) => const VoiceScreen()),
     GoRoute(
       path: '/alarm',
       builder: (context, state) => const LockScreenAlertRoute(),
