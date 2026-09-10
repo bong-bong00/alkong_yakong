@@ -299,29 +299,32 @@ class _WeekCard extends StatelessWidget {
               child: ExcludeSemantics(
                 child: Container(
                   constraints: const BoxConstraints(minHeight: 48),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: IconTitle(
-                          icon: TablerIcons.calendar,
-                          text: '이번 주',
-                          style: AppText.cardTitle(),
+                  // 글자가 커지면 "달력으로 보기"가 제목 아래로 내려간다.
+                  child: LabelValueRow(
+                    label: IconTitle(
+                      icon: TablerIcons.calendar,
+                      text: '이번 주',
+                      style: AppText.cardTitle(),
+                    ),
+                    value: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Flexible(
+                          child: Text(
+                            '달력으로 보기',
+                            style: AppText.cardTitle(
+                              size: 17.5,
+                              color: AppColors.point,
+                            ),
+                          ),
                         ),
-                      ),
-                      const SizedBox(width: 10),
-                      Text(
-                        '달력으로 보기',
-                        style: AppText.cardTitle(
-                          size: 17.5,
+                        const Icon(
+                          TablerIcons.chevron_right,
+                          size: 26,
                           color: AppColors.point,
                         ),
-                      ),
-                      const Icon(
-                        TablerIcons.chevron_right,
-                        size: 26,
-                        color: AppColors.point,
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
                 ),
               ),
