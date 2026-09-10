@@ -126,19 +126,36 @@ class DurConsultationTest(unittest.TestCase):
         conn.close()
         before = self._snapshot()
 
-        result = self._analyze(
-            {
-                "medicine_code": "C",
-                "product_name": "Drug C",
-                "ingredient": "ingredientc",
-            },
-            {"병용금기"},
-        )
+        with self.assertLogs(dur_service.logger, level="WARNING") as captured:
+            result = self._analyze(
+                {
+                    "medicine_code": "C",
+                    "product_name": "Drug C",
+                    "ingredient": "ingredientc",
+                },
+                {"병용금기"},
+                sync_result={"status": "ok", "fetched": 5, "upserted": 2},
+            )
 
         self.assertEqual(result["status"], "current")
+        self.assertEqual(set(result), {"status", "items", "scope", "reason"})
         self.assertEqual(len(result["items"]), 1)
         self.assertEqual(result["items"][0]["external_id"], "C-B")
         self.assertEqual(self._snapshot(), before)
+        output = "\n".join(captured.output)
+        self.assertIn("sync_fetched_count=5", output)
+        self.assertIn("sync_upserted_count=2", output)
+        self.assertIn("taboo_selected_ingredient_count=1", output)
+        self.assertIn("duplicate_candidate_count=0", output)
+        self.assertIn("official_candidate_count=2", output)
+        self.assertIn("efficacy_duplicate_candidate_count=0", output)
+        self.assertIn("requested_type_filtered_count=2", output)
+        self.assertIn("consultation_relevance_before_count=2", output)
+        self.assertIn("consultation_relevance_after_count=1", output)
+        self.assertIn("final_match_count=1", output)
+        self.assertNotIn("U1", output)
+        self.assertNotIn("Drug C", output)
+        self.assertNotIn("ingredientc", output)
 
     def test_duplicate_includes_selected_without_persisting_it(self):
         before = self._snapshot()

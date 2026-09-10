@@ -429,6 +429,7 @@ def analyze_dur_consultation(
 
         lookup_grouped = defaultdict(list)
         primary_grouped = defaultdict(list)
+        selected_lookup_grouped = defaultdict(list)
         for medicine in medicines:
             if not _is_usable_ingredient(medicine):
                 continue
@@ -439,35 +440,80 @@ def analyze_dur_consultation(
                 primary_grouped[primary].append(medicine)
             for key in keys:
                 lookup_grouped[key].append(medicine)
+        for key in ingredient_keys(consultation_medicine["ingredient"]):
+            selected_lookup_grouped[key].append(consultation_medicine)
 
-        matches = _duplicate_matches(primary_grouped)
+        taboo_selected_ingredient_count = sum(
+            1
+            for row in taboo_rows
+            if _risk_type(row["taboo_type"]) in risk_types
+            and (
+                _grouped_hit(selected_lookup_grouped, row["ingredient_a"])
+                or _grouped_hit(selected_lookup_grouped, row["ingredient_b"])
+            )
+        )
+        duplicate_matches = _duplicate_matches(primary_grouped)
         official_matches = _taboo_matches(
             taboo_rows,
             lookup_grouped,
             age=age,
             is_pregnant=is_pregnant,
         )
-        matches.extend(official_matches)
-        matches.extend(_efficacy_duplicate_matches(taboo_rows, lookup_grouped))
-        if not official_matches:
-            matches.extend(_legacy_matches(taboo_rows, lookup_grouped))
-        matches = _deduplicate_matches(matches)
-        matches = [
-            match
-            for match in matches
-            if match.get("type") in risk_types
-            and _match_involves_consultation_medicine(match, consultation_medicine)
+        efficacy_duplicate_matches = _efficacy_duplicate_matches(
+            taboo_rows,
+            lookup_grouped,
+        )
+        candidate_matches = [
+            *duplicate_matches,
+            *official_matches,
+            *efficacy_duplicate_matches,
         ]
-        matches = [_without_internal_match_fields(match) for match in matches]
+        if not official_matches:
+            candidate_matches.extend(_legacy_matches(taboo_rows, lookup_grouped))
+        deduplicated_matches = _deduplicate_matches(candidate_matches)
+        requested_type_matches = [
+            match
+            for match in deduplicated_matches
+            if match.get("type") in risk_types
+        ]
+        relevant_matches = [
+            match
+            for match in requested_type_matches
+            if _match_involves_consultation_medicine(
+                match,
+                consultation_medicine,
+            )
+        ]
+        matches = [
+            _without_internal_match_fields(match)
+            for match in relevant_matches
+        ]
         logger.warning(
             "DUR consultation diagnostic risk_types=%s selected=true "
             "ingredient_usable=true ingredient_key_count=%d "
             "active_medicine_count=%d sync_status=%s "
-            "status=current reason=None match_count=%d",
+            "sync_fetched_count=%d sync_upserted_count=%d "
+            "taboo_selected_ingredient_count=%d "
+            "duplicate_candidate_count=%d official_candidate_count=%d "
+            "efficacy_duplicate_candidate_count=%d "
+            "requested_type_filtered_count=%d "
+            "consultation_relevance_before_count=%d "
+            "consultation_relevance_after_count=%d "
+            "status=current reason=None final_match_count=%d match_count=%d",
             sorted(risk_types),
             ingredient_key_count,
             active_medicine_count,
             sync_result.get("status"),
+            int(sync_result.get("fetched") or 0),
+            int(sync_result.get("upserted") or 0),
+            taboo_selected_ingredient_count,
+            len(duplicate_matches),
+            len(official_matches),
+            len(efficacy_duplicate_matches),
+            len(requested_type_matches),
+            len(requested_type_matches),
+            len(relevant_matches),
+            len(matches),
             len(matches),
         )
         return {
