@@ -266,7 +266,7 @@ class _MyPageScreenState extends ConsumerState<MyPageScreen> {
                   const SizedBox(height: 12),
                   SeniorButton(
                     label: '어르신 화면으로 바꾸기',
-                    kind: SeniorButtonKind.outline,
+                    kind: SeniorButtonKind.secondary,
                     minHeight: 58,
                     fontSize: 20,
                     onPressed: () => ref
@@ -277,7 +277,7 @@ class _MyPageScreenState extends ConsumerState<MyPageScreen> {
                   const SizedBox(height: 12),
                   SeniorButton(
                     label: '보호자 화면으로 바꾸기',
-                    kind: SeniorButtonKind.outline,
+                    kind: SeniorButtonKind.secondary,
                     minHeight: 58,
                     fontSize: 20,
                     onPressed: () => ref

@@ -234,7 +234,7 @@ class _VoiceScreenState extends ConsumerState<VoiceScreen>
 
                   SeniorButton(
                     label: '손으로 누를게요',
-                    kind: SeniorButtonKind.outline,
+                    kind: SeniorButtonKind.secondary,
                     minHeight: 64,
                     fontSize: 20,
                     onPressed: () => Navigator.of(context).maybePop(),

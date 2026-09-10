@@ -309,7 +309,7 @@ class _DurAnalysisScreenState extends State<DurAnalysisScreen> {
 
           SeniorButton(
             label: '${widget.guardianTitle}에게 알리기',
-            kind: SeniorButtonKind.outline,
+            kind: SeniorButtonKind.secondary,
             minHeight: 64,
             fontSize: 21,
             onPressed: _callGuardian,

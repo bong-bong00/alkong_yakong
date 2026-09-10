@@ -243,7 +243,7 @@ class _CaptureScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.cameraBg,
+      backgroundColor: AppColors.textPrimary,
       body: Column(
         children: [
           const SeniorBackHeader(title: '처방전 찍기', onDark: true),
@@ -308,7 +308,7 @@ class _CaptureScreen extends StatelessWidget {
                                   vertical: 18,
                                 ),
                                 decoration: BoxDecoration(
-                                  color: AppColors.darkSurface,
+                                  color: AppColors.camChip,
                                   borderRadius: BorderRadius.circular(16),
                                 ),
                                 child: Text(
@@ -316,7 +316,7 @@ class _CaptureScreen extends StatelessWidget {
                                   textAlign: TextAlign.center,
                                   style: AppText.label(
                                     size: 19,
-                                    color: AppColors.onDarkMuted,
+                                    color: AppColors.inactive,
                                   ),
                                 ),
                               ),
