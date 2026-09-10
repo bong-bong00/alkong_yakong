@@ -4,6 +4,8 @@
 /// 복약 완료 → "다 드셨어요", 미복약 → "아직 안 드셨어요".
 library;
 
+import 'package:flutter/material.dart';
+
 /// 하루 세 번의 복약 시간대.
 enum DoseSlot {
   morning('아침', 8),
@@ -65,6 +67,25 @@ class Medicine {
   String get spoken => appearance == null
       ? '$ingredient $amount'
       : '$ingredient, $appearance $amount';
+
+  /// "흰색 알약 1알" — 이름 대신 생김새로 부르는 한 줄.
+  /// 잠결이나 알림에서는 성분명보다 이쪽이 먼저 읽힌다.
+  String get shapePhrase =>
+      appearance == null ? '$ingredient $amount' : '$appearance $amount';
+
+  /// 미리보기 동그라미 색. 사진이 붙기 전까지 생김새 글에서 뽑아 쓴다.
+  // TODO: 식약처 낱알식별 이미지가 붙으면 이 자리를 사진으로 바꾼다.
+  Color get pillColor {
+    final look = appearance ?? '';
+    if (look.contains('노란') || look.contains('노랑')) {
+      return const Color(0xFFF3D98B);
+    }
+    if (look.contains('분홍') || look.contains('붉은')) {
+      return const Color(0xFFEFC0BA);
+    }
+    if (look.contains('파란')) return const Color(0xFFB9C4F2);
+    return const Color(0xFFF0F0F4);
+  }
 }
 
 /// 한 시간대의 복약 상태.

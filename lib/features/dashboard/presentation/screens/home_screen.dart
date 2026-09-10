@@ -13,6 +13,7 @@ import '../../../medication/presentation/screens/dose_done_screen.dart';
 import '../../../medicines/domain/drug_info.dart';
 import '../../../medicines/presentation/screens/drug_detail_screen.dart';
 import '../../../medicines/presentation/screens/my_medicines_screen.dart';
+import '../../../reminder/presentation/screens/alarm_settings_screen.dart';
 import '../../../medicines/presentation/screens/pharmacist_chat_screen.dart';
 import '../../../prescription/presentation/screens/prescription_screen.dart';
 import '../../../profile/presentation/screens/mypage_screen.dart';
@@ -73,6 +74,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   onOpenMedicines: () => Navigator.of(context).push(
                     MaterialPageRoute(
                       builder: (_) => MyMedicinesScreen(
+                        onOpenAlarm: () => Navigator.of(context).push(
+                          MaterialPageRoute<void>(
+                            builder: (_) => const AlarmSettingsScreen(),
+                          ),
+                        ),
                         onAddPrescription: () => Navigator.of(context)
                             .pushReplacement(
                               MaterialPageRoute(

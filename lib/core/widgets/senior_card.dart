@@ -169,6 +169,9 @@ class SeniorListRow extends StatelessWidget {
   /// 부제 색. 상태값이면 포인트색을 준다.
   final Color subtitleColor;
 
+  /// 라벨 색. 로그아웃처럼 눈에 덜 띄어야 하는 행에서만 낮춘다.
+  final Color labelColor;
+
   const SeniorListRow({
     super.key,
     required this.label,
@@ -180,6 +183,7 @@ class SeniorListRow extends StatelessWidget {
     this.iconColor = AppColors.textSecondary,
     this.subtitle,
     this.subtitleColor = AppColors.textTertiary,
+    this.labelColor = AppColors.textPrimary,
   });
 
   @override
@@ -206,7 +210,7 @@ class SeniorListRow extends StatelessWidget {
                     label,
                     style: AppText.label(
                       size: 20,
-                      color: AppColors.textPrimary,
+                      color: labelColor,
                       weight: FontWeight.w700,
                     ),
                   ),

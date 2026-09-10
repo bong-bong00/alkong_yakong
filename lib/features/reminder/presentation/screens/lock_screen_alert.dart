@@ -102,27 +102,45 @@ class LockScreenAlert extends StatelessWidget {
                       style: AppText.screenTitle(size: 26),
                     ),
                     const SizedBox(height: 14),
-                    for (final medicine in dose.medicines)
-                      Padding(
-                        padding: const EdgeInsets.only(bottom: 4),
-                        child: Text(
-                          '${medicine.ingredient} ${medicine.amount}',
-                          style: AppText.label(
-                            size: 18.5,
-                            color: AppColors.textPrimary,
+                    // 이름보다 생김새가 먼저다. 잠결에는 "메트포르민"보다
+                    // "흰색 알약 하나"가 빨리 읽힌다.
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        for (final medicine in dose.medicines)
+                          Padding(
+                            padding: const EdgeInsets.only(right: 8),
+                            child: _PillDot(color: medicine.pillColor),
+                          ),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              for (final medicine in dose.medicines)
+                                Text(
+                                  medicine.shapePhrase,
+                                  style: AppText.label(
+                                    size: 18.5,
+                                    color: AppColors.textPrimary,
+                                  ),
+                                ),
+                            ],
                           ),
                         ),
-                      ),
+                      ],
+                    ),
                     const SizedBox(height: 14),
                     SeniorButton(
                       label: '먹었어요',
+                      minHeight: 68,
                       fontSize: 23,
                       onPressed: onTake,
                     ),
                     const SizedBox(height: 10),
                     SeniorButton(
                       label: '30분 뒤에 다시',
-                      kind: SeniorButtonKind.secondary,
+                      kind: SeniorButtonKind.neutral,
                       minHeight: 58,
                       fontSize: 20,
                       onPressed: onSnooze,
@@ -140,6 +158,26 @@ class LockScreenAlert extends StatelessWidget {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// 알약 미리보기 동그라미. 사진이 붙기 전까지는 색으로 대신한다.
+class _PillDot extends StatelessWidget {
+  final Color color;
+
+  const _PillDot({required this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 54,
+      height: 54,
+      decoration: BoxDecoration(
+        color: color,
+        shape: BoxShape.circle,
+        border: Border.all(color: AppColors.border, width: 2),
       ),
     );
   }
