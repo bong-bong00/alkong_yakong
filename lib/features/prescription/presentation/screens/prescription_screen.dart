@@ -13,12 +13,21 @@ import '../../../../core/widgets/recovery_view.dart';
 import '../../../../core/widgets/senior_button.dart';
 import '../../../../core/widgets/senior_card.dart';
 import '../../../../core/widgets/senior_header.dart';
+import '../../../../core/widgets/senior_feedback.dart';
 import '../../../onboarding/presentation/screens/first_run_screen.dart';
+import 'add_medicine_screen.dart';
+import 'manual_medicine_screen.dart';
 
 /// 처방전 등록 흐름의 단계.
 enum PrescriptionStep {
-  /// 4d — 처방전 촬영.
+  /// 07 — 어떻게 넣을지 고르기. 등록 플로우의 진입점.
+  pickMethod,
+
+  /// 08 — 처방전 촬영.
   capture,
+
+  /// 10 — 손으로 적기.
+  manual,
 
   /// 읽는 중.
   reading,
@@ -35,13 +44,20 @@ enum PrescriptionStep {
 /// "처방전 OCR 인식"이라는 말을 쓰지 않는다.
 /// 읽지 못했을 때도 사용자를 탓하지 않는다 — "다시 찍어드릴게요".
 class PrescriptionScreen extends StatefulWidget {
+  /// 함께 보는 가족 — "딸 지안 님".
+  final String guardianTitle;
+
   /// 등록이 끝났을 때 부를 콜백.
   ///
   /// 쉬운 모드가 이걸 받아서 다음 화면으로 넘긴다. 일반 모드는 넘기지 않고,
   /// 그때는 지금까지처럼 위험이 있으면 주의 화면을 띄우고 없으면 닫는다.
   final VoidCallback? onCompleted;
 
-  const PrescriptionScreen({super.key, this.onCompleted});
+  const PrescriptionScreen({
+    super.key,
+    this.onCompleted,
+    this.guardianTitle = '딸 지안 님',
+  });
 
   @override
   State<PrescriptionScreen> createState() => _PrescriptionScreenState();
@@ -51,7 +67,7 @@ class _PrescriptionScreenState extends State<PrescriptionScreen> {
   final ImagePicker _picker = ImagePicker();
   final ApiClient _apiClient = ApiClient();
 
-  PrescriptionStep _step = PrescriptionStep.capture;
+  PrescriptionStep _step = PrescriptionStep.pickMethod;
   File? _image;
   Map<String, dynamic>? _result;
 
@@ -192,13 +208,36 @@ class _PrescriptionScreenState extends State<PrescriptionScreen> {
   @override
   Widget build(BuildContext context) {
     switch (_step) {
+      case PrescriptionStep.pickMethod:
+        return AddMedicineScreen(
+          guardianTitle: widget.guardianTitle,
+          onGoHome: () => Navigator.of(context).maybePop(),
+          onPick: (method) {
+            switch (method) {
+              case AddMedicineMethod.camera:
+                _pick(ImageSource.camera);
+              case AddMedicineMethod.gallery:
+                _pick(ImageSource.gallery);
+              case AddMedicineMethod.manual:
+                setState(() => _step = PrescriptionStep.manual);
+              case AddMedicineMethod.family:
+                break;
+            }
+          },
+        );
+      case PrescriptionStep.manual:
+        return ManualMedicineScreen(
+          onUseCamera: () => setState(() => _step = PrescriptionStep.capture),
+          onSave: (name, slots) {
+            showSeniorSnackbar(context, '$name을 등록했어요');
+            _register();
+          },
+        );
       case PrescriptionStep.capture:
         return _CaptureScreen(
           onCamera: () => _pick(ImageSource.camera),
           onGallery: () => _pick(ImageSource.gallery),
-          onManual: () => ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('손으로 적기 — 아직 준비 중이에요')),
-          ),
+          onManual: () => setState(() => _step = PrescriptionStep.manual),
         );
       case PrescriptionStep.reading:
         return _ReadingScreen(image: _image);

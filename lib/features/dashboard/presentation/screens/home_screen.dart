@@ -7,7 +7,6 @@ import '../../../../core/constants/app_colors.dart';
 import '../../../../core/mode/app_mode.dart';
 import '../../../easy_flow/presentation/easy_flow_shell.dart';
 import '../../../../core/widgets/senior_bottom_nav.dart';
-import '../../../../core/widgets/senior_feedback.dart';
 import '../../../biosignal/presentation/screens/measure_screen.dart';
 import '../../../medication/domain/medication_models.dart';
 import '../../../medication/presentation/screens/dose_done_screen.dart';

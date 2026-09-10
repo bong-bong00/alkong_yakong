@@ -15,6 +15,8 @@ import 'package:alkong_yakong/features/medicines/domain/drug_info.dart';
 import 'package:alkong_yakong/features/medicines/presentation/screens/drug_detail_screen.dart';
 import 'package:alkong_yakong/features/medicines/presentation/screens/my_medicines_screen.dart';
 import 'package:alkong_yakong/features/medicines/presentation/screens/pharmacist_chat_screen.dart';
+import 'package:alkong_yakong/features/prescription/presentation/screens/add_medicine_screen.dart';
+import 'package:alkong_yakong/features/prescription/presentation/screens/manual_medicine_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -44,6 +46,8 @@ void main() {
   final screens = <String, Widget Function()>{
     '처방전 찍기 (4d)': () => const PrescriptionScreen(),
     '약 함께먹기 주의 (4f)': () => const DurAnalysisScreen(),
+    '약 넣기 방법 고르기 (07)': () => AddMedicineScreen(onPick: (_) {}),
+    '손으로 적기 (10)': () => const ManualMedicineScreen(),
     '내 약 목록 (20)': () => const MyMedicinesScreen(),
     '약 설명 (21)': () => const DrugDetailScreen(drug: DrugInfo.metformin),
     'AI 약사 상담 (22)': () => const PharmacistChatScreen(),
