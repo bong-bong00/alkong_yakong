@@ -467,24 +467,60 @@ def generate_chat_response(
             selected_name = str(
                 selected_medicine.get("product_name") or ""
             ).strip()
+            e_drug_exact = False
             if selected_code.isdigit() and selected_name:
-                selected_official = fetch_e_drug_info(
-                    medicine_code=selected_code,
+                try:
+                    selected_official = fetch_e_drug_info(
+                        medicine_code=selected_code,
+                    )
+                except Exception as error:
+                    logger.warning(
+                        "Selected medicine e_drug_lookup_failed error_type=%s",
+                        type(error).__name__,
+                    )
+                e_drug_exact = bool(
+                    selected_official
+                    and selected_official.get("medicine_code") == selected_code
+                    and _compact_product_name(
+                        selected_official.get("product_name")
+                    )
+                    == _compact_product_name(selected_name)
                 )
-            if (
-                not selected_official
-                or selected_official.get("medicine_code") != selected_code
-                or _compact_product_name(selected_official.get("product_name"))
-                != _compact_product_name(selected_name)
-            ):
+
+            if e_drug_exact:
+                selected_official = _with_official_permission_ingredient(
+                    selected_official
+                )
+            elif selected_code.isdigit() and selected_name:
+                permission_candidate = _with_official_permission_ingredient(
+                    {
+                        "medicine_code": selected_code,
+                        "product_name": selected_name,
+                        "source": "식약처 의약품 제품 허가정보",
+                    }
+                )
+                from app.services.pharmacist.ingredient import (
+                    is_usable_ingredient,
+                )
+
+                if is_usable_ingredient(
+                    permission_candidate.get("ingredient"),
+                    permission_candidate.get("product_name"),
+                ):
+                    selected_official = permission_candidate
+                else:
+                    selected_official = None
+            else:
+                selected_official = None
+
+            if not selected_official:
                 return (
                     _dur_context_unavailable_reply(intents, "missing")
                     if safety_question
                     else unavailable_reply
                 )
-            selected_official = _with_official_permission_ingredient(
-                selected_official
-            )
+            if not e_drug_exact and not safety_question:
+                return unavailable_reply
             official_data_list.append(
                 {
                     "검색된_약품명": selected_official["product_name"],

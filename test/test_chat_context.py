@@ -48,6 +48,54 @@ def _database(*, current, analyzed=None, matches=None, include_result=True):
 
 
 class ChatContextTest(unittest.TestCase):
+    def _run_permission_only_safety(self, *, intent, e_drug_result=None, e_drug_error=None):
+        selected = {
+            "medicine_code": "202400001",
+            "product_name": "공식허가약정",
+        }
+        permission_detail = {
+            "ITEM_SEQ": "202400001",
+            "ITEM_NAME": "공식허가약정",
+            "MAIN_ITEM_INGR": "공식성분 100mg",
+        }
+        fake_client = MagicMock()
+        fake_client.__enter__.return_value = fake_client
+        fake_client.__exit__.return_value = False
+        fetch_effect = e_drug_error if e_drug_error is not None else None
+        with (
+            patch.object(gemini_service, "GEMINI_API_KEY", "configured"),
+            patch("google.genai.Client", return_value=fake_client),
+            patch.object(
+                gemini_service,
+                "_generate_content_with_retry",
+                return_value=SimpleNamespace(parsed={"drug_names": []}),
+            ),
+            patch(
+                "app.services.external_api_service.fetch_e_drug_info",
+                return_value=e_drug_result,
+                side_effect=fetch_effect,
+            ),
+            patch(
+                "app.services.mfds_drug_permission.db.find_permission_product_by_item_seq",
+                return_value=None,
+            ),
+            patch(
+                "app.services.mfds_drug_permission.client.fetch_permission_detail",
+                return_value=permission_detail,
+            ),
+            patch(
+                "app.services.dur_service.analyze_dur_consultation",
+                return_value={"status": "current", "items": []},
+            ) as analyze,
+        ):
+            reply = gemini_service.generate_chat_response(
+                "빠른 질문",
+                user_id="U1",
+                selected_medicine=selected,
+                intent=intent,
+            )
+        return reply, analyze
+
     def test_permission_db_item_seq_lookup_is_exact(self):
         handle = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
         db_path = handle.name
@@ -174,6 +222,143 @@ class ChatContextTest(unittest.TestCase):
             item_seq="198700430",
         )
         self.assertEqual(enriched["ingredient"], "알마게이트 500mg")
+
+    def test_permission_api_fallback_rejects_item_seq_mismatch(self):
+        selected = {
+            "medicine_code": "202400001",
+            "product_name": "공식허가약정",
+            "ingredient": None,
+        }
+        detail = {
+            "ITEM_SEQ": "DIFFERENT",
+            "ITEM_NAME": "공식허가약정",
+            "MAIN_ITEM_INGR": "공식성분 100mg",
+        }
+        with (
+            patch(
+                "app.services.mfds_drug_permission.db.find_permission_product_by_item_seq",
+                return_value=None,
+            ),
+            patch(
+                "app.services.mfds_drug_permission.client.fetch_permission_detail",
+                return_value=detail,
+            ),
+        ):
+            result = gemini_service._with_official_permission_ingredient(selected)
+        self.assertIsNone(result["ingredient"])
+
+    def test_permission_api_fallback_rejects_product_name_mismatch(self):
+        selected = {
+            "medicine_code": "202400001",
+            "product_name": "공식허가약정",
+            "ingredient": None,
+        }
+        detail = {
+            "ITEM_SEQ": "202400001",
+            "ITEM_NAME": "다른공식제품정",
+            "MAIN_ITEM_INGR": "공식성분 100mg",
+        }
+        with (
+            patch(
+                "app.services.mfds_drug_permission.db.find_permission_product_by_item_seq",
+                return_value=None,
+            ),
+            patch(
+                "app.services.mfds_drug_permission.client.fetch_permission_detail",
+                return_value=detail,
+            ),
+        ):
+            result = gemini_service._with_official_permission_ingredient(selected)
+        self.assertIsNone(result["ingredient"])
+
+    def test_permission_only_selected_medicine_reaches_combination_consultation(self):
+        reply, analyze = self._run_permission_only_safety(
+            intent="combination",
+            e_drug_result=None,
+        )
+        self.assertIn("확인되지 않았습니다", reply)
+        self.assertEqual(
+            analyze.call_args.kwargs["selected_medicine"]["ingredient"],
+            "공식성분 100mg",
+        )
+        self.assertEqual(analyze.call_args.kwargs["risk_types"], {"병용금기"})
+
+    def test_e_drug_error_uses_exact_permission_fallback(self):
+        reply, analyze = self._run_permission_only_safety(
+            intent="combination",
+            e_drug_error=RuntimeError("upstream unavailable"),
+        )
+        self.assertIn("확인되지 않았습니다", reply)
+        analyze.assert_called_once()
+
+    def test_permission_only_selected_medicine_reaches_duplicate_consultation(self):
+        reply, analyze = self._run_permission_only_safety(
+            intent="duplicate",
+            e_drug_result=None,
+        )
+        self.assertIn("확인되지 않았습니다", reply)
+        self.assertEqual(
+            analyze.call_args.kwargs["risk_types"],
+            {"중복성분", "효능군중복"},
+        )
+
+    def test_unverified_selected_medicine_keeps_missing_fallback(self):
+        selected = {
+            "medicine_code": "202400001",
+            "product_name": "검증실패약정",
+        }
+        with (
+            patch.object(gemini_service, "GEMINI_API_KEY", "configured"),
+            patch(
+                "app.services.external_api_service.fetch_e_drug_info",
+                return_value=None,
+            ),
+            patch.object(
+                gemini_service,
+                "_with_official_permission_ingredient",
+                return_value={**selected, "ingredient": None},
+            ),
+            patch("app.services.dur_service.analyze_dur_consultation") as analyze,
+        ):
+            reply = gemini_service.generate_chat_response(
+                "빠른 질문",
+                user_id="U1",
+                selected_medicine=selected,
+                intent="combination",
+            )
+        self.assertIn("DUR 병용금기 분석 결과를 확인할 수 없습니다", reply)
+        analyze.assert_not_called()
+
+    def test_permission_only_efficacy_does_not_generate_unofficial_explanation(self):
+        selected = {
+            "medicine_code": "202400001",
+            "product_name": "공식허가약정",
+        }
+        with (
+            patch.object(gemini_service, "GEMINI_API_KEY", "configured"),
+            patch(
+                "app.services.external_api_service.fetch_e_drug_info",
+                return_value=None,
+            ),
+            patch.object(
+                gemini_service,
+                "_with_official_permission_ingredient",
+                return_value={
+                    **selected,
+                    "ingredient": "공식성분 100mg",
+                    "source": "식약처 의약품 제품 허가정보",
+                },
+            ),
+            patch.object(gemini_service, "_generate_content_with_retry") as generate,
+        ):
+            reply = gemini_service.generate_chat_response(
+                "효능을 알려줘",
+                user_id="U1",
+                selected_medicine=selected,
+                intent="efficacy",
+            )
+        self.assertIn("식약처 공식정보를 확인할 수 없어", reply)
+        generate.assert_not_called()
 
     def test_permission_diagnostic_log_excludes_sensitive_content(self):
         official = {

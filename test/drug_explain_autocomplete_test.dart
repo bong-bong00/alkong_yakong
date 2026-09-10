@@ -261,6 +261,28 @@ void main() {
     expect(chatBody?.containsKey('intent'), isFalse);
   });
 
+  testWidgets('서버 fallback 응답을 다른 약의 데모 답변으로 바꾸지 않는다', (tester) async {
+    const serverReply = '현재 AI 약사가 설정되지 않아 공식 답변을 생성할 수 없습니다.';
+    final client = MockClient((request) async {
+      if (request.url.path.endsWith('/dashboard')) {
+        return jsonResponse({
+          'latest_prescription': null,
+          'today_medications': [],
+        });
+      }
+      return jsonResponse({'reply': serverReply});
+    });
+
+    await tester.pumpWidget(appWith(client));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField), '게보린정의 효능을 알려주세요.');
+    await tester.tap(find.byIcon(Icons.send_rounded));
+    await tester.pumpAndSettle();
+
+    expect(find.text(serverReply), findsOneWidget);
+    expect(find.textContaining('타이레놀정의 주요 효능'), findsNothing);
+  });
+
   testWidgets('검색 약과 기존 복용약의 payload 출처를 구분한다', (tester) async {
     final chatBodies = <Map<String, dynamic>>[];
     final client = MockClient((request) async {
