@@ -3,6 +3,20 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:polar/polar.dart';
 
+double? averageValidHeartRates(Iterable<int> samples) {
+  final valid = samples.where((bpm) => bpm > 0).toList();
+  if (valid.isEmpty) return null;
+  return valid.fold<int>(0, (sum, bpm) => sum + bpm) / valid.length;
+}
+
+double? heartRateChangePercent({
+  required double? baseline,
+  required double? currentAverage,
+}) {
+  if (baseline == null || baseline <= 0 || currentAverage == null) return null;
+  return (currentAverage - baseline) / baseline * 100;
+}
+
 class PolarService {
   PolarService({Polar? polar}) : _polar = polar ?? Polar() {
     debugPrint('[POLAR_SERVICE] initialized');
@@ -23,6 +37,7 @@ class PolarService {
       <String, Set<PolarSdkFeature>>{};
   StreamSubscription<PolarHrData>? _hrSubscription;
   Timer? _averageTimer;
+  bool _isAverageMonitoring = false;
   bool _isDisposed = false;
   bool _acceptBpmEvents = false;
 
@@ -122,10 +137,6 @@ class PolarService {
     _acceptBpmEvents = true;
     debugPrint('[POLAR_SERVICE] hr stream start');
 
-    _averageTimer = Timer.periodic(
-      const Duration(seconds: 30),
-      (_) => _emitAverageBpm(),
-    );
     _hrSubscription = _polar
         .startHrStreaming(deviceId)
         .listen(
@@ -140,7 +151,9 @@ class PolarService {
                 continue;
               }
               debugPrint('[POLAR_SERVICE] hr sample: $bpm');
-              _bpmSamples.add(bpm);
+              if (_isAverageMonitoring) {
+                _bpmSamples.add(bpm);
+              }
               if (!_currentBpmController.isClosed) {
                 _currentBpmController.add(bpm);
               }
@@ -151,6 +164,7 @@ class PolarService {
             _acceptBpmEvents = false;
             _averageTimer?.cancel();
             _averageTimer = null;
+            _isAverageMonitoring = false;
             _bpmSamples.clear();
             _emitMeasurementReset();
             _emitError(error);
@@ -160,6 +174,7 @@ class PolarService {
             _acceptBpmEvents = false;
             _averageTimer?.cancel();
             _averageTimer = null;
+            _isAverageMonitoring = false;
             _bpmSamples.clear();
             _emitMeasurementReset();
           },
@@ -172,12 +187,34 @@ class PolarService {
     _acceptBpmEvents = false;
     _averageTimer?.cancel();
     _averageTimer = null;
+    _isAverageMonitoring = false;
     final subscription = _hrSubscription;
     _hrSubscription = null;
     await subscription?.cancel();
     _bpmSamples.clear();
     _emitMeasurementReset();
     debugPrint('[POLAR_SERVICE] stopStreaming completed');
+  }
+
+  void startAverageMonitoring() {
+    if (!_acceptBpmEvents || _isDisposed) return;
+    _averageTimer?.cancel();
+    _bpmSamples.clear();
+    _isAverageMonitoring = true;
+    _averageTimer = Timer.periodic(
+      const Duration(seconds: 30),
+      (_) => _emitAverageBpm(),
+    );
+  }
+
+  void stopAverageMonitoring() {
+    _isAverageMonitoring = false;
+    _averageTimer?.cancel();
+    _averageTimer = null;
+    _bpmSamples.clear();
+    if (!_averageBpmController.isClosed) {
+      _averageBpmController.add(null);
+    }
   }
 
   void _emitMeasurementReset() {
@@ -203,11 +240,10 @@ class PolarService {
   }
 
   void _emitAverageBpm() {
-    if (!_acceptBpmEvents || _bpmSamples.isEmpty) return;
-    final total = _bpmSamples.fold<int>(0, (sum, bpm) => sum + bpm);
-    final average = total / _bpmSamples.length;
+    if (!_acceptBpmEvents || !_isAverageMonitoring) return;
+    final average = averageValidHeartRates(_bpmSamples);
     _bpmSamples.clear();
-    if (!_averageBpmController.isClosed) {
+    if (average != null && !_averageBpmController.isClosed) {
       _averageBpmController.add(average);
     }
   }

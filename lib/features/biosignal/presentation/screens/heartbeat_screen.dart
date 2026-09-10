@@ -45,44 +45,133 @@ class _HeartbeatScreenState extends State<HeartbeatScreen> {
   final List<StreamSubscription<dynamic>> _subscriptions = [];
 
   int? _bpm;
+  double? _baselineBpm;
+  double? _currentAverageBpm;
   String? _deviceId;
   bool _connecting = false;
   bool _disconnected = false;
   bool _notifyGuardian = true;
   DateTime? _lastReadAt;
+  bool _isBaselineMeasuring = false;
+  int _baselineRemainingSeconds = 0;
+  final List<int> _baselineSamples = <int>[];
+  Timer? _baselineTimer;
 
   @override
   void initState() {
     super.initState();
+    _subscribeToPolarStreams();
     _connect();
   }
 
   @override
   void dispose() {
+    _baselineTimer?.cancel();
     for (final subscription in _subscriptions) {
       subscription.cancel();
     }
-    unawaited(_polar.stopStreaming());
-    final deviceId = _deviceId;
-    if (deviceId != null) {
-      unawaited(_polar.disconnectFromDevice(deviceId));
-    }
-    unawaited(_polar.dispose());
+    unawaited(_disposePolar());
     super.dispose();
   }
 
+  Future<void> _disposePolar() async {
+    await _polar.stopStreaming();
+    final deviceId = _deviceId;
+    if (deviceId != null) {
+      try {
+        await _polar.disconnectFromDevice(deviceId);
+      } catch (_) {
+        // 이미 끊긴 기기도 서비스 리소스는 계속 정리한다.
+      }
+    }
+    await _polar.dispose();
+  }
+
+  void _subscribeToPolarStreams() {
+    _subscriptions.add(
+      _polar.currentBpmStream.listen((bpm) {
+        if (!mounted || bpm == null) return;
+        _datasetCollector.addPolarBpm(
+          bpm,
+          deviceId: _deviceId ?? PolarService.defaultDeviceId,
+        );
+        setState(() {
+          _bpm = bpm;
+          _lastReadAt = DateTime.now();
+          _samples.add(bpm);
+          if (_samples.length > 10) _samples.removeAt(0);
+          if (_isBaselineMeasuring && bpm > 0) {
+            _baselineSamples.add(bpm);
+          }
+        });
+        if (_baselineBpm == null && !_isBaselineMeasuring) {
+          _startBaselineMeasurement();
+        }
+      }),
+    );
+    _subscriptions.add(
+      _polar.averageBpmStream.listen((average) {
+        if (!mounted || average == null || _baselineBpm == null) return;
+        setState(() => _currentAverageBpm = average);
+        final changePercent = _changePercent;
+        debugPrint(
+          '[POLAR_UI] 30s change calculated: '
+          '${changePercent?.toStringAsFixed(1) ?? 'unavailable'}%',
+        );
+        unawaited(_sendAverageBpm(average));
+      }),
+    );
+    _subscriptions.add(
+      _polar.deviceDisconnectedStream.listen((_) {
+        if (!mounted) return;
+        _stopBaselineMeasurement(clearBaseline: true);
+        setState(() => _disconnected = true);
+      }),
+    );
+    _subscriptions.add(
+      _polar.errorStream.listen((_) {
+        if (!mounted) return;
+        _stopBaselineMeasurement(clearBaseline: true);
+        setState(() {
+          _connecting = false;
+          _disconnected = true;
+        });
+      }),
+    );
+  }
+
   Future<void> _connect() async {
+    if (_connecting) return;
     setState(() {
       _connecting = true;
       _disconnected = false;
     });
 
     try {
-      await [
+      final permissionStatuses = await [
         Permission.bluetoothScan,
         Permission.bluetoothConnect,
         Permission.locationWhenInUse,
       ].request();
+      if (permissionStatuses.values.any((status) => !status.isGranted)) {
+        if (!mounted) return;
+        setState(() {
+          _connecting = false;
+          _disconnected = true;
+        });
+        return;
+      }
+
+      _stopBaselineMeasurement(clearBaseline: true);
+      await _polar.stopStreaming();
+      final previousDeviceId = _deviceId;
+      if (previousDeviceId != null) {
+        try {
+          await _polar.disconnectFromDevice(previousDeviceId);
+        } catch (_) {
+          // 이미 끊긴 기기는 새 검색을 계속한다.
+        }
+      }
 
       final deviceId = await _polar.findDeviceId(
         targetName: 'Polar Verity Sense',
@@ -95,45 +184,8 @@ class _HeartbeatScreenState extends State<HeartbeatScreen> {
       setState(() {
         _deviceId = deviceId;
         _connecting = false;
+        _disconnected = false;
       });
-
-      _subscriptions.add(
-        _polar.currentBpmStream.listen((bpm) {
-          if (!mounted || bpm == null) return;
-          _datasetCollector.addPolarBpm(
-            bpm,
-            deviceId: _deviceId ?? PolarService.defaultDeviceId,
-          );
-          setState(() {
-            _bpm = bpm;
-            _lastReadAt = DateTime.now();
-            _samples.add(bpm);
-            if (_samples.length > 10) _samples.removeAt(0);
-          });
-        }),
-      );
-      _subscriptions.add(
-        _polar.averageBpmStream.listen((average) {
-          if (average != null) {
-            unawaited(_sendAverageBpm(average));
-          }
-        }),
-      );
-      _subscriptions.add(
-        _polar.deviceDisconnectedStream.listen((_) {
-          if (!mounted) return;
-          setState(() => _disconnected = true);
-        }),
-      );
-      _subscriptions.add(
-        _polar.errorStream.listen((_) {
-          if (!mounted) return;
-          setState(() {
-            _connecting = false;
-            _disconnected = true;
-          });
-        }),
-      );
     } catch (_) {
       if (!mounted) return;
       setState(() {
@@ -141,6 +193,59 @@ class _HeartbeatScreenState extends State<HeartbeatScreen> {
         _disconnected = true;
       });
     }
+  }
+
+  void _startBaselineMeasurement() {
+    if (_bpm == null || _connecting || _isBaselineMeasuring) return;
+    _polar.stopAverageMonitoring();
+    _baselineTimer?.cancel();
+    setState(() {
+      _baselineBpm = null;
+      _currentAverageBpm = null;
+      _isBaselineMeasuring = true;
+      _baselineRemainingSeconds = 15;
+      _baselineSamples.clear();
+      if (_bpm! > 0) _baselineSamples.add(_bpm!);
+    });
+    _baselineTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (!mounted) {
+        timer.cancel();
+        return;
+      }
+      if (_baselineRemainingSeconds <= 1) {
+        timer.cancel();
+        _completeBaselineMeasurement();
+        return;
+      }
+      setState(() => _baselineRemainingSeconds--);
+    });
+  }
+
+  void _completeBaselineMeasurement() {
+    final baseline = averageValidHeartRates(_baselineSamples);
+    setState(() {
+      _baselineBpm = baseline;
+      _isBaselineMeasuring = false;
+      _baselineRemainingSeconds = 0;
+      _baselineSamples.clear();
+    });
+    if (baseline != null && baseline > 0) {
+      _polar.startAverageMonitoring();
+    }
+  }
+
+  void _stopBaselineMeasurement({required bool clearBaseline}) {
+    _baselineTimer?.cancel();
+    _baselineTimer = null;
+    _polar.stopAverageMonitoring();
+    if (!mounted) return;
+    setState(() {
+      _isBaselineMeasuring = false;
+      _baselineRemainingSeconds = 0;
+      _baselineSamples.clear();
+      _currentAverageBpm = null;
+      if (clearBaseline) _baselineBpm = null;
+    });
   }
 
   Future<void> _sendAverageBpm(double average) async {
@@ -165,10 +270,10 @@ class _HeartbeatScreenState extends State<HeartbeatScreen> {
     }
   }
 
-  bool get _normal {
-    final bpm = _bpm;
-    return bpm == null || (bpm >= 50 && bpm <= 110);
-  }
+  double? get _changePercent => heartRateChangePercent(
+    baseline: _baselineBpm,
+    currentAverage: _currentAverageBpm,
+  );
 
   @override
   Widget build(BuildContext context) {
@@ -177,9 +282,7 @@ class _HeartbeatScreenState extends State<HeartbeatScreen> {
       body: Column(
         children: [
           const SeniorBackHeader(title: '심장 박동'),
-          Expanded(
-            child: _disconnected ? _recovery() : _measuring(),
-          ),
+          Expanded(child: _disconnected ? _recovery() : _measuring()),
         ],
       ),
     );
@@ -239,10 +342,7 @@ class _HeartbeatScreenState extends State<HeartbeatScreen> {
                   crossAxisAlignment: WrapCrossAlignment.end,
                   spacing: 8,
                   children: [
-                    Text(
-                      _bpm?.toString() ?? '--',
-                      style: AppText.hero(),
-                    ),
+                    Text(_bpm?.toString() ?? '--', style: AppText.hero()),
                     Padding(
                       padding: const EdgeInsets.only(bottom: 6),
                       child: Text(
@@ -257,11 +357,9 @@ class _HeartbeatScreenState extends State<HeartbeatScreen> {
                 ),
                 const SizedBox(height: 14),
                 SeniorBadge(
-                  label: _normal ? '정상이에요' : '조금 빨라요',
-                  background: _normal
-                      ? AppColors.pointTint
-                      : const Color(0xFFFAEFED),
-                  foreground: _normal ? AppColors.point : AppColors.danger,
+                  label: _bpm == null ? '측정 준비 중이에요' : '심박을 측정하고 있어요',
+                  background: AppColors.pointTint,
+                  foreground: AppColors.point,
                 ),
               ],
             ),
@@ -282,9 +380,7 @@ class _HeartbeatScreenState extends State<HeartbeatScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        _connecting
-                            ? '폴라 베리티 센스 찾는 중'
-                            : '폴라 베리티 센스 연결됨',
+                        _connecting ? '폴라 베리티 센스 찾는 중' : '폴라 베리티 센스 연결됨',
                         style: AppText.cardTitle(size: 19),
                       ),
                       Text(
@@ -345,12 +441,8 @@ class _TodayChart extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final values = samples.isEmpty ? const <int>[] : samples;
-    final min = values.isEmpty
-        ? 0
-        : values.reduce((a, b) => a < b ? a : b);
-    final max = values.isEmpty
-        ? 0
-        : values.reduce((a, b) => a > b ? a : b);
+    final min = values.isEmpty ? 0 : values.reduce((a, b) => a < b ? a : b);
+    final max = values.isEmpty ? 0 : values.reduce((a, b) => a > b ? a : b);
 
     return SeniorCard(
       padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 18),
@@ -389,9 +481,7 @@ class _TodayChart extends StatelessWidget {
                             heightFactor: max == min
                                 ? 0.6
                                 : (0.35 +
-                                    0.65 *
-                                        (values[i] - min) /
-                                        (max - min)),
+                                      0.65 * (values[i] - min) / (max - min)),
                             child: Container(
                               decoration: BoxDecoration(
                                 color: i == values.length - 1
@@ -413,10 +503,7 @@ class _TodayChart extends StatelessWidget {
               for (final label in ['아침', '점심', '저녁', '지금'])
                 Text(
                   label,
-                  style: AppText.label(
-                    size: 16,
-                    color: AppColors.textTertiary,
-                  ),
+                  style: AppText.label(size: 16, color: AppColors.textTertiary),
                 ),
             ],
           ),

@@ -35,81 +35,14 @@ def save_heart_rate(request: HeartRateCreate) -> dict:
             "SELECT * FROM baseline_heart_rate WHERE user_id = ?",
             (request.user_id,),
         ).fetchone()
-        if not baseline:
-            min_bpm = max(40, request.bpm - 20)
-            max_bpm = request.bpm + 20
-            cursor.execute(
-                """
-                INSERT INTO baseline_heart_rate (
-                    user_id, resting_bpm, min_normal_bpm, max_normal_bpm
-                ) VALUES (?, ?, ?, ?)
-                """,
-                (request.user_id, request.bpm, min_bpm, max_bpm),
-            )
-            baseline = cursor.execute(
-                "SELECT * FROM baseline_heart_rate WHERE user_id = ?",
-                (request.user_id,),
-            ).fetchone()
-
-        event = None
-        if request.bpm < baseline["min_normal_bpm"] or request.bpm > baseline["max_normal_bpm"]:
-            event_type = "LOW_HEART_RATE" if request.bpm < baseline["min_normal_bpm"] else "HIGH_HEART_RATE"
-            difference = abs(request.bpm - baseline["resting_bpm"])
-            severity = "HIGH" if difference >= 40 else "WARNING"
-            cursor.execute(
-                """
-                INSERT INTO abnormal_events (
-                    user_id, heart_rate_log_id, event_type, bpm,
-                    baseline_bpm, severity, occurred_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    request.user_id,
-                    log_id,
-                    event_type,
-                    request.bpm,
-                    baseline["resting_bpm"],
-                    severity,
-                    measured_at,
-                ),
-            )
-            event_id = cursor.lastrowid
-            event = {
-                "id": event_id,
-                "event_type": event_type,
-                "severity": severity,
-            }
-            guardians = cursor.execute(
-                """
-                SELECT id FROM guardians
-                WHERE user_id = ? AND notification_enabled = 1
-                """,
-                (request.user_id,),
-            ).fetchall()
-            for guardian in guardians:
-                cursor.execute(
-                    """
-                    INSERT INTO notifications (
-                        user_id, guardian_id, abnormal_event_id,
-                        notification_type, title, message
-                    ) VALUES (?, ?, ?, 'ABNORMAL_HEART_RATE', ?, ?)
-                    """,
-                    (
-                        request.user_id,
-                        guardian["id"],
-                        event_id,
-                        "심박 이상 감지",
-                        f"사용자의 심박수가 {request.bpm} BPM으로 측정되었습니다.",
-                    ),
-                )
 
         conn.commit()
         return {
             "heart_rate_log_id": log_id,
             "bpm": request.bpm,
             "measured_at": measured_at,
-            "baseline": dict(baseline),
-            "abnormal_event": event,
+            "baseline": dict(baseline) if baseline else None,
+            "abnormal_event": None,
         }
     except Exception:
         conn.rollback()
