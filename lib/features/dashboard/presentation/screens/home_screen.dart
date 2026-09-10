@@ -11,6 +11,10 @@ import '../../../../core/widgets/senior_feedback.dart';
 import '../../../biosignal/presentation/screens/measure_screen.dart';
 import '../../../medication/domain/medication_models.dart';
 import '../../../medication/presentation/screens/dose_done_screen.dart';
+import '../../../medicines/domain/drug_info.dart';
+import '../../../medicines/presentation/screens/drug_detail_screen.dart';
+import '../../../medicines/presentation/screens/my_medicines_screen.dart';
+import '../../../medicines/presentation/screens/pharmacist_chat_screen.dart';
 import '../../../prescription/presentation/screens/prescription_screen.dart';
 import '../../../profile/presentation/screens/mypage_screen.dart';
 import 'medication_record_screen.dart';
@@ -62,14 +66,36 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                       builder: (_) => const PrescriptionScreen(),
                     ),
                   ),
-                  onOpenChat: () => showSeniorSnackbar(
-                    context,
-                    'AI 약사 상담은 곧 열려요',
+                  onOpenChat: () => Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => const PharmacistChatScreen(),
+                    ),
                   ),
-                  onOpenMedicines: () => showSeniorSnackbar(
-                    context,
-                    '내 약 목록은 곧 열려요',
+                  onOpenMedicines: () => Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => MyMedicinesScreen(
+                        onAddPrescription: () => Navigator.of(context)
+                            .pushReplacement(
+                              MaterialPageRoute(
+                                builder: (_) => const PrescriptionScreen(),
+                              ),
+                            ),
+                      ),
+                    ),
                   ),
+                  onOpenDrug: (medicine) {
+                    final drug = DrugInfo.find(medicine.key);
+                    if (drug == null) return;
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => DrugDetailScreen(
+                          drug: drug,
+                          onOpenInteraction: () =>
+                              context.push('/dur-analysis'),
+                        ),
+                      ),
+                    );
+                  },
                   onDone: () =>
                       setState(() => _justRecorded = DoseSlot.dinner),
                   onMeasure: () async {

@@ -11,6 +11,10 @@ import 'package:alkong_yakong/features/medication/domain/medication_models.dart'
 import 'package:alkong_yakong/features/prescription/presentation/screens/prescription_screen.dart';
 import 'package:alkong_yakong/features/profile/presentation/screens/account_screen.dart';
 import 'package:alkong_yakong/features/reminder/presentation/screens/lock_screen_alert.dart';
+import 'package:alkong_yakong/features/medicines/domain/drug_info.dart';
+import 'package:alkong_yakong/features/medicines/presentation/screens/drug_detail_screen.dart';
+import 'package:alkong_yakong/features/medicines/presentation/screens/my_medicines_screen.dart';
+import 'package:alkong_yakong/features/medicines/presentation/screens/pharmacist_chat_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -40,6 +44,9 @@ void main() {
   final screens = <String, Widget Function()>{
     '처방전 찍기 (4d)': () => const PrescriptionScreen(),
     '약 함께먹기 주의 (4f)': () => const DurAnalysisScreen(),
+    '내 약 목록 (20)': () => const MyMedicinesScreen(),
+    '약 설명 (21)': () => const DrugDetailScreen(drug: DrugInfo.metformin),
+    'AI 약사 상담 (22)': () => const PharmacistChatScreen(),
     '심박수 관리 (24)': () => const HeartScreen(),
     '폴라 센서 (25)': () => const PolarScreen(data: HeartData.demo),
     '한 달 기록 (26)': () => const MonthlyHeartScreen(data: HeartData.demo),
