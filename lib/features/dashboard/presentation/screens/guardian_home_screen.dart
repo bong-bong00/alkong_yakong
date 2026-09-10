@@ -1,14 +1,18 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_tabler_icons/flutter_tabler_icons.dart';
 
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
+import '../../../../core/session/mvp_session.dart';
 import '../../../../core/widgets/senior_bottom_nav.dart';
 import '../../../../core/widgets/senior_button.dart';
 import '../../../../core/widgets/senior_card.dart';
 import '../../../../core/widgets/senior_header.dart';
 import '../../../biosignal/presentation/screens/heart_screen.dart';
+import '../../../guardian/data/alert_repository.dart';
 import '../../../guardian/presentation/screens/care_family_screen.dart';
 import '../../../profile/presentation/screens/mypage_screen.dart';
 import 'medication_record_screen.dart';
@@ -448,7 +452,15 @@ class _Metric extends StatelessWidget {
 /// 어르신 쪽 재알림 사다리도 계속 진행된다.
 class GuardianAlertsTab extends StatefulWidget {
   final PatientData patient;
-  const GuardianAlertsTab({super.key, required this.patient});
+
+  /// 알림을 읽어 올 곳. 없으면 이 탭이 하나 만들어 쓴다.
+  final AlertRepository? repository;
+
+  const GuardianAlertsTab({
+    super.key,
+    required this.patient,
+    this.repository,
+  });
 
   @override
   State<GuardianAlertsTab> createState() => _GuardianAlertsTabState();
@@ -457,9 +469,27 @@ class GuardianAlertsTab extends StatefulWidget {
 class _GuardianAlertsTabState extends State<GuardianAlertsTab> {
   final Set<int> _acknowledged = <int>{};
 
+  late final AlertRepository _repository =
+      widget.repository ?? AlertRepository();
+
+  List<AlertItem>? _loaded;
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(_load());
+  }
+
+  Future<void> _load() async {
+    final loaded = await _repository.fetch(MvpSession.userId);
+    if (!mounted || loaded == null) return;
+    // 읽어온 것이 있으면 그것만 보여준다. 데모와 섞지 않는다.
+    setState(() => _loaded = loaded);
+  }
+
   @override
   Widget build(BuildContext context) {
-    final alerts = widget.patient.alerts;
+    final alerts = _loaded ?? widget.patient.alerts;
     return Column(
       children: [
         const SeniorTitleHeader(title: '알림'),
