@@ -2,6 +2,8 @@ import 'dart:io';
 import 'package:alkong_yakong/core/theme/app_theme.dart';
 import 'package:alkong_yakong/features/auth/presentation/screens/login_screen.dart';
 import 'package:alkong_yakong/features/auth/domain/exclusive_choice.dart';
+import 'package:alkong_yakong/features/biosignal/application/heart_sensor.dart';
+import 'package:alkong_yakong/features/biosignal/presentation/screens/measure_screen.dart';
 import 'package:alkong_yakong/features/auth/presentation/screens/signup_screen.dart';
 import 'package:alkong_yakong/features/dashboard/presentation/screens/guardian_home_screen.dart';
 import 'package:alkong_yakong/features/dashboard/presentation/screens/medication_record_screen.dart';
@@ -28,6 +30,7 @@ void main() {
   _forbiddenFeatureTests();
   _easyModeTests();
   _signupTests();
+  _sensorTests();
   _calendarTests();
   Widget wrap(Widget child, {double textScale = 1.0}) {
     return ProviderScope(
@@ -500,5 +503,48 @@ void _calendarTests() {
     expect(safe, greaterThan(-1));
     expect(logout, greaterThan(safe), reason: '로그아웃이 주 버튼보다 앞에 오면 안 된다');
     expect(source.contains('SeniorButtonKind.dangerQuiet'), isTrue);
+  });
+}
+
+
+/// 센서 배선 — 화면은 상태만 읽고, 잇는 일은 [HeartSensor]가 한다.
+void _sensorTests() {
+  Widget wrap(Widget child) => ProviderScope(
+        child: MaterialApp(theme: AppTheme.build(), home: child),
+      );
+
+  testWidgets('밖에서 센서를 넣어 주면 화면이 따로 붙지 않는다 (27)', (tester) async {
+    // 넣어 준 센서는 start()를 부르지 않았으므로 idle 그대로다.
+    final sensor = HeartSensor();
+    addTearDown(sensor.dispose);
+
+    await tester.pumpWidget(
+      wrap(MeasureScreen(sensor: sensor, result: 72)),
+    );
+
+    expect(sensor.status, HeartSensorStatus.idle);
+    expect(find.text('폴라 베리티 센스를 찾고 있어요'), findsOneWidget);
+  });
+
+  testWidgets('센서가 아직 값을 못 줘도 화면은 그려진다 (27)', (tester) async {
+    final sensor = HeartSensor();
+    addTearDown(sensor.dispose);
+
+    await tester.pumpWidget(wrap(MeasureScreen(sensor: sensor)));
+    await tester.pump(const Duration(seconds: 1));
+
+    // 값이 없으면 "–"로 두고, 없는 숫자를 지어내지 않는다.
+    expect(sensor.bpm, isNull);
+    expect(find.text('–'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  test('정상 범위를 벗어나면 정상이라고 말하지 않는다', () {
+    final sensor = HeartSensor();
+    addTearDown(sensor.dispose);
+    // 아직 한 번도 못 쟀으면 이상하다고 말하지 않는다.
+    expect(sensor.normal, isTrue);
+    expect(sensor.lowest, isNull);
+    expect(sensor.highest, isNull);
   });
 }

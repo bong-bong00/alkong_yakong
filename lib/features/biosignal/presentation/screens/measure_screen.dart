@@ -9,24 +9,30 @@ import '../../../../core/widgets/senior_button.dart';
 import '../../../../core/widgets/senior_card.dart';
 import '../../../../core/widgets/senior_feedback.dart';
 import '../../../../core/widgets/senior_header.dart';
+import '../../application/heart_sensor.dart';
 import '../../domain/heart_data.dart';
 import 'hr_alert_screen.dart';
 import 'saved_screen.dart';
 
 /// 27 / 28 · 심박수 재는 중 → 측정이 끝났어요.
 ///
-/// 1분 동안 재는 것으로 하고, 진행은 **140ms마다 5%씩** 계단으로 올린다.
-/// 부드럽게 흐르는 막대보다 한 칸씩 차는 쪽이 "지금 되고 있다"를 분명히 말한다.
+/// 1분 동안 재고, 값은 폴라 센서에서 온다. 진행 막대는 흐르지 않고
+/// 1초에 한 칸씩 찬다 — 한 칸씩 차는 쪽이 "지금 되고 있다"를 분명히 말한다.
 class MeasureScreen extends StatefulWidget {
   final String guardianTitle;
 
-  /// 재고 나서 나올 값. 실제로는 센서가 준다.
+  /// 센서 없이 화면만 볼 때 쓸 값. 테스트와 미리보기 전용이다.
+  /// 실제 기기에서는 [sensor]가 준 값이 이긴다.
   final int result;
+
+  /// 밖에서 넣어 주는 센서. 없으면 이 화면이 하나 만들어 쓴다.
+  final HeartSensor? sensor;
 
   const MeasureScreen({
     super.key,
     this.guardianTitle = '딸 지안 님',
     this.result = 72,
+    this.sensor,
   });
 
   @override
@@ -34,39 +40,63 @@ class MeasureScreen extends StatefulWidget {
 }
 
 class _MeasureScreenState extends State<MeasureScreen> {
-  static const Duration _tick = Duration(milliseconds: 140);
-  static const int _stepPercent = 5;
+  /// 1분을 잰다. 1초에 한 칸씩 찬다.
+  static const Duration _tick = Duration(seconds: 1);
+  static const int _totalSeconds = 60;
+
+  /// 센서를 이 화면이 만들었으면 이 화면이 치운다.
+  late final bool _ownsSensor = widget.sensor == null;
+  late final HeartSensor _sensor = widget.sensor ?? HeartSensor();
 
   Timer? _timer;
-  int _progress = 0;
+  int _elapsed = 0;
 
-  bool get _done => _progress >= 100;
+  int get _progress => (_elapsed * 100 / _totalSeconds).round().clamp(0, 100);
+
+  bool get _done => _elapsed >= _totalSeconds;
+
+  /// 화면에 띄울 값. 센서가 아직 아무것도 못 줬으면 넘겨받은 값을 쓴다.
+  int get _value => _sensor.bpm ?? widget.result;
+
+  bool get _live => _sensor.status == HeartSensorStatus.streaming;
+
+  /// 센서가 끊겼거나 붙지 못한 상태.
+  bool get _lost =>
+      _sensor.status == HeartSensorStatus.disconnected ||
+      _sensor.status == HeartSensorStatus.failed;
 
   @override
   void initState() {
     super.initState();
+    _sensor.addListener(_onSensor);
+    if (_ownsSensor) unawaited(_sensor.start());
     _timer = Timer.periodic(_tick, (timer) {
       if (!mounted) return;
-      setState(() => _progress = (_progress + _stepPercent).clamp(0, 100));
-      if (_progress >= 100) timer.cancel();
+      setState(() => _elapsed++);
+      if (_elapsed >= _totalSeconds) timer.cancel();
     });
+  }
+
+  void _onSensor() {
+    if (mounted) setState(() {});
   }
 
   @override
   void dispose() {
     _timer?.cancel();
+    _sensor.removeListener(_onSensor);
+    // 보이지도 않는 화면이 센서를 잡고 있지 않도록.
+    if (_ownsSensor) _sensor.dispose();
     super.dispose();
   }
 
-  /// 남은 시간 — 계단 진행을 초로 되돌려 말해 준다.
-  int get _secondsLeft {
-    final remaining = (100 - _progress) / _stepPercent * _tick.inMilliseconds;
-    return (remaining / 1000).ceil();
-  }
+  /// 남은 시간.
+  int get _secondsLeft => (_totalSeconds - _elapsed).clamp(0, _totalSeconds);
 
   @override
   Widget build(BuildContext context) {
-    final fast = HeartPair.isFast(widget.result);
+    final value = _value;
+    final fast = HeartPair.isFast(value);
     return Scaffold(
       backgroundColor: AppColors.bg,
       body: Column(
@@ -80,8 +110,11 @@ class _MeasureScreenState extends State<MeasureScreen> {
                 children: [
                   _MeasureCard(
                     progress: _progress,
-                    value: _done ? widget.result : null,
+                    // 재는 동안에도 센서가 주는 값을 그대로 보여 준다.
+                    // 다 될 때까지 "–"만 보이면 되고 있는지 알 수 없다.
+                    value: _done || _sensor.bpm != null ? value : null,
                     done: _done,
+                    normal: _sensor.normal,
                   ),
                   const SizedBox(height: 12),
                   if (!_done) ...[
@@ -117,11 +150,22 @@ class _MeasureScreenState extends State<MeasureScreen> {
                       ),
                       child: LabelValueRow(
                         label: Text(
-                          '폴라 센서로 재고 있어요',
-                          style: AppText.cardTitle(size: 19),
+                          _lost
+                              ? '센서가 떨어졌어요'
+                              : _live
+                                  ? '폴라 베리티 센스로 재고 있어요'
+                                  : '폴라 베리티 센스를 찾고 있어요',
+                          style: AppText.cardTitle(
+                            size: 19,
+                            color: _lost
+                                ? AppColors.danger
+                                : AppColors.textPrimary,
+                          ),
                         ),
                         value: Text(
-                          '약 $_secondsLeft초 남았어요',
+                          _lost
+                              ? '센서 단추를 한 번 눌러 주세요'
+                              : '약 $_secondsLeft초 남았어요',
                           style: AppText.caption(size: 17.5),
                         ),
                       ),
@@ -135,7 +179,12 @@ class _MeasureScreenState extends State<MeasureScreen> {
                       onPressed: () => Navigator.of(context).maybePop(),
                     ),
                   ] else ...[
-                    _ResultCard(value: widget.result),
+                    _ResultCard(
+                      value: value,
+                      lowest: _sensor.lowest,
+                      highest: _sensor.highest,
+                      normal: _sensor.normal,
+                    ),
                     const SizedBox(height: 16),
                     SeniorButton(
                       label: '기록 저장하기',
@@ -146,11 +195,11 @@ class _MeasureScreenState extends State<MeasureScreen> {
                         MaterialPageRoute(
                           builder: (_) => fast
                               ? HrAlertScreen(
-                                  bpm: widget.result,
+                                  bpm: value,
                                   guardianTitle: widget.guardianTitle,
                                 )
                               : SavedScreen(
-                                  bpm: widget.result,
+                                  bpm: value,
                                   guardianTitle: widget.guardianTitle,
                                 ),
                         ),
@@ -172,11 +221,13 @@ class _MeasureCard extends StatelessWidget {
   final int progress;
   final int? value;
   final bool done;
+  final bool normal;
 
   const _MeasureCard({
     required this.progress,
     required this.value,
     required this.done,
+    required this.normal,
   });
 
   @override
@@ -222,9 +273,15 @@ class _MeasureCard extends StatelessWidget {
           ),
           const SizedBox(height: 14),
           Text(
-            done ? '다 됐어요 · 정상 범위예요' : '재고 있어요 · 움직이지 마세요',
+            // 정상이 아닐 때 "정상 범위예요"라고 말하지 않는다.
+            done
+                ? (normal ? '다 됐어요 · 정상 범위예요' : '다 됐어요 · 확인이 필요해요')
+                : '재고 있어요 · 움직이지 마세요',
             textAlign: TextAlign.center,
-            style: AppText.cardTitle(size: 20, color: AppColors.point),
+            style: AppText.cardTitle(
+              size: 20,
+              color: done && !normal ? AppColors.danger : AppColors.point,
+            ),
           ),
         ],
       ),
@@ -306,7 +363,18 @@ class _PulsingHeartState extends State<_PulsingHeart>
 /// 1분 동안 잰 결과 — 가장 낮게 / 가장 높게.
 class _ResultCard extends StatelessWidget {
   final int value;
-  const _ResultCard({required this.value});
+
+  /// 센서가 실제로 잰 값들에서 나온 최저·최고. 없으면 값 하나로 갈음한다.
+  final int? lowest;
+  final int? highest;
+  final bool normal;
+
+  const _ResultCard({
+    required this.value,
+    required this.lowest,
+    required this.highest,
+    required this.normal,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -320,17 +388,19 @@ class _ResultCard extends StatelessWidget {
           Row(
             children: [
               Expanded(
-                child: _MinMaxBox(label: '가장 낮게', value: value - 4),
+                child: _MinMaxBox(label: '가장 낮게', value: lowest ?? value),
               ),
               const SizedBox(width: 10),
               Expanded(
-                child: _MinMaxBox(label: '가장 높게', value: value + 5),
+                child: _MinMaxBox(label: '가장 높게', value: highest ?? value),
               ),
             ],
           ),
           const SizedBox(height: 12),
           Text(
-            '평소 재신 것과 비슷합니다. 걱정하실 것 없어요.',
+            normal
+                ? '평소 재신 것과 비슷합니다. 걱정하실 것 없어요.'
+                : '평소보다 빠릅니다. 앉아서 쉬신 뒤 한 번 더 재 보세요.',
             style: AppText.body(size: 18),
           ),
         ],

@@ -1,11 +1,8 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:permission_handler/permission_handler.dart';
 
 import '../../../../core/constants/app_colors.dart';
-import '../../../../core/network/api_client.dart';
-import '../../../../core/session/mvp_session.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../core/widgets/recovery_view.dart';
 import '../../../../core/widgets/senior_button.dart';
@@ -13,8 +10,7 @@ import '../../../../core/widgets/senior_card.dart';
 import '../../../../core/widgets/senior_feedback.dart';
 import '../../../../core/widgets/senior_header.dart';
 import '../../../medication/domain/medication_models.dart';
-import '../../data/biosignal_dataset_collector.dart';
-import '../../data/polar_service.dart';
+import '../../application/heart_sensor.dart';
 
 /// 4g — 심장 박동.
 ///
@@ -38,138 +34,40 @@ class HeartbeatScreen extends StatefulWidget {
 }
 
 class _HeartbeatScreenState extends State<HeartbeatScreen> {
-  final PolarService _polar = PolarService();
-  final ApiClient _apiClient = ApiClient();
-  final BiosignalDatasetCollector _datasetCollector =
-      BiosignalDatasetCollector();
-  final List<int> _samples = <int>[];
-  final List<StreamSubscription<dynamic>> _subscriptions = [];
-
-  int? _bpm;
-  String? _deviceId;
-  bool _connecting = false;
-  bool _disconnected = false;
-  bool _notifyGuardian = true;
-  DateTime? _lastReadAt;
+  /// 센서와 잇는 일은 전부 [HeartSensor]가 한다.
+  /// 이 화면과 새 측정 화면이 같은 배선을 쓰도록, 여기서 다시 구현하지 않는다.
+  final HeartSensor _sensor = HeartSensor();
 
   @override
   void initState() {
     super.initState();
-    _connect();
+    _sensor.addListener(_onSensor);
+    unawaited(_sensor.start());
+  }
+
+  void _onSensor() {
+    if (mounted) setState(() {});
   }
 
   @override
   void dispose() {
-    for (final subscription in _subscriptions) {
-      subscription.cancel();
-    }
-    unawaited(_polar.stopStreaming());
-    final deviceId = _deviceId;
-    if (deviceId != null) {
-      unawaited(_polar.disconnectFromDevice(deviceId));
-    }
-    unawaited(_polar.dispose());
+    _sensor.removeListener(_onSensor);
+    _sensor.dispose();
     super.dispose();
   }
 
-  Future<void> _connect() async {
-    setState(() {
-      _connecting = true;
-      _disconnected = false;
-    });
+  Future<void> _connect() => _sensor.start();
 
-    try {
-      await [
-        Permission.bluetoothScan,
-        Permission.bluetoothConnect,
-        Permission.locationWhenInUse,
-      ].request();
+  int? get _bpm => _sensor.bpm;
+  List<int> get _samples => _sensor.samples;
+  DateTime? get _lastReadAt => _sensor.lastReadAt;
+  bool get _connecting => _sensor.status == HeartSensorStatus.connecting;
+  bool get _disconnected =>
+      _sensor.status == HeartSensorStatus.disconnected ||
+      _sensor.status == HeartSensorStatus.failed;
+  bool get _normal => _sensor.normal;
 
-      final deviceId = await _polar.findDeviceId(
-        targetName: 'Polar Verity Sense',
-        targetDeviceId: PolarService.defaultDeviceId,
-      );
-      await _polar.connectToDevice(deviceId);
-      await _polar.startHrStreaming(deviceId);
-
-      if (!mounted) return;
-      setState(() {
-        _deviceId = deviceId;
-        _connecting = false;
-      });
-
-      _subscriptions.add(
-        _polar.currentBpmStream.listen((bpm) {
-          if (!mounted || bpm == null) return;
-          _datasetCollector.addPolarBpm(
-            bpm,
-            deviceId: _deviceId ?? PolarService.defaultDeviceId,
-          );
-          setState(() {
-            _bpm = bpm;
-            _lastReadAt = DateTime.now();
-            _samples.add(bpm);
-            if (_samples.length > 10) _samples.removeAt(0);
-          });
-        }),
-      );
-      _subscriptions.add(
-        _polar.averageBpmStream.listen((average) {
-          if (average != null) {
-            unawaited(_sendAverageBpm(average));
-          }
-        }),
-      );
-      _subscriptions.add(
-        _polar.deviceDisconnectedStream.listen((_) {
-          if (!mounted) return;
-          setState(() => _disconnected = true);
-        }),
-      );
-      _subscriptions.add(
-        _polar.errorStream.listen((_) {
-          if (!mounted) return;
-          setState(() {
-            _connecting = false;
-            _disconnected = true;
-          });
-        }),
-      );
-    } catch (_) {
-      if (!mounted) return;
-      setState(() {
-        _connecting = false;
-        _disconnected = true;
-      });
-    }
-  }
-
-  Future<void> _sendAverageBpm(double average) async {
-    final userId = MvpSession.userId.trim();
-    if (userId.isEmpty) {
-      debugPrint('Skipping average BPM upload: user ID is empty.');
-      return;
-    }
-    try {
-      await _apiClient.post(
-        '/api/v1/biosignal/heart-rate',
-        body: {
-          'user_id': userId,
-          'bpm': average.round(),
-          'device_id': _deviceId ?? PolarService.defaultDeviceId,
-          'source': 'POLAR_30S_AVERAGE',
-        },
-      );
-      debugPrint('[POLAR_UI] avg upload success');
-    } on ApiException catch (error) {
-      debugPrint('[POLAR_UI] avg upload failed: $error');
-    }
-  }
-
-  bool get _normal {
-    final bpm = _bpm;
-    return bpm == null || (bpm >= 50 && bpm <= 110);
-  }
+  bool _notifyGuardian = true;
 
   @override
   Widget build(BuildContext context) {
