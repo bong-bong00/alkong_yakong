@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_tabler_icons/flutter_tabler_icons.dart';
 
@@ -7,6 +9,7 @@ import '../../../../core/widgets/senior_button.dart';
 import '../../../../core/widgets/senior_card.dart';
 import '../../../../core/widgets/senior_feedback.dart';
 import '../../../../core/widgets/senior_header.dart';
+import '../../data/heart_repository.dart';
 import '../../domain/heart_data.dart';
 import '../widgets/dumbbell_chart.dart';
 import 'measure_screen.dart';
@@ -17,13 +20,18 @@ import 'polar_screen.dart';
 ///
 /// **폴라 센서로 복약 전·후 두 번만 잰다.** 연속 선 그래프는 쓰지 않는다.
 class HeartScreen extends StatefulWidget {
+  /// 화면만 볼 때 쓸 값. 서버에서 읽어오면 그쪽이 이긴다.
   final HeartData data;
   final String guardianTitle;
+
+  /// 기록을 읽어 올 곳. 없으면 이 화면이 하나 만들어 쓴다.
+  final HeartRepository? repository;
 
   const HeartScreen({
     super.key,
     this.data = HeartData.demo,
     this.guardianTitle = '딸 지안 님',
+    this.repository,
   });
 
   @override
@@ -32,6 +40,36 @@ class HeartScreen extends StatefulWidget {
 
 class _HeartScreenState extends State<HeartScreen> {
   late HeartData _data = widget.data;
+
+  late final HeartRepository _repository =
+      widget.repository ?? HeartRepository();
+
+  /// 서버에서 읽어온 것인지. 아니면 화면용 예시다.
+  bool _fromServer = false;
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(_load());
+  }
+
+  Future<void> _load() async {
+    final loaded = await _repository.fetch();
+    if (!mounted) return;
+    setState(() {
+      _loading = false;
+      if (loaded != null) {
+        // 센서가 지금 붙어 있는지는 기록이 아니라 연결의 문제라
+        // 화면이 들고 있던 값을 그대로 이어 쓴다.
+        _data = loaded.copyWith(
+          sensorConnected: _data.sensorConnected,
+          notifyGuardian: _data.notifyGuardian,
+        );
+        _fromServer = true;
+      }
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -81,6 +119,11 @@ class _HeartScreenState extends State<HeartScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
+                  // 예시 숫자를 진짜 기록인 것처럼 두지 않는다.
+                  if (!_loading && !_fromServer) ...[
+                    const _ExampleNotice(),
+                    const SizedBox(height: 12),
+                  ],
                   _TodayCard(data: _data),
                   const SizedBox(height: 12),
                   _WeekCard(data: _data),
@@ -398,6 +441,52 @@ class _NotifyRow extends StatelessWidget {
             value: value,
             semanticLabel: '심박수가 빠를 때 $guardianTitle에게 알리기',
             onChanged: onChanged,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+
+/// 아직 저장된 기록을 읽어오지 못했을 때.
+///
+/// 화면은 그대로 보여주되 **이 숫자가 무엇인지** 먼저 밝힌다.
+/// 예시를 진짜 기록으로 읽고 나면 그것대로 판단의 근거가 된다.
+class _ExampleNotice extends StatelessWidget {
+  const _ExampleNotice();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+      decoration: BoxDecoration(
+        color: AppColors.sunken,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: AppColors.strongLine, width: 2),
+      ),
+      child: Row(
+        children: [
+          const ExcludeSemantics(
+            child: Icon(
+              TablerIcons.info_circle,
+              size: 26,
+              color: AppColors.textTertiary,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('아래는 예시 화면이에요', style: AppText.cardTitle(size: 19)),
+                Text(
+                  '아직 잰 기록이 없거나 불러오지 못했어요. '
+                  '한 번 재고 나면 그 값이 여기 남습니다.',
+                  style: AppText.body(size: 17.5),
+                ),
+              ],
+            ),
           ),
         ],
       ),

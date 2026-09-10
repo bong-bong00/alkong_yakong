@@ -26,7 +26,6 @@ class HeartbeatWiringTest(unittest.TestCase):
     def test_screens_share_one_sensor(self):
         """화면들이 배선을 다시 구현하지 않고 이 클래스를 쓴다."""
         for screen in (
-            "lib/features/biosignal/presentation/screens/heartbeat_screen.dart",
             "lib/features/biosignal/presentation/screens/measure_screen.dart",
         ):
             source = Path(screen).read_text(encoding="utf-8")

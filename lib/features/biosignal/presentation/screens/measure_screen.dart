@@ -8,7 +8,9 @@ import '../../../../core/theme/app_typography.dart';
 import '../../../../core/widgets/senior_button.dart';
 import '../../../../core/widgets/senior_card.dart';
 import '../../../../core/widgets/senior_feedback.dart';
+import '../../../../core/widgets/recovery_view.dart';
 import '../../../../core/widgets/senior_header.dart';
+import '../../../medication/domain/medication_models.dart';
 import '../../application/heart_sensor.dart';
 import '../../domain/heart_data.dart';
 import 'hr_alert_screen.dart';
@@ -93,10 +95,55 @@ class _MeasureScreenState extends State<MeasureScreen> {
   /// 남은 시간.
   int get _secondsLeft => (_totalSeconds - _elapsed).clamp(0, _totalSeconds);
 
+  /// 5e 회복 화면 — 오류가 아니라 "지금 못 재고 있다"로 말한다.
+  ///
+  /// 한 번도 못 잰 채로 센서가 안 붙으면 진행 막대를 계속 채워 봐야
+  /// 아무 값도 나오지 않는다. 그 자리에서 다시 붙는 방법을 알려준다.
+  Widget _recovery() {
+    return RecoveryView(
+      title: '지금은 심장 박동을\n재지 못하고 있어요',
+      reassurance: '폴라 베리티 센스와 전화기가 떨어져 있어요. ',
+      reassuranceEmphasis: '고장이 아니니 걱정하지 마세요.',
+      steps: const [
+        '센서가 팔이나 가슴에 잘 붙어 있는지 만져보세요',
+        '센서 가운데 단추를 한 번 누르세요',
+        '전화기를 센서 가까이 두세요',
+      ],
+      actionLabel: '다시 연결하기',
+      onAction: () => unawaited(_sensor.start()),
+      stillWorksTitle: '약 알림은 그대로 와요',
+      stillWorksBody: '센서가 끊겨도 복약 알림에는 영향이 없어요.',
+      helperText: '그래도 안 되면\n${widget.guardianTitle}에게 도움 청하기',
+      // 어르신 화면에서 밖으로 전화를 걸지 않는다.
+      onCallHelper: () => showSeniorSnackbar(
+        context,
+        '${widget.guardianTitle}에게 연락이 갔어요',
+      ),
+      footnote: _sensor.lastReadAt == null
+          ? null
+          : '마지막으로 잰 시각 · 오늘 '
+              '${DoseSlot.absoluteTime(_sensor.lastReadAt!)}',
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final value = _value;
     final fast = HeartPair.isFast(value);
+
+    // 한 번도 못 잰 채로 센서가 안 붙었으면 재는 시늉을 하지 않는다.
+    if (_lost && _sensor.bpm == null) {
+      return Scaffold(
+        backgroundColor: AppColors.bg,
+        body: Column(
+          children: [
+            const SeniorBackHeader(title: '심박수 재기'),
+            Expanded(child: _recovery()),
+          ],
+        ),
+      );
+    }
+
     return Scaffold(
       backgroundColor: AppColors.bg,
       body: Column(

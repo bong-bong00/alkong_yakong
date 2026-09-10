@@ -1,7 +1,6 @@
 import 'package:alkong_yakong/core/theme/app_theme.dart';
 import 'package:alkong_yakong/core/widgets/recovery_view.dart';
 import 'package:alkong_yakong/features/biosignal/presentation/screens/heart_screen.dart';
-import 'package:alkong_yakong/features/biosignal/presentation/screens/heartbeat_screen.dart';
 import 'package:alkong_yakong/features/biosignal/presentation/screens/measure_screen.dart';
 import 'package:alkong_yakong/features/biosignal/presentation/screens/monthly_heart_screen.dart';
 import 'package:alkong_yakong/features/biosignal/presentation/screens/polar_screen.dart';
@@ -57,8 +56,6 @@ void main() {
     '약 설명 (21)': () => const DrugDetailScreen(drug: DrugInfo.metformin),
     'AI 약사 상담 (22)': () => const PharmacistChatScreen(),
     '심박수 관리 (24)': () => const HeartScreen(),
-    // 새 디자인이 아직 못 덮은 화면. 폴라 센서·백엔드 배선이 여기 살아 있다.
-    '심박 측정 (센서 배선)': () => const HeartbeatScreen(),
     '폴라 센서 (25)': () => const PolarScreen(data: HeartData.demo),
     '한 달 기록 (26)': () => const MonthlyHeartScreen(data: HeartData.demo),
     '심박수 재는 중 (27)': () => const MeasureScreen(),

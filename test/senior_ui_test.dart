@@ -303,14 +303,14 @@ void _forbiddenFeatureTests() {
     final voiceDir = Directory('lib/features/voice');
     expect(voiceDir.existsSync(), isFalse, reason: '음성 기능은 제거 대상이다');
 
-    // 심박 측정 화면은 남긴다 — 폴라 센서와 백엔드를 잇는 배선이
-    // 아직 그 화면에만 있다. 디자인이 낡았다고 지우면 기능이 끊긴다.
+
+    // 낡은 심박 화면은 배선을 HeartSensor로 옮긴 뒤 지웠다.
+    // 배선이 남아 있는지는 test_heartbeat_wiring.py 가 지킨다.
     expect(
       File(
         'lib/features/biosignal/presentation/screens/heartbeat_screen.dart',
       ).existsSync(),
-      isTrue,
-      reason: '센서 배선이 여기 있다',
+      isFalse,
     );
 
     for (final file in dartFiles()) {
