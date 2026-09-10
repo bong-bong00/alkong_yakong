@@ -112,3 +112,75 @@ def test_zero_results_do_not_retry_with_non_official_parameter():
     assert result == {"fetched": 0, "upserted": 0, "error": None}
     fetch.assert_called_once()
     assert fetch.call_args.kwargs["extra_params"] == {"ingrName": "테스트성분"}
+
+
+def _sync_diagnostic_for_item(item):
+    with (
+        patch.object(dur_sync_service, "_fetch_page", return_value=([item], 1)),
+        patch.object(
+            dur_sync_service,
+            "_upsert_taboo",
+            return_value="inserted",
+        ) as upsert,
+        patch.object(dur_sync_service.logger, "warning") as warning,
+    ):
+        result = dur_sync_service._sync_ingredient_type(
+            MagicMock(),
+            "임부금기",
+            query="테스트성분",
+            api_key="test-key",
+        )
+    message = warning.call_args.args[0] % warning.call_args.args[1:]
+    return result, message, upsert.call_count
+
+
+def test_sync_diagnostic_counts_ingredient_mention_failure():
+    result, message, write_count = _sync_diagnostic_for_item(
+        {"INGR_NAME": "다른성분", "DEL_YN": "N"}
+    )
+
+    assert result == {"fetched": 1, "upserted": 0, "error": None}
+    assert "ingredient_mention_pass_count=0" in message
+    assert "deleted_item_count=0" in message
+    assert "normalize_success_count=0" in message
+    assert "normalize_rejected_missing_ingredient_count=0" in message
+    assert write_count == 0
+
+
+def test_sync_diagnostic_counts_deleted_item():
+    result, message, write_count = _sync_diagnostic_for_item(
+        {"INGR_NAME": "테스트성분", "DEL_YN": "Y"}
+    )
+
+    assert result == {"fetched": 1, "upserted": 0, "error": None}
+    assert "ingredient_mention_pass_count=1" in message
+    assert "deleted_item_count=1" in message
+    assert "normalize_success_count=0" in message
+    assert "normalize_rejected_missing_ingredient_count=0" in message
+    assert write_count == 0
+
+
+def test_sync_diagnostic_counts_missing_ingredient():
+    result, message, write_count = _sync_diagnostic_for_item(
+        {"PROHBT_CONTENT": "테스트성분", "DEL_YN": "N"}
+    )
+
+    assert result == {"fetched": 1, "upserted": 0, "error": None}
+    assert "ingredient_mention_pass_count=1" in message
+    assert "deleted_item_count=0" in message
+    assert "normalize_success_count=0" in message
+    assert "normalize_rejected_missing_ingredient_count=1" in message
+    assert write_count == 0
+
+
+def test_sync_diagnostic_counts_normalized_and_upserted_item():
+    result, message, write_count = _sync_diagnostic_for_item(
+        {"INGR_NAME": "테스트성분", "DEL_YN": "N", "DUR_SEQ": "DUR-1"}
+    )
+
+    assert result == {"fetched": 1, "upserted": 1, "error": None}
+    assert "ingredient_mention_pass_count=1" in message
+    assert "deleted_item_count=0" in message
+    assert "normalize_success_count=1" in message
+    assert "normalize_rejected_missing_ingredient_count=0" in message
+    assert write_count == 1

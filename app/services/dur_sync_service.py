@@ -409,6 +409,11 @@ def _sync_ingredient_type(
     api_key: str,
 ) -> dict[str, Any]:
     stats = {"fetched": 0, "upserted": 0, "error": None}
+    ingredient_mention_pass_count = 0
+    deleted_item_count = 0
+    normalize_success_count = 0
+    normalize_rejected_missing_ingredient_count = 0
+    normalize_rejected_other_count = 0
     for param_key in (DUR_INGREDIENT_QUERY_PARAM[risk_type],):
         page = 1
         used_filter = False
@@ -426,16 +431,38 @@ def _sync_ingredient_type(
                 break
             stats["fetched"] += len(items)
             matched = [item for item in items if _item_mentions_ingredient(item, query)]
+            ingredient_mention_pass_count += len(matched)
             if items and not matched:
                 break
             used_filter = True
             for item in matched:
                 if _is_api_deleted(item):
+                    deleted_item_count += 1
                     _delete_taboo(cursor, risk_type, item)
                     continue
                 normalized = _normalize_item(risk_type, item)
                 if not normalized:
+                    missing_required_ingredient = not _first(
+                        item,
+                        "INGR_KOR_NAME",
+                        "INGR_NAME",
+                        "INGR_ENG_NAME",
+                    )
+                    if risk_type == "병용금기":
+                        missing_required_ingredient = (
+                            missing_required_ingredient
+                            or not _first(
+                                item,
+                                "MIXTURE_INGR_KOR_NAME",
+                                "MIXTURE_INGR_ENG_NAME",
+                            )
+                        )
+                    if missing_required_ingredient:
+                        normalize_rejected_missing_ingredient_count += 1
+                    else:
+                        normalize_rejected_other_count += 1
                     continue
+                normalize_success_count += 1
                 action = _upsert_taboo(cursor, normalized)
                 if action in {"inserted", "updated"}:
                     stats["upserted"] += 1
@@ -445,6 +472,23 @@ def _sync_ingredient_type(
         if used_filter:
             stats["error"] = None
             break
+    logger.warning(
+        "DUR sync diagnostic risk_type=%s fetched_count=%d "
+        "ingredient_mention_pass_count=%d deleted_item_count=%d "
+        "normalize_success_count=%d "
+        "normalize_rejected_missing_ingredient_count=%d "
+        "normalize_rejected_other_count=%d upserted_count=%d "
+        "error_present=%s",
+        risk_type,
+        stats["fetched"],
+        ingredient_mention_pass_count,
+        deleted_item_count,
+        normalize_success_count,
+        normalize_rejected_missing_ingredient_count,
+        normalize_rejected_other_count,
+        stats["upserted"],
+        bool(stats["error"]),
+    )
     return stats
 
 
