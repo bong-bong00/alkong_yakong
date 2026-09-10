@@ -78,6 +78,24 @@ def fetch_permission_list_page(
     return response.json()
 
 
+def search_permission_products(
+    item_name: str,
+    *,
+    limit: int,
+    timeout: int | None = None,
+) -> list[dict[str, Any]]:
+    """Search official permission products by product name."""
+    payload = fetch_permission_list_page(
+        page_no=1,
+        num_of_rows=limit,
+        item_name=item_name,
+        timeout=timeout,
+    )
+    if not isinstance(payload, dict):
+        raise TypeError("MFDS permission response root must be an object")
+    return extract_items(payload)
+
+
 def fetch_permission_detail(
     item_name: str | None = None,
     *,

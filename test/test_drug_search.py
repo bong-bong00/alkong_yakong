@@ -6,14 +6,24 @@ from fastapi import HTTPException
 
 from app.routes.drug_explain import search_official_drugs
 from app.services import external_api_service
+from app.services.mfds_drug_permission import client as permission_client
 
 
-def _item(name: str, manufacturer: str, sequence: str) -> dict:
+def _item(name: str, manufacturer: str, sequence: str | None) -> dict:
     return {"itemName": name, "entpName": manufacturer, "itemSeq": sequence}
 
 
+def _permission_item(name: str, manufacturer: str, sequence: str) -> dict:
+    return {"ITEM_NAME": name, "ENTP_NAME": manufacturer, "ITEM_SEQ": sequence}
+
+
 class DrugCandidateSearchTest(unittest.TestCase):
-    def search(self, query: str, items: list[dict]) -> dict:
+    def search(
+        self,
+        query: str,
+        items: list[dict],
+        permission_items: list[dict] | None = None,
+    ) -> dict:
         with (
             patch.object(external_api_service, "E_DRUG_API_KEY", "test-key"),
             patch.object(
@@ -21,9 +31,22 @@ class DrugCandidateSearchTest(unittest.TestCase):
                 "_request_drug_items",
                 return_value=items,
             ) as request_items,
+            patch.object(
+                external_api_service.permission_client,
+                "search_permission_products",
+                return_value=permission_items or [],
+            ) as permission_search,
         ):
             result = external_api_service.search_drug_candidates(query)
         request_items.assert_called_once_with(query, page_no=1, num_of_rows=16)
+        if items:
+            permission_search.assert_not_called()
+        else:
+            permission_search.assert_called_once_with(
+                query,
+                limit=16,
+                timeout=external_api_service.TIMEOUT_SECONDS,
+            )
         return result
 
     def test_gevourin_returns_multiple_official_candidates(self):
@@ -93,10 +116,168 @@ class DrugCandidateSearchTest(unittest.TestCase):
                 "_request_drug_items",
                 side_effect=requests.Timeout,
             ),
+            patch.object(
+                external_api_service.permission_client,
+                "search_permission_products",
+                side_effect=RuntimeError,
+            ),
             self.assertRaises(HTTPException) as raised,
         ):
             external_api_service.search_drug_candidates("게보")
         self.assertEqual(raised.exception.status_code, 504)
+
+    def test_permission_result_supplements_empty_e_drug_result(self):
+        result = self.search(
+            "메토트렉세이트",
+            [],
+            [_permission_item("유한메토트렉세이트정", "유한양행", "100")],
+        )
+        self.assertEqual(
+            result["items"],
+            [
+                {
+                    "item_name": "유한메토트렉세이트정",
+                    "manufacturer": "유한양행",
+                    "item_seq": "100",
+                }
+            ],
+        )
+
+    def test_duplicate_e_drug_item_without_sequence_is_deduplicated(self):
+        result = self.search(
+            "아스피린",
+            [
+                _item("아스피린정", "e약 제조사", None),
+                _item("아스피린정", "e약 제조사", None),
+            ],
+        )
+        self.assertEqual(result["count"], 1)
+
+    def test_duplicate_e_drug_item_with_blank_sequence_is_deduplicated(self):
+        result = self.search(
+            "아스피린",
+            [
+                _item("아스피린정", "e약 제조사", ""),
+                _item("아스피린정", "e약 제조사", ""),
+            ],
+        )
+        self.assertEqual(result["count"], 1)
+
+    def test_different_item_sequences_are_not_deduplicated_by_name(self):
+        result = self.search(
+            "아스피린",
+            [
+                _item("아스피린정", "제조사A", "200"),
+                _item("아스피린정", "제조사B", "201"),
+            ],
+        )
+        self.assertEqual(result["count"], 2)
+        self.assertEqual(
+            {item["item_seq"] for item in result["items"]},
+            {"200", "201"},
+        )
+
+    def test_permission_failure_keeps_e_drug_results(self):
+        with (
+            patch.object(external_api_service, "E_DRUG_API_KEY", "test-key"),
+            patch.object(
+                external_api_service,
+                "_request_drug_items",
+                return_value=[_item("게보린정", "삼진제약", "1")],
+            ),
+            patch.object(
+                external_api_service.permission_client,
+                "search_permission_products",
+                side_effect=requests.Timeout,
+            ) as permission_search,
+        ):
+            result = external_api_service.search_drug_candidates("게보")
+        permission_search.assert_not_called()
+        self.assertEqual(result["count"], 1)
+        self.assertEqual(result["items"][0]["item_seq"], "1")
+
+    def test_e_drug_failure_returns_permission_results(self):
+        with (
+            patch.object(external_api_service, "E_DRUG_API_KEY", "test-key"),
+            patch.object(
+                external_api_service,
+                "_request_drug_items",
+                side_effect=requests.Timeout,
+            ),
+            patch.object(
+                external_api_service.permission_client,
+                "search_permission_products",
+                return_value=[_permission_item("알프람정", "환인제약", "300")],
+            ),
+        ):
+            result = external_api_service.search_drug_candidates("알프람")
+        self.assertEqual(result["count"], 1)
+        self.assertEqual(result["items"][0]["item_name"], "알프람정")
+
+    def test_permission_search_uses_official_product_name_parameter(self):
+        payload = {
+            "body": {
+                "items": [
+                    _permission_item("알프람정", "환인제약", "300"),
+                ]
+            }
+        }
+        with patch.object(
+            permission_client,
+            "fetch_permission_list_page",
+            return_value=payload,
+        ) as fetch_page:
+            result = permission_client.search_permission_products(
+                "알프람",
+                limit=16,
+                timeout=10,
+            )
+
+        fetch_page.assert_called_once_with(
+            page_no=1,
+            num_of_rows=16,
+            item_name="알프람",
+            timeout=10,
+        )
+        self.assertEqual(result[0]["ITEM_SEQ"], "300")
+
+    def test_permission_fallback_still_respects_eight_item_limit(self):
+        result = self.search(
+            "테스트",
+            [],
+            [
+                _permission_item(f"테스트보완{i}정", "보완", str(i + 10))
+                for i in range(10)
+            ],
+        )
+        self.assertEqual(result["count"], 8)
+        self.assertEqual(len(result["items"]), 8)
+
+    def test_unrelated_permission_result_is_excluded(self):
+        result = self.search(
+            "알프람",
+            [],
+            [
+                _permission_item("알프람정", "환인제약", "1"),
+                _permission_item("무관한정", "다른제약", "2"),
+            ],
+        )
+        self.assertEqual(result["count"], 1)
+        self.assertEqual(result["items"][0]["item_name"], "알프람정")
+
+    def test_existing_e_drug_searches_remain_available(self):
+        for query, product_name, item_seq in (
+            ("게보", "게보린정", "1"),
+            ("알마겔", "알마겔정", "2"),
+            ("아스피린", "아스피린정", "3"),
+        ):
+            with self.subTest(query=query):
+                result = self.search(
+                    query,
+                    [_item(product_name, "기존 제조사", item_seq)],
+                )
+                self.assertEqual(result["count"], 1)
+                self.assertEqual(result["items"][0]["item_name"], product_name)
 
     def test_exact_product_name_wins_over_similar_products(self):
         items = [
