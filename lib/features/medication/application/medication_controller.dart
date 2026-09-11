@@ -112,7 +112,17 @@ class MedicationController extends Notifier<TodayMedication> {
       heartRateNormal: true,
       daysLeft: state.daysLeft,
       interactionAlert: data['interaction_alert']?.toString(),
+      interactionCards: _interactionCards(data['interaction_cards']),
     );
+  }
+
+  static List<InteractionPriorityCard> _interactionCards(dynamic raw) {
+    if (raw is! List) return const [];
+    return [
+      for (final row in raw)
+        if (row is Map)
+          InteractionPriorityCard.fromJson(Map<String, dynamic>.from(row)),
+    ];
   }
 
   DoseSlot? _slotOf(String? raw) {

@@ -1,7 +1,6 @@
 from datetime import date
 
 import pytest
-from fastapi import HTTPException
 
 from app.models.schemas import PrescriptionConfirmItem, PrescriptionConfirmRequest
 from app.models.schemas import OCRMedicineItem, PrescriptionOCRRequest
@@ -27,17 +26,14 @@ def _item(**overrides):
     return PrescriptionConfirmItem(**values)
 
 
-def test_confirm_rejects_missing_dosing_fields():
-    with pytest.raises(HTTPException) as caught:
+def test_confirm_allows_missing_dosing_fields():
+    assert (
         _validated_confirm_dosage(
             _item(dosage=None, frequency_per_day=None, duration_days=None),
             "테스트정",
         )
-
-    assert caught.value.status_code == 422
-    assert "1회 복용량" in caught.value.detail
-    assert "하루 복용 횟수" in caught.value.detail
-    assert "복용 일수" in caught.value.detail
+        is None
+    )
 
 
 def test_confirm_accepts_user_checked_dosing_fields():
@@ -45,11 +41,11 @@ def test_confirm_accepts_user_checked_dosing_fields():
 
 
 @pytest.mark.parametrize("dosage", ["200밀리그램", "0.25%", "0.50"])
-def test_confirm_rejects_strength_or_unitless_amount(dosage):
-    with pytest.raises(HTTPException) as caught:
+def test_confirm_keeps_strength_or_unitless_amount_from_blocking_register(dosage):
+    assert (
         _validated_confirm_dosage(_item(dosage=dosage, unit=None), "테스트정")
-
-    assert "1회 복용량" in caught.value.detail
+        is None
+    )
 
 
 def test_confirm_normalizes_numeric_amount_with_verified_unit():

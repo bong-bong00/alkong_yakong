@@ -208,6 +208,7 @@ class TodayMedication {
   final bool heartRateNormal;
   final int daysLeft;
   final String? interactionAlert;
+  final List<InteractionPriorityCard> interactionCards;
 
   const TodayMedication({
     required this.doses,
@@ -217,6 +218,7 @@ class TodayMedication {
     required this.heartRateNormal,
     this.daysLeft = 3,
     this.interactionAlert,
+    this.interactionCards = const [],
   });
 
   /// "딸 지안 님".
@@ -253,7 +255,12 @@ class TodayMedication {
   String get daysLeftPhrase =>
       daysLeft <= 0 ? '오늘이 마지막이에요' : '이 처방 $daysLeft일치 남았어요';
 
-  TodayMedication copyWith({List<DoseEntry>? doses, int? daysLeft}) =>
+  TodayMedication copyWith({
+    List<DoseEntry>? doses,
+    int? daysLeft,
+    String? interactionAlert,
+    List<InteractionPriorityCard>? interactionCards,
+  }) =>
       TodayMedication(
         doses: doses ?? this.doses,
         guardianRelation: guardianRelation,
@@ -261,6 +268,39 @@ class TodayMedication {
         heartRate: heartRate,
         heartRateNormal: heartRateNormal,
         daysLeft: daysLeft ?? this.daysLeft,
-        interactionAlert: interactionAlert,
+        interactionAlert: interactionAlert ?? this.interactionAlert,
+        interactionCards: interactionCards ?? this.interactionCards,
       );
+}
+
+class InteractionPriorityCard {
+  final String nameA;
+  final String nameB;
+  final String? codeA;
+  final String? codeB;
+  final String reason;
+  final String? cautionA;
+  final String? cautionB;
+
+  const InteractionPriorityCard({
+    required this.nameA,
+    required this.nameB,
+    required this.reason,
+    this.codeA,
+    this.codeB,
+    this.cautionA,
+    this.cautionB,
+  });
+
+  factory InteractionPriorityCard.fromJson(Map<String, dynamic> json) {
+    return InteractionPriorityCard(
+      nameA: json['name_a']?.toString() ?? '',
+      nameB: json['name_b']?.toString() ?? '',
+      codeA: json['code_a']?.toString(),
+      codeB: json['code_b']?.toString(),
+      reason: json['reason']?.toString() ?? '함께 먹을 때 주의가 필요해요',
+      cautionA: json['caution_a']?.toString(),
+      cautionB: json['caution_b']?.toString(),
+    );
+  }
 }

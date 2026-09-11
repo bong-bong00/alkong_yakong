@@ -391,6 +391,10 @@ def _create_medication_schedules(
 ) -> list[dict]:
     confirmed_times = _confirmed_clock_times(item.administration_times)
     if not confirmed_times:
+        defaults = DEFAULT_SCHEDULE_TIMES.get(item.frequency_per_day)
+        if defaults:
+            confirmed_times = [clock for clock, _slot in defaults]
+    if not confirmed_times:
         return []
     created_schedules = []
 
@@ -470,25 +474,8 @@ def _validated_confirm_dosage(
     item: PrescriptionConfirmItem,
     official_name: str,
 ) -> str | None:
-    """확인되지 않은 복약값으로 기본 스케줄을 만들지 않도록 막는다."""
-    take_dosage = _normalized_confirm_take_amount(item)
-    missing_dosing = []
-    if not take_dosage:
-        missing_dosing.append("1회 복용량")
-    if item.frequency_per_day not in DEFAULT_SCHEDULE_TIMES:
-        missing_dosing.append("하루 복용 횟수(1~3회)")
-    if item.duration_days is None or not 1 <= item.duration_days <= 365:
-        missing_dosing.append("복용 일수(1~365일)")
-    if missing_dosing:
-        raise HTTPException(
-            status_code=422,
-            detail=(
-                f"{official_name}: "
-                + ", ".join(missing_dosing)
-                + "를 확인해 주세요."
-            ),
-        )
-    return take_dosage
+    """OCR이 읽은 1회 복용량을 정규화한다. 비어 있어도 등록은 막지 않는다."""
+    return _normalized_confirm_take_amount(item)
 
 
 _TAKE_UNIT_LABELS = {
@@ -775,6 +762,7 @@ def create_prescription_from_ocr(request: PrescriptionOCRRequest) -> dict:
                     "ocr_field_confidences": field_confidences,
                     "recognition_pct": field_confidences.get("drug_name"),
                     "schedules": [],
+                    "interaction_conflicts": [],
                 }
             )
 
@@ -807,6 +795,20 @@ def create_prescription_from_ocr(request: PrescriptionOCRRequest) -> dict:
 
         # 약 사전(medicines) upsert 만 커밋. 복용 등록은 confirm 에서.
         conn.commit()
+        try:
+            from app.services.dur_service import preview_conflicts_for_codes
+
+            conflict_map = preview_conflicts_for_codes(
+                request.user_id,
+                [str(row.get("medicine_code") or "") for row in preview_items],
+            )
+        except Exception:
+            conflict_map = {}
+        for row in preview_items:
+            row["interaction_conflicts"] = conflict_map.get(
+                str(row.get("medicine_code") or ""),
+                [],
+            )
         readiness = _user_readiness(score_seed, ocr_trace)
         raw_engine_confidence = (ocr_trace or {}).get("engine_confidence")
         try:
@@ -968,8 +970,12 @@ def confirm_prescription(request: PrescriptionConfirmRequest) -> dict:
                 request.expire_date,
                 item.duration_days,
             )
-            medicine_start_date = schedule_dates[0].isoformat()
-            medicine_end_date = schedule_dates[-1].isoformat()
+            if schedule_dates:
+                medicine_start_date = schedule_dates[0].isoformat()
+                medicine_end_date = schedule_dates[-1].isoformat()
+            else:
+                medicine_start_date = date.today().isoformat()
+                medicine_end_date = None
 
             cursor.execute(
                 """
@@ -1060,6 +1066,13 @@ def confirm_prescription(request: PrescriptionConfirmRequest) -> dict:
             )
 
         conn.commit()
+        try:
+            from app.models.schemas import DurAnalyzeRequest
+            from app.services.dur_service import analyze_dur
+
+            analyze_dur(DurAnalyzeRequest(user_id=request.user_id, medicine_codes=[]))
+        except Exception:
+            pass
         return {
             "prescription_id": prescription_id,
             "user_id": request.user_id,

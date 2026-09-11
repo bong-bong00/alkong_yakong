@@ -81,7 +81,12 @@ def _age_from_birth_date(value: str | None) -> int | None:
     return today.year - born.year - ((today.month, today.day) < (born.month, born.day))
 
 
-def analyze_dur(request: DurAnalyzeRequest) -> dict:
+def analyze_dur(
+    request: DurAnalyzeRequest,
+    *,
+    persist: bool = True,
+    refresh: bool | None = None,
+) -> dict:
     conn = get_connection()
     try:
         cursor = conn.cursor()
@@ -129,7 +134,8 @@ def analyze_dur(request: DurAnalyzeRequest) -> dict:
         dur_sync_status = "skipped"
         dur_sync_upserted = 0
         dur_sync_fetched = 0
-        if ingredients:
+        do_refresh = persist if refresh is None else refresh
+        if ingredients and do_refresh:
             from app.services.dur_sync_service import refresh_dur_for_ingredients
 
             dur_sync = refresh_dur_for_ingredients(ingredients)
@@ -241,29 +247,31 @@ def analyze_dur(request: DurAnalyzeRequest) -> dict:
             description = " ".join(incomplete_reasons)
         else:
             description = "지금 등록된 약끼리, 특별한 함께먹기 주의는 없어요."
-        cursor.execute(
-            """
-            INSERT INTO risk_results (
-                user_id, risk_level, description, analyzed_ingredients,
-                analysis_id, risk_type, total_matches, matches_json,
-                assessment_status, incomplete_reasons_json
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                request.user_id,
-                risk_level,
-                description,
-                json.dumps(ingredients, ensure_ascii=False),
-                analysis_id,
-                matches[0]["type"] if matches else None,
-                len(matches),
-                json.dumps(matches, ensure_ascii=False),
-                assessment_status,
-                json.dumps(incomplete_reasons, ensure_ascii=False),
-            ),
-        )
-        risk_result_id = cursor.lastrowid
-        conn.commit()
+        risk_result_id = None
+        if persist:
+            cursor.execute(
+                """
+                INSERT INTO risk_results (
+                    user_id, risk_level, description, analyzed_ingredients,
+                    analysis_id, risk_type, total_matches, matches_json,
+                    assessment_status, incomplete_reasons_json
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    request.user_id,
+                    risk_level,
+                    description,
+                    json.dumps(ingredients, ensure_ascii=False),
+                    analysis_id,
+                    matches[0]["type"] if matches else None,
+                    len(matches),
+                    json.dumps(matches, ensure_ascii=False),
+                    assessment_status,
+                    json.dumps(incomplete_reasons, ensure_ascii=False),
+                ),
+            )
+            risk_result_id = cursor.lastrowid
+            conn.commit()
         return {
             "risk_result_id": risk_result_id,
             "analysis_id": analysis_id,
@@ -336,6 +344,7 @@ def _duplicate_matches(grouped) -> list[dict]:
             continue
         ingredient = rows[0]["ingredient"]
         names = [row["product_name"] for row in rows]
+        codes = [row["medicine_code"] for row in rows]
         matches.append(
             {
                 "type": "중복성분",
@@ -343,6 +352,8 @@ def _duplicate_matches(grouped) -> list[dict]:
                 "ingredient_b": ingredient,
                 "medicine_names_a": names,
                 "medicine_names_b": names,
+                "medicine_codes_a": codes,
+                "medicine_codes_b": codes,
                 "reason": (
                     f"같은 성분({ingredient})이 여러 약에 들어 있어요: {', '.join(names)}. "
                     "중복으로 드시는지 약국에 확인해 주세요."
@@ -433,6 +444,14 @@ def _efficacy_duplicate_matches(rows, grouped) -> list[dict]:
                 "ingredient_b": (
                     ingredient_names[1] if len(ingredient_names) > 1 else None
                 ),
+                "medicine_names_a": [hit_meds[0]["product_name"]],
+                "medicine_names_b": (
+                    [hit_meds[1]["product_name"]] if len(hit_meds) > 1 else []
+                ),
+                "medicine_codes_a": [hit_meds[0]["medicine_code"]],
+                "medicine_codes_b": (
+                    [hit_meds[1]["medicine_code"]] if len(hit_meds) > 1 else []
+                ),
                 "reason": reason,
                 "source": taboo_rows[0]["source"] or "식약처 DUR",
                 "external_id": taboo_rows[0]["external_id"],
@@ -477,8 +496,10 @@ def _taboo_matches(
         if risk_type == "임부금기" and is_pregnant is not True:
             continue
         # 사용자 약 이름을 이유에 붙여 화면에서 이해하기 쉽게
-        products_a = [r["product_name"] for r in _grouped_rows(grouped, row["ingredient_a"])]
-        products_b = [r["product_name"] for r in _grouped_rows(grouped, row["ingredient_b"])]
+        rows_a = _grouped_rows(grouped, row["ingredient_a"])
+        rows_b = _grouped_rows(grouped, row["ingredient_b"])
+        products_a = [r["product_name"] for r in rows_a]
+        products_b = [r["product_name"] for r in rows_b]
         reason = row["description"] or "함께 먹을 때 주의가 필요해요."
         reason = _official_reason(reason, "함께 먹을 때 주의가 필요해요.")
         if products_a:
@@ -492,6 +513,8 @@ def _taboo_matches(
                 "ingredient_b": row["ingredient_b"],
                 "medicine_names_a": products_a,
                 "medicine_names_b": products_b,
+                "medicine_codes_a": [r["medicine_code"] for r in rows_a],
+                "medicine_codes_b": [r["medicine_code"] for r in rows_b],
                 "reason": reason,
                 "source": row["source"] or "식약처 DUR",
                 "external_id": row["external_id"],
@@ -659,3 +682,200 @@ def _json_value(value: str | None, fallback):
         return json.loads(value)
     except json.JSONDecodeError:
         return fallback
+
+
+CARD_CONFLICT_TYPES = {"병용금기", "중복성분", "효능군중복"}
+
+
+def _spoken_product_name(name: str | None) -> str:
+    text = str(name or "").strip()
+    index = text.find("(")
+    if index > 0:
+        return text[:index].strip()
+    return text
+
+
+def _cause_only(reason: str | None) -> str:
+    text = str(reason or "").strip()
+    sep = text.find(" — ")
+    if sep >= 0:
+        text = text[sep + 3 :].strip()
+    return text.rstrip(" .")
+
+
+def _first_code(values) -> str:
+    for value in values or []:
+        text = str(value or "").strip()
+        if text:
+            return text
+    return ""
+
+
+def _first_name(values) -> str:
+    for value in values or []:
+        text = _spoken_product_name(str(value or ""))
+        if text:
+            return text
+    return ""
+
+
+def _key_caution_for_code(conn, code: str) -> str:
+    if not code:
+        return ""
+    from app.services.pharmacist.easy_category import (
+        load_medicine_guidance,
+        medicine_guidance_from_medicine,
+    )
+
+    row = conn.execute(
+        "SELECT * FROM medicines WHERE medicine_code = ?",
+        (code,),
+    ).fetchone()
+    if not row:
+        return ""
+    med = dict(row)
+    guidance = load_medicine_guidance(conn, med) or medicine_guidance_from_medicine(med)
+    return str((guidance or {}).get("key_caution") or "").strip()
+
+
+def interaction_priority_cards(matches: list, conn=None) -> list[dict]:
+    """홈 맨 위에 올릴 병용 주의 카드. 약 두 개의 이름·이유·주의 문장."""
+    close = False
+    if conn is None:
+        conn = get_connection()
+        close = True
+    try:
+        cards: list[dict] = []
+        seen: set[tuple] = set()
+        for match in matches or []:
+            if not isinstance(match, dict):
+                continue
+            if str(match.get("type") or "") not in CARD_CONFLICT_TYPES:
+                continue
+            name_a = _first_name(match.get("medicine_names_a"))
+            name_b = _first_name(match.get("medicine_names_b"))
+            if not name_a:
+                continue
+            if not name_b or name_b == name_a:
+                names = [
+                    _spoken_product_name(value)
+                    for value in [
+                        *(match.get("medicine_names_a") or []),
+                        *(match.get("medicine_names_b") or []),
+                    ]
+                    if _spoken_product_name(value)
+                ]
+                unique = list(dict.fromkeys(names))
+                if len(unique) < 2:
+                    continue
+                name_a, name_b = unique[0], unique[1]
+            key = tuple(sorted((name_a, name_b)))
+            if key in seen:
+                continue
+            seen.add(key)
+            code_a = _first_code(match.get("medicine_codes_a"))
+            code_b = _first_code(match.get("medicine_codes_b"))
+            if code_a and code_a == code_b:
+                codes = [
+                    str(value).strip()
+                    for value in [
+                        *(match.get("medicine_codes_a") or []),
+                        *(match.get("medicine_codes_b") or []),
+                    ]
+                    if str(value or "").strip()
+                ]
+                unique_codes = list(dict.fromkeys(codes))
+                code_a = unique_codes[0] if unique_codes else ""
+                code_b = unique_codes[1] if len(unique_codes) > 1 else ""
+            cards.append(
+                {
+                    "type": match.get("type"),
+                    "name_a": name_a,
+                    "name_b": name_b,
+                    "code_a": code_a,
+                    "code_b": code_b,
+                    "reason": _cause_only(match.get("reason"))
+                    or "함께 먹을 때 주의가 필요해요",
+                    "caution_a": _key_caution_for_code(conn, code_a),
+                    "caution_b": _key_caution_for_code(conn, code_b),
+                }
+            )
+        return cards
+    finally:
+        if close:
+            conn.close()
+
+
+def preview_conflicts_for_codes(user_id: str, new_codes: list[str]) -> dict[str, list[dict]]:
+    """아직 등록 전인 OCR 약과, 이미 먹는 약의 병용 주의를 약 코드별로 붙인다."""
+    focus = {str(code).strip() for code in new_codes if str(code).strip()}
+    if not user_id or not focus:
+        return {}
+    conn = get_connection()
+    try:
+        existing = [
+            str(row["medicine_code"])
+            for row in conn.execute(
+                """
+                SELECT DISTINCT medicine_code
+                FROM user_medicines
+                WHERE user_id = ? AND COALESCE(is_active, 1) = 1
+                """,
+                (user_id,),
+            ).fetchall()
+            if row["medicine_code"]
+        ]
+    finally:
+        conn.close()
+    codes = list(dict.fromkeys([*existing, *focus]))
+    result = analyze_dur(
+        DurAnalyzeRequest(user_id=user_id, medicine_codes=codes),
+        persist=False,
+        refresh=False,
+    )
+    by_code: dict[str, list[dict]] = {code: [] for code in focus}
+    conn = get_connection()
+    try:
+        for match in result.get("matches") or []:
+            if str(match.get("type") or "") not in CARD_CONFLICT_TYPES:
+                continue
+            codes_a = [str(value).strip() for value in (match.get("medicine_codes_a") or [])]
+            codes_b = [str(value).strip() for value in (match.get("medicine_codes_b") or [])]
+            names_a = [str(value).strip() for value in (match.get("medicine_names_a") or [])]
+            names_b = [str(value).strip() for value in (match.get("medicine_names_b") or [])]
+            reason = _cause_only(match.get("reason")) or "함께 먹을 때 주의가 필요해요"
+            pairs = (
+                (codes_a, names_b, codes_b),
+                (codes_b, names_a, codes_a),
+            )
+            for own_codes, other_names, other_codes in pairs:
+                for index, code in enumerate(own_codes):
+                    if code not in focus:
+                        continue
+                    other_name = _first_name(other_names) or _first_name(
+                        names_a if own_codes is codes_b else names_b
+                    )
+                    other_code = (
+                        other_codes[index]
+                        if index < len(other_codes)
+                        else _first_code(other_codes)
+                    )
+                    if other_code == code:
+                        other_code = next(
+                            (value for value in other_codes if value and value != code),
+                            "",
+                        )
+                    if not other_name:
+                        continue
+                    item = {
+                        "other_name": other_name,
+                        "other_code": other_code,
+                        "type": match.get("type"),
+                        "reason": reason,
+                        "other_caution": _key_caution_for_code(conn, other_code),
+                    }
+                    if item not in by_code[code]:
+                        by_code[code].append(item)
+    finally:
+        conn.close()
+    return {code: items for code, items in by_code.items() if items}

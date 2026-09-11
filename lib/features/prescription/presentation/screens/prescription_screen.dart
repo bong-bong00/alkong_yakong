@@ -748,35 +748,20 @@ class _ConfirmScreenState extends State<_ConfirmScreen> {
     return confidence is num && confidence < 0.7;
   }
 
-  static bool _hasCompleteDosing(Map<String, dynamic> item) {
-    final amount = item['dosage']?.toString().trim() ?? '';
-    final timesPerTake = item['times_per_take'];
-    final unit = item['unit']?.toString().trim() ?? '';
-    final frequency = item['frequency_per_day'];
-    final duration = item['duration_days'];
-    final amountWithUnit = RegExp(
-      r'^(?:\d+(?:\.\d+)?|\d+/\d+|반)\s*(알|정|캡슐|포|개|mL|ml|방울|T|TAB|C|CAP|PKG|EA)$',
-      caseSensitive: false,
-    ).hasMatch(amount);
-    final knownUnit = RegExp(
-      r'^(알|정|캡슐|포|개|mL|ml|방울|T|TAB|C|CAP|PKG|EA)$',
-      caseSensitive: false,
-    ).hasMatch(unit);
-    final numericAmount = double.tryParse(amount) != null;
-    final hasAmount =
-        amountWithUnit ||
-        (numericAmount && knownUnit) ||
-        (timesPerTake is num && timesPerTake > 0 && knownUnit);
-    final hasFrequency =
-        frequency is num && frequency.toInt() >= 1 && frequency.toInt() <= 3;
-    final hasDuration =
-        duration is num && duration.toInt() >= 1 && duration.toInt() <= 365;
-    return hasAmount && hasFrequency && hasDuration;
+  static List<Map<String, String>> _interactionConflicts(Map<String, dynamic> item) {
+    final raw = item['interaction_conflicts'];
+    if (raw is! List) return const [];
+    return [
+      for (final row in raw)
+        if (row is Map)
+          {
+            'other_name': _shortDrugName(
+              row['other_name']?.toString() ?? '',
+            ),
+            'reason': row['reason']?.toString() ?? '',
+          },
+    ].where((row) => row['other_name']!.isNotEmpty).toList();
   }
-
-  bool get _allDosingConfirmed => _editedItems.every(_hasCompleteDosing);
-  int get _missingDosingCount =>
-      _editedItems.where((item) => !_hasCompleteDosing(item)).length;
 
   Future<void> _editItem(int index) async {
     final item = _editedItems[index];
@@ -872,25 +857,14 @@ class _ConfirmScreenState extends State<_ConfirmScreen> {
                   onPressed: () {
                     final amount = amountController.text.trim();
                     final days = int.tryParse(durationController.text.trim());
-                    if (amount.isEmpty ||
-                        frequency == null ||
-                        days == null ||
-                        days < 1 ||
-                        days > 365) {
-                      ScaffoldMessenger.of(sheetContext).showSnackBar(
-                        const SnackBar(
-                          content: Text('복용량, 하루 횟수, 복용 일수를 모두 확인해 주세요.'),
-                        ),
-                      );
-                      return;
-                    }
                     setState(() {
                       _editedItems[index] = {
                         ...item,
-                        'dosage': amount,
-                        'times_per_take': null,
-                        'frequency_per_day': frequency,
-                        'duration_days': days,
+                        if (amount.isNotEmpty) 'dosage': amount,
+                        if (amount.isNotEmpty) 'times_per_take': null,
+                        if (frequency != null) 'frequency_per_day': frequency,
+                        if (days != null && days >= 1 && days <= 365)
+                          'duration_days': days,
                       };
                     });
                     Navigator.of(sheetContext).pop();
@@ -1055,12 +1029,6 @@ class _ConfirmScreenState extends State<_ConfirmScreen> {
 
   Future<void> _tryRegister() async {
     if (_registering) return;
-    if (!_allDosingConfirmed) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('빨간 약 카드의 복용 정보를 먼저 확인해 주세요.')),
-      );
-      return;
-    }
     if (!await _confirmPartialRegistration()) return;
     setState(() => _registering = true);
     await widget.onRegister(_editedItems);
@@ -1100,9 +1068,9 @@ class _ConfirmScreenState extends State<_ConfirmScreen> {
                         ),
                         const SizedBox(height: 4),
                         Text(
-                          _allDosingConfirmed
-                              ? '공식 약 ${_editedItems.length}개 확인 · 복용 정보 누락 없음'
-                              : '공식 약 ${_editedItems.length}개 확인 · 복용 정보 누락 $_missingDosingCount개',
+                          _editedItems.isEmpty
+                              ? '글자는 읽었는데, 공식 약과 아직 못 맞췄어요'
+                              : '틀린 곳이 있으면 눌러서 고쳐주세요.',
                           style: AppText.caption(
                             color: const Color(0xFF3A4590),
                           ),
@@ -1115,9 +1083,6 @@ class _ConfirmScreenState extends State<_ConfirmScreen> {
                     Builder(
                       builder: (context) {
                         final item = _editedItems[index];
-                        final needsDosingConfirmation = !_hasCompleteDosing(
-                          item,
-                        );
                         return _DrugCard(
                           name: _shortDrugName(
                             item['drug_name']?.toString() ?? '이름을 못 읽었어요',
@@ -1144,7 +1109,7 @@ class _ConfirmScreenState extends State<_ConfirmScreen> {
                           fieldConfidences: _fieldConfidences(item),
                           matchStatusLabel: _matchStatusLabel(item),
                           uncertain: _uncertain(item),
-                          needsDosingConfirmation: needsDosingConfirmation,
+                          conflicts: _interactionConflicts(item),
                           expanded: _expandedItems.contains(index),
                           onToggle: () => setState(() {
                             if (!_expandedItems.remove(index)) {
@@ -1212,11 +1177,7 @@ class _ConfirmScreenState extends State<_ConfirmScreen> {
                     SeniorButton(
                       label: _registering
                           ? '등록하고 있어요'
-                          : (!_allDosingConfirmed
-                                ? '복용 정보 확인 후 등록하기'
-                                : (widget.unrecognizedNames.isNotEmpty
-                                      ? '미확인 약 확인 후 등록하기'
-                                      : '이대로 등록하기')),
+                          : '이대로 등록하기',
                       minHeight: 70,
                       onPressed: _registering ? null : _tryRegister,
                     ),
@@ -1254,7 +1215,7 @@ class _DrugCard extends StatelessWidget {
   final Map<String, int> fieldConfidences;
   final String matchStatusLabel;
   final bool uncertain;
-  final bool needsDosingConfirmation;
+  final List<Map<String, String>> conflicts;
   final bool expanded;
   final VoidCallback onToggle;
   final VoidCallback onFixName;
@@ -1274,7 +1235,7 @@ class _DrugCard extends StatelessWidget {
     required this.fieldConfidences,
     required this.matchStatusLabel,
     required this.uncertain,
-    required this.needsDosingConfirmation,
+    this.conflicts = const [],
     required this.expanded,
     required this.onToggle,
     required this.onFixName,
@@ -1286,7 +1247,7 @@ class _DrugCard extends StatelessWidget {
     return SeniorCard(
       onTap: onToggle,
       padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 20),
-      borderColor: uncertain || needsDosingConfirmation
+      borderColor: (uncertain || conflicts.isNotEmpty)
           ? AppColors.dangerBorder
           : null,
       borderWidth: 2,
@@ -1366,13 +1327,28 @@ class _DrugCard extends StatelessWidget {
               style: AppText.label(size: 17.5, color: AppColors.danger),
             ),
           ],
-          if (needsDosingConfirmation) ...[
+          if (conflicts.isNotEmpty) ...[
             const SizedBox(height: 10),
-            Text(
-              '복용량·단위·하루 횟수·복용 일수를 확인해 주세요',
-              style: AppText.label(size: 17.5, color: AppColors.danger),
-            ),
+            for (final conflict in conflicts) ...[
+              Text(
+                '${conflict['other_name']}과 함께 먹으면 주의가 필요해요',
+                style: AppText.label(size: 17.5, color: AppColors.danger),
+              ),
+              if ((conflict['reason'] ?? '').trim().isNotEmpty) ...[
+                const SizedBox(height: 4),
+                Text(
+                  conflict['reason']!,
+                  style: AppText.body(size: 17, color: AppColors.danger),
+                ),
+              ],
+              const SizedBox(height: 6),
+            ],
           ],
+          const SizedBox(height: 10),
+          Text(
+            '처방전과 같은 약이 맞는지 한 번 더 확인해 주세요',
+            style: AppText.label(size: 17.5, color: AppColors.danger),
+          ),
           if (expanded) ...[
             const SizedBox(height: 16),
             const SeniorDivider(),

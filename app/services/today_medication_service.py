@@ -102,7 +102,7 @@ def get_today_medicines(user_id: str, target_date: str | None = None) -> dict[st
         ).fetchone()
         latest_risk = conn.execute(
             """
-            SELECT risk_level, description, total_matches
+            SELECT risk_level, description, total_matches, matches_json
             FROM risk_results
             WHERE user_id = ?
             ORDER BY created_at DESC, id DESC
@@ -111,14 +111,36 @@ def get_today_medicines(user_id: str, target_date: str | None = None) -> dict[st
             (uid,),
         ).fetchone()
         interaction_alert = None
-        if (
-            latest_risk
-            and str(latest_risk["risk_level"] or "").upper() in {"HIGH", "MEDIUM"}
-            and int(latest_risk["total_matches"] or 0) > 0
-        ):
-            interaction_alert = str(
-                latest_risk["description"] or "함께 먹을 때 주의가 필요해요."
-            )
+        interaction_cards: list[dict] = []
+        if latest_risk:
+            try:
+                stored_matches = json.loads(latest_risk["matches_json"] or "[]")
+            except (TypeError, json.JSONDecodeError):
+                stored_matches = []
+            if not isinstance(stored_matches, list):
+                stored_matches = []
+            from app.services.dur_service import interaction_priority_cards
+
+            if stored_matches:
+                interaction_cards = interaction_priority_cards(stored_matches, conn)
+            if (
+                str(latest_risk["risk_level"] or "").upper() in {"HIGH", "MEDIUM"}
+                and int(latest_risk["total_matches"] or 0) > 0
+            ):
+                if interaction_cards:
+                    first = interaction_cards[0]
+                    other = first.get("name_b") or ""
+                    interaction_alert = (
+                        f"{first.get('name_a')}과 {other}는 함께 먹을 때 주의가 필요해요."
+                        if other
+                        else str(
+                            latest_risk["description"] or "함께 먹을 때 주의가 필요해요."
+                        )
+                    )
+                else:
+                    interaction_alert = str(
+                        latest_risk["description"] or "함께 먹을 때 주의가 필요해요."
+                    )
 
         return {
             "user_id": uid,
@@ -131,6 +153,7 @@ def get_today_medicines(user_id: str, target_date: str | None = None) -> dict[st
             "source": "server",
             "has_server_medicines": bool(doses),
             "interaction_alert": interaction_alert,
+            "interaction_cards": interaction_cards,
         }
     finally:
         conn.close()

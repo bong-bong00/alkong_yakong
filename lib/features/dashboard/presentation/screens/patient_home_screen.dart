@@ -182,7 +182,19 @@ class _PatientHomeScreenState extends ConsumerState<PatientHomeScreen> {
                   _SnoozeNotice(text: _snoozeNotice!),
                   const SizedBox(height: 12),
                 ],
-                if ((today.interactionAlert ?? '').trim().isNotEmpty) ...[
+                if (today.interactionCards.isNotEmpty) ...[
+                  for (final card in today.interactionCards) ...[
+                    _InteractionPriorityCard(
+                      card: card,
+                      onOpenDrug: widget.onOpenDrug,
+                      medicines: [
+                        for (final dose in today.doses)
+                          ...dose.medicines,
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                  ],
+                ] else if ((today.interactionAlert ?? '').trim().isNotEmpty) ...[
                   SeniorCard(
                     padding: const EdgeInsets.all(18),
                     borderColor: AppColors.dangerBorder,
@@ -355,6 +367,93 @@ class _SnoozeNotice extends StatelessWidget {
         style: AppText.label(size: 18.5, color: AppColors.pointInk),
       ),
     );
+  }
+}
+
+class _InteractionPriorityCard extends StatelessWidget {
+  final InteractionPriorityCard card;
+  final void Function(Medicine)? onOpenDrug;
+  final List<Medicine> medicines;
+
+  const _InteractionPriorityCard({
+    required this.card,
+    required this.onOpenDrug,
+    required this.medicines,
+  });
+
+  Medicine? _byCode(String? code) {
+    final needle = (code ?? '').trim();
+    if (needle.isEmpty) return null;
+    for (final medicine in medicines) {
+      if ((medicine.medicineCode ?? '').trim() == needle) return medicine;
+    }
+    return null;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SeniorCard(
+      padding: const EdgeInsets.all(18),
+      borderColor: AppColors.dangerBorder,
+      borderWidth: 2,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '함께먹기 주의가 있어요',
+            style: AppText.cardTitle(size: 19, color: AppColors.danger),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            '${card.nameA} ↔ ${card.nameB}',
+            style: AppText.body(size: 18),
+          ),
+          const SizedBox(height: 4),
+          Text(card.reason, style: AppText.body(size: 17)),
+          if ((card.cautionA ?? '').trim().isNotEmpty) ...[
+            const SizedBox(height: 10),
+            Text(
+              '${card.nameA}: ${card.cautionA}',
+              style: AppText.label(size: 17, color: AppColors.danger),
+            ),
+          ],
+          if ((card.cautionB ?? '').trim().isNotEmpty) ...[
+            const SizedBox(height: 6),
+            Text(
+              '${card.nameB}: ${card.cautionB}',
+              style: AppText.label(size: 17, color: AppColors.danger),
+            ),
+          ],
+          const SizedBox(height: 8),
+          Text(
+            '의사나 약사에게 확인해 주세요.',
+            style: AppText.label(size: 17, color: AppColors.danger),
+          ),
+          if (onOpenDrug != null) ...[
+            const SizedBox(height: 10),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final medicine in [_byCode(card.codeA), _byCode(card.codeB)])
+                  if (medicine != null)
+                    OutlinedButton(
+                      onPressed: () => onOpenDrug!(medicine),
+                      child: Text(_shortName(medicine.ingredient)),
+                    ),
+              ],
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  static String _shortName(String name) {
+    final trimmed = name.trim();
+    final index = trimmed.indexOf('(');
+    if (index > 0) return trimmed.substring(0, index).trim();
+    return trimmed;
   }
 }
 
