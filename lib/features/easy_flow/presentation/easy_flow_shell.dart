@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../core/constants/app_colors.dart';
 import '../../../core/mode/app_mode.dart';
@@ -121,7 +122,7 @@ class _EasyFlowShellState extends ConsumerState<EasyFlowShell> {
           onOpenRecord: () => _goTo(EasyScreen.record),
           onOpenHeartbeat: () => _goTo(EasyScreen.heart),
           onOpenMedicines: () => _goTo(EasyScreen.medicines),
-          onOpenChat: () => _goTo(EasyScreen.chat),
+          onOpenChat: () => context.push('/drug-explain'),
           onOpenPrescription: () => _goTo(EasyScreen.prescription),
           onDone: () => _goTo(EasyScreen.done),
           onMeasure: () => _goTo(EasyScreen.measure),
