@@ -97,6 +97,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // 처음 불러오는 동안에는 빈 화면 대신 그렇다고 말한다.
+    if (_isLoading && _dashboard == null) {
+      return const Scaffold(
+        body: Center(child: CircularProgressIndicator()),
+      );
+    }
     final medication = _asMap(_dashboard?['medication_summary']);
     final todayMedications = _dashboard?['today_medications'];
     final summarySchedules = medication?['schedules'];
@@ -116,9 +122,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final risk = _asMap(_dashboard?['latest_risk']);
     final prescription = _asMap(_dashboard?['latest_prescription']);
     final event = _asMap(_dashboard?['latest_abnormal_event']);
-    final recentNotifications = _dashboard?['recent_notifications'] is List
-        ? _dashboard!['recent_notifications'] as List
-        : const <dynamic>[];
     final prescriptionMedicines = _stringList(prescription?['medicine_names']);
     final visiblePrescriptionMedicines = prescriptionMedicines
         .where((name) => !_isAspirinFallbackText(name))

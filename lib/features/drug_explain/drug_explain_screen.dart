@@ -308,9 +308,7 @@ class _DrugExplainScreenState extends State<DrugExplainScreen> {
               child: ChoiceChip(
                 label: Text(label),
                 selected: selected,
-                onSelected: _isLoading
-                    ? null
-                    : (_) => _selectKeyword(keyword),
+                onSelected: _isLoading ? null : (_) => _selectKeyword(keyword),
                 labelStyle: TextStyle(
                   color: selected ? Colors.white : kText,
                   fontSize: 15,
@@ -318,16 +316,11 @@ class _DrugExplainScreenState extends State<DrugExplainScreen> {
                 ),
                 backgroundColor: Colors.white,
                 selectedColor: kPrimary,
-                side: BorderSide(
-                  color: selected ? kPrimary : kPrimaryLight,
-                ),
+                side: BorderSide(color: selected ? kPrimary : kPrimaryLight),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(18),
                 ),
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 8,
-                  vertical: 8,
-                ),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
               ),
             );
           }).toList(),

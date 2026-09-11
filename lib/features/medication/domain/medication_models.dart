@@ -4,6 +4,8 @@
 /// 복약 완료 → "다 드셨어요", 미복약 → "아직 안 드셨어요".
 library;
 
+import 'package:flutter/material.dart';
+
 /// 하루 세 번의 복약 시간대.
 enum DoseSlot {
   morning('아침', 8),
@@ -52,6 +54,13 @@ class Medicine {
   /// 어르신용 쉬운 분류 — "혈압약". 화면에 `이름 (분류)` 로 붙인다.
   final String? easyCategory;
 
+  /// 효능 한 줄 — "혈당 낮추는 약". 성분명 옆에 늘 붙는다.
+  /// 서버가 주는 [easyCategory]가 있으면 그것을 쓴다.
+  final String? _effect;
+
+  /// 약 설명 화면을 찾을 키 — 'met' / 'aml' / 'asp'.
+  final String? key;
+
   /// 오늘 스케줄 id — 「먹었어요」 서버 기록용.
   final int? scheduleId;
 
@@ -60,8 +69,10 @@ class Medicine {
     required this.amount,
     this.appearance,
     this.easyCategory,
+    String? effect,
+    this.key,
     this.scheduleId,
-  });
+  }) : _effect = effect;
 
   /// 홈·목록에 쓰는 한 줄 — "암로디핀 5mg (혈압약)".
   String get displayName {
@@ -71,6 +82,28 @@ class Medicine {
   }
 
   /// 음성으로 읽어줄 때의 한 줄 — "메트포르민 500mg, 흰색 동그란 알약 1알".
+  /// 효능 한 줄. 손으로 넣은 값이 없으면 서버가 준 쉬운 분류를 쓴다.
+  String? get effect => _effect ?? easyCategory;
+
+  /// "흰색 알약 1알" — 이름 대신 생김새로 부르는 한 줄.
+  /// 잠결이나 알림에서는 성분명보다 이쪽이 먼저 읽힌다.
+  String get shapePhrase =>
+      appearance == null ? '$ingredient $amount' : '$appearance $amount';
+
+  /// 미리보기 동그라미 색. 사진이 붙기 전까지 생김새 글에서 뽑아 쓴다.
+  // TODO: 식약처 낱알식별 이미지가 붙으면 이 자리를 사진으로 바꾼다.
+  Color get pillColor {
+    final look = appearance ?? '';
+    if (look.contains('노란') || look.contains('노랑')) {
+      return const Color(0xFFF3D98B);
+    }
+    if (look.contains('분홍') || look.contains('붉은')) {
+      return const Color(0xFFEFC0BA);
+    }
+    if (look.contains('파란')) return const Color(0xFFB9C4F2);
+    return const Color(0xFFF0F0F4);
+  }
+
   String get spoken => appearance == null
       ? '$displayName $amount'
       : '$displayName, $appearance $amount';
@@ -144,12 +177,20 @@ class TodayMedication {
   final int heartRate;
   final bool heartRateNormal;
 
+  /// 이 처방으로 며칠 더 드실 수 있는지.
+  final int daysLeft;
+
+  String get daysLeftPhrase => daysLeft == 0
+      ? '이 처방이 오늘로 끝나요'
+      : '이 처방 $daysLeft일치 남았어요';
+
   const TodayMedication({
     required this.doses,
     required this.guardianRelation,
     required this.guardianName,
     required this.heartRate,
     required this.heartRateNormal,
+    this.daysLeft = 3,
   });
 
   /// "딸 지안 님".
@@ -178,11 +219,12 @@ class TodayMedication {
     return '${done.join('·')} 다 드셨어요';
   }
 
-  TodayMedication copyWith({List<DoseEntry>? doses}) => TodayMedication(
+  TodayMedication copyWith({List<DoseEntry>? doses, int? daysLeft}) => TodayMedication(
     doses: doses ?? this.doses,
     guardianRelation: guardianRelation,
     guardianName: guardianName,
     heartRate: heartRate,
     heartRateNormal: heartRateNormal,
-  );
+          daysLeft: daysLeft ?? this.daysLeft,
+      );
 }

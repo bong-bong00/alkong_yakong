@@ -31,6 +31,28 @@ class MedicationController extends Notifier<TodayMedication> {
     return _demoToday();
   }
 
+  /// 오늘 리필 시트를 이미 물어봤는지. 하루에 한 번만 뜬다.
+  bool _refillAsked = false;
+
+  bool get refillAsked => _refillAsked;
+
+  /// 처방이 오늘로 끝나는데 아직 안 물어봤으면 물어본다.
+  bool get shouldAskRefill => state.daysLeft == 0 && !_refillAsked;
+
+  void markRefillAsked() => _refillAsked = true;
+
+  /// 하루가 지나면 남은 날수를 하나 줄인다.
+  void decrementDaysLeft() {
+    if (state.daysLeft <= 0) return;
+    state = state.copyWith(daysLeft: state.daysLeft - 1);
+  }
+
+  /// 새 처방을 받으면 날수를 다시 채우고 리필 질문도 풀어 둔다.
+  void refill({int days = 21}) {
+    _refillAsked = false;
+    state = state.copyWith(daysLeft: days);
+  }
+
   Future<void> refreshFromServer() async {
     try {
       final userId = Uri.encodeComponent(MvpSession.userId);
@@ -118,12 +140,16 @@ class MedicationController extends Notifier<TodayMedication> {
               amount: '1알',
               appearance: '노란 길쭉한 알약',
               easyCategory: '혈압 낮춤',
+              effect: '혈압 내리는 약',
+              key: 'aml',
             ),
             Medicine(
               ingredient: '아스피린 100mg',
               amount: '1알',
-              appearance: '흰색 동그란 알약',
+              appearance: '작은 흰색 알약',
               easyCategory: '피 묽게',
+              effect: '피를 묽게 하는 약',
+              key: 'asp',
             ),
           ],
           taken: true,
@@ -136,6 +162,8 @@ class MedicationController extends Notifier<TodayMedication> {
               amount: '1알',
               appearance: '흰색 동그란 알약',
               easyCategory: '혈당 조절',
+              effect: '혈당 낮추는 약',
+              key: 'met',
             ),
           ],
           taken: true,
@@ -148,12 +176,16 @@ class MedicationController extends Notifier<TodayMedication> {
               amount: '1알',
               appearance: '흰색 동그란 알약',
               easyCategory: '혈당 조절',
+              effect: '혈당 낮추는 약',
+              key: 'met',
             ),
             Medicine(
               ingredient: '암로디핀 5mg',
               amount: '1알',
               appearance: '노란 길쭉한 알약',
               easyCategory: '혈압 낮춤',
+              effect: '혈압 내리는 약',
+              key: 'aml',
             ),
           ],
         ),

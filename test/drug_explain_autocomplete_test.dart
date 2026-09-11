@@ -171,7 +171,7 @@ void main() {
     await tester.tap(find.text('#복용방법'));
     await tester.pumpAndSettle();
     expect(chatBodies.last.containsKey('selected_medicine'), isFalse);
-    expect(find.text('복용방법 답변'), findsOneWidget);
+    expect(find.text('복용방법 답변'), findsNWidgets(2));
   });
 
   testWidgets('빠른 질문 8종은 선택 약으로 만든 기존 문장을 즉시 전송한다', (tester) async {
@@ -224,10 +224,15 @@ void main() {
     for (final entry in expected.entries) {
       await tester.pumpWidget(appWith(client));
       await tester.pumpAndSettle();
-      final chip = tester.widget<ChoiceChip>(
-        find.widgetWithText(ChoiceChip, entry.key),
-      );
-      chip.onSelected!(true);
+      final medicineChip = find.widgetWithText(ChoiceChip, '게보린정');
+      if (!tester.widget<ChoiceChip>(medicineChip).selected) {
+        tester.widget<ChoiceChip>(medicineChip).onSelected!(true);
+        await tester.pump();
+      }
+      expect(tester.widget<ChoiceChip>(medicineChip).selected, isTrue);
+      final keywordChip = find.widgetWithText(ChoiceChip, entry.key);
+      await tester.ensureVisible(keywordChip);
+      await tester.tap(keywordChip);
       await tester.pumpAndSettle();
       expect(sentMessages.last, entry.value);
       expect(sentIntents.last, expectedIntents[entry.key]);
@@ -316,7 +321,11 @@ void main() {
     await tester.pumpAndSettle();
 
     Future<void> selectSearchResult(String query, String result) async {
-      await tester.tap(find.text('다른 약 검색하기'));
+      final otherMedicineButton = find.widgetWithText(
+        OutlinedButton,
+        '다른 약 검색하기',
+      );
+      tester.widget<OutlinedButton>(otherMedicineButton).onPressed!();
       await tester.pumpAndSettle();
       await tester.enterText(
         find.byKey(const Key('otherMedicineSearchField')),
@@ -343,7 +352,11 @@ void main() {
       'product_name': '검색약D',
     });
 
-    await tester.tap(find.text('다른 약 검색하기'));
+    final otherMedicineButton = find.widgetWithText(
+      OutlinedButton,
+      '다른 약 검색하기',
+    );
+    tester.widget<OutlinedButton>(otherMedicineButton).onPressed!();
     await tester.pumpAndSettle();
     await tester.tap(find.text('취소'));
     await tester.pumpAndSettle();

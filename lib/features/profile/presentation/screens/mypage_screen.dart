@@ -4,13 +4,25 @@ import 'package:go_router/go_router.dart';
 import 'package:flutter_tabler_icons/flutter_tabler_icons.dart';
 
 import '../../../../core/constants/app_colors.dart';
+import '../../../../core/mode/app_mode.dart';
 import '../../../../core/providers/user_role.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../core/widgets/senior_button.dart';
 import '../../../../core/widgets/senior_card.dart';
+import '../../../../core/widgets/senior_feedback.dart';
 import '../../../../core/widgets/senior_header.dart';
+import '../../../dashboard/presentation/screens/profile_edit_screen.dart';
 import '../../../dashboard/presentation/screens/settings_menu.dart';
+import '../../../guardian/data/guardian_repository.dart';
+import '../../../guardian/presentation/widgets/add_care_sheet.dart';
 import '../../../medication/application/medication_controller.dart';
+import '../../../reminder/presentation/screens/alarm_settings_screen.dart';
+import '../../../../core/session/auth_session.dart';
+import '../../../biosignal/domain/heart_data.dart';
+import '../../../biosignal/presentation/screens/polar_screen.dart';
+import '../../../dur_analysis/presentation/screens/dur_analysis_screen.dart';
+import '../../../medicines/presentation/screens/my_medicines_screen.dart';
+import '../widgets/logout_sheet.dart';
 import 'account_screen.dart';
 
 /// 4h — 내 정보 · 설정.
@@ -36,17 +48,39 @@ class MyPageScreen extends ConsumerStatefulWidget {
 }
 
 class _MyPageScreenState extends ConsumerState<MyPageScreen> {
-  bool _loudAlarm = true;
+  /// 로그아웃하면 일반 모드로 되돌린다.
+  /// 다음 사람이 쉬운 모드에 갇힌 채로 로그인 화면을 만나지 않도록.
+  Future<void> _logout() async {
+    final confirmed = await showLogoutSheet(context);
+    if (!confirmed || !mounted) return;
+    await ref.read(appModeProvider.notifier).set(AppMode.normal);
+    await AuthSession.logout();
+    if (mounted) context.go('/login');
+  }
 
-  void _todo(String name) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('$name — 아직 준비 중이에요')),
+  /// 39 시트를 그대로 쓴다. 보호자 화면에 있는 것과 같은 길이다.
+  Future<void> _inviteFamily() async {
+    final draft = await showAddCareSheet(context);
+    if (draft == null || !mounted) return;
+    final result = await GuardianRepository().invite(
+      name: draft.name,
+      relation: draft.relation,
+      phone: draft.phone,
+    );
+    if (!mounted) return;
+    // 서버가 받아 준 뒤에만 보냈다고 말한다.
+    showSeniorSnackbar(
+      context,
+      result.isSent
+          ? '${draft.name} 님에게 초대를 보냈어요'
+          : result.error ?? '초대를 보내지 못했어요',
     );
   }
 
   @override
   Widget build(BuildContext context) {
     final today = ref.watch(medicationProvider);
+    final mode = ref.watch(appModeProvider);
     final age = DateTime.now().year - widget.birthYear;
     final medicineCount = today.doses
         .expand((d) => d.medicines.map((m) => m.ingredient))
@@ -101,7 +135,44 @@ class _MyPageScreenState extends ConsumerState<MyPageScreen> {
                         expand: false,
                         color: AppColors.point,
                         fontSize: 18,
-                        onPressed: () => _todo('내 정보 고치기'),
+                        onPressed: () => Navigator.of(context).push(
+                          MaterialPageRoute<void>(
+                            builder: (_) => ProfileEditScreen(
+                              isGuardian: widget.isGuardian,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 12),
+
+                // ── 화면 모드 ──
+                // 토글이 아니라 세그먼트다. 지금 어느 쪽인지가 늘 보인다.
+                SeniorCard(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 20,
+                    vertical: 18,
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Text('화면 모드', style: AppText.cardTitle(size: 20)),
+                      const SizedBox(height: 6),
+                      Text(
+                        mode.isEasy
+                            ? '다음 할 일 버튼 하나만 따라가면 됩니다'
+                            : '버튼 하나만 따라가는 쉬운 화면으로 바꿀 수 있어요',
+                        style: AppText.caption(size: 17.5),
+                      ),
+                      const SizedBox(height: 14),
+                      SeniorSegmented(
+                        labels: const ['일반', '쉬운 화면'],
+                        index: mode.isEasy ? 1 : 0,
+                        onChanged: (i) => ref
+                            .read(appModeProvider.notifier)
+                            .set(i == 1 ? AppMode.easy : AppMode.normal),
                       ),
                     ],
                   ),
@@ -121,15 +192,43 @@ class _MyPageScreenState extends ConsumerState<MyPageScreen> {
                         icon: TablerIcons.pill,
                         value: '$medicineCount가지',
                         trailing: const SeniorChevron(),
-                        onTap: () => _todo('내 약 목록'),
+                        onTap: () => Navigator.of(context).push(
+                          MaterialPageRoute<void>(
+                            builder: (_) => const MyMedicinesScreen(),
+                          ),
+                        ),
                       ),
                       const SeniorDivider(),
                       SeniorListRow(
-                        label: '약 먹는 시간',
-                        icon: TablerIcons.clock,
-                        value: '하루 ${today.doses.length}번',
+                        label: '약 함께먹기 주의',
+                        icon: TablerIcons.alert_triangle,
+                        iconColor: AppColors.danger,
+                        value: '1건',
+                        valueColor: AppColors.danger,
                         trailing: const SeniorChevron(),
-                        onTap: () => _todo('약 먹는 시간'),
+                        onTap: () => Navigator.of(context).push(
+                          MaterialPageRoute<void>(
+                            builder: (_) => const DurAnalysisScreen(),
+                          ),
+                        ),
+                      ),
+                      const SeniorDivider(),
+                      SeniorListRow(
+                        label: '복약 알림',
+                        icon: TablerIcons.bell,
+                        // 소리로 알려주기만 한다. 말로 기록하는 기능은 없다.
+                        subtitle: '아침 8시 · 저녁 6시 · 소리로 알려드려요',
+                        trailing: const SeniorChevron(),
+                        onTap: () => Navigator.of(context).push(
+                          MaterialPageRoute<void>(
+                            builder: (_) => AlarmSettingsScreen(
+                              userName: widget.userName,
+                              guardianTitle:
+                                  '${today.guardianRelation} '
+                                  '${today.guardianName} 님',
+                            ),
+                          ),
+                        ),
                       ),
                       const SeniorDivider(),
                       SeniorListRow(
@@ -139,25 +238,10 @@ class _MyPageScreenState extends ConsumerState<MyPageScreen> {
                         subtitle: '연결됨 · 심박 센서',
                         subtitleColor: AppColors.point,
                         trailing: const SeniorChevron(),
-                        onTap: () => context.push('/biosignal'),
-                      ),
-                      const SeniorDivider(),
-                      SeniorListRow(
-                        label: '듣고 말하기',
-                        icon: TablerIcons.volume_2,
-                        value: '켜기',
-                        valueColor: AppColors.point,
-                        trailing: const SeniorChevron(),
-                        onTap: () => context.push('/voice'),
-                      ),
-                      const SeniorDivider(),
-                      SeniorListRow(
-                        label: '알림 소리 · 크게',
-                        icon: TablerIcons.bell,
-                        trailing: SeniorToggle(
-                          value: _loudAlarm,
-                          semanticLabel: '알림 소리를 크게',
-                          onChanged: (v) => setState(() => _loudAlarm = v),
+                        onTap: () => Navigator.of(context).push(
+                          MaterialPageRoute<void>(
+                            builder: (_) => const PolarScreen(data: HeartData.demo),
+                          ),
                         ),
                       ),
                     ],
@@ -207,12 +291,30 @@ class _MyPageScreenState extends ConsumerState<MyPageScreen> {
                         ],
                       ),
                       const SizedBox(height: 14),
+                      // 보호자 계정은 따로 있다. 여기서 열리지 않는다는 사실을
+                      // 미리 적어 두지 않으면 "안 열린다"는 문의가 된다.
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 18,
+                          vertical: 16,
+                        ),
+                        decoration: BoxDecoration(
+                          color: AppColors.sunken,
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        child: Text(
+                          '${today.guardianName} 님은 따로 가입한 보호자 계정으로 봅니다. '
+                          '어르신 화면에서는 보호자 화면이 열리지 않아요.',
+                          style: AppText.body(size: 17.5),
+                        ),
+                      ),
+                      const SizedBox(height: 14),
                       SeniorButton(
                         label: '가족 더 초대하기',
                         kind: SeniorButtonKind.secondary,
                         minHeight: 58,
                         fontSize: 20,
-                        onPressed: () => _todo('가족 초대'),
+                        onPressed: _inviteFamily,
                       ),
                     ],
                   ),
@@ -240,12 +342,27 @@ class _MyPageScreenState extends ConsumerState<MyPageScreen> {
                     ),
                   ),
                 ),
+                const SizedBox(height: 28),
+
+                // 눈에 띄지 않게, 그러나 찾을 수 있게. 회색 글씨 한 줄.
+                SeniorCard(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 22,
+                    vertical: 4,
+                  ),
+                  child: SeniorListRow(
+                    label: '로그아웃',
+                    labelColor: AppColors.textTertiary,
+                    trailing: const SeniorChevron(),
+                    onTap: _logout,
+                  ),
+                ),
 
                 if (widget.isGuardian) ...[
                   const SizedBox(height: 12),
                   SeniorButton(
                     label: '어르신 화면으로 바꾸기',
-                    kind: SeniorButtonKind.outline,
+                    kind: SeniorButtonKind.secondary,
                     minHeight: 58,
                     fontSize: 20,
                     onPressed: () => ref
@@ -256,7 +373,7 @@ class _MyPageScreenState extends ConsumerState<MyPageScreen> {
                   const SizedBox(height: 12),
                   SeniorButton(
                     label: '보호자 화면으로 바꾸기',
-                    kind: SeniorButtonKind.outline,
+                    kind: SeniorButtonKind.secondary,
                     minHeight: 58,
                     fontSize: 20,
                     onPressed: () => ref

@@ -47,7 +47,7 @@ class AccountScreen extends StatelessWidget {
                         const SizedBox(height: 16),
                         SeniorButton(
                           label: '나가기',
-                          kind: SeniorButtonKind.outline,
+                          kind: SeniorButtonKind.secondary,
                           minHeight: 62,
                           fontSize: 21,
                           onPressed: () async {

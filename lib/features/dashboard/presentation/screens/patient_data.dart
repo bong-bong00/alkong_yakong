@@ -42,6 +42,21 @@ class PatientData {
   });
 }
 
+/// 아직 수락하지 않은 초대.
+///
+/// 초대를 보냈다고 현황이 열리지는 않는다. 어르신이 수락해야 열린다 —
+/// 동의 없이 남의 복약을 들여다보는 길을 만들지 않는다.
+class PendingInvite {
+  final String name;
+  final String relation;
+  final String phone;
+  const PendingInvite({
+    required this.name,
+    required this.relation,
+    required this.phone,
+  });
+}
+
 class ActivityItem {
   final String text;
 
@@ -72,7 +87,9 @@ class Slot {
 }
 
 class AlertItem {
-  final String type; // 'alert'(심박) | 'done' | 'miss'
+  /// 'miss'·'alert' 위험 · 'refill' 약 떨어짐 · 'shared' 어르신이 보냄 ·
+  /// 'done' 복약 완료 · 'prescription' 새 처방전 · 'past' 지난 것.
+  final String type;
   final String title;
   final String desc;
   final String time;
@@ -90,7 +107,12 @@ class AlertItem {
 //  데모 데이터 — 환자 2명 (서로 다르게)
 // ════════════════════════════════════════════════════════════════
 class DemoPatients {
-  static const List<PatientData> all = [_bokja, _cheolsu];
+  static const List<PatientData> all = [_bokja, _cheolsu, _yeongsuk];
+
+  /// 아직 수락을 기다리는 초대.
+  static const List<PendingInvite> pending = [
+    PendingInvite(name: '이순자', relation: '이모', phone: '010-2233-****'),
+  ];
 
   static const PatientData _bokja = PatientData(
     name: '김복자',
@@ -127,6 +149,36 @@ class DemoPatients {
       ]),
     ],
     alerts: [
+      AlertItem(
+        type: 'miss',
+        title: '약을 안 드셨어요',
+        desc: '어머니가 저녁 약을 드시지 않았어요',
+        time: '어제 저녁',
+      ),
+      AlertItem(
+        type: 'refill',
+        title: '약이 떨어졌어요',
+        desc: '아스피린 처방이 오늘로 끝났어요',
+        time: '방금',
+      ),
+      AlertItem(
+        type: 'shared',
+        title: '어머니가 보냈어요',
+        desc: '아스피린·와파린 함께먹기 주의를 확인해 달래요',
+        time: '11:20',
+      ),
+      AlertItem(
+        type: 'prescription',
+        title: '새 처방전',
+        desc: '약 3가지가 새로 등록됐어요',
+        time: '어제',
+      ),
+      AlertItem(
+        type: 'past',
+        title: '심박수',
+        desc: '일주일 동안 모두 정상이었어요',
+        time: '3일 전',
+      ),
       AlertItem(
         type: 'alert',
         title: '심장 박동이 빨라요',
@@ -201,6 +253,50 @@ class DemoPatients {
         title: '약 다 드셨어요',
         desc: '김철수 님이 아침 약을 다 드셨어요',
         time: '07:50',
+      ),
+    ],
+  );
+
+  static const PatientData _yeongsuk = PatientData(
+    name: '박영숙',
+    relation: '장모님',
+    initial: '영',
+    age: 79,
+    takenCount: 1,
+    totalCount: 3,
+    nextDose: '점심 약',
+    currentHr: 74,
+    hrNormal: true,
+    okToday: false,
+    syncedAgo: '1시간 전',
+    activities: [
+      ActivityItem('아침 약 다 드셨어요', '08:05'),
+      ActivityItem('약 드신 뒤 심장 박동 정상 (74)', '08:15'),
+    ],
+    records: [
+      DayRecord('6월 5일 (오늘)', [
+        Slot('아침', taken: true, time: '08:05', hr: 74, meds: ['혈압약']),
+        Slot('점심', taken: false, meds: ['혈압약', '골다공증약']),
+        Slot('저녁', taken: false, meds: ['혈압약']),
+      ]),
+      DayRecord('6월 4일', [
+        Slot('아침', taken: true, time: '08:00', hr: 73, meds: ['혈압약']),
+        Slot('점심', taken: true, time: '12:40', hr: 76, meds: ['혈압약', '골다공증약']),
+        Slot('저녁', taken: true, time: '18:25', hr: 72, meds: ['혈압약']),
+      ]),
+    ],
+    alerts: [
+      AlertItem(
+        type: 'miss',
+        title: '약을 안 드셨어요',
+        desc: '박영숙 님이 점심 약을 드시지 않았어요',
+        time: '13:30',
+      ),
+      AlertItem(
+        type: 'done',
+        title: '약 다 드셨어요',
+        desc: '박영숙 님이 아침 약을 다 드셨어요 (심장 박동 74)',
+        time: '08:05',
       ),
     ],
   );

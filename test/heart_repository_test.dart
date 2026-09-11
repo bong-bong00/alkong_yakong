@@ -1,0 +1,94 @@
+import 'dart:convert';
+
+import 'package:alkong_yakong/core/network/api_client.dart';
+import 'package:alkong_yakong/core/session/mvp_session.dart';
+import 'package:alkong_yakong/features/biosignal/data/heart_repository.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
+
+/// 서버 응답을 화면이 쓰는 모양으로 옮기는 자리.
+/// 여기서 조용히 틀리면 가짜 숫자가 진짜 기록으로 보인다.
+void main() {
+  HeartRepository repositoryReturning(Object body, {int status = 200}) {
+    final client = MockClient(
+      (_) async => http.Response(
+        jsonEncode(body),
+        status,
+        headers: {'content-type': 'application/json; charset=utf-8'},
+      ),
+    );
+    return HeartRepository(apiClient: ApiClient(client: client));
+  }
+
+  setUp(() => MvpSession.userId = 'u1');
+
+  test('전·후 쌍과 주·월을 그대로 옮긴다', () async {
+    final data = await repositoryReturning({
+      'today': {'before': 78, 'after': 72},
+      'today_slot_label': '저녁 약',
+      'before_at': '17:45',
+      'after_at': '18:20',
+      'week': [
+        {'weekday': '월', 'before': 80, 'after': 74},
+        {'weekday': '화', 'before': null, 'after': null},
+      ],
+      'month': [
+        {'day': 1, 'before': 80, 'after': 74},
+        {'day': 2, 'before': null, 'after': null},
+      ],
+      'streak_days': 9,
+      'best_streak_days': 14,
+      'anomaly': {'day': 12, 'label': '9월 12일', 'before': 96, 'after': 84},
+    }).fetch();
+
+    expect(data, isNotNull);
+    expect(data!.today.before, 78);
+    expect(data.today.after, 72);
+    expect(data.today.drop, 6);
+    expect(data.week.length, 2);
+    expect(data.week.first.weekday, '월');
+    expect(data.month[1].isMissing, isTrue);
+    expect(data.streakDays, 9);
+    expect(data.anomaly!.day, 12);
+  });
+
+  test('못 잰 쪽은 비운 채로 둔다 — 숫자를 지어내지 않는다', () async {
+    final data = await repositoryReturning({
+      'today': {'before': null, 'after': 72},
+      'week': <dynamic>[],
+      'month': <dynamic>[],
+      'anomaly': null,
+    }).fetch();
+
+    expect(data!.today.before, isNull);
+    expect(data.today.after, 72);
+    expect(data.today.isComplete, isFalse);
+    expect(data.today.drop, isNull);
+    expect(data.beforeAt, '');
+    expect(data.anomaly, isNull);
+  });
+
+  test('이상한 날은 세 값이 다 있어야 인정한다', () async {
+    final data = await repositoryReturning({
+      'today': {'before': 78, 'after': 72},
+      'week': <dynamic>[],
+      'month': <dynamic>[],
+      // after 가 빠졌다. 이걸로 "이상했던 날"이라고 말할 수 없다.
+      'anomaly': {'day': 12, 'before': 96},
+    }).fetch();
+
+    expect(data!.anomaly, isNull);
+  });
+
+  test('서버가 실패하면 null — 데모로 조용히 갈아끼우지 않는다', () async {
+    final data = await repositoryReturning({'detail': '없음'}, status: 500).fetch();
+    expect(data, isNull);
+  });
+
+  test('로그인 전이면 부르지 않는다', () async {
+    MvpSession.userId = '';
+    final data = await repositoryReturning({'today': {}}).fetch();
+    expect(data, isNull);
+  });
+}
