@@ -328,58 +328,12 @@ def analyze_dur_consultation(
         )
 
         age = _age_from_birth_date(user["birth_date"])
-        if "연령금기" in risk_types and age is None:
-            logger.warning(
-                "DUR consultation diagnostic risk_types=%s selected=true "
-                "ingredient_usable=true ingredient_key_count=%d "
-                "active_medicine_count=%d sync_status=not_started "
-                "status=missing reason=missing_birth_date match_count=0",
-                sorted(risk_types),
-                ingredient_key_count,
-                active_medicine_count,
-            )
-            return {
-                "status": "missing",
-                "items": [],
-                "scope": "consultation",
-                "reason": "missing_birth_date",
-            }
         try:
             pregnancy_value = user["is_pregnant"]
-            if pregnancy_value is None and "임부금기" in risk_types:
-                logger.warning(
-                    "DUR consultation diagnostic risk_types=%s selected=true "
-                    "ingredient_usable=true ingredient_key_count=%d "
-                    "active_medicine_count=%d sync_status=not_started "
-                    "status=missing reason=missing_pregnancy_status match_count=0",
-                    sorted(risk_types),
-                    ingredient_key_count,
-                    active_medicine_count,
-                )
-                return {
-                    "status": "missing",
-                    "items": [],
-                    "scope": "consultation",
-                    "reason": "missing_pregnancy_status",
-                }
-            is_pregnant = bool(pregnancy_value)
+            is_pregnant = (
+                bool(pregnancy_value) if pregnancy_value is not None else None
+            )
         except (KeyError, IndexError, TypeError):
-            if "임부금기" in risk_types:
-                logger.warning(
-                    "DUR consultation diagnostic risk_types=%s selected=true "
-                    "ingredient_usable=true ingredient_key_count=%d "
-                    "active_medicine_count=%d sync_status=not_started "
-                    "status=missing reason=missing_pregnancy_status match_count=0",
-                    sorted(risk_types),
-                    ingredient_key_count,
-                    active_medicine_count,
-                )
-                return {
-                    "status": "missing",
-                    "items": [],
-                    "scope": "consultation",
-                    "reason": "missing_pregnancy_status",
-                }
             is_pregnant = None
 
         ingredients = [
@@ -458,6 +412,7 @@ def analyze_dur_consultation(
             lookup_grouped,
             age=age,
             is_pregnant=is_pregnant,
+            include_official_criteria=True,
         )
         efficacy_duplicate_matches = _efficacy_duplicate_matches(
             taboo_rows,
@@ -715,6 +670,7 @@ def _taboo_matches(
     *,
     age: int | None,
     is_pregnant: bool | None,
+    include_official_criteria: bool = False,
 ) -> list[dict]:
     matches = []
     for row in rows:
@@ -740,9 +696,15 @@ def _taboo_matches(
                 continue
         if risk_type == "연령금기":
             min_age, max_age = _age_bounds_for_row(row)
-            if age is None or not _age_is_restricted(age, min_age, max_age):
+            if not include_official_criteria and (
+                age is None or not _age_is_restricted(age, min_age, max_age)
+            ):
                 continue
-        if risk_type == "임부금기" and is_pregnant is not True:
+        if (
+            risk_type == "임부금기"
+            and not include_official_criteria
+            and is_pregnant is not True
+        ):
             continue
         # 사용자 약 이름을 이유에 붙여 화면에서 이해하기 쉽게
         products_a = [r["product_name"] for r in _grouped_rows(grouped, row["ingredient_a"])]
@@ -759,23 +721,66 @@ def _taboo_matches(
             reason = f"{', '.join(products_a)}" + (
                 f" ↔ {', '.join(products_b)}" if products_b else ""
             ) + f" — {reason}"
-        matches.append(
-            {
-                "type": risk_type,
-                "ingredient_a": row["ingredient_a"],
-                "ingredient_b": row["ingredient_b"],
-                "medicine_names_a": products_a,
-                "medicine_names_b": products_b,
-                "reason": reason,
-                "source": row["source"] or "식약처 DUR",
-                "external_id": row["external_id"],
-                "_medicine_codes": sorted(medicine_codes),
-                "_ingredient_keys": sorted(
-                    set(ingredient_keys(row["ingredient_a"]))
-                    | set(ingredient_keys(row["ingredient_b"]))
-                ),
+        match = {
+            "type": risk_type,
+            "ingredient_a": row["ingredient_a"],
+            "ingredient_b": row["ingredient_b"],
+            "medicine_names_a": products_a,
+            "medicine_names_b": products_b,
+            "reason": reason,
+            "source": row["source"] or "식약처 DUR",
+            "external_id": row["external_id"],
+            "_medicine_codes": sorted(medicine_codes),
+            "_ingredient_keys": sorted(
+                set(ingredient_keys(row["ingredient_a"]))
+                | set(ingredient_keys(row["ingredient_b"]))
+            ),
+        }
+        if include_official_criteria and risk_type in {"연령금기", "임부금기"}:
+            criteria_min_age, criteria_max_age = _age_bounds_for_row(row)
+            match["official_criteria"] = {
+                "description": row["description"],
+                "min_age": criteria_min_age,
+                "max_age": criteria_max_age,
+                "pregnancy_grade": row["pregnancy_grade"],
             }
-        )
+            if risk_type == "연령금기":
+                min_age, max_age = criteria_min_age, criteria_max_age
+                if age is None or (min_age is None and max_age is None):
+                    applicability = "unknown"
+                    applicability_message = (
+                        "사용자 생년월일 또는 공식 연령 범위를 확인할 수 없어 "
+                        "개인 적용 여부는 판단하지 않았습니다."
+                    )
+                elif _age_is_restricted(age, min_age, max_age):
+                    applicability = "applicable"
+                    applicability_message = (
+                        "등록된 생년월일 기준으로 공식 연령 조건에 해당합니다."
+                    )
+                else:
+                    applicability = "not_applicable"
+                    applicability_message = (
+                        "등록된 생년월일 기준으로 공식 연령 조건에 해당하지 않습니다."
+                    )
+            elif is_pregnant is None:
+                applicability = "unknown"
+                applicability_message = (
+                    "사용자 임신 정보가 없어 개인 적용 여부는 판단하지 않았습니다."
+                )
+            elif is_pregnant:
+                applicability = "applicable"
+                applicability_message = (
+                    "등록된 사용자 정보상 임신 상태이므로 이 공식 기준과 관련될 수 있습니다."
+                )
+            else:
+                applicability = "not_applicable"
+                applicability_message = (
+                    "등록된 사용자 정보상 임신 상태는 아니지만, "
+                    "이 내용은 약 자체의 공식 임부금기 기준입니다."
+                )
+            match["user_applicability"] = applicability
+            match["user_applicability_message"] = applicability_message
+        matches.append(match)
     return matches
 
 

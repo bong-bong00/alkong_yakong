@@ -280,25 +280,70 @@ class DurConsultationTest(unittest.TestCase):
         self.assertEqual([item["type"] for item in result["items"]], ["효능군중복"])
         self.assertNotIn("_medicine_codes", result["items"][0])
 
-    def test_missing_birth_date_is_not_reported_as_zero_matches(self):
+    def test_missing_birth_date_still_returns_official_age_criteria(self):
         conn = self._connect()
         conn.execute("UPDATE users SET birth_date = NULL WHERE id = 'U1'")
+        conn.execute(
+            """
+            INSERT INTO dur_taboo (
+                ingredient_a, taboo_type, severity, description, source,
+                external_id, max_age
+            ) VALUES ('ingredientc', '연령금기', 'MEDIUM', 'under 12',
+                      'official', 'AGE-C', 11)
+            """
+        )
         conn.commit()
         conn.close()
-        with self.assertLogs(dur_service.logger, level="WARNING") as captured:
-            result = self._analyze(
-                {
-                    "medicine_code": "C",
-                    "product_name": "Drug C",
-                    "ingredient": "ingredientc",
-                },
-                {"연령금기"},
-            )
-        self.assertEqual(result["status"], "missing")
-        self.assertEqual(result["reason"], "missing_birth_date")
-        output = "\n".join(captured.output)
-        self.assertIn("reason=missing_birth_date", output)
-        self.assertIn("sync_status=not_started", output)
+        result = self._analyze(
+            {
+                "medicine_code": "C",
+                "product_name": "Drug C",
+                "ingredient": "ingredientc",
+            },
+            {"연령금기"},
+        )
+        self.assertEqual(result["status"], "current")
+        self.assertEqual(result["items"][0]["external_id"], "AGE-C")
+        self.assertEqual(result["items"][0]["user_applicability"], "unknown")
+
+    def test_age_not_applicable_still_returns_official_criteria(self):
+        conn = self._connect()
+        conn.execute(
+            """
+            INSERT INTO dur_taboo (
+                ingredient_a, taboo_type, severity, description, source,
+                external_id, max_age
+            ) VALUES ('ingredientc', '연령금기', 'MEDIUM', 'under 12',
+                      'official', 'AGE-C', 11)
+            """
+        )
+        conn.commit()
+        conn.close()
+        result = self._analyze(
+            {"medicine_code": "C", "product_name": "Drug C", "ingredient": "ingredientc"},
+            {"연령금기"},
+        )
+        self.assertEqual(result["items"][0]["user_applicability"], "not_applicable")
+
+    def test_age_applicable_returns_official_criteria(self):
+        conn = self._connect()
+        conn.execute("UPDATE users SET birth_date = '2020-01-01' WHERE id = 'U1'")
+        conn.execute(
+            """
+            INSERT INTO dur_taboo (
+                ingredient_a, taboo_type, severity, description, source,
+                external_id, max_age
+            ) VALUES ('ingredientc', '연령금기', 'MEDIUM', 'under 12',
+                      'official', 'AGE-C', 11)
+            """
+        )
+        conn.commit()
+        conn.close()
+        result = self._analyze(
+            {"medicine_code": "C", "product_name": "Drug C", "ingredient": "ingredientc"},
+            {"연령금기"},
+        )
+        self.assertEqual(result["items"][0]["user_applicability"], "applicable")
 
     def test_combination_does_not_require_birth_date(self):
         conn = self._connect()
@@ -335,9 +380,17 @@ class DurConsultationTest(unittest.TestCase):
         self.assertIn("ingredient_usable=False", output)
         self.assertIn("reason=official_medicine_unavailable", output)
 
-    def test_missing_pregnancy_status_is_not_reported_as_zero_matches(self):
+    def test_missing_pregnancy_status_returns_official_criteria(self):
         conn = self._connect()
         conn.execute("UPDATE users SET is_pregnant = NULL WHERE id = 'U1'")
+        conn.execute(
+            """
+            INSERT INTO dur_taboo (
+                ingredient_a, taboo_type, severity, description, source, external_id
+            ) VALUES ('ingredientc', '임부금기', 'MEDIUM', 'pregnancy caution',
+                      'official', 'PREG-C')
+            """
+        )
         conn.commit()
         conn.close()
         result = self._analyze(
@@ -348,8 +401,8 @@ class DurConsultationTest(unittest.TestCase):
             },
             {"임부금기"},
         )
-        self.assertEqual(result["status"], "missing")
-        self.assertEqual(result["reason"], "missing_pregnancy_status")
+        self.assertEqual(result["status"], "current")
+        self.assertEqual(result["items"][0]["user_applicability"], "unknown")
 
     def test_true_pregnancy_status_runs_pregnancy_check(self):
         conn = self._connect()
@@ -373,10 +426,19 @@ class DurConsultationTest(unittest.TestCase):
         )
         self.assertEqual(result["status"], "current")
         self.assertEqual(result["items"][0]["external_id"], "PREG-C")
+        self.assertEqual(result["items"][0]["user_applicability"], "applicable")
 
-    def test_false_pregnancy_status_is_current(self):
+    def test_false_pregnancy_status_still_returns_official_criteria(self):
         conn = self._connect()
         conn.execute("UPDATE users SET is_pregnant = 0 WHERE id = 'U1'")
+        conn.execute(
+            """
+            INSERT INTO dur_taboo (
+                ingredient_a, taboo_type, severity, description, source, external_id
+            ) VALUES ('ingredientc', '임부금기', 'MEDIUM', 'pregnancy caution',
+                      'official', 'PREG-C')
+            """
+        )
         conn.commit()
         conn.close()
         result = self._analyze(
@@ -388,7 +450,8 @@ class DurConsultationTest(unittest.TestCase):
             {"임부금기"},
         )
         self.assertEqual(result["status"], "current")
-        self.assertEqual(result["items"], [])
+        self.assertEqual(result["items"][0]["external_id"], "PREG-C")
+        self.assertEqual(result["items"][0]["user_applicability"], "not_applicable")
 
     def test_persistent_analysis_still_inserts_risk_result(self):
         before = self._snapshot()[1]
