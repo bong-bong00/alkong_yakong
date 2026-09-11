@@ -11,6 +11,7 @@ import '../../../../core/widgets/senior_card.dart';
 import '../../../../core/widgets/senior_header.dart';
 import '../../../dashboard/presentation/screens/settings_menu.dart';
 import '../../../medication/application/medication_controller.dart';
+import '../../../medicines/application/user_medicines_controller.dart';
 import 'account_screen.dart';
 
 /// 4h — 내 정보 · 설정.
@@ -47,11 +48,15 @@ class _MyPageScreenState extends ConsumerState<MyPageScreen> {
   @override
   Widget build(BuildContext context) {
     final today = ref.watch(medicationProvider);
+    final medicines = ref.watch(userMedicinesProvider);
     final age = DateTime.now().year - widget.birthYear;
-    final medicineCount = today.doses
-        .expand((d) => d.medicines.map((m) => m.ingredient))
-        .toSet()
-        .length;
+    final medicineCount = medicines.maybeWhen(
+      data: (items) => items.length,
+      orElse: () => today.doses
+          .expand((d) => d.medicines.map((m) => m.medicineCode ?? m.ingredient))
+          .toSet()
+          .length,
+    );
 
     return Column(
       children: [
@@ -121,7 +126,7 @@ class _MyPageScreenState extends ConsumerState<MyPageScreen> {
                         icon: TablerIcons.pill,
                         value: '$medicineCount가지',
                         trailing: const SeniorChevron(),
-                        onTap: () => _todo('내 약 목록'),
+                        onTap: () => context.push('/my-medicines'),
                       ),
                       const SeniorDivider(),
                       SeniorListRow(

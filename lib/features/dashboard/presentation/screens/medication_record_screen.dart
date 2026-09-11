@@ -134,7 +134,9 @@ class MedicationRecordScreen extends ConsumerWidget {
         for (final slot in days.first.slots)
           _RecordRow(
             time: slot.label,
-            medicines: slot.meds.join(' · '),
+            medicines: [
+              for (final name in slot.meds) _RecordMedicine(name: name),
+            ],
             taken: slot.taken,
           ),
       ];
@@ -143,7 +145,15 @@ class MedicationRecordScreen extends ConsumerWidget {
       for (final dose in today.doses)
         _RecordRow(
           time: dose.slot.spokenTime,
-          medicines: dose.medicines.map((m) => m.ingredient).join(' · '),
+          medicines: [
+            for (final med in dose.medicines)
+              _RecordMedicine(
+                name: med.displayName,
+                ingredientLabel: med.ingredientLabel,
+                spoken: med.cardSpoken,
+                amount: med.amount,
+              ),
+          ],
           taken: dose.taken,
         ),
     ];
@@ -168,9 +178,23 @@ class _DayStatus {
   bool get partial => total > 0 && taken < total;
 }
 
+class _RecordMedicine {
+  final String name;
+  final String? ingredientLabel;
+  final String? spoken;
+  final String amount;
+
+  const _RecordMedicine({
+    required this.name,
+    this.ingredientLabel,
+    this.spoken,
+    this.amount = '',
+  });
+}
+
 class _RecordRow {
   final String time;
-  final String medicines;
+  final List<_RecordMedicine> medicines;
   final bool taken;
   const _RecordRow({
     required this.time,
@@ -388,31 +412,86 @@ class _TodayRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        // 고정 폭을 주지 않는다 — 글자가 커져도 시각이 잘리면 안 된다.
-        Text(
-          row.time,
-          softWrap: false,
-          style: AppText.cardTitle(size: 19),
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                row.time,
+                style: AppText.cardTitle(size: 19),
+              ),
+            ),
+            Text(
+              row.taken ? '드셨어요' : '아직이에요',
+              style: AppText.cardTitle(
+                size: 17,
+                color: row.taken ? AppColors.point : AppColors.textTertiary,
+              ),
+            ),
+          ],
         ),
-        const SizedBox(width: 14),
-        Expanded(
-          child: Text(
-            row.medicines,
-            style: AppText.body(size: 18.5, color: AppColors.textBody),
-          ),
-        ),
-        const SizedBox(width: 10),
-        Text(
-          row.taken ? '✓' : '대기',
-          style: AppText.cardTitle(
-            size: row.taken ? 20 : 17,
-            color: row.taken ? AppColors.point : AppColors.textTertiary,
-          ),
-        ),
+        const SizedBox(height: 8),
+        for (int i = 0; i < row.medicines.length; i++) ...[
+          if (i > 0) const SeniorDivider(),
+          _RecordMedicineLine(medicine: row.medicines[i]),
+        ],
       ],
+    );
+  }
+}
+
+class _RecordMedicineLine extends StatelessWidget {
+  final _RecordMedicine medicine;
+
+  const _RecordMedicineLine({required this.medicine});
+
+  @override
+  Widget build(BuildContext context) {
+    final ingredient = medicine.ingredientLabel?.trim() ?? '';
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  medicine.name,
+                  style: AppText.cardTitle(size: 21),
+                ),
+                if (ingredient.isNotEmpty) ...[
+                  const SizedBox(height: 2),
+                  Text(
+                    '주성분: $ingredient',
+                    style: AppText.caption(
+                      size: 16.5,
+                      color: AppColors.textSecondary,
+                    ),
+                  ),
+                ],
+                if ((medicine.spoken ?? '').trim().isNotEmpty) ...[
+                  const SizedBox(height: 2),
+                  Text(
+                    medicine.spoken!,
+                    style: AppText.caption(size: 17),
+                  ),
+                ],
+              ],
+            ),
+          ),
+          if (medicine.amount.trim().isNotEmpty) ...[
+            const SizedBox(width: 10),
+            Text(
+              medicine.amount,
+              style: AppText.cardTitle(size: 20, color: AppColors.point),
+            ),
+          ],
+        ],
+      ),
     );
   }
 }

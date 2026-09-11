@@ -3,18 +3,50 @@
 from __future__ import annotations
 
 import json
+import re
 from datetime import date
 from typing import Any
 
 from fastapi import HTTPException
 
 from app.database import get_connection
+from app.services.medicine_display import (
+    card_official_name,
+    ingredient_summary,
+    ingredient_strength_from,
+    infer_dosage_form,
+    is_mock_drug_info_name,
+    omit_placeholder_spoken,
+    split_ingredients,
+    split_take_amount,
+)
 from app.services.ocr.parser import take_amount_for_display
 from app.services.pharmacist.easy_category import (
     display_product_name,
+    infer_use_route,
     load_medicine_guidance,
     medicine_guidance_from_medicine,
 )
+
+_EXPLICIT_TIME_LABELS = {
+    "아침": "08:00",
+    "점심": "13:00",
+    "저녁": "20:00",
+    "취침전": "22:00",
+    "자기전": "22:00",
+    "MORNING": "08:00",
+    "LUNCH": "13:00",
+    "AFTERNOON": "13:00",
+    "EVENING": "20:00",
+    "NIGHT": "22:00",
+}
+
+
+def _confirmed_clock(value: object) -> str | None:
+    text = str(value or "").strip()
+    if re.fullmatch(r"(?:[01]\d|2[0-3]):[0-5]\d", text):
+        return text
+    return _EXPLICIT_TIME_LABELS.get(re.sub(r"\s+", "", text).upper())
 
 
 def get_today_medicines(user_id: str, target_date: str | None = None) -> dict[str, Any]:
@@ -42,7 +74,9 @@ def get_today_medicines(user_id: str, target_date: str | None = None) -> dict[st
             SELECT ms.id AS schedule_id, ms.time_slot, ms.scheduled_time, ms.status,
                    um.dosage, um.frequency_per_day,
                    m.medicine_code, m.product_name, m.ingredient, m.easy_category,
-                   m.efficacy, m.precautions{usage_select}
+                   m.efficacy, m.precautions, m.short_explanation,
+                   m.explanation_review_status, m.ingredient_strength,
+                   m.dosage_form, m.administration_route{usage_select}
             FROM medication_schedules ms
             JOIN user_medicines um ON um.id = ms.user_medicine_id
             JOIN medicines m ON m.medicine_code = um.medicine_code
@@ -56,19 +90,7 @@ def get_today_medicines(user_id: str, target_date: str | None = None) -> dict[st
         if schedule_rows:
             doses = _doses_from_schedules(schedule_rows, guidance_cursor=conn)
         else:
-            active = conn.execute(
-                f"""
-                SELECT um.dosage, um.frequency_per_day, um.administration_times,
-                       m.medicine_code, m.product_name, m.ingredient, m.easy_category,
-                       m.efficacy, m.precautions{usage_select}
-                FROM user_medicines um
-                JOIN medicines m ON m.medicine_code = um.medicine_code
-                WHERE um.user_id = ? AND COALESCE(um.is_active, 1) = 1
-                ORDER BY um.id
-                """,
-                (uid,),
-            ).fetchall()
-            doses = _doses_from_active_medicines(active, guidance_cursor=conn)
+            doses = []
 
         guardian = conn.execute(
             """
@@ -78,6 +100,25 @@ def get_today_medicines(user_id: str, target_date: str | None = None) -> dict[st
             """,
             (uid,),
         ).fetchone()
+        latest_risk = conn.execute(
+            """
+            SELECT risk_level, description, total_matches
+            FROM risk_results
+            WHERE user_id = ?
+            ORDER BY created_at DESC, id DESC
+            LIMIT 1
+            """,
+            (uid,),
+        ).fetchone()
+        interaction_alert = None
+        if (
+            latest_risk
+            and str(latest_risk["risk_level"] or "").upper() in {"HIGH", "MEDIUM"}
+            and int(latest_risk["total_matches"] or 0) > 0
+        ):
+            interaction_alert = str(
+                latest_risk["description"] or "함께 먹을 때 주의가 필요해요."
+            )
 
         return {
             "user_id": uid,
@@ -89,31 +130,28 @@ def get_today_medicines(user_id: str, target_date: str | None = None) -> dict[st
             "guardian_name": (guardian["guardian_name"] if guardian else None) or "가족",
             "source": "server",
             "has_server_medicines": bool(doses),
+            "interaction_alert": interaction_alert,
         }
     finally:
         conn.close()
 
 
 def _ensure_today_schedules(conn, user_id: str, day: str) -> None:
-    """활성 복용약에 대해 오늘 스케줄 행이 없으면 기본 시각으로 만든다."""
+    """등록 당시 확인한 실제 HH:MM 시각으로만 오늘 스케줄을 복구한다."""
     active = conn.execute(
         """
-        SELECT um.id AS user_medicine_id, um.frequency_per_day
+        SELECT um.id AS user_medicine_id, um.administration_times,
+               um.start_date, um.end_date
         FROM user_medicines um
         WHERE um.user_id = ? AND COALESCE(um.is_active, 1) = 1
         """,
         (user_id,),
     ).fetchall()
-    default_times = {
-        1: [("08:00", "MORNING")],
-        2: [("08:00", "MORNING"), ("20:00", "EVENING")],
-        3: [
-            ("08:00", "MORNING"),
-            ("13:00", "AFTERNOON"),
-            ("20:00", "EVENING"),
-        ],
-    }
     for row in active:
+        if row["start_date"] and str(day) < str(row["start_date"]):
+            continue
+        if row["end_date"] and str(day) > str(row["end_date"]):
+            continue
         um_id = row["user_medicine_id"]
         exists = conn.execute(
             """
@@ -126,12 +164,14 @@ def _ensure_today_schedules(conn, user_id: str, day: str) -> None:
         if exists:
             continue
         try:
-            freq = int(row["frequency_per_day"])
-        except (TypeError, ValueError):
-            continue
-        if freq not in default_times:
-            continue
-        for scheduled_time, time_slot in default_times[freq]:
+            parsed = json.loads(row["administration_times"] or "[]")
+        except (TypeError, json.JSONDecodeError):
+            parsed = []
+        confirmed_times = [
+            clock for value in parsed if (clock := _confirmed_clock(value)) is not None
+        ]
+        for scheduled_time in dict.fromkeys(confirmed_times):
+            time_slot = _slot_from_time(None, scheduled_time).upper()
             conn.execute(
                 """
                 INSERT OR IGNORE INTO medication_schedules (
@@ -146,36 +186,76 @@ def _ensure_today_schedules(conn, user_id: str, day: str) -> None:
 
 def _medicine_item(row, *, guidance_cursor=None) -> dict[str, Any]:
     data = dict(row)
-    name = (
-        display_product_name(data.get("product_name"))
-        or str(data.get("ingredient") or "").strip()
-        or "약"
+    official_product_name = str(data.get("product_name") or "").strip()
+    name = card_official_name(
+        product_name=display_product_name(official_product_name),
+        display_name=data.get("display_name"),
+        ingredient=data.get("ingredient"),
     )
     guidance = (
         load_medicine_guidance(guidance_cursor, data)
         if guidance_cursor is not None
         else medicine_guidance_from_medicine(data)
     )
-    spoken = guidance["short_explanation"]
+    spoken = omit_placeholder_spoken(guidance["short_explanation"])
     dosage = take_amount_for_display(
         data.get("dosage"),
         times_per_take=data.get("times_per_take"),
     )
+    dose_amount, dose_unit = split_take_amount(dosage)
+    amount = f"{dose_amount}{dose_unit}" if dose_amount and dose_unit else ""
+    ingredient_name = str(data.get("ingredient") or "").strip()
+    ingredient_strength = str(data.get("ingredient_strength") or "").strip()
+    if not ingredient_strength:
+        ingredient_strength = ingredient_strength_from(
+            ingredient_name,
+            official_product_name,
+        )
+    dosage_form = str(data.get("dosage_form") or "").strip() or infer_dosage_form(name)
+    administration_route = str(data.get("administration_route") or "").strip()
+    if not administration_route:
+        administration_route = infer_use_route(
+            product_name=name,
+            usage=data.get("usage"),
+            efficacy=data.get("efficacy"),
+        )
+    structured_purposes = guidance["easy_purposes"]
+    purpose_labels = [
+        str(value.get("easy_label") or "").strip()
+        for value in structured_purposes
+        if isinstance(value, dict) and str(value.get("easy_label") or "").strip()
+    ]
+    structured_cautions = guidance["key_cautions"]
+    caution_sentences = [
+        str(value.get("short_sentence") or "").strip()
+        for value in structured_cautions
+        if isinstance(value, dict) and str(value.get("short_sentence") or "").strip()
+    ]
     item = {
         "medicine_code": data.get("medicine_code"),
-        "ingredient": name,
-        "amount": dosage,
+        "display_name": name,
+        "official_product_name": official_product_name or name,
+        "product_name": name,
+        "ingredient_name": ingredient_name,
+        "ingredient_summary": ingredient_summary(ingredient_name),
+        "ingredients": split_ingredients(ingredient_name),
+        "ingredient": ingredient_name,
+        "ingredient_strength": ingredient_strength,
+        "dosage_form": dosage_form,
+        "administration_route": administration_route,
+        "dose_amount": dose_amount,
+        "dose_unit": dose_unit,
+        "amount": amount,
         "easy_category": spoken,
         "purpose_label": guidance["purpose_label"],
         "short_explanation": spoken,
-        "easy_purposes": guidance["easy_purposes"],
+        "purposes": structured_purposes,
+        "easy_purposes": purpose_labels,
         "key_caution": guidance["key_caution"],
-        "key_cautions": guidance["key_cautions"],
+        "key_cautions": caution_sentences,
         "purpose_notice": guidance["purpose_notice"],
         # 예전 앱은 efficacy를 카드에 그대로 그림. 원문을 넣지 않는다.
         "efficacy": spoken,
-        "display_name": name,
-        "product_name": name,
     }
     schedule_id = data.get("schedule_id")
     if schedule_id is not None:
@@ -186,8 +266,25 @@ def _medicine_item(row, *, guidance_cursor=None) -> dict[str, Any]:
     return item
 
 
+def _visible_medicine_item(row, *, guidance_cursor=None) -> dict[str, Any] | None:
+    data = dict(row)
+    if str(data.get("medicine_code") or "").upper().startswith("MVP-"):
+        return None
+    display = card_official_name(
+        product_name=display_product_name(data.get("product_name")),
+        display_name=data.get("display_name"),
+        ingredient=data.get("ingredient"),
+    )
+    if is_mock_drug_info_name(display):
+        return None
+    item = _medicine_item(row, guidance_cursor=guidance_cursor)
+    if is_mock_drug_info_name(item.get("display_name")):
+        return None
+    return item
+
+
 def _slot_from_time(time_slot: str | None, scheduled_time: str | None) -> str:
-    raw = str(time_slot or "").upper()
+    raw = f"{time_slot or ''} {scheduled_time or ''}".upper()
     if "MORNING" in raw or "아침" in raw:
         return "morning"
     if "LUNCH" in raw or "AFTERNOON" in raw or "점심" in raw:
@@ -221,9 +318,10 @@ def _doses_from_schedules(rows, *, guidance_cursor=None) -> list[dict[str, Any]]
         if code in bucket["_codes"]:
             continue
         bucket["_codes"].add(code)
-        bucket["medicines"].append(
-            _medicine_item(row, guidance_cursor=guidance_cursor)
-        )
+        item = _visible_medicine_item(row, guidance_cursor=guidance_cursor)
+        if item is None:
+            continue
+        bucket["medicines"].append(item)
     order = ("morning", "lunch", "dinner")
     result = []
     for slot in order:
@@ -246,7 +344,9 @@ def _doses_from_active_medicines(rows, *, guidance_cursor=None) -> list[dict[str
         "dinner": [],
     }
     for row in rows:
-        med = _medicine_item(row, guidance_cursor=guidance_cursor)
+        med = _visible_medicine_item(row, guidance_cursor=guidance_cursor)
+        if med is None:
+            continue
         times = []
         raw_times = row["administration_times"]
         if isinstance(raw_times, str) and raw_times.strip():
@@ -260,21 +360,7 @@ def _doses_from_active_medicines(rows, *, guidance_cursor=None) -> list[dict[str
             for t in times:
                 buckets[_slot_from_time(None, t)].append(med)
             continue
-        try:
-            freq = int(row["frequency_per_day"])
-        except (TypeError, ValueError):
-            continue
-        if freq not in {1, 2, 3}:
-            continue
-        if freq <= 1:
-            buckets["morning"].append(med)
-        elif freq == 2:
-            buckets["morning"].append(med)
-            buckets["dinner"].append(med)
-        else:
-            buckets["morning"].append(med)
-            buckets["lunch"].append(med)
-            buckets["dinner"].append(med)
+        # 하루 N회만 있고 실제 시각이 없으면 오늘 화면 시간을 만들어 내지 않는다.
 
     result = []
     for slot in ("morning", "lunch", "dinner"):

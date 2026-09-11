@@ -31,6 +31,8 @@ def search_official_drugs(
     return search_drug_candidates(query)
 
 
+# 상세·목록 화면은 Gemini 카드가 아니라 쉬운말 purposes API만 쓴다.
+# 이 엔드포인트는 챗봇·심화 상담 전용이다.
 @router.get("/drug-explain/{medicine_code}", response_model=DrugExplanationResponse)
 def explain_drug(
     medicine_code: str,

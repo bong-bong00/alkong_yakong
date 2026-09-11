@@ -245,8 +245,9 @@ def analyze_dur(request: DurAnalyzeRequest) -> dict:
             """
             INSERT INTO risk_results (
                 user_id, risk_level, description, analyzed_ingredients,
-                analysis_id, risk_type, total_matches, matches_json
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                analysis_id, risk_type, total_matches, matches_json,
+                assessment_status, incomplete_reasons_json
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 request.user_id,
@@ -257,6 +258,8 @@ def analyze_dur(request: DurAnalyzeRequest) -> dict:
                 matches[0]["type"] if matches else None,
                 len(matches),
                 json.dumps(matches, ensure_ascii=False),
+                assessment_status,
+                json.dumps(incomplete_reasons, ensure_ascii=False),
             ),
         )
         risk_result_id = cursor.lastrowid
@@ -632,6 +635,18 @@ def get_latest_dur(user_id: str) -> dict:
             result.get("risk_type")
             or (matches[0]["type"] if matches else None)
         )
+        result["assessment_status"] = result.get("assessment_status") or (
+            "RISK_FOUND"
+            if matches
+            else "INCOMPLETE"
+            if str(result.get("risk_level") or "").upper() == "UNKNOWN"
+            else "SAFE"
+        )
+        result["incomplete_reasons"] = _json_value(
+            result.get("incomplete_reasons_json"),
+            [],
+        )
+        result["analysis_complete"] = result["assessment_status"] != "INCOMPLETE"
         return result
     finally:
         conn.close()

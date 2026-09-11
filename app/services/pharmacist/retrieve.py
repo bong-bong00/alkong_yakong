@@ -133,6 +133,16 @@ def refresh_app_medicines_from_permission() -> int:
                 ),
             )
             updated += 1
+            saved = conn.execute(
+                "SELECT * FROM medicines WHERE id = ?", (row["id"],)
+            ).fetchone()
+            if saved:
+                from app.services.pharmacist.easy_category import sync_medicine_guidance
+
+                sync_medicine_guidance(conn, dict(saved))
+        from app.services.pharmacist.easy_category import backfill_all_medicine_guidance
+
+        backfill_all_medicine_guidance(conn)
         conn.commit()
     finally:
         conn.close()
@@ -270,6 +280,35 @@ def _lookup_list_for_app_refresh(name: str) -> dict[str, Any] | None:
         if found:
             return found
     return None
+
+
+def search_official_medicine_candidates(query: str, limit: int = 8) -> list[dict[str, Any]]:
+    """Local permission-name search for hand entry. Official code only."""
+    from app.services.pharmacist.easy_category import display_product_name
+    from app.services.mfds_drug_permission.db import search_permission_names
+
+    names = search_permission_names(query, limit=limit)
+    items: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for name in names:
+        official = retrieve_official(name)
+        med = (official or {}).get("medicine") or {}
+        code = str(med.get("medicine_code") or "").strip()
+        if not code or code in seen:
+            continue
+        seen.add(code)
+        product = display_product_name(med.get("product_name") or name) or name
+        items.append(
+            {
+                "medicine_code": code,
+                "display_name": product,
+                "product_name": product,
+                "official_product_name": med.get("product_name") or product,
+                "ingredient_name": med.get("ingredient") or "",
+                "ingredient": med.get("ingredient") or "",
+            }
+        )
+    return items
 
 
 def _permission_result(row: dict[str, Any] | None) -> dict[str, Any] | None:

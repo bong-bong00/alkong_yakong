@@ -7,9 +7,6 @@ import re
 import unicodedata
 from typing import Any
 
-from app.core.config import GEMINI_API_KEY, GEMINI_MODEL
-
-
 # 앱·DB가 기대하는 정형 필드. drug_name만 필수, 나머지는 원문에 있을 때만 채운다.
 PRESCRIPTION_SCHEMA = {
     "type": "object",
@@ -47,7 +44,7 @@ SCORE_FIELDS = ("drug_name", "ingredient")
 
 # 제품명 함량(200밀리그램, 0.25%) — 처방 표의 투약량(0.50, 1알)과 구분한다.
 _STRENGTH_DOSAGE_RE = re.compile(
-    r"(?:mg|ml|g|%|밀리그램|밀리그람)\b",
+    r"(?:mg|ml|g|%|밀리그램|밀리그람)(?:\b|(?=\s|$|[),/]))",
     re.IGNORECASE,
 )
 
@@ -106,20 +103,27 @@ def take_amount_for_display(
     return ""
 
 
-def parse_prescription_text(raw_text: str) -> dict[str, Any] | None:
-    """Gemini 구조화 우선, 실패(할당량 등) 시 휴리스틱 구조화."""
+def parse_prescription_text(
+    raw_text: str,
+    *,
+    tables: list[dict[str, Any]] | tuple[dict[str, Any], ...] | None = None,
+) -> dict[str, Any] | None:
+    """CLOVA 원문을 외부 생성 모델 없이 결정적으로 구조화한다."""
     text = (raw_text or "").strip()
     if not text:
         return None
 
     parsed = _parse_with_heuristic(text)
     parser_engine = "heuristic"
-    if not parsed or not parsed.get("items"):
-        parsed = _parse_with_gemini(text)
-        parser_engine = "gemini-json"
     if not parsed:
         parsed = {"items": []}
         parser_engine = "heuristic"
+
+    table_items = _items_from_clova_tables(tables or ())
+    if table_items:
+        # 표 행의 값이 같은 이름 주변에서 추측한 숫자보다 우선한다.
+        parsed["items"] = [*table_items, *(parsed.get("items") or [])]
+        parser_engine = "heuristic+clova-table"
 
     parsed = expand_inferred_drug_items(parsed, text)
     if not parsed.get("items"):
@@ -142,78 +146,125 @@ def parse_prescription_text(raw_text: str) -> dict[str, Any] | None:
     return filtered
 
 
-def _parse_with_gemini(text: str) -> dict[str, Any] | None:
-    if not GEMINI_API_KEY:
+def _clova_cell_text(cell: dict[str, Any]) -> str:
+    """CLOVA 표 셀의 여러 응답 형태에서 읽힌 문자열을 꺼낸다."""
+    direct = cell.get("inferText") or cell.get("text")
+    if direct:
+        return str(direct).strip()
+
+    parts: list[str] = []
+    for line in cell.get("cellTextLines") or []:
+        if not isinstance(line, dict):
+            continue
+        words = line.get("cellWords") or line.get("words") or []
+        line_parts = []
+        for word in words:
+            if not isinstance(word, dict):
+                continue
+            value = word.get("inferText") or word.get("text")
+            if value:
+                line_parts.append(str(value).strip())
+        if line_parts:
+            parts.append(" ".join(line_parts))
+    return "\n".join(parts).strip()
+
+
+def _table_header_role(text: str) -> str | None:
+    compact = _compact(text)
+    if "1회" in compact and any(word in compact for word in ("투약량", "복용량", "사용량")):
+        return "dosage"
+    if "1일" in compact and any(word in compact for word in ("투여횟수", "복용횟수", "횟수")):
+        return "frequency_per_day"
+    if any(word in compact for word in ("투약일수", "복용일수", "처방일수")):
+        return "duration_days"
+    if any(word in compact for word in ("약품명", "의약품명", "제품명")):
+        return "drug_name"
+    return None
+
+
+def _table_number(text: str, *, integer: bool = False) -> str | int | None:
+    match = re.search(r"(?<!\d)(\d+(?:\.\d+)?)(?!\d)", str(text or ""))
+    if not match:
         return None
+    value = match.group(1)
+    if not integer:
+        return value
     try:
-        from google import genai
-
-        prompt = (
-            "아래 처방전/복약안내 원문만 근거로 JSON 구조화하세요.\n"
-            "규칙:\n"
-            "1) 공식 약 이름으로 바꾸지 마세요. OCR에 적힌 철자 그대로 drug_name에 넣으세요.\n"
-            "   (예: 프리마라정 → 프리마란정 으로 교정하지 말 것)\n"
-            "1-1) 글자가 붙어 있으면 약 이름과 투약 숫자를 나눠 추론하세요.\n"
-            "   예: '프리마라정1정2회7일' → drug_name=프리마라정, times_per_take=1,\n"
-            "   frequency_per_day=2, duration_days=7\n"
-            "   예: '프레베넥액0.25%' → drug_name=프레베넥액, dosage=0.25%\n"
-            "   이름에 0.25% 같은 숫자+% 는 넣지 마세요.\n"
-            "1-2) 한 덩어리에 약이 여러 개면 항목을 나누세요.\n"
-            "   예: '프리마라정...프레베넥액' → 항목 2개\n"
-            "1-3) 원문에 없는 약 이름을 새로 만들지 마세요.\n"
-            "2) 확인되지 않는 항목은 생략하세요.\n"
-            "2-1) '비)', '급)', '원내)', '비급여'는 약 이름이 아니라 "
-            "처방 구분 표시이므로 drug_name에서 제외하세요.\n"
-            "2-2) 표 머리글, 사업자번호, 약국명, 조제약사, 사진 옆의 "
-            "'비)슈...' 같은 잘린 글자는 약으로 뽑지 마세요.\n"
-            "3) 표/줄 형식이면 열을 이렇게 매핑하세요.\n"
-            "   - 처방의약품의 명칭 → drug_name (이름에 적힌 200밀리그램 등은 이름에만 두세요)\n"
-            "   - dosage는 투약량 열입니다. 예: 0.50, 1. 이름에 있는 mg/%/밀리그램은 dosage가 아닙니다.\n"
-            "   - '1 T' '1 C' '1 PKG'는 dosage가 아닙니다. unit=T/C/PKG, times_per_take=1\n"
-            "   - 1일 투여횟수 → frequency_per_day (정수, 보통 1~3. 총량 60을 넣지 마세요)\n"
-            "   - 총 투약 일수 → duration_days (정수, 예: 60)\n"
-            "   - 총량 열은 duration_days로 쓰지 마세요.\n"
-            "4) 한 줄에 '0.50 3 7' 또는 '0.50 | 3 | 7'이면\n"
-            "   dosage=0.50, frequency_per_day=3, duration_days=7 입니다.\n"
-            "4-1) 같은 약이 아침/점심/저녁으로 반복되면 항목을 하나로 합치고\n"
-            "   frequency_per_day는 반복 횟수(3)로 하세요.\n"
-            "5) 복용법/효능 설명 문장은 easy_explanation에 넣으세요.\n"
-            "6) prescribed_date는 YYYY-MM-DD로 정규화하세요.\n"
-            "7) hospital_name은 병원/의원명, pharmacy_name은 약국명 또는 조제약사명.\n\n"
-            f"처방전 원문:\n{text}"
-        )
-        with genai.Client(api_key=GEMINI_API_KEY) as client:
-            from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeout
-
-            def _run():
-                return client.models.generate_content(
-                    model=GEMINI_MODEL,
-                    contents=prompt,
-                    config={
-                        "temperature": 0.0,
-                        "response_mime_type": "application/json",
-                        "response_json_schema": PRESCRIPTION_SCHEMA,
-                    },
-                )
-
-            try:
-                with ThreadPoolExecutor(max_workers=1) as pool:
-                    response = pool.submit(_run).result(timeout=20)
-            except FuturesTimeout:
-                return None
-        parsed = getattr(response, "parsed", None)
-        if parsed is None:
-            response_text = str(getattr(response, "text", None) or "")
-            parsed = json.loads(response_text) if response_text else None
-        if not isinstance(parsed, dict) or not parsed.get("items"):
-            return None
-        return parsed
-    except Exception:
+        return int(float(value))
+    except ValueError:
         return None
+
+
+def _items_from_clova_tables(
+    tables: list[dict[str, Any]] | tuple[dict[str, Any], ...],
+) -> list[dict[str, Any]]:
+    """CLOVA 표 좌표로 약명과 1회량·횟수·일수를 같은 행에 묶는다."""
+    items: list[dict[str, Any]] = []
+    for table in tables:
+        if not isinstance(table, dict):
+            continue
+        rows: dict[int, dict[int, str]] = {}
+        for cell in table.get("cells") or []:
+            if not isinstance(cell, dict):
+                continue
+            try:
+                row_index = int(cell.get("rowIndex"))
+                column_index = int(cell.get("columnIndex"))
+            except (TypeError, ValueError):
+                continue
+            value = _clova_cell_text(cell)
+            if value:
+                rows.setdefault(row_index, {})[column_index] = value
+        if not rows:
+            continue
+
+        roles: dict[str, int] = {}
+        role_rows: dict[str, int] = {}
+        header_row = -1
+        for row_index in sorted(rows):
+            for column, value in rows[row_index].items():
+                role = _table_header_role(value)
+                if role is not None and role not in roles:
+                    roles[role] = column
+                    role_rows[role] = row_index
+            if {
+                "drug_name",
+                "dosage",
+                "frequency_per_day",
+                "duration_days",
+            }.issubset(roles):
+                header_row = max(role_rows.values())
+                break
+        required = {"drug_name", "dosage", "frequency_per_day", "duration_days"}
+        if not required.issubset(roles):
+            continue
+
+        for row_index in sorted(index for index in rows if index > header_row):
+            row = rows[row_index]
+            drug_cell = row.get(roles["drug_name"], "")
+            candidates = iter_glued_drug_tokens(drug_cell)
+            if not candidates:
+                continue
+            item = dict(candidates[0])
+            dosage = _table_number(row.get(roles["dosage"], ""))
+            frequency = _table_number(
+                row.get(roles["frequency_per_day"], ""), integer=True
+            )
+            duration = _table_number(
+                row.get(roles["duration_days"], ""), integer=True
+            )
+            if dosage is not None:
+                item["dosage"] = dosage
+            if frequency is not None:
+                item["frequency_per_day"] = frequency
+            if duration is not None:
+                item["duration_days"] = duration
+            items.append(item)
+    return items
 
 
 def _parse_with_heuristic(text: str) -> dict[str, Any] | None:
-    """Gemini 없이 CLOVA 원문 등에서 약 줄을 규칙으로 뽑는다."""
+    """CLOVA 원문에서 약 줄을 결정적 규칙으로 뽑는다."""
     if not text.strip():
         return None
 

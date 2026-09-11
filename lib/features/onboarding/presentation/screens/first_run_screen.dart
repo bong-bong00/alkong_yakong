@@ -119,9 +119,7 @@ class FirstRunScreen extends StatelessWidget {
                 label: '약 이름을 손으로 적을게요',
                 color: AppColors.point,
                 fontSize: 19,
-                onPressed: () => ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('손으로 적기 — 아직 준비 중이에요')),
-                ),
+                onPressed: () => context.push('/prescription'),
               ),
               Text(
                 '나중에 바꿀 수 있어요',

@@ -3,13 +3,15 @@ from datetime import date
 import pytest
 from fastapi import HTTPException
 
-from app.models.schemas import PrescriptionConfirmItem
+from app.models.schemas import PrescriptionConfirmItem, PrescriptionConfirmRequest
 from app.models.schemas import OCRMedicineItem, PrescriptionOCRRequest
 from app.database import get_connection
 import app.services.prescription_service as prescription_service
 from app.services.prescription_service import (
     _schedule_dates,
+    _confirmed_clock_times,
     _validated_confirm_dosage,
+    confirm_prescription,
 )
 
 
@@ -42,6 +44,29 @@ def test_confirm_accepts_user_checked_dosing_fields():
     assert _validated_confirm_dosage(_item(), "테스트정") == "1알"
 
 
+@pytest.mark.parametrize("dosage", ["200밀리그램", "0.25%", "0.50"])
+def test_confirm_rejects_strength_or_unitless_amount(dosage):
+    with pytest.raises(HTTPException) as caught:
+        _validated_confirm_dosage(_item(dosage=dosage, unit=None), "테스트정")
+
+    assert "1회 복용량" in caught.value.detail
+
+
+def test_confirm_normalizes_numeric_amount_with_verified_unit():
+    assert _validated_confirm_dosage(
+        _item(dosage="0.50", unit="T"),
+        "테스트정",
+    ) == "0.5알"
+
+
+@pytest.mark.parametrize("dosage", ["1/2정", "반 알"])
+def test_confirm_normalizes_common_half_tablet_notation(dosage):
+    assert _validated_confirm_dosage(
+        _item(dosage=dosage, unit=None),
+        "테스트정",
+    ) == "0.5알"
+
+
 def test_missing_duration_never_creates_a_default_one_day_range():
     assert _schedule_dates(None, None, None) == []
     assert _schedule_dates("2026-09-09", None, 2) == [
@@ -55,6 +80,64 @@ def test_prescription_expiry_never_extends_confirmed_duration():
         date(2026, 9, 9),
         date(2026, 9, 10),
     ]
+
+
+def test_only_explicit_clock_or_named_times_can_create_schedules():
+    assert _confirmed_clock_times(["08:30", "저녁", "20:15", "3회"]) == [
+        "08:30",
+        "20:00",
+        "20:15",
+    ]
+
+
+def test_same_confirm_payload_is_idempotent():
+    user_id = "test-confirm-idempotent"
+    medicine_code = "TEST-IDEMPOTENT"
+    conn = get_connection()
+    conn.execute(
+        "INSERT OR IGNORE INTO users (id, name, role) VALUES (?, '테스트', 'PATIENT')",
+        (user_id,),
+    )
+    conn.execute(
+        """
+        INSERT OR REPLACE INTO medicines (medicine_code, product_name, ingredient)
+        VALUES (?, '중복방지정', '테스트성분')
+        """,
+        (medicine_code,),
+    )
+    conn.commit()
+    conn.close()
+
+    request = PrescriptionConfirmRequest(
+        user_id=user_id,
+        prescribed_date="2026-09-11",
+        items=[
+            PrescriptionConfirmItem(
+                medicine_code=medicine_code,
+                drug_name="중복방지정",
+                dosage="1알",
+                frequency_per_day=1,
+                duration_days=1,
+                administration_times=["08:30"],
+                match_status="MATCHED",
+            )
+        ],
+    )
+    first = confirm_prescription(request)
+    second = confirm_prescription(request)
+    assert first["registered"] is True
+    assert second["duplicate"] is True
+    assert second["prescription_id"] == first["prescription_id"]
+
+    conn = get_connection()
+    assert conn.execute(
+        "SELECT COUNT(*) FROM user_medicines WHERE user_id = ? AND medicine_code = ?",
+        (user_id, medicine_code),
+    ).fetchone()[0] == 1
+    conn.execute("DELETE FROM users WHERE id = ?", (user_id,))
+    conn.execute("DELETE FROM medicines WHERE medicine_code = ?", (medicine_code,))
+    conn.commit()
+    conn.close()
 
 
 def test_ocr_preview_returns_multi_purpose_patient_guidance(monkeypatch):
@@ -85,6 +168,12 @@ def test_ocr_preview_returns_multi_purpose_patient_guidance(monkeypatch):
         ),
     )
     conn.commit()
+    before_user_medicines = conn.execute(
+        "SELECT COUNT(*) FROM user_medicines WHERE user_id = ?", (user_id,)
+    ).fetchone()[0]
+    before_prescriptions = conn.execute(
+        "SELECT COUNT(*) FROM prescriptions WHERE user_id = ?", (user_id,)
+    ).fetchone()[0]
     conn.close()
 
     monkeypatch.setattr(
@@ -115,6 +204,12 @@ def test_ocr_preview_returns_multi_purpose_patient_guidance(monkeypatch):
     assert "처방받은 이유" in item["purpose_notice"]
 
     conn = get_connection()
+    assert conn.execute(
+        "SELECT COUNT(*) FROM user_medicines WHERE user_id = ?", (user_id,)
+    ).fetchone()[0] == before_user_medicines
+    assert conn.execute(
+        "SELECT COUNT(*) FROM prescriptions WHERE user_id = ?", (user_id,)
+    ).fetchone()[0] == before_prescriptions
     conn.execute("DELETE FROM users WHERE id = ?", (user_id,))
     conn.execute("DELETE FROM medicines WHERE medicine_code = 'TEST-ADIPHARM'")
     conn.commit()

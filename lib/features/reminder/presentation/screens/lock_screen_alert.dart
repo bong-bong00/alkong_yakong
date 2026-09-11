@@ -106,7 +106,7 @@ class LockScreenAlert extends StatelessWidget {
                       Padding(
                         padding: const EdgeInsets.only(bottom: 4),
                         child: Text(
-                          '${medicine.ingredient} ${medicine.amount}',
+                          '${medicine.displayName} ${medicine.amount}',
                           style: AppText.label(
                             size: 18.5,
                             color: AppColors.textPrimary,

@@ -17,6 +17,8 @@ class PolarService {
       StreamController<double?>.broadcast();
   final StreamController<String> _errorController =
       StreamController<String>.broadcast();
+  final StreamController<int> _batteryLevelController =
+      StreamController<int>.broadcast();
 
   final List<int> _bpmSamples = <int>[];
   final Map<String, Set<PolarSdkFeature>> _availableFeatures =
@@ -29,6 +31,7 @@ class PolarService {
   Stream<int?> get currentBpmStream => _currentBpmController.stream;
   Stream<double?> get averageBpmStream => _averageBpmController.stream;
   Stream<String> get errorStream => _errorController.stream;
+  Stream<int> get batteryLevelStream => _batteryLevelController.stream;
   Stream<String> get deviceDisconnectedStream =>
       _polar.deviceDisconnected.map((event) => event.info.deviceId);
 
@@ -198,6 +201,7 @@ class PolarService {
       _currentBpmController.close(),
       _averageBpmController.close(),
       _errorController.close(),
+      _batteryLevelController.close(),
     ]);
     debugPrint('[POLAR_SERVICE] dispose completed');
   }

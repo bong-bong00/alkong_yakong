@@ -44,6 +44,11 @@ TABLE_DEFINITIONS = {
             precautions TEXT,
             image_url TEXT,
             easy_category TEXT,
+            short_explanation TEXT,
+            explanation_review_status TEXT NOT NULL DEFAULT 'UNREVIEWED',
+            ingredient_strength TEXT,
+            dosage_form TEXT,
+            administration_route TEXT,
             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
             updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
         )
@@ -117,6 +122,7 @@ TABLE_DEFINITIONS = {
             expire_date TEXT,
             original_image_path TEXT,
             ocr_text TEXT,
+            registration_fingerprint TEXT,
             ocr_status TEXT NOT NULL DEFAULT 'COMPLETED',
             status TEXT NOT NULL DEFAULT 'ACTIVE',
             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -137,6 +143,10 @@ TABLE_DEFINITIONS = {
             administration_times TEXT,
             warning_note TEXT,
             easy_explanation TEXT,
+            ocr_drug_name_raw TEXT,
+            ocr_field_confidences TEXT,
+            dosage_form TEXT,
+            administration_route TEXT,
             match_status TEXT NOT NULL DEFAULT 'UNMATCHED',
             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (prescription_id) REFERENCES prescriptions(id) ON DELETE CASCADE,
@@ -152,9 +162,13 @@ TABLE_DEFINITIONS = {
             start_date TEXT,
             end_date TEXT,
             dosage TEXT,
+            dose_amount REAL,
+            dose_unit TEXT,
             frequency_per_day INTEGER,
             administration_times TEXT,
             is_active INTEGER NOT NULL DEFAULT 1,
+            status TEXT NOT NULL DEFAULT 'ACTIVE',
+            last_prescribed_at TEXT,
             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
             FOREIGN KEY (medicine_code) REFERENCES medicines(medicine_code),
@@ -208,6 +222,8 @@ TABLE_DEFINITIONS = {
             risk_type TEXT,
             total_matches INTEGER NOT NULL DEFAULT 0,
             matches_json TEXT,
+            assessment_status TEXT,
+            incomplete_reasons_json TEXT,
             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
             FOREIGN KEY (taboo_id) REFERENCES dur_taboo(id) ON DELETE SET NULL
@@ -357,6 +373,7 @@ INDEXES = [
     WHERE external_id IS NOT NULL
     """,
     "CREATE INDEX IF NOT EXISTS idx_prescriptions_user_id ON prescriptions(user_id)",
+    "CREATE UNIQUE INDEX IF NOT EXISTS idx_prescriptions_registration_fingerprint ON prescriptions(user_id, registration_fingerprint) WHERE registration_fingerprint IS NOT NULL",
     "CREATE INDEX IF NOT EXISTS idx_prescription_items_prescription_id ON prescription_items(prescription_id)",
     "CREATE INDEX IF NOT EXISTS idx_user_medicines_user_id ON user_medicines(user_id, is_active)",
     "CREATE INDEX IF NOT EXISTS idx_schedules_user_date ON medication_schedules(user_id, scheduled_date)",
@@ -389,6 +406,8 @@ ADDITIVE_COLUMNS = {
         "risk_type": "TEXT",
         "total_matches": "INTEGER NOT NULL DEFAULT 0",
         "matches_json": "TEXT",
+        "assessment_status": "TEXT",
+        "incomplete_reasons_json": "TEXT",
     },
     "notifications": {
         "schedule_id": "INTEGER",
@@ -408,10 +427,28 @@ ADDITIVE_COLUMNS = {
     },
     "prescription_items": {
         "easy_explanation": "TEXT",
+        "ocr_drug_name_raw": "TEXT",
+        "ocr_field_confidences": "TEXT",
+        "dosage_form": "TEXT",
+        "administration_route": "TEXT",
+    },
+    "prescriptions": {
+        "registration_fingerprint": "TEXT",
     },
     "medicines": {
         "easy_category": "TEXT",
         "usage": "TEXT",
+        "short_explanation": "TEXT",
+        "explanation_review_status": "TEXT NOT NULL DEFAULT 'UNREVIEWED'",
+        "ingredient_strength": "TEXT",
+        "dosage_form": "TEXT",
+        "administration_route": "TEXT",
+    },
+    "user_medicines": {
+        "dose_amount": "REAL",
+        "dose_unit": "TEXT",
+        "status": "TEXT NOT NULL DEFAULT 'ACTIVE'",
+        "last_prescribed_at": "TEXT",
     },
     "users": {
         "is_pregnant": "INTEGER NOT NULL DEFAULT 0",
@@ -422,6 +459,37 @@ ADDITIVE_COLUMNS = {
 
 def _existing_columns(cursor: sqlite3.Cursor, table: str) -> set[str]:
     return {row[1] for row in cursor.execute(f"PRAGMA table_info({table})")}
+
+
+_REVIEWED_HOME_EXPLANATIONS = {
+    "197800210": "가려움 또는 불안·긴장을 완화할 목적으로 처방될 수 있어요.",
+    "200403137": "위산을 줄여 속쓰림과 위산 역류를 완화하는 약이에요.",
+}
+
+
+def _seed_reviewed_home_explanations(cursor: sqlite3.Cursor) -> None:
+    for medicine_code, sentence in _REVIEWED_HOME_EXPLANATIONS.items():
+        cursor.execute(
+            """
+            UPDATE medicines
+            SET short_explanation = ?, explanation_review_status = 'REVIEWED',
+                updated_at = CURRENT_TIMESTAMP
+            WHERE medicine_code = ?
+              AND COALESCE(explanation_review_status, 'UNREVIEWED') != 'REVIEWED'
+            """,
+            (sentence, medicine_code),
+        )
+
+
+def _deactivate_legacy_demo_medicines(cursor: sqlite3.Cursor) -> None:
+    """예전 MVP 가짜 품목은 기록은 남기고 사용자 복용약에서는 비활성화한다."""
+    cursor.execute(
+        """
+        UPDATE user_medicines
+        SET is_active = 0, status = 'PAST'
+        WHERE medicine_code IN ('MVP-ASP', 'MVP-AMLO', 'MVP-MET')
+        """
+    )
 
 
 def initialize_database() -> None:
@@ -451,6 +519,8 @@ def initialize_database() -> None:
     for statement in INDEXES:
         cursor.execute(statement)
 
+    _seed_reviewed_home_explanations(cursor)
+    _deactivate_legacy_demo_medicines(cursor)
     conn.commit()
     purge_ocr_placeholder_rows(conn)
     # 기존 의약품도 새 복수 목적/핵심 주의 구조로 채운다.

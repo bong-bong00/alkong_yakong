@@ -15,12 +15,23 @@ import '../../../../core/widgets/senior_button.dart';
 import '../../../../core/widgets/senior_card.dart';
 import '../../../../core/widgets/senior_header.dart';
 import '../../../medication/application/medication_controller.dart';
+import '../../../medicines/application/user_medicines_controller.dart';
+import '../../../medicines/domain/display_policy.dart';
 import '../../../onboarding/presentation/screens/first_run_screen.dart';
+import 'add_medicine_screen.dart';
+import 'manual_medicine_screen.dart';
+import '../widgets/fix_name_sheet.dart';
 
 /// 처방전 등록 흐름의 단계.
 enum PrescriptionStep {
+  /// 07 — 어떻게 넣을지 고르기.
+  pickMethod,
+
   /// 4d — 처방전 촬영.
   capture,
+
+  /// 10 — 손으로 적기.
+  manual,
 
   /// 읽는 중.
   reading,
@@ -37,7 +48,21 @@ enum PrescriptionStep {
 /// "처방전 OCR 인식"이라는 말을 쓰지 않는다.
 /// 읽지 못했을 때도 사용자를 탓하지 않는다 — "다시 찍어드릴게요".
 class PrescriptionScreen extends ConsumerStatefulWidget {
-  const PrescriptionScreen({super.key});
+  /// 함께 보는 가족 — "딸 지안 님".
+  final String guardianTitle;
+
+  /// 등록이 끝났을 때 부를 콜백.
+  final VoidCallback? onCompleted;
+
+  /// 가족에게 부탁한 뒤 오늘 화면으로 돌아갈 때.
+  final VoidCallback? onGoHome;
+
+  const PrescriptionScreen({
+    super.key,
+    this.onCompleted,
+    this.onGoHome,
+    this.guardianTitle = '딸 지안 님',
+  });
 
   @override
   ConsumerState<PrescriptionScreen> createState() => _PrescriptionScreenState();
@@ -47,7 +72,7 @@ class _PrescriptionScreenState extends ConsumerState<PrescriptionScreen> {
   final ImagePicker _picker = ImagePicker();
   final ApiClient _apiClient = ApiClient();
 
-  PrescriptionStep _step = PrescriptionStep.capture;
+  PrescriptionStep _step = PrescriptionStep.pickMethod;
   File? _image;
   Map<String, dynamic>? _result;
 
@@ -89,8 +114,10 @@ class _PrescriptionScreenState extends ConsumerState<PrescriptionScreen> {
     try {
       final picked = await _picker.pickImage(source: source);
       if (picked == null) return;
-      setState(() => _image = File(picked.path));
-      await _read();
+      setState(() {
+        _image = File(picked.path);
+        _step = PrescriptionStep.capture;
+      });
     } catch (_) {
       if (!mounted) return;
       setState(() {
@@ -110,7 +137,7 @@ class _PrescriptionScreenState extends ConsumerState<PrescriptionScreen> {
         base64Image = base64Encode(await image.readAsBytes());
       }
 
-      // Gemini 비전+구조화는 시간이 더 걸릴 수 있어 OCR만 길게 기다린다.
+      // 처방전 사진은 CLOVA OCR 처리 시간을 고려해 여유 있게 기다린다.
       final response = await _apiClient.post(
         '/api/v1/prescriptions/ocr',
         body: {
@@ -175,6 +202,12 @@ class _PrescriptionScreenState extends ConsumerState<PrescriptionScreen> {
           (item) => <String, dynamic>{
             'medicine_code': item['medicine_code'],
             'drug_name': item['drug_name'] ?? item['product_name'] ?? '',
+            'ocr_drug_name_raw': item['ocr_drug_name_raw'],
+            'ocr_field_confidences': item['ocr_field_confidences'] is Map
+                ? item['ocr_field_confidences']
+                : <String, dynamic>{},
+            'dosage_form': item['dosage_form'],
+            'administration_route': item['administration_route'],
             'dosage': item['dosage'],
             'unit': item['unit'],
             'frequency_per_day': item['frequency_per_day'],
@@ -207,6 +240,7 @@ class _PrescriptionScreenState extends ConsumerState<PrescriptionScreen> {
           'hospital_name': _result?['hospital_name'],
           'pharmacy_name': _result?['pharmacy_name'],
           'prescribed_date': _result?['prescribed_date'],
+          'ocr_text': _result?['ocr_text'],
         },
       );
     } catch (error) {
@@ -221,22 +255,56 @@ class _PrescriptionScreenState extends ConsumerState<PrescriptionScreen> {
     MvpSession.latestOcrItems = editedItems;
     MvpSession.latestOcrRegisteredAt = DateTime.now();
     await ref.read(medicationProvider.notifier).refreshFromServer();
+    await ref.read(userMedicinesProvider.notifier).refresh();
 
     if (!mounted) return;
-    // 홈에 있는 약(코다론)과 방금 찍은 약(아디팜)을 바로 함께먹기 화면에서 본다.
+    final onCompleted = widget.onCompleted;
+    if (onCompleted != null) {
+      onCompleted();
+      return;
+    }
     context.push('/dur-analysis');
   }
 
   @override
   Widget build(BuildContext context) {
     switch (_step) {
+      case PrescriptionStep.pickMethod:
+        return AddMedicineScreen(
+          guardianTitle: widget.guardianTitle,
+          onGoHome: widget.onGoHome ?? () => Navigator.of(context).maybePop(),
+          onPick: (method) {
+            switch (method) {
+              case AddMedicineMethod.camera:
+                _pick(ImageSource.camera);
+              case AddMedicineMethod.gallery:
+                _pick(ImageSource.gallery);
+              case AddMedicineMethod.manual:
+                setState(() => _step = PrescriptionStep.manual);
+              case AddMedicineMethod.family:
+                break;
+            }
+          },
+        );
+      case PrescriptionStep.manual:
+        return ManualMedicineScreen(
+          onBack: () => setState(() => _step = PrescriptionStep.pickMethod),
+          onSaved: () {
+            final onCompleted = widget.onCompleted;
+            if (onCompleted != null) {
+              onCompleted();
+              return;
+            }
+            context.push('/dur-analysis');
+          },
+        );
       case PrescriptionStep.capture:
         return _CaptureScreen(
+          image: _image,
+          onUse: _read,
           onCamera: () => _pick(ImageSource.camera),
           onGallery: () => _pick(ImageSource.gallery),
-          onManual: () => ScaffoldMessenger.of(
-            context,
-          ).showSnackBar(const SnackBar(content: Text('손으로 적기 — 아직 준비 중이에요'))),
+          onManual: () => setState(() => _step = PrescriptionStep.manual),
         );
       case PrescriptionStep.reading:
         return _ReadingScreen(image: _image);
@@ -247,7 +315,7 @@ class _PrescriptionScreenState extends ConsumerState<PrescriptionScreen> {
           onRegister: _register,
           onRetake: () => setState(() {
             _image = null;
-            _step = PrescriptionStep.capture;
+            _step = PrescriptionStep.pickMethod;
           }),
         );
       case PrescriptionStep.failed:
@@ -257,7 +325,7 @@ class _PrescriptionScreenState extends ConsumerState<PrescriptionScreen> {
           onRetry: () => setState(() {
             _image = null;
             _failureReason = '';
-            _step = PrescriptionStep.capture;
+            _step = PrescriptionStep.pickMethod;
           }),
           onAskFamily: () => Navigator.of(context).push(
             MaterialPageRoute<void>(builder: (_) => const FirstRunScreen()),
@@ -271,11 +339,15 @@ class _PrescriptionScreenState extends ConsumerState<PrescriptionScreen> {
 //  4d — 처방전 촬영
 // ════════════════════════════════════════════════════════════════
 class _CaptureScreen extends StatelessWidget {
+  final File? image;
+  final VoidCallback onUse;
   final VoidCallback onCamera;
   final VoidCallback onGallery;
   final VoidCallback onManual;
 
   const _CaptureScreen({
+    required this.image,
+    required this.onUse,
     required this.onCamera,
     required this.onGallery,
     required this.onManual,
@@ -296,54 +368,80 @@ class _CaptureScreen extends StatelessWidget {
                   child: IntrinsicHeight(
                     child: Column(
                       children: [
-                        Padding(
-                          padding: const EdgeInsets.fromLTRB(22, 18, 22, 8),
-                          child: Container(
-                            width: double.infinity,
-                            padding: const EdgeInsets.fromLTRB(22, 22, 22, 20),
-                            decoration: BoxDecoration(
-                              color: AppColors.darkSurface,
+                        if (image != null)
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(22, 18, 22, 8),
+                            child: ClipRRect(
                               borderRadius: BorderRadius.circular(22),
+                              child: AspectRatio(
+                                aspectRatio: 3 / 4,
+                                child: Image.file(image!, fit: BoxFit.contain),
+                              ),
                             ),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  '📸 이렇게 찍어 주세요',
-                                  style: AppText.emphasis(
-                                    size: 26,
-                                    color: Colors.white,
+                          )
+                        else
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(22, 18, 22, 8),
+                            child: Container(
+                              width: double.infinity,
+                              padding: const EdgeInsets.fromLTRB(
+                                22,
+                                22,
+                                22,
+                                20,
+                              ),
+                              decoration: BoxDecoration(
+                                color: AppColors.darkSurface,
+                                borderRadius: BorderRadius.circular(22),
+                              ),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    '📸 이렇게 찍어 주세요',
+                                    style: AppText.emphasis(
+                                      size: 26,
+                                      color: Colors.white,
+                                    ),
                                   ),
-                                ),
-                                const SizedBox(height: 18),
-                                _CaptureTip(
-                                  number: '1',
-                                  emoji: '☀️',
-                                  text: '밝은 곳에 처방전이\n잘 보이게 펼쳐 놓으세요',
-                                ),
-                                const _CaptureTipArrow(),
-                                _CaptureTip(
-                                  number: '2',
-                                  emoji: '📄',
-                                  text: '종이 네 모서리가\n사진에 다 나오게 하세요',
-                                ),
-                                const _CaptureTipArrow(),
-                                _CaptureTip(
-                                  number: '3',
-                                  emoji: '📱',
-                                  text: '두 손으로 잡고\n흔들리지 않게, 흐리지 않게 찍으세요',
-                                ),
-                              ],
+                                  const SizedBox(height: 18),
+                                  _CaptureTip(
+                                    number: '1',
+                                    emoji: '☀️',
+                                    text: '밝은 곳에 처방전이\n잘 보이게 펼쳐 놓으세요',
+                                  ),
+                                  const _CaptureTipArrow(),
+                                  _CaptureTip(
+                                    number: '2',
+                                    emoji: '📄',
+                                    text: '종이 네 모서리가\n사진에 다 나오게 하세요',
+                                  ),
+                                  const _CaptureTipArrow(),
+                                  _CaptureTip(
+                                    number: '3',
+                                    emoji: '📱',
+                                    text: '두 손으로 잡고\n흔들리지 않게, 흐리지 않게 찍으세요',
+                                  ),
+                                ],
+                              ),
                             ),
                           ),
-                        ),
                         const Spacer(),
                         Padding(
                           padding: const EdgeInsets.fromLTRB(22, 0, 22, 12),
                           child: Column(
                             children: [
+                              if (image != null) ...[
+                                SeniorButton(
+                                  label: '이 사진 사용하기',
+                                  minHeight: 74,
+                                  fontSize: 25,
+                                  onPressed: onUse,
+                                ),
+                                const SizedBox(height: 14),
+                              ],
                               SeniorButton(
-                                label: '사진 찍기',
+                                label: image == null ? '사진 찍기' : '다시 찍기',
                                 minHeight: 74,
                                 fontSize: 25,
                                 onPressed: onCamera,
@@ -511,33 +609,107 @@ class _ConfirmScreenState extends State<_ConfirmScreen> {
     for (final item in widget.items) Map<String, dynamic>.from(item),
   ];
   bool _registering = false;
+  final Set<int> _expandedItems = <int>{};
 
   static String _dosage(Map<String, dynamic> item) {
-    final amount = item['dosage']?.toString().trim() ?? '';
+    final amount = _takeAmountLabel(item);
     final timesPerTake = item['times_per_take'];
     final perDay = item['frequency_per_day'];
     final days = item['duration_days'];
+    final administrationTimes = item['administration_times'];
     final parts = <String>[];
+    final action = _doseAction(item);
     if (amount.isNotEmpty) {
-      parts.add('한 번에 $amount');
+      parts.add('한 번에 $action 양 $amount');
     } else if (timesPerTake is num && timesPerTake > 0) {
-      parts.add('한 번에 ${timesPerTake.toInt()}알');
+      parts.add('1회 사용량 확인 필요');
     }
     if (perDay is num) {
       parts.add('하루 ${perDay.toInt()}번');
-      parts.add(switch (perDay.toInt()) {
-        1 => '아침',
-        2 => '아침, 저녁',
-        3 => '아침, 점심, 저녁',
-        _ => '정해진 시간',
-      });
+    }
+    if (administrationTimes is List && administrationTimes.isNotEmpty) {
+      parts.add(administrationTimes.map((value) => '$value').join(', '));
     }
     if (days is num) parts.add('${days.toInt()}일');
     return parts.join(' · ');
   }
 
+  static String _doseAction(Map<String, dynamic> item) {
+    final form = item['dosage_form']?.toString() ?? '';
+    final route = item['administration_route']?.toString() ?? '';
+    final value = '$form $route';
+    if (value.contains('점안')) return '눈에 넣는';
+    if (value.contains('연고') || value.contains('크림') || value.contains('외용')) {
+      return '바르는';
+    }
+    if (value.contains('패치') || value.contains('패취')) return '붙이는';
+    if (value.contains('흡입')) return '들이마시는';
+    return '먹는';
+  }
+
+  static String _takeAmountLabel(Map<String, dynamic> item) {
+    final raw = item['dosage']?.toString().trim() ?? '';
+    final unit = item['unit']?.toString().trim() ?? '';
+    if (RegExp(
+      r'(mg|ml|g|%|밀리그램|밀리그람)(?:\s*$|[),/])',
+      caseSensitive: false,
+    ).hasMatch(raw)) {
+      return '';
+    }
+    final compact = raw.replaceAll(RegExp(r'\s+'), '');
+    final half = RegExp(
+      r'^반(알|정|캡슐|포|개)$',
+      caseSensitive: false,
+    ).firstMatch(compact);
+    if (half != null) {
+      final normalized = half.group(1) == '정' ? '알' : half.group(1)!;
+      return '0.5$normalized';
+    }
+    final fraction = RegExp(
+      r'^(\d+)/(\d+)(알|정|캡슐|포|개|mL|ml|방울|T|TAB|C|CAP|PKG|EA)$',
+      caseSensitive: false,
+    ).firstMatch(compact);
+    if (fraction != null) {
+      final denominator = int.tryParse(fraction.group(2)!);
+      final numerator = int.tryParse(fraction.group(1)!);
+      if (denominator != null && denominator != 0 && numerator != null) {
+        final normalizedItem = Map<String, dynamic>.from(item)
+          ..['dosage'] = (numerator / denominator).toString()
+          ..['unit'] = fraction.group(3);
+        return _takeAmountLabel(normalizedItem);
+      }
+    }
+    final match = RegExp(
+      r'^(\d+(?:\.\d+)?)(알|정|캡슐|포|개|mL|ml|방울|T|TAB|C|CAP|PKG|EA)$',
+      caseSensitive: false,
+    ).firstMatch(compact);
+    final number =
+        match?.group(1) ?? (double.tryParse(compact) != null ? compact : null);
+    final rawUnit = match?.group(2) ?? unit;
+    if (number == null || rawUnit.isEmpty) return '';
+    final parsed = double.tryParse(number);
+    final amount = parsed == null
+        ? number
+        : parsed == parsed.roundToDouble()
+        ? parsed.toInt().toString()
+        : parsed
+              .toStringAsFixed(3)
+              .replaceFirst(RegExp(r'0+$'), '')
+              .replaceFirst(RegExp(r'\.$'), '');
+    final normalizedUnit = switch (rawUnit.toUpperCase()) {
+      'T' || 'TAB' || '정' || '알' => '알',
+      'C' || 'CAP' || '캡슐' => '캡슐',
+      'PKG' || '포' => '포',
+      'EA' || '개' => '개',
+      'ML' || '밀리리터' => 'mL',
+      '방울' => '방울',
+      _ => '',
+    };
+    return normalizedUnit.isEmpty ? '' : '$amount$normalizedUnit';
+  }
+
   static String _shortDrugName(String name) {
-    return name.replaceAll(RegExp(r'\(수출명\s*[:：][^)]*\)'), '').trim();
+    return stripExportAlias(name);
   }
 
   static String? _seniorExplanation(Map<String, dynamic> item) {
@@ -546,9 +718,27 @@ class _ConfirmScreenState extends State<_ConfirmScreen> {
         item['easy_explanation']?.toString().trim() ??
         item['easy_category']?.toString().trim() ??
         '';
-    if (raw.isEmpty) return null;
-    if (raw.contains('약이에요')) return raw;
-    return '처방받은 약이에요';
+    if (raw.isEmpty || raw == '처방받은 약이에요') return null;
+    return raw;
+  }
+
+  static Map<String, int> _fieldConfidences(Map<String, dynamic> item) {
+    final raw = item['ocr_field_confidences'];
+    if (raw is! Map) return const {};
+    return {
+      for (final entry in raw.entries)
+        if (entry.value is num)
+          entry.key.toString(): (entry.value as num).round(),
+    };
+  }
+
+  static String _matchStatusLabel(Map<String, dynamic> item) {
+    final status = item['match_status']?.toString().toUpperCase() ?? '';
+    return switch (status) {
+      'MATCHED' || 'MFDS' => '공식 약 확인됨',
+      'REVIEW_REQUIRED' => '약 확인 필요',
+      _ => '공식 약을 찾지 못함',
+    };
   }
 
   static bool _uncertain(Map<String, dynamic> item) {
@@ -561,10 +751,22 @@ class _ConfirmScreenState extends State<_ConfirmScreen> {
   static bool _hasCompleteDosing(Map<String, dynamic> item) {
     final amount = item['dosage']?.toString().trim() ?? '';
     final timesPerTake = item['times_per_take'];
+    final unit = item['unit']?.toString().trim() ?? '';
     final frequency = item['frequency_per_day'];
     final duration = item['duration_days'];
+    final amountWithUnit = RegExp(
+      r'^(?:\d+(?:\.\d+)?|\d+/\d+|반)\s*(알|정|캡슐|포|개|mL|ml|방울|T|TAB|C|CAP|PKG|EA)$',
+      caseSensitive: false,
+    ).hasMatch(amount);
+    final knownUnit = RegExp(
+      r'^(알|정|캡슐|포|개|mL|ml|방울|T|TAB|C|CAP|PKG|EA)$',
+      caseSensitive: false,
+    ).hasMatch(unit);
+    final numericAmount = double.tryParse(amount) != null;
     final hasAmount =
-        amount.isNotEmpty || (timesPerTake is num && timesPerTake > 0);
+        amountWithUnit ||
+        (numericAmount && knownUnit) ||
+        (timesPerTake is num && timesPerTake > 0 && knownUnit);
     final hasFrequency =
         frequency is num && frequency.toInt() >= 1 && frequency.toInt() <= 3;
     final hasDuration =
@@ -573,6 +775,8 @@ class _ConfirmScreenState extends State<_ConfirmScreen> {
   }
 
   bool get _allDosingConfirmed => _editedItems.every(_hasCompleteDosing);
+  int get _missingDosingCount =>
+      _editedItems.where((item) => !_hasCompleteDosing(item)).length;
 
   Future<void> _editItem(int index) async {
     final item = _editedItems[index];
@@ -629,7 +833,7 @@ class _ConfirmScreenState extends State<_ConfirmScreen> {
                   textInputAction: TextInputAction.next,
                   style: AppText.body(size: 20),
                   decoration: const InputDecoration(
-                    labelText: '한 번에 먹는 양',
+                    labelText: '한 번에 사용하는 양',
                     hintText: '예: 1알 또는 0.5정',
                     border: OutlineInputBorder(),
                   ),
@@ -702,6 +906,153 @@ class _ConfirmScreenState extends State<_ConfirmScreen> {
     durationController.dispose();
   }
 
+  Future<void> _fixMedicineName(int index) async {
+    final item = _editedItems[index];
+    final current =
+        item['ocr_drug_name_raw']?.toString().trim().isNotEmpty == true
+        ? item['ocr_drug_name_raw'].toString()
+        : item['drug_name']?.toString() ?? '';
+    final query = await showFixNameSheet(context, current: current);
+    if (!mounted || query == null) return;
+
+    try {
+      final response = await ApiClient().get(
+        '/api/v1/medicines/lookup?q=${Uri.encodeQueryComponent(query)}',
+      );
+      if (!mounted) return;
+      final rawItems = response is Map ? response['items'] : null;
+      final hits = rawItems is List
+          ? rawItems
+                .whereType<Map>()
+                .map((value) => Map<String, dynamic>.from(value))
+                .toList()
+          : <Map<String, dynamic>>[];
+      if (hits.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('공식 의약품 목록에서 해당 이름을 찾지 못했어요.')),
+        );
+        return;
+      }
+      final picked = await _pickOfficialMedicine(hits);
+      if (!mounted || picked == null) return;
+      final displayName =
+          picked['display_name']?.toString() ??
+          picked['product_name']?.toString() ??
+          query;
+      setState(() {
+        _editedItems[index] = {
+          ...item,
+          'medicine_code': picked['medicine_code'],
+          'drug_name': displayName,
+          'display_name': displayName,
+          'official_product_name':
+              picked['product_name']?.toString() ?? displayName,
+          'ingredient_name':
+              picked['ingredient_name']?.toString() ??
+              picked['ingredient']?.toString() ??
+              '',
+          'ocr_drug_name_raw': current,
+          'match_status': 'MATCHED',
+        };
+        _expandedItems.add(index);
+      });
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('공식 약을 찾지 못했어요. 잠시 후 다시 시도해 주세요.')),
+      );
+    }
+  }
+
+  Future<Map<String, dynamic>?> _pickOfficialMedicine(
+    List<Map<String, dynamic>> hits,
+  ) {
+    return showModalBottomSheet<Map<String, dynamic>>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: AppColors.bg,
+      builder: (sheetContext) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 22, 20, 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text('공식 약을 골라 주세요', style: AppText.emphasis(size: 24)),
+              const SizedBox(height: 6),
+              Text(
+                '제품명과 주성분을 처방전과 비교해 주세요.',
+                style: AppText.body(size: 17, color: AppColors.textSecondary),
+              ),
+              const SizedBox(height: 16),
+              Flexible(
+                child: ListView.separated(
+                  shrinkWrap: true,
+                  itemCount: hits.length,
+                  separatorBuilder: (_, _) => const SizedBox(height: 10),
+                  itemBuilder: (context, index) {
+                    final hit = hits[index];
+                    final name =
+                        hit['display_name']?.toString() ??
+                        hit['product_name']?.toString() ??
+                        '약';
+                    final ingredient =
+                        hit['ingredient_name']?.toString() ??
+                        hit['ingredient']?.toString() ??
+                        '';
+                    return SeniorCard(
+                      onTap: () => Navigator.of(sheetContext).pop(hit),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(name, style: AppText.cardTitle(size: 20)),
+                          if (ingredient.trim().isNotEmpty) ...[
+                            const SizedBox(height: 4),
+                            Text(
+                              '주성분: $ingredient',
+                              style: AppText.caption(
+                                size: 17,
+                                color: AppColors.textSecondary,
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<bool> _confirmPartialRegistration() async {
+    if (widget.unrecognizedNames.isEmpty) return true;
+    return await showDialog<bool>(
+          context: context,
+          builder: (dialogContext) => AlertDialog(
+            title: const Text('확인하지 못한 약이 있어요'),
+            content: const Text(
+              '제외한 약은 함께 먹기 확인에서도 빠져요. 처방전과 비교한 뒤 제외하고 등록해 주세요.',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(dialogContext).pop(false),
+                child: const Text('다시 확인하기'),
+              ),
+              TextButton(
+                onPressed: () => Navigator.of(dialogContext).pop(true),
+                child: const Text('제외하고 등록'),
+              ),
+            ],
+          ),
+        ) ??
+        false;
+  }
+
   Future<void> _tryRegister() async {
     if (_registering) return;
     if (!_allDosingConfirmed) {
@@ -710,6 +1061,7 @@ class _ConfirmScreenState extends State<_ConfirmScreen> {
       );
       return;
     }
+    if (!await _confirmPartialRegistration()) return;
     setState(() => _registering = true);
     await widget.onRegister(_editedItems);
     if (mounted) setState(() => _registering = false);
@@ -749,8 +1101,8 @@ class _ConfirmScreenState extends State<_ConfirmScreen> {
                         const SizedBox(height: 4),
                         Text(
                           _allDosingConfirmed
-                              ? '약 이름과 복용 정보를 꼭 확인해 주세요.'
-                              : '빨간 카드를 눌러 빠진 복용 정보를 확인해 주세요.',
+                              ? '공식 약 ${_editedItems.length}개 확인 · 복용 정보 누락 없음'
+                              : '공식 약 ${_editedItems.length}개 확인 · 복용 정보 누락 $_missingDosingCount개',
                           style: AppText.caption(
                             color: const Color(0xFF3A4590),
                           ),
@@ -770,16 +1122,37 @@ class _ConfirmScreenState extends State<_ConfirmScreen> {
                           name: _shortDrugName(
                             item['drug_name']?.toString() ?? '이름을 못 읽었어요',
                           ),
+                          ingredient:
+                              item['ingredient_name']?.toString() ??
+                              item['ingredient']?.toString() ??
+                              '',
+                          ingredientStrength:
+                              item['ingredient_strength']?.toString() ?? '',
+                          rawOcrName:
+                              item['ocr_drug_name_raw']?.toString() ??
+                              item['drug_name']?.toString() ??
+                              '',
+                          officialName:
+                              item['official_product_name']?.toString() ??
+                              item['drug_name']?.toString() ??
+                              '',
+                          medicineCode: item['medicine_code']?.toString() ?? '',
                           dosage: _dosage(item),
                           purposeLabel: item['purpose_label']?.toString(),
                           explanation: _seniorExplanation(item),
                           keyCaution: item['key_caution']?.toString(),
+                          fieldConfidences: _fieldConfidences(item),
+                          matchStatusLabel: _matchStatusLabel(item),
                           uncertain: _uncertain(item),
                           needsDosingConfirmation: needsDosingConfirmation,
-                          recognitionPct: item['recognition_pct'] is num
-                              ? (item['recognition_pct'] as num).round()
-                              : null,
-                          onEdit: () => _editItem(index),
+                          expanded: _expandedItems.contains(index),
+                          onToggle: () => setState(() {
+                            if (!_expandedItems.remove(index)) {
+                              _expandedItems.add(index);
+                            }
+                          }),
+                          onFixName: () => _fixMedicineName(index),
+                          onEditDosing: () => _editItem(index),
                         );
                       },
                     ),
@@ -839,9 +1212,11 @@ class _ConfirmScreenState extends State<_ConfirmScreen> {
                     SeniorButton(
                       label: _registering
                           ? '등록하고 있어요'
-                          : (_allDosingConfirmed
-                                ? '이대로 등록하기'
-                                : '복용 정보 확인 후 등록하기'),
+                          : (!_allDosingConfirmed
+                                ? '복용 정보 확인 후 등록하기'
+                                : (widget.unrecognizedNames.isNotEmpty
+                                      ? '미확인 약 확인 후 등록하기'
+                                      : '이대로 등록하기')),
                       minHeight: 70,
                       onPressed: _registering ? null : _tryRegister,
                     ),
@@ -867,30 +1242,49 @@ class _ConfirmScreenState extends State<_ConfirmScreen> {
 
 class _DrugCard extends StatelessWidget {
   final String name;
+  final String ingredient;
+  final String ingredientStrength;
+  final String rawOcrName;
+  final String officialName;
+  final String medicineCode;
   final String dosage;
   final String? purposeLabel;
   final String? explanation;
   final String? keyCaution;
+  final Map<String, int> fieldConfidences;
+  final String matchStatusLabel;
   final bool uncertain;
   final bool needsDosingConfirmation;
-  final int? recognitionPct;
-  final VoidCallback onEdit;
+  final bool expanded;
+  final VoidCallback onToggle;
+  final VoidCallback onFixName;
+  final VoidCallback onEditDosing;
 
   const _DrugCard({
     required this.name,
+    required this.ingredient,
+    required this.ingredientStrength,
+    required this.rawOcrName,
+    required this.officialName,
+    required this.medicineCode,
     required this.dosage,
     required this.purposeLabel,
     required this.explanation,
     required this.keyCaution,
+    required this.fieldConfidences,
+    required this.matchStatusLabel,
     required this.uncertain,
     required this.needsDosingConfirmation,
-    required this.onEdit,
-    this.recognitionPct,
+    required this.expanded,
+    required this.onToggle,
+    required this.onFixName,
+    required this.onEditDosing,
   });
 
   @override
   Widget build(BuildContext context) {
     return SeniorCard(
+      onTap: onToggle,
       padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 20),
       borderColor: uncertain || needsDosingConfirmation
           ? AppColors.dangerBorder
@@ -903,45 +1297,26 @@ class _DrugCard extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Expanded(child: Text(name, style: AppText.cardTitle(size: 21))),
-              if (recognitionPct != null) ...[
-                const SizedBox(width: 8),
-                Text(
-                  '$recognitionPct%',
-                  style: AppText.cardTitle(
-                    size: 20,
-                    color: (recognitionPct ?? 0) >= 85
-                        ? AppColors.point
-                        : AppColors.danger,
-                  ),
-                ),
-              ],
               const SizedBox(width: 12),
-              InkWell(
-                onTap: onEdit,
-                child: Container(
-                  constraints: const BoxConstraints(minHeight: 48),
-                  alignment: Alignment.center,
-                  padding: const EdgeInsets.symmetric(horizontal: 6),
-                  child: Text(
-                    '고치기',
-                    style: AppText.cardTitle(size: 18, color: AppColors.point),
-                  ),
+              ExcludeSemantics(
+                child: Icon(
+                  expanded ? Icons.expand_less : Icons.chevron_right,
+                  color: AppColors.textTertiary,
+                  size: 30,
                 ),
               ),
             ],
           ),
-          if (dosage.isNotEmpty) ...[
-            const SizedBox(height: 6),
+          if (ingredient.trim().isNotEmpty) ...[
+            const SizedBox(height: 5),
             Text(
-              dosage,
-              style: AppText.body(size: 18, color: AppColors.textSecondary),
-            ),
-          ],
-          if ((purposeLabel ?? '').trim().isNotEmpty) ...[
-            const SizedBox(height: 8),
-            Text(
-              purposeLabel!,
-              style: AppText.label(size: 17.5, color: AppColors.point),
+              '주성분: ${[
+                compactIngredientSummary(ingredient),
+                ingredientStrength,
+              ].where((value) => value.trim().isNotEmpty).join(' · ')}',
+              style: AppText.caption(size: 17, color: AppColors.textSecondary),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
             ),
           ],
           if (explanation != null && explanation!.isNotEmpty) ...[
@@ -949,31 +1324,170 @@ class _DrugCard extends StatelessWidget {
             Text(
               explanation!,
               style: AppText.body(size: 17, color: AppColors.textSecondary),
+              maxLines: expanded ? null : 2,
+              overflow: expanded ? null : TextOverflow.ellipsis,
             ),
           ],
-          if ((keyCaution ?? '').trim().isNotEmpty) ...[
+          if (dosage.isNotEmpty) ...[
             const SizedBox(height: 8),
             Text(
-              '주의: $keyCaution',
-              style: AppText.label(size: 17, color: AppColors.danger),
+              dosage,
+              style: AppText.body(size: 18, color: AppColors.textSecondary),
             ),
           ],
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 10,
+            runSpacing: 6,
+            children: [
+              Text(
+                matchStatusLabel,
+                style: AppText.label(
+                  size: 16.5,
+                  color: uncertain ? AppColors.danger : AppColors.point,
+                ),
+              ),
+              if (fieldConfidences['drug_name'] case final int confidence)
+                Text(
+                  '글자 인식률 $confidence%',
+                  style: AppText.label(
+                    size: 16.5,
+                    color: confidence >= 85
+                        ? AppColors.point
+                        : AppColors.danger,
+                  ),
+                ),
+            ],
+          ),
           if (uncertain) ...[
             const SizedBox(height: 10),
             Text(
-              '약 이름 인식이 불확실해요',
+              '약 이름을 다시 확인해 주세요',
               style: AppText.label(size: 17.5, color: AppColors.danger),
             ),
           ],
           if (needsDosingConfirmation) ...[
             const SizedBox(height: 10),
             Text(
-              '복용량·하루 횟수·복용 일수를 확인해 주세요',
+              '복용량·단위·하루 횟수·복용 일수를 확인해 주세요',
               style: AppText.label(size: 17.5, color: AppColors.danger),
+            ),
+          ],
+          if (expanded) ...[
+            const SizedBox(height: 16),
+            const SeniorDivider(),
+            const SizedBox(height: 14),
+            _DetailLine(label: '사진에서 읽은 이름', value: rawOcrName),
+            const SizedBox(height: 8),
+            _DetailLine(label: '공식 제품명', value: officialName),
+            if (medicineCode.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              _DetailLine(label: '공식 의약품 코드', value: medicineCode),
+            ],
+            if ((purposeLabel ?? '').trim().isNotEmpty) ...[
+              const SizedBox(height: 12),
+              Text(
+                '사용될 수 있는 주요 목적',
+                style: AppText.label(size: 17, color: AppColors.textSecondary),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                purposeLabel!,
+                style: AppText.label(size: 18, color: AppColors.point),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                '실제 처방 이유는 의사나 약사에게 확인해 주세요.',
+                style: AppText.caption(
+                  size: 16,
+                  color: AppColors.textSecondary,
+                ),
+              ),
+            ],
+            if ((keyCaution ?? '').trim().isNotEmpty) ...[
+              const SizedBox(height: 12),
+              Text(
+                '주의: $keyCaution',
+                style: AppText.label(size: 17, color: AppColors.danger),
+              ),
+            ],
+            if (fieldConfidences.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              Text(
+                '항목별 글자 인식률',
+                style: AppText.label(size: 17, color: AppColors.textSecondary),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                _confidenceSummary(fieldConfidences),
+                style: AppText.caption(
+                  size: 16,
+                  color: AppColors.textSecondary,
+                ),
+              ),
+            ],
+            const SizedBox(height: 14),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: onFixName,
+                    child: const Text('약 이름 다시 확인'),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: onEditDosing,
+                    child: const Text('복용 정보 고치기'),
+                  ),
+                ),
+              ],
+            ),
+          ] else ...[
+            const SizedBox(height: 8),
+            Text(
+              '자세히 확인하기',
+              style: AppText.label(size: 17, color: AppColors.point),
             ),
           ],
         ],
       ),
+    );
+  }
+
+  static String _confidenceSummary(Map<String, int> values) {
+    const labels = {
+      'drug_name': '약 이름',
+      'dose_amount': '1회량',
+      'frequency_per_day': '하루 횟수',
+      'duration_days': '복용 일수',
+    };
+    return values.entries
+        .where((entry) => labels.containsKey(entry.key))
+        .map((entry) => '${labels[entry.key]} ${entry.value}%')
+        .join(' · ');
+  }
+}
+
+class _DetailLine extends StatelessWidget {
+  final String label;
+  final String value;
+
+  const _DetailLine({required this.label, required this.value});
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: AppText.caption(size: 16, color: AppColors.textSecondary),
+        ),
+        const SizedBox(height: 2),
+        Text(value, style: AppText.body(size: 17)),
+      ],
     );
   }
 }
@@ -1018,6 +1532,7 @@ class _FailedScreen extends StatelessWidget {
                 '밝은 곳에 처방전을 펼쳐 놓으세요',
                 '종이 네 귀퉁이가 다 보이게 하세요',
                 '전화기를 두 손으로 잡고 흔들리지 않게 찍으세요',
+                '다시 찍기, 앨범에서 고르기, 직접 입력 중에서 고를 수 있어요',
               ],
               actionLabel: '다시 찍어드릴게요',
               onAction: onRetry,

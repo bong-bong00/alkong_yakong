@@ -2,8 +2,10 @@ from app.services.seed_mvp_medicines import MVP_USER_ID, ensure_mvp_demo_medicin
 from app.services.today_medication_service import (
     _doses_from_active_medicines,
     _medicine_item,
+    _visible_medicine_item,
     get_today_medicines,
 )
+from app.database import get_connection
 
 
 def test_mvp_user_today_medicines_from_server():
@@ -13,7 +15,7 @@ def test_mvp_user_today_medicines_from_server():
     assert data["has_server_medicines"] is True
     assert data["doses"]
     names = [
-        med["ingredient"]
+        med["display_name"]
         for dose in data["doses"]
         for med in dose["medicines"]
     ]
@@ -54,7 +56,7 @@ def test_home_amount_uses_take_dose_not_name_milligrams():
             "efficacy": "위궤양",
         }
     )
-    assert half["amount"] == "0.50"
+    assert half["amount"] == ""
 
 
 def test_home_item_separates_purpose_explanation_and_key_caution():
@@ -72,9 +74,12 @@ def test_home_item_separates_purpose_explanation_and_key_caution():
         }
     )
     assert item["purpose_label"] == "가려움 완화 · 불안·긴장 완화"
-    assert item["short_explanation"].endswith("약이에요.")
+    assert item["short_explanation"].endswith("있어요.")
     assert "운전" in item["key_caution"]
     assert len(item["easy_purposes"]) == 2
+    assert all(isinstance(value, str) for value in item["easy_purposes"])
+    assert all(isinstance(value, dict) for value in item["purposes"])
+    assert all(isinstance(value, str) for value in item["key_cautions"])
 
 
 def test_active_medicine_without_frequency_does_not_get_a_made_up_morning_dose():
@@ -91,3 +96,105 @@ def test_active_medicine_without_frequency_does_not_get_a_made_up_morning_dose()
         }
     ]
     assert _doses_from_active_medicines(rows) == []
+
+
+def test_explicit_named_times_are_kept_as_today_slots():
+    rows = [
+        {
+            "medicine_code": "TEST-NAMED-TIMES",
+            "product_name": "시간확인정",
+            "ingredient": "테스트성분",
+            "dosage": "1알",
+            "frequency_per_day": 3,
+            "administration_times": '["아침", "점심", "저녁"]',
+            "easy_category": "",
+            "efficacy": "",
+        }
+    ]
+    doses = _doses_from_active_medicines(rows)
+    assert [dose["slot"] for dose in doses] == ["morning", "lunch", "dinner"]
+
+
+def test_visible_item_skips_druginfo_mock_names():
+    assert (
+        _visible_medicine_item(
+            {
+                "medicine_code": "MVP-ANY",
+                "product_name": "체험용정",
+                "ingredient": "체험성분",
+                "dosage": "1알",
+            }
+        )
+        is None
+    )
+    assert (
+        _visible_medicine_item(
+            {
+                "product_name": "아스피린 100mg",
+                "ingredient": "아스피린 100mg",
+                "dosage": "1알",
+            }
+        )
+        is None
+    )
+    real = _visible_medicine_item(
+        {
+            "product_name": "휴온스시메티딘정200밀리그램",
+            "ingredient": "시메티딘",
+            "dosage": "0.50",
+            "efficacy": "위궤양",
+        }
+    )
+    assert real is not None
+    assert real["amount"] == ""
+
+
+def test_adipam_card_uses_permission_name_and_itch_copy():
+    item = _medicine_item(
+        {
+            "medicine_code": "197800210",
+            "product_name": "아디팜정(히드록시진염산염)",
+            "ingredient": "히드록시진염산염",
+            "dosage": "0.50",
+            "easy_category": "알레르기·두통·어지러움",
+            "efficacy": (
+                "신경증에서의 불안, 긴장, 초조. "
+                "두드러기, 피부질환에 수반하는 가려움"
+            ),
+            "short_explanation": "가려움 또는 불안·긴장을 완화할 목적으로 처방될 수 있어요.",
+            "explanation_review_status": "REVIEWED",
+        }
+    )
+    assert item["display_name"] == "아디팜정(히드록시진염산염)"
+    assert item["product_name"] == "아디팜정(히드록시진염산염)"
+    assert item["purpose_label"] == "가려움 완화 · 불안·긴장 완화"
+    assert "가려움" in item["short_explanation"]
+    assert item["amount"] == ""
+    assert "처방받은 약이에요" not in (item["short_explanation"] or "")
+
+
+def test_home_only_exposes_an_actual_high_or_medium_interaction_alert():
+    ensure_mvp_demo_medicines()
+    marker = "테스트 함께먹기 주의"
+    conn = get_connection()
+    conn.execute(
+        """
+        INSERT INTO risk_results (
+            user_id, risk_level, description, analyzed_ingredients,
+            total_matches, matches_json, assessment_status
+        ) VALUES (?, 'HIGH', ?, '[]', 1, '[]', 'RISK_FOUND')
+        """,
+        (MVP_USER_ID, marker),
+    )
+    conn.commit()
+    conn.close()
+    try:
+        assert get_today_medicines(MVP_USER_ID)["interaction_alert"] == marker
+    finally:
+        conn = get_connection()
+        conn.execute(
+            "DELETE FROM risk_results WHERE user_id = ? AND description = ?",
+            (MVP_USER_ID, marker),
+        )
+        conn.commit()
+        conn.close()

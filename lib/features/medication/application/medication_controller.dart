@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/network/api_client.dart';
 import '../../../core/session/mvp_session.dart';
+import '../../medicines/domain/display_policy.dart';
 import '../../reminder/domain/reminder_ladder.dart';
 import '../domain/medication_models.dart';
 
@@ -28,7 +29,13 @@ class MedicationController extends Notifier<TodayMedication> {
   @override
   TodayMedication build() {
     Future.microtask(refreshFromServer);
-    return _demoToday();
+    return const TodayMedication(
+      doses: [],
+      guardianRelation: '보호자',
+      guardianName: '가족',
+      heartRate: 72,
+      heartRateNormal: true,
+    );
   }
 
   Future<void> refreshFromServer() async {
@@ -57,35 +64,43 @@ class MedicationController extends Notifier<TodayMedication> {
         if (rawMeds is List) {
           for (final m in rawMeds) {
             if (m is! Map) continue;
-            final ingredient =
-                m['ingredient']?.toString() ??
-                m['product_name']?.toString() ??
-                '약';
+            final card = resolveMyMedicineCard(
+              medicineCode: m['medicine_code']?.toString(),
+              productName: m['product_name']?.toString(),
+              displayName: m['display_name']?.toString(),
+              ingredient: m['ingredient']?.toString(),
+              purposeLabel: m['purpose_label']?.toString(),
+              shortExplanation: m['short_explanation']?.toString(),
+              easyCategory: m['easy_category']?.toString(),
+            );
+            if (isMockDrugInfoName(card.name)) continue;
             final scheduleRaw = m['schedule_id'];
             final scheduleId = scheduleRaw is num
                 ? scheduleRaw.toInt()
                 : int.tryParse(scheduleRaw?.toString() ?? '');
             meds.add(
               Medicine(
-                ingredient: ingredient,
-                amount: m['amount']?.toString() ?? '1알',
-                easyCategory: m['easy_category']?.toString(),
-                purposeLabel: m['purpose_label']?.toString(),
-                shortExplanation: m['short_explanation']?.toString(),
+                ingredient: card.name,
+                ingredientName:
+                    m['ingredient_name']?.toString() ??
+                    m['ingredient']?.toString(),
+                ingredientSummary: m['ingredient_summary']?.toString(),
+                ingredientStrength: m['ingredient_strength']?.toString(),
+                amount: m['amount']?.toString() ?? '',
+                easyCategory: card.spoken,
+                purposeLabel: card.purposeLabel,
+                shortExplanation: card.spoken,
                 keyCaution: m['key_caution']?.toString(),
-                efficacy: m['efficacy']?.toString(),
+                efficacy: null,
                 scheduleId: scheduleId,
+                medicineCode: m['medicine_code']?.toString(),
               ),
             );
           }
         }
         if (meds.isEmpty) continue;
         doses.add(
-          DoseEntry(
-            slot: slot,
-            medicines: meds,
-            taken: raw['taken'] == true,
-          ),
+          DoseEntry(slot: slot, medicines: meds, taken: raw['taken'] == true),
         );
       }
     }
@@ -95,6 +110,8 @@ class MedicationController extends Notifier<TodayMedication> {
       guardianName: data['guardian_name']?.toString() ?? '가족',
       heartRate: 72,
       heartRateNormal: true,
+      daysLeft: state.daysLeft,
+      interactionAlert: data['interaction_alert']?.toString(),
     );
   }
 
@@ -111,42 +128,18 @@ class MedicationController extends Notifier<TodayMedication> {
     }
   }
 
-  TodayMedication _demoToday() {
-    const meds = [
-      Medicine(
-        ingredient: '코다론정(아미오다론염산염)',
-        amount: '1알',
-        appearance: '흰색 알약',
-        easyCategory: '심장 박동을 고르게 하는 약이에요',
-      ),
-      Medicine(
-        ingredient: '부루펜정200밀리그램(이부프로펜)',
-        amount: '1알',
-        appearance: '흰색 알약',
-        easyCategory: '열나고 아플 때 먹는 약이에요',
-      ),
-      Medicine(
-        ingredient: '게루삼정',
-        amount: '1알',
-        appearance: '흰색 알약',
-        easyCategory: '속쓰릴 때 먹는 약이에요',
-      ),
-    ];
-    return const TodayMedication(
-      doses: [
-        DoseEntry(slot: DoseSlot.morning, medicines: meds, taken: true),
-        DoseEntry(slot: DoseSlot.lunch, medicines: meds, taken: true),
-        DoseEntry(slot: DoseSlot.dinner, medicines: meds),
-      ],
-      guardianRelation: '딸',
-      guardianName: '지안',
-      heartRate: 72,
-      heartRateNormal: true,
-    );
-  }
-
   final Set<DoseSlot> _guardianNotified = <DoseSlot>{};
   final Map<DoseSlot, int> _snoozeCount = <DoseSlot, int>{};
+  bool _refillAsked = false;
+
+  bool get shouldAskRefill => state.daysLeft == 0 && !_refillAsked;
+
+  void markRefillAsked() => _refillAsked = true;
+
+  void refill({int days = 21}) {
+    _refillAsked = false;
+    state = state.copyWith(daysLeft: days);
+  }
 
   bool guardianNotifiedFor(DoseSlot slot) => _guardianNotified.contains(slot);
 
@@ -231,6 +224,11 @@ class MedicationController extends Notifier<TodayMedication> {
     );
     _scheduleLadder(slot, now: at);
     return until;
+  }
+
+  void decrementDaysLeft() {
+    final next = state.daysLeft <= 0 ? 0 : state.daysLeft - 1;
+    state = state.copyWith(daysLeft: next);
   }
 
   void _scheduleLadder(DoseSlot slot, {DateTime? now}) {

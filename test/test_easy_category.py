@@ -23,7 +23,7 @@ def test_amlodipine_is_blood_pressure():
 
 
 def test_aspirin_is_blood_thinning():
-    assert derive_easy_category(ingredient="아스피린 100mg") == "피 묽게 하는 약"
+    assert derive_easy_category(ingredient="아스피린 100mg") == "피가 굳지 않게 하는 약"
 
 
 def test_metformin_is_diabetes():
@@ -98,7 +98,7 @@ def test_adipharm_has_both_official_purposes_without_claiming_diagnosis():
     ]
     assert guidance["purpose_label"] == "가려움 완화 · 불안·긴장 완화"
     assert guidance["short_explanation"] == (
-        "가려움이나 불안·긴장을 줄이는 데 쓰이는 약이에요."
+        "가려움 또는 불안·긴장을 완화할 목적으로 사용될 수 있어요."
     )
     assert "처방받은 이유" in guidance["purpose_notice"]
     assert "운전" in guidance["key_caution"]
@@ -140,7 +140,7 @@ def test_name_match_wins_over_secondary_efficacy_word():
             ingredient="아스피린 100mg",
             efficacy="고혈압, 고콜레스테롤혈증 위험이 있는 환자의 혈전 예방",
         )
-        == "피 묽게 하는 약"
+        == "피가 굳지 않게 하는 약"
     )
 
 
@@ -247,7 +247,34 @@ def test_spoken_xanax_is_anxiety_not_heartburn():
 
 
 def test_spoken_unknown_fallback():
-    assert derive_easy_spoken(product_name="무명정") == "처방받은 약이에요"
+    assert derive_easy_spoken(product_name="무명정") == ""
+
+
+def test_keyword_purpose_rows_are_not_joined_as_card_label():
+    from app.services.pharmacist.easy_category import _compose_guidance
+
+    guidance = _compose_guidance(
+        [
+            {
+                "purpose_code": "알러지",
+                "easy_label": "알레르기",
+                "sentence": "가려움을 줄이는 데 쓰이는 약이에요.",
+            },
+            {
+                "purpose_code": "두통",
+                "easy_label": "두통",
+                "sentence": "머리를 아프지 않게 하는 약이에요.",
+            },
+            {
+                "purpose_code": "어지러움",
+                "easy_label": "어지러움",
+                "sentence": "처방받은 약이에요",
+            },
+        ],
+        [],
+    )
+    assert guidance["purpose_label"] == ""
+    assert "완화할 목적으로" in guidance["short_explanation"]
 
 
 def test_strips_export_name():
@@ -256,3 +283,41 @@ def test_strips_export_name():
     assert "수출명" not in display_product_name(
         "휴온스시메티딘정200밀리그램(수출명:TAGAMENTTab.200밀리그램)"
     )
+
+
+def test_key_cautions_from_precaution_keywords():
+    guidance = medicine_guidance_from_medicine(
+        {
+            "product_name": "부루펜정200밀리그램(이부프로펜)",
+            "ingredient": "이부프로펜",
+            "precautions": (
+                "졸음이 올 수 있으며 운전 및 기계조작을 피한다. "
+                "임부에 투여하지 않는다. 음주 시 주의한다."
+            ),
+        }
+    )
+    codes = {item["caution_code"] for item in guidance["key_cautions"]}
+    assert "DROWSINESS_DRIVING" in codes
+    assert "PREGNANCY" in codes
+    assert "ALCOHOL" in codes
+    assert guidance["key_caution"]
+
+
+def test_fallback_spoken_is_not_used_for_known_demo_names():
+    from app.services.pharmacist.easy_category import derive_easy_spoken
+
+    samples = [
+        derive_easy_spoken(
+            product_name="코다론정(아미오다론염산염)",
+            efficacy="심방성부정맥, 심실성부정맥",
+        ),
+        derive_easy_spoken(
+            product_name="부루펜정200밀리그램(이부프로펜)",
+            efficacy="감기로 인한 발열 및 동통",
+        ),
+        derive_easy_spoken(
+            product_name="게루삼정",
+            efficacy="속쓰림, 위산과다",
+        ),
+    ]
+    assert all(text != "처방받은 약이에요" for text in samples)

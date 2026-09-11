@@ -6,14 +6,17 @@ import re
 import sqlite3
 from typing import Any
 
+from app.services.medicine_display import (
+    card_purpose_label,
+    omit_placeholder_spoken,
+    strip_export_alias,
+)
 from app.services.pharmacist.easy_category_db import (
     FALLBACK_SPOKEN,
     lookup_easy_label,
     lookup_easy_matches,
     lookup_spoken_sentence,
 )
-
-_EXPORT_NAME = re.compile(r"\(수출명\s*[:：][^)]*\)", re.I)
 
 _PATCH = ("붙이", "첩부", "파스", "플라스타", "플라스터", "패취", "반창고")
 _APPLY = ("바르", "도포", "외용", "연고", "크림", "로션")
@@ -76,11 +79,7 @@ def infer_use_route(
 
 def display_product_name(name: str | None) -> str:
     """수출명·군더더기 괄호를 떼고 카드에 쓸 제품명."""
-    text = str(name or "").strip()
-    if not text:
-        return ""
-    text = _EXPORT_NAME.sub("", text)
-    return re.sub(r"\s+", " ", text).strip(" /") or str(name or "").strip()
+    return strip_export_alias(name)
 
 
 def derive_easy_category(
@@ -223,45 +222,84 @@ def derive_easy_purposes_from_medicine(med: dict[str, Any]) -> list[dict[str, st
     return []
 
 
+_CAUTION_RULES: tuple[dict[str, Any], ...] = (
+    {
+        "caution_code": "DROWSINESS_DRIVING",
+        "short_sentence": "졸리거나 어지러울 수 있어요. 운전이나 위험한 기계 조작은 피하세요.",
+        "keywords": ("졸음", "운전", "기계조작", "기계 조작"),
+        "evidence_text": "졸음 및 운전·기계조작 주의",
+    },
+    {
+        "caution_code": "PREGNANCY",
+        "short_sentence": "임신 중이거나 임신 가능성이 있으면 의사·약사에게 먼저 알려 주세요.",
+        "keywords": ("임부", "임산부", "임신 중"),
+        "evidence_text": "임신 관련 주의",
+    },
+    {
+        "caution_code": "LIVER_KIDNEY",
+        "short_sentence": "간이나 콩팥(신장)이 약한 분은 의사·약사와 상의하세요.",
+        "keywords": ("간장애", "간기능", "신장애", "신기능", "신부전", "간부전", "신장"),
+        "evidence_text": "간·신장 주의",
+    },
+    {
+        "caution_code": "ALCOHOL",
+        "short_sentence": "이 약을 먹는 동안 술은 피하는 것이 좋아요.",
+        "keywords": ("알코올", "음주"),
+        "evidence_text": "음주 주의",
+    },
+    {
+        "caution_code": "BLEEDING",
+        "short_sentence": "피가 잘 멈추지 않거나 멍이 잘 들면 의사·약사에게 알려 주세요.",
+        "keywords": ("항응고", "출혈경향", "출혈 경향"),
+        "evidence_text": "출혈 주의",
+    },
+)
+
+
 def derive_key_cautions_from_medicine(med: dict[str, Any]) -> list[dict[str, str]]:
-    """Short, evidence-linked cautions. Rules stay deliberately conservative."""
-    name_blob = " ".join(
-        str(part or "")
-        for part in (
-            med.get("product_name") or med.get("medicine_name"),
-            med.get("ingredient"),
-        )
-    )
+    """Short, evidence-linked cautions from official precautions text."""
     precautions = str(med.get("precautions") or med.get("cautions") or "")
-    if "히드록시진" in name_blob and any(
-        phrase in precautions for phrase in ("졸음", "운전", "기계조작")
-    ):
-        return [
+    if not precautions.strip():
+        return []
+    found: list[dict[str, str]] = []
+    for rule in _CAUTION_RULES:
+        evidence = next(
+            (phrase for phrase in rule["keywords"] if phrase in precautions),
+            None,
+        )
+        if not evidence:
+            continue
+        found.append(
             {
-                "caution_code": "DROWSINESS_DRIVING",
-                "short_sentence": "졸리거나 어지러울 수 있어요. 운전이나 위험한 기계 조작은 피하세요.",
-                "evidence_text": "졸음 및 운전·기계조작 주의",
+                "caution_code": str(rule["caution_code"]),
+                "short_sentence": str(rule["short_sentence"]),
+                "evidence_text": str(rule["evidence_text"]),
                 "source": "식약처 허가 주의사항",
                 "severity": "CAUTION",
                 "review_status": "DERIVED",
             }
-        ]
-    return []
+        )
+        if len(found) >= 3:
+            break
+    return found
 
 
 def _compose_guidance(
     purposes: list[dict[str, str]], cautions: list[dict[str, str]]
 ) -> dict[str, Any]:
-    codes = {item["purpose_code"] for item in purposes}
-    if {"ITCH_RELIEF", "ANXIETY_TENSION_RELIEF"}.issubset(codes):
-        short_explanation = "가려움이나 불안·긴장을 줄이는 데 쓰이는 약이에요."
+    if len(purposes) == 1:
+        short_explanation = omit_placeholder_spoken(purposes[0].get("sentence"))
     elif purposes:
-        short_explanation = purposes[0]["sentence"]
+        labels = [str(item.get("easy_label") or "").strip() for item in purposes]
+        labels = [label.removesuffix(" 완화") for label in labels if label]
+        short_explanation = (
+            " 또는 ".join(labels[:3]) + "을 완화할 목적으로 사용될 수 있어요."
+        )
     else:
-        short_explanation = FALLBACK_SPOKEN
+        short_explanation = ""
     return {
         "easy_purposes": purposes,
-        "purpose_label": " · ".join(item["easy_label"] for item in purposes),
+        "purpose_label": card_purpose_label(purposes),
         "short_explanation": short_explanation,
         "key_cautions": cautions,
         "key_caution": cautions[0]["short_sentence"] if cautions else None,
@@ -269,10 +307,24 @@ def _compose_guidance(
     }
 
 
+def _apply_reviewed_short_explanation(
+    guidance: dict[str, Any],
+    med: dict[str, Any],
+) -> dict[str, Any]:
+    sentence = str(med.get("short_explanation") or "").strip()
+    status = str(med.get("explanation_review_status") or "").upper()
+    if sentence and status == "REVIEWED":
+        return {**guidance, "short_explanation": sentence}
+    return guidance
+
+
 def medicine_guidance_from_medicine(med: dict[str, Any]) -> dict[str, Any]:
-    return _compose_guidance(
-        derive_easy_purposes_from_medicine(med),
-        derive_key_cautions_from_medicine(med),
+    return _apply_reviewed_short_explanation(
+        _compose_guidance(
+            derive_easy_purposes_from_medicine(med),
+            derive_key_cautions_from_medicine(med),
+        ),
+        med,
     )
 
 
@@ -330,7 +382,12 @@ def load_medicine_guidance(cursor: Any, med: dict[str, Any]) -> dict[str, Any]:
     cautions = reviewed_cautions or caution_rows
     if not purposes and not cautions:
         return medicine_guidance_from_medicine(med)
-    return _compose_guidance(purposes, cautions)
+    if not cautions:
+        cautions = derive_key_cautions_from_medicine(med)
+    return _apply_reviewed_short_explanation(
+        _compose_guidance(purposes, cautions),
+        med,
+    )
 
 
 def sync_medicine_guidance(cursor: Any, med: dict[str, Any]) -> dict[str, Any]:
@@ -437,6 +494,30 @@ def sync_medicine_guidance(cursor: Any, med: dict[str, Any]) -> dict[str, Any]:
             (medicine_code,),
         )
     return load_medicine_guidance(cursor, med)
+
+
+def backfill_all_medicine_guidance(cursor: Any | None = None) -> int:
+    """Re-derive and persist purposes/cautions for every medicines row."""
+    owns_connection = cursor is None
+    if owns_connection:
+        from app.database import get_connection
+
+        conn = get_connection()
+        cursor = conn
+    else:
+        conn = None
+    try:
+        rows = cursor.execute("SELECT * FROM medicines").fetchall()
+        updated = 0
+        for row in rows:
+            sync_medicine_guidance(cursor, dict(row))
+            updated += 1
+        if conn is not None:
+            conn.commit()
+        return updated
+    finally:
+        if owns_connection and conn is not None:
+            conn.close()
 
 
 def format_display_name(name: str, easy_category: str | None) -> str:

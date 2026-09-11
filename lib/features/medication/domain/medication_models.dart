@@ -4,6 +4,8 @@
 /// 복약 완료 → "다 드셨어요", 미복약 → "아직 안 드셨어요".
 library;
 
+import '../../medicines/domain/display_policy.dart';
+
 /// 하루 세 번의 복약 시간대.
 enum DoseSlot {
   morning('아침', 8),
@@ -38,8 +40,17 @@ enum DoseSlot {
 
 /// 약 한 가지.
 class Medicine {
-  /// 성분명 — "메트포르민 500mg". 3a에서는 이것이 약 행의 제목이다.
+  /// 화면 제목으로 쓰는 허가 제품명(기존 코드 호환 필드).
   final String ingredient;
+
+  /// 실제 주성분. 제품명과 섞지 않는다.
+  final String? ingredientName;
+
+  /// 서버가 계산한 카드용 복합 성분 요약.
+  final String? ingredientSummary;
+
+  /// 주성분 함량.
+  final String? ingredientStrength;
 
   /// "1알".
   final String amount;
@@ -67,9 +78,15 @@ class Medicine {
   /// 오늘 스케줄 id — 「먹었어요」 서버 기록용.
   final int? scheduleId;
 
+  /// 상세 화면 연결용 공식 약 코드.
+  final String? medicineCode;
+
   const Medicine({
     required this.ingredient,
     required this.amount,
+    this.ingredientName,
+    this.ingredientSummary,
+    this.ingredientStrength,
     this.appearance,
     this.easyCategory,
     this.purposeLabel,
@@ -77,36 +94,48 @@ class Medicine {
     this.keyCaution,
     this.efficacy,
     this.scheduleId,
+    this.medicineCode,
   });
 
-  /// 홈·OCR 카드에 보여 줄 쉬운 한 줄. 허가 원문은 절대 그대로 쓰지 않는다.
+  /// 홈·OCR 카드에 보여 줄 쉬운 한 줄. 허가 원문·폴백 문장은 쓰지 않는다.
   String? get cardSpoken {
-    final short = shortExplanation?.trim();
-    if (short != null && short.contains('약이에요')) return short;
-    final spoken = easyCategory?.trim();
-    if (spoken != null && spoken.contains('약이에요')) return spoken;
-    final raw = efficacy?.trim();
-    if (raw != null && raw.contains('약이에요')) return raw;
-    if ((spoken != null && spoken.isNotEmpty) || (raw != null && raw.isNotEmpty)) {
-      return '처방받은 약이에요';
-    }
-    return null;
+    return cardSpokenOf(shortExplanation) ??
+        cardSpokenOf(easyCategory) ??
+        cardSpokenOf(efficacy);
   }
 
-  /// 화면에 보여 줄 약 이름. 서버는 제품명을 ingredient에 넣는다.
+  /// 화면에 보여 줄 약 이름. 허가 제품명을 그대로 쓴다.
   String get displayName {
-    final name = ingredient.trim();
+    final name = stripEasyCategoryParen(stripExportAlias(ingredient));
     return name.isEmpty ? '약' : name;
   }
+
+  String? get ingredientLabel {
+    final name = (ingredientSummary?.trim().isNotEmpty ?? false)
+        ? ingredientSummary!.trim()
+        : compactIngredientSummary(ingredientName);
+    final strength = ingredientStrength?.trim() ?? '';
+    if (name.isEmpty && strength.isEmpty) return null;
+    return [name, strength].where((value) => value.isNotEmpty).join(' · ');
+  }
+
+  /// 메인 홈 카드의 짧은 분류. 증상 키워드 나열은 쓰지 않는다.
+  String? get effect => cardPurposeLabel(purposeLabel);
+
+  /// 메인 홈에서 DrugInfo 찾기에 쓰던 키. 서버 약 코드를 쓴다.
+  String? get key => medicineCode;
 
   /// 음성으로 읽어줄 때의 한 줄 — "메트포르민 500mg, 흰색 동그란 알약 1알".
   String get spoken {
     final base = appearance == null
         ? '$displayName $amount'
         : '$displayName, $appearance $amount';
-    return [base, purposeLabel, cardSpoken, keyCaution]
-        .where((value) => value != null && value.trim().isNotEmpty)
-        .join(', ');
+    return [
+      base,
+      purposeLabel,
+      cardSpoken,
+      keyCaution,
+    ].where((value) => value != null && value.trim().isNotEmpty).join(', ');
   }
 }
 
@@ -177,6 +206,8 @@ class TodayMedication {
 
   final int heartRate;
   final bool heartRateNormal;
+  final int daysLeft;
+  final String? interactionAlert;
 
   const TodayMedication({
     required this.doses,
@@ -184,6 +215,8 @@ class TodayMedication {
     required this.guardianName,
     required this.heartRate,
     required this.heartRateNormal,
+    this.daysLeft = 3,
+    this.interactionAlert,
   });
 
   /// "딸 지안 님".
@@ -201,8 +234,12 @@ class TodayMedication {
     return null;
   }
 
-  DoseEntry doseOf(DoseSlot slot) =>
-      doses.firstWhere((d) => d.slot == slot);
+  DoseEntry doseOf(DoseSlot slot) {
+    for (final dose in doses) {
+      if (dose.slot == slot) return dose;
+    }
+    return DoseEntry(slot: slot, medicines: const []);
+  }
 
   /// "아침·점심 다 드셨어요" — 완료 요약 카드 문구.
   String get takenSummary {
@@ -212,11 +249,18 @@ class TodayMedication {
     return '${done.join('·')} 다 드셨어요';
   }
 
-  TodayMedication copyWith({List<DoseEntry>? doses}) => TodayMedication(
-    doses: doses ?? this.doses,
-    guardianRelation: guardianRelation,
-    guardianName: guardianName,
-    heartRate: heartRate,
-    heartRateNormal: heartRateNormal,
-  );
+  /// "약 3일치 남았어요"
+  String get daysLeftPhrase =>
+      daysLeft <= 0 ? '오늘이 마지막이에요' : '이 처방 $daysLeft일치 남았어요';
+
+  TodayMedication copyWith({List<DoseEntry>? doses, int? daysLeft}) =>
+      TodayMedication(
+        doses: doses ?? this.doses,
+        guardianRelation: guardianRelation,
+        guardianName: guardianName,
+        heartRate: heartRate,
+        heartRateNormal: heartRateNormal,
+        daysLeft: daysLeft ?? this.daysLeft,
+        interactionAlert: interactionAlert,
+      );
 }

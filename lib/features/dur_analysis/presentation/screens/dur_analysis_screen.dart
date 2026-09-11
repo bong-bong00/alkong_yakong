@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:go_router/go_router.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_tabler_icons/flutter_tabler_icons.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/network/api_client.dart';
@@ -10,6 +11,7 @@ import '../../../../core/widgets/recovery_view.dart';
 import '../../../../core/widgets/senior_button.dart';
 import '../../../../core/widgets/senior_card.dart';
 import '../../../../core/widgets/senior_header.dart';
+import '../../../medication/application/medication_controller.dart';
 
 /// 위험도 3단. **등급 숫자나 점수는 노출하지 않는다.**
 enum DrugRisk {
@@ -27,25 +29,17 @@ enum DrugRisk {
 ///
 /// "DUR 분석"이라는 말을 쓰지 않는다. 어떤 약이 어떤 약과 부딪히는지,
 /// 그래서 누구에게 물어봐야 하는지만 말한다.
-class DurAnalysisScreen extends StatefulWidget {
-  /// 함께 보고 있는 가족.
-  final String guardianTitle;
-
-  /// 안내 첫 줄에 부르는 환자 이름.
-  final String userName;
-
-  const DurAnalysisScreen({
-    super.key,
-    this.guardianTitle = '딸 지안 님',
-    this.userName = '김복자',
-  });
+class DurAnalysisScreen extends ConsumerStatefulWidget {
+  const DurAnalysisScreen({super.key});
 
   @override
-  State<DurAnalysisScreen> createState() => _DurAnalysisScreenState();
+  ConsumerState<DurAnalysisScreen> createState() => _DurAnalysisScreenState();
 }
 
-class _DurAnalysisScreenState extends State<DurAnalysisScreen> {
+class _DurAnalysisScreenState extends ConsumerState<DurAnalysisScreen> {
   final ApiClient _apiClient = ApiClient();
+  String _userName = '체험환자';
+  String _guardianTitle = '보호자 가족 님';
 
   bool _loading = true;
   bool _failed = false;
@@ -76,7 +70,39 @@ class _DurAnalysisScreenState extends State<DurAnalysisScreen> {
   @override
   void initState() {
     super.initState();
+    _loadNames();
     _analyze();
+  }
+
+  Future<void> _loadNames() async {
+    final today = ref.read(medicationProvider);
+    final fromToday =
+        '${today.guardianRelation} ${today.guardianName} 님'.trim();
+    final userId = Uri.encodeComponent(MvpSession.userId);
+    var userName = _userName;
+    var guardianTitle = fromToday.isEmpty ? _guardianTitle : fromToday;
+    try {
+      final user = await _apiClient.get('/api/v1/users/$userId');
+      if (user is Map && (user['name']?.toString().trim().isNotEmpty ?? false)) {
+        userName = user['name'].toString().trim();
+      }
+    } catch (_) {}
+    try {
+      final guardians = await _apiClient.get('/api/v1/guardians/users/$userId');
+      if (guardians is List && guardians.isNotEmpty && guardians.first is Map) {
+        final row = Map<String, dynamic>.from(guardians.first as Map);
+        final relation = row['relationship']?.toString().trim() ?? '';
+        final name = row['guardian_name']?.toString().trim() ?? '';
+        if (name.isNotEmpty) {
+          guardianTitle = relation.isEmpty ? '$name 님' : '$relation $name 님';
+        }
+      }
+    } catch (_) {}
+    if (!mounted) return;
+    setState(() {
+      _userName = userName;
+      _guardianTitle = guardianTitle;
+    });
   }
 
   Future<void> _analyze() async {
@@ -193,7 +219,7 @@ class _DurAnalysisScreenState extends State<DurAnalysisScreen> {
       body =
           '${names[0]}${_andJosa(names[0])}${names[1]}${_topicJosa(names[1])} $clause';
     }
-    return '${widget.userName}님!\n$body';
+    return '$_userName님!\n$body';
   }
 
   static List<String> _pairNames(Map<String, dynamic> match) {
@@ -338,7 +364,7 @@ class _DurAnalysisScreenState extends State<DurAnalysisScreen> {
         onAction: _analyze,
         stillWorksTitle: '약 알림은 그대로 와요',
         stillWorksBody: '인터넷이 끊겨도 복약 알림에는 영향이 없어요.',
-        helperText: '그래도 안 되면\n${widget.guardianTitle}에게 도움 청하기',
+        helperText: '그래도 안 되면\n$_guardianTitle에게 도움 청하기',
         onCallHelper: _callGuardian,
       );
     }
@@ -548,7 +574,7 @@ class _DurAnalysisScreenState extends State<DurAnalysisScreen> {
           const SizedBox(height: 16),
 
           SeniorButton(
-            label: '${widget.guardianTitle}에게 알리기',
+            label: '$_guardianTitle에게 알리기',
             kind: SeniorButtonKind.outline,
             minHeight: 64,
             fontSize: 21,
@@ -569,7 +595,7 @@ class _DurAnalysisScreenState extends State<DurAnalysisScreen> {
   void _callGuardian() {
     ScaffoldMessenger.of(
       context,
-    ).showSnackBar(SnackBar(content: Text('${widget.guardianTitle}에게 알려드렸어요')));
+    ).showSnackBar(SnackBar(content: Text('$_guardianTitle에게 알려드렸어요')));
   }
 }
 

@@ -4,6 +4,7 @@ import 'package:alkong_yakong/features/dashboard/presentation/screens/guardian_h
 import 'package:alkong_yakong/features/dashboard/presentation/screens/medication_record_screen.dart';
 import 'package:alkong_yakong/features/dashboard/presentation/screens/patient_home_screen.dart';
 import 'package:alkong_yakong/features/medication/domain/medication_models.dart';
+import 'package:alkong_yakong/features/medication/application/medication_controller.dart';
 import 'package:alkong_yakong/features/onboarding/presentation/screens/first_run_screen.dart';
 import 'package:alkong_yakong/features/profile/presentation/screens/mypage_screen.dart';
 import 'package:alkong_yakong/features/reminder/domain/reminder_ladder.dart';
@@ -19,6 +20,9 @@ import 'package:flutter_test/flutter_test.dart';
 void main() {
   Widget wrap(Widget child, {double textScale = 1.0}) {
     return ProviderScope(
+      overrides: [
+        medicationProvider.overrideWith(_SeniorTestMedicationController.new),
+      ],
       child: MaterialApp(
         theme: AppTheme.build(),
         home: MediaQuery(
@@ -68,7 +72,7 @@ void main() {
     });
   });
 
-  testWidgets('먹었어요를 누르면 기록되고, 되돌리기로 되돌아온다 (4b)', (tester) async {
+  testWidgets('먹었어요를 누르면 착용 확인 뒤 기록된다 (4b)', (tester) async {
     tester.view.physicalSize = const Size(390, 844);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.reset);
@@ -79,15 +83,11 @@ void main() {
     expect(find.text('먹었어요'), findsOneWidget);
     await tester.tap(find.text('먹었어요'));
     await tester.pumpAndSettle();
-
-    // 제목 앞에 이모지가 붙어 있어 부분 일치로 찾는다.
-    expect(find.textContaining('잘하셨어요'), findsOneWidget);
-
-    // 되돌리기는 시간 제한 없이 노출된다.
-    await tester.tap(find.text('잘못 눌렀어요 · 되돌리기'));
+    expect(find.text('안 차고 있어요 · 복약만 기록'), findsOneWidget);
+    await tester.tap(find.text('안 차고 있어요 · 복약만 기록'));
     await tester.pumpAndSettle();
 
-    expect(find.text('먹었어요'), findsOneWidget);
+    expect(find.text('오늘 약 다 드셨어요'), findsOneWidget);
   });
 
   test('재알림 사다리는 0·15·45분 뒤 어르신, 60분 뒤 보호자다 (5c)', () {
@@ -122,10 +122,7 @@ void main() {
   });
 
   test('절대시간으로 말한다 — 상대시간은 보조다', () {
-    expect(
-      DoseSlot.absoluteTime(DateTime(2026, 8, 20, 18, 2)),
-      '오후 6시 2분',
-    );
+    expect(DoseSlot.absoluteTime(DateTime(2026, 8, 20, 18, 2)), '오후 6시 2분');
     expect(DoseSlot.dinner.spokenTime, '저녁 6시');
   });
 
@@ -144,4 +141,22 @@ void main() {
     // 글자 끝에서 테두리까지 20px 안쪽 — 가로를 채우는 버튼이면 훨씬 멀어진다.
     expect(fieldRight - buttonRight, lessThan(24));
   });
+}
+
+class _SeniorTestMedicationController extends MedicationController {
+  @override
+  TodayMedication build() {
+    return const TodayMedication(
+      doses: [
+        DoseEntry(
+          slot: DoseSlot.dinner,
+          medicines: [Medicine(ingredient: '테스트정', amount: '1알')],
+        ),
+      ],
+      guardianRelation: '가족',
+      guardianName: '테스트',
+      heartRate: 72,
+      heartRateNormal: true,
+    );
+  }
 }

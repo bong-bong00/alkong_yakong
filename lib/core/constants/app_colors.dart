@@ -46,7 +46,7 @@ abstract final class AppColors {
   /// 카드.
   static const Color surface = Color(0xFFFFFFFF);
 
-  /// 상단/하단 바.
+  /// 하단 탭바. 상단 헤더는 흰색([surface])이다.
   static const Color headerBg = Color(0xFFF7F7FA);
 
   /// 카드 내부 구분선.
@@ -70,20 +70,69 @@ abstract final class AppColors {
   /// 차트의 지난 막대.
   static const Color chartPast = Color(0xFFDDDDE6);
 
+  /// `›` 셰브런, 입력 플레이스홀더.
+  static const Color chevron = Color(0xFFB0B0B8);
+
+  // ── 파랑 계열 ──────────────────────────────────────────
+  /// 쉬운 모드 배지·선택 칩의 테두리.
+  static const Color pointBorder = Color(0xFF1730A8);
+
+  /// [pointTint] 카드 위 본문. 연한 파랑 위에서 대비를 확보한다.
+  static const Color pointInk = Color(0xFF3A4590);
+
+  /// 파랑 채움 위의 보조 설명 텍스트.
+  static const Color onPointMuted = Color(0xFFC9D3FF);
+
+  // ── 위험 계열 ──────────────────────────────────────────
+  /// 오류 메시지 배경, 달력의 빠뜨린 날.
+  static const Color dangerBg = Color(0xFFFBEAE7);
+
+  /// 경고 톤 카드 배경(약함), 상담 면책 문구 배경.
+  static const Color dangerBgSoft = Color(0xFFFDF3F1);
+
+  /// 심박수 이상 화면 헤더 배경과 그 아래 1px 선.
+  static const Color dangerHeaderBg = Color(0xFFFBF2F1);
+  static const Color dangerHeaderBorder = Color(0xFFEDD9D6);
+
+  /// 붉은 큰 수치 옆 단위 텍스트.
+  static const Color dangerMuted = Color(0xFFA8746E);
+
+  // ── 면과 선 ────────────────────────────────────────────
+  /// 보조 버튼 채움과 눌림.
+  static const Color secondaryFill = Color(0xFFE7E8F0);
+  static const Color secondaryPressed = Color(0xFFDCDDE8);
+
+  /// 보조 버튼 2px 테두리. 테두리 없는 연회색 버튼은 만들지 않는다.
+  static const Color strongLine = Color(0xFFC6C9DA);
+
+  /// 카드 안 한 단계 더 들어간 블록. 탭바 배경이기도 하다.
+  static const Color sunken = Color(0xFFF7F7FA);
+
+  /// 중립 버튼 눌림.
+  static const Color neutralPressed = Color(0xFFE8E8EE);
+
+  // ── 어두운 면 ──────────────────────────────────────────
+  /// 바텀시트 뒤 배경.
+  static const Color scrim = Color(0x73111114);
+
   /// 잠금화면 배경.
   static const Color lockBg = Color(0xFF1A1B22);
 
-  /// 카메라 뷰파인더 배경.
+  /// 카메라 화면의 어두운 칩·버튼.
+  static const Color camChip = Color(0xFF2A2A31);
+
+  /// 처방전 촬영 배경.
   static const Color cameraBg = Color(0xFF111114);
 
-  /// 어두운 화면 위의 보조 면.
+  /// 카메라 위 어두운 면.
   static const Color darkSurface = Color(0xFF2A2A31);
 
-  /// 어두운 화면 위의 밝은 글자.
+  /// 어두운 배경 위 보조 글씨.
   static const Color onDarkMuted = Color(0xFFC6C6CE);
 
-  /// `›` 셰브런.
-  static const Color chevron = Color(0xFFB0B0B8);
+  /// 스낵바 배경과 그 안의 체크 아이콘.
+  static const Color snackbarBg = Color(0xFF221F1B);
+  static const Color snackbarCheck = Color(0xFF8FE3B0);
 }
 
 // ════════════════════════════════════════════════════════════════
