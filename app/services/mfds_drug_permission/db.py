@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 import sqlite3
+import xml.etree.ElementTree as ET
 from pathlib import Path
 from typing import Any
 
@@ -153,6 +154,28 @@ def xml_doc_to_text(value: Any) -> str:
         return " ".join(" ".join(cdata).split())
     text = re.sub(r"<[^>]+>", " ", text)
     return " ".join(text.split())
+
+
+def xml_doc_section_to_text(value: Any, titles: tuple[str, ...]) -> str:
+    """Return text only from explicitly titled sections of an MFDS XML document."""
+    raw = str(value or "").strip()
+    if not raw or raw == "None":
+        return ""
+    try:
+        root = ET.fromstring(raw)
+    except ET.ParseError:
+        return ""
+
+    wanted = tuple(title.casefold() for title in titles)
+    sections: list[str] = []
+    for element in root.iter():
+        title = str(element.attrib.get("title") or "").casefold()
+        if not any(keyword in title for keyword in wanted):
+            continue
+        text = " ".join(" ".join(element.itertext()).split())
+        if text and text not in sections:
+            sections.append(text)
+    return " ".join(sections)
 
 
 def backfill_plain_texts(conn: sqlite3.Connection | None = None) -> int:
@@ -448,16 +471,24 @@ def product_to_medicine(row: dict[str, Any]) -> dict[str, Any]:
         or row.get("ingr_name")
         or row.get("material_name")
     ) or None
+    efficacy = row.get("efficacy_text") or xml_doc_to_text(row.get("ee_doc_data"))
+    usage = row.get("usage_text") or xml_doc_to_text(row.get("ud_doc_data"))
+    cautions = row.get("caution_text") or xml_doc_to_text(row.get("nb_doc_data"))
+    side_effects = xml_doc_section_to_text(
+        row.get("nb_doc_data"),
+        ("이상반응", "부작용"),
+    )
     return {
         "medicine_code": row.get("item_seq"),
         "product_name": row.get("item_name"),
         "medicine_name": row.get("item_name"),
         "ingredient": ingredient,
         "manufacturer": row.get("entp_name"),
-        "efficacy": row.get("efficacy_text"),
-        "usage": row.get("usage_text"),
-        "cautions": row.get("caution_text"),
-        "precautions": row.get("caution_text"),
+        "efficacy": efficacy or None,
+        "usage": usage or None,
+        "cautions": cautions or None,
+        "precautions": cautions or None,
+        "side_effects": side_effects or None,
         "storage": row.get("storage_method"),
         "image_url": row.get("big_prdt_img_url"),
         "source": "식약처 의약품 제품 허가정보",

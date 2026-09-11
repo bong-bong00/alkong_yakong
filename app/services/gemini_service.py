@@ -19,8 +19,10 @@ def _compact_product_name(value: object) -> str:
 
 def _with_official_permission_ingredient(
     medicine: dict[str, Any],
+    *,
+    required_fields: set[str] | None = None,
 ) -> dict[str, Any]:
-    """item_seq가 같은 공식 허가정보에서 DUR용 주성분만 보완한다."""
+    """정확히 일치하는 공식 허가정보에서 비어 있는 근거 필드만 보완한다."""
     from app.services.mfds_drug_permission.client import fetch_permission_detail
     from app.services.mfds_drug_permission.db import (
         DB_PATH,
@@ -71,7 +73,8 @@ def _with_official_permission_ingredient(
             type(error).__name__,
         )
 
-    if not candidates or not candidates[0].get("ingredient"):
+    required = required_fields or {"ingredient"}
+    if not candidates or any(not candidates[0].get(field) for field in required):
         api_fallback_attempted = True
         try:
             detail = fetch_permission_detail(
@@ -91,6 +94,7 @@ def _with_official_permission_ingredient(
             )
 
     result = medicine
+    added_fields: dict[str, Any] = {}
     for candidate in candidates:
         code_matches = str(candidate.get("medicine_code") or "").strip() == code
         name_matches = (
@@ -98,8 +102,33 @@ def _with_official_permission_ingredient(
         )
         exact_item_seq_match = exact_item_seq_match or code_matches
         exact_product_name_match = exact_product_name_match or name_matches
-        if code_matches and name_matches and candidate.get("ingredient"):
-            result = {**medicine, "ingredient": candidate["ingredient"]}
+        if code_matches and name_matches:
+            fallback_fields = (
+                "ingredient",
+                "manufacturer",
+                "efficacy",
+                "usage",
+                "cautions",
+                "precautions",
+                "side_effects",
+                "storage",
+                "image_url",
+            )
+            added_fields = {
+                field: candidate[field]
+                for field in fallback_fields
+                if not medicine.get(field) and candidate.get(field)
+            }
+            result = {
+                **medicine,
+                **added_fields,
+                "_permission_identity_verified": True,
+            }
+            if (
+                any(field != "ingredient" for field in added_fields)
+                and medicine.get("source") == "e약은요"
+            ):
+                result["source"] = "e약은요 + 식약처 의약품 제품 허가정보"
             break
 
     final_ingredient_usable = is_usable_ingredient(
@@ -123,7 +152,40 @@ def _with_official_permission_ingredient(
         final_ingredient_usable,
         len(ingredient_keys(result.get("ingredient"))),
     )
+    logger.warning(
+        "Permission content diagnostic required_fields=%s exact_match=%s "
+        "efficacy_present=%s dosage_present=%s precautions_present=%s "
+        "side_effects_present=%s fallback_used=%s",
+        sorted(required),
+        bool(exact_item_seq_match and exact_product_name_match),
+        bool(result.get("efficacy")),
+        bool(result.get("usage")),
+        bool(result.get("cautions")),
+        bool(result.get("side_effects")),
+        bool(result is not medicine and added_fields),
+    )
     return result
+
+
+def _required_official_fields(intents: set[str]) -> set[str]:
+    fields: set[str] = set()
+    if intents & {"efficacy", "overview"}:
+        fields.add("efficacy")
+    if intents & {"dosage", "usage"}:
+        fields.add("usage")
+    if "precautions" in intents:
+        fields.add("cautions")
+    if "side_effects" in intents:
+        fields.add("side_effects")
+    return fields
+
+
+def _has_requested_official_content(
+    medicine: dict[str, Any],
+    intents: set[str],
+) -> bool:
+    required = _required_official_fields(intents)
+    return bool(required) and all(medicine.get(field) for field in required)
 
 CHAT_EXTRACTION_SCHEMA = {
     "type": "object",
@@ -461,6 +523,11 @@ def generate_chat_response(
         selected_official = None
         official_data_list = []
         if selected_medicine is not None:
+            required_fields = (
+                {"ingredient"}
+                if safety_question
+                else _required_official_fields(intents)
+            )
             selected_code = str(
                 selected_medicine.get("medicine_code") or ""
             ).strip()
@@ -488,25 +555,39 @@ def generate_chat_response(
                 )
 
             if e_drug_exact:
-                selected_official = _with_official_permission_ingredient(
-                    selected_official
-                )
+                if any(not selected_official.get(field) for field in required_fields):
+                    selected_official = _with_official_permission_ingredient(
+                        selected_official,
+                        required_fields=required_fields,
+                    )
             elif selected_code.isdigit() and selected_name:
                 permission_candidate = _with_official_permission_ingredient(
                     {
                         "medicine_code": selected_code,
                         "product_name": selected_name,
                         "source": "식약처 의약품 제품 허가정보",
-                    }
+                    },
+                    required_fields=required_fields,
                 )
                 from app.services.pharmacist.ingredient import (
                     is_usable_ingredient,
                 )
 
-                if is_usable_ingredient(
-                    permission_candidate.get("ingredient"),
-                    permission_candidate.get("product_name"),
-                ):
+                permission_usable = (
+                    is_usable_ingredient(
+                        permission_candidate.get("ingredient"),
+                        permission_candidate.get("product_name"),
+                    )
+                    if safety_question
+                    else bool(
+                        permission_candidate.get("_permission_identity_verified")
+                        and _has_requested_official_content(
+                            permission_candidate,
+                            intents,
+                        )
+                    )
+                )
+                if permission_usable:
                     selected_official = permission_candidate
                 else:
                     selected_official = None
@@ -519,7 +600,10 @@ def generate_chat_response(
                     if safety_question
                     else unavailable_reply
                 )
-            if not e_drug_exact and not safety_question:
+            if (
+                not safety_question
+                and not _has_requested_official_content(selected_official, intents)
+            ):
                 return unavailable_reply
             official_data_list.append(
                 {

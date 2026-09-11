@@ -265,7 +265,7 @@ def build_grounded_chat_prompt(
     official_text = (
         json.dumps(official_contexts, ensure_ascii=False, indent=2)
         if official_contexts
-        else "현재 질문에 사용할 수 있는 e약은요 공식정보가 없습니다."
+        else "현재 질문에 사용할 수 있는 식약처 공식정보가 없습니다."
     )
     dur_text = (
         json.dumps(dur_result["items"], ensure_ascii=False, indent=2)
@@ -276,7 +276,7 @@ def build_grounded_chat_prompt(
 당신은 어르신을 위한 알콩약콩 의약품 설명 도우미입니다.
 
 반드시 지킬 규칙:
-- 아래에 제공된 식약처 공식정보를 최우선 근거로 사용하세요.
+- 아래에 제공된 식약처 공식정보를 최우선 근거로 사용하세요. e약은요 정보가 있으면 우선하고, 없을 때는 정확한 품목으로 검증된 의약품 허가정보만 사용하세요.
 - DUR 위험 여부를 새로 추론하거나 판정하지 마세요.
 - 병용금기, 연령금기, 임부금기, 효능군중복 여부는 서버가 전달한 DUR 분석 결과만 설명하세요.
 - 연령금기와 임부금기는 official_criteria를 약 자체의 공식 기준으로 먼저 설명하세요.
@@ -295,7 +295,7 @@ def build_grounded_chat_prompt(
 [질문 의도]
 {', '.join(sorted(intents))}
 
-[식약처 e약은요 공식정보]
+[식약처 공식 의약품 정보]
 {official_text}
 
 [DUR 분석 결과 상태]

@@ -48,6 +48,53 @@ def _database(*, current, analyzed=None, matches=None, include_result=True):
 
 
 class ChatContextTest(unittest.TestCase):
+    def _run_permission_general(
+        self,
+        *,
+        intent,
+        permission_fields,
+        e_drug_result=None,
+        e_drug_error=None,
+        permission_verified=True,
+    ):
+        selected = {"medicine_code": "202400001", "product_name": "공식허가약정"}
+        permission = {
+            **selected,
+            "source": "식약처 의약품 제품 허가정보",
+            "_permission_identity_verified": permission_verified,
+            **permission_fields,
+        }
+        fake_client = MagicMock()
+        fake_client.__enter__.return_value = fake_client
+        fake_client.__exit__.return_value = False
+        fetch_effect = e_drug_error if e_drug_error is not None else None
+        with (
+            patch.object(gemini_service, "GEMINI_API_KEY", "configured"),
+            patch("google.genai.Client", return_value=fake_client),
+            patch(
+                "app.services.external_api_service.fetch_e_drug_info",
+                return_value=e_drug_result,
+                side_effect=fetch_effect,
+            ),
+            patch.object(
+                gemini_service,
+                "_with_official_permission_ingredient",
+                return_value=permission,
+            ) as enrich,
+            patch.object(
+                gemini_service,
+                "_generate_content_with_retry",
+                side_effect=[
+                    SimpleNamespace(parsed={"drug_names": []}),
+                    SimpleNamespace(text="공식 허가정보만 근거로 작성한 충분한 설명입니다."),
+                ],
+            ) as generate,
+        ):
+            reply = gemini_service.generate_chat_response(
+                "빠른 질문", user_id="U1", selected_medicine=selected, intent=intent
+            )
+        return reply, enrich, generate
+
     def _run_permission_only_safety(self, *, intent, e_drug_result=None, e_drug_error=None):
         selected = {
             "medicine_code": "202400001",
@@ -329,7 +376,7 @@ class ChatContextTest(unittest.TestCase):
         self.assertIn("DUR 병용금기 분석 결과를 확인할 수 없습니다", reply)
         analyze.assert_not_called()
 
-    def test_permission_only_efficacy_does_not_generate_unofficial_explanation(self):
+    def test_permission_only_efficacy_uses_exact_official_document(self):
         selected = {
             "medicine_code": "202400001",
             "product_name": "공식허가약정",
@@ -346,16 +393,109 @@ class ChatContextTest(unittest.TestCase):
                 return_value={
                     **selected,
                     "ingredient": "공식성분 100mg",
+                    "efficacy": "공식 허가 효능",
                     "source": "식약처 의약품 제품 허가정보",
+                    "_permission_identity_verified": True,
                 },
             ),
-            patch.object(gemini_service, "_generate_content_with_retry") as generate,
+            patch("google.genai.Client") as client,
+            patch.object(
+                gemini_service,
+                "_generate_content_with_retry",
+                side_effect=[
+                    SimpleNamespace(parsed={"drug_names": []}),
+                    SimpleNamespace(text="공식 허가정보만 근거로 작성한 충분한 설명입니다."),
+                ],
+            ) as generate,
         ):
             reply = gemini_service.generate_chat_response(
                 "효능을 알려줘",
                 user_id="U1",
                 selected_medicine=selected,
                 intent="efficacy",
+            )
+        self.assertEqual(reply, "공식 허가정보만 근거로 작성한 충분한 설명입니다.")
+        self.assertEqual(generate.call_count, 2)
+        self.assertIn("공식 허가 효능", generate.call_args.kwargs["contents"])
+
+    def test_e_drug_efficacy_has_priority_without_permission_fallback(self):
+        e_drug = {
+            "medicine_code": "202400001",
+            "product_name": "공식허가약정",
+            "efficacy": "e약은요 공식 효능",
+            "source": "e약은요",
+        }
+        reply, enrich, generate = self._run_permission_general(
+            intent="efficacy",
+            permission_fields={"efficacy": "허가정보 효능"},
+            e_drug_result=e_drug,
+        )
+        self.assertIn("충분한 설명", reply)
+        enrich.assert_not_called()
+        self.assertIn("e약은요 공식 효능", generate.call_args.kwargs["contents"])
+        self.assertNotIn("허가정보 효능", generate.call_args.kwargs["contents"])
+
+    def test_e_drug_timeout_uses_permission_efficacy(self):
+        reply, enrich, generate = self._run_permission_general(
+            intent="efficacy",
+            permission_fields={"efficacy": "허가정보 공식 효능"},
+            e_drug_error=TimeoutError("timeout"),
+        )
+        self.assertIn("충분한 설명", reply)
+        enrich.assert_called_once()
+        self.assertIn("허가정보 공식 효능", generate.call_args.kwargs["contents"])
+
+    def test_e_drug_empty_uses_permission_dosage(self):
+        reply, _, generate = self._run_permission_general(
+            intent="dosage",
+            permission_fields={"usage": "허가정보 공식 용법용량"},
+        )
+        self.assertIn("충분한 설명", reply)
+        self.assertIn("허가정보 공식 용법용량", generate.call_args.kwargs["contents"])
+
+    def test_e_drug_empty_uses_permission_precautions(self):
+        reply, _, generate = self._run_permission_general(
+            intent="precautions",
+            permission_fields={"cautions": "허가정보 공식 주의사항"},
+        )
+        self.assertIn("충분한 설명", reply)
+        self.assertIn("허가정보 공식 주의사항", generate.call_args.kwargs["contents"])
+
+    def test_e_drug_empty_uses_explicit_permission_side_effects(self):
+        reply, _, generate = self._run_permission_general(
+            intent="side_effects",
+            permission_fields={"side_effects": "공식 이상반응 절"},
+        )
+        self.assertIn("충분한 설명", reply)
+        self.assertIn("공식 이상반응 절", generate.call_args.kwargs["contents"])
+
+    def test_permission_exact_validation_failure_keeps_general_fallback(self):
+        reply, _, generate = self._run_permission_general(
+            intent="efficacy",
+            permission_fields={"efficacy": "다른 제품 효능"},
+            permission_verified=False,
+        )
+        self.assertIn("식약처 공식정보를 확인할 수 없어", reply)
+        generate.assert_not_called()
+
+    def test_permission_identity_only_without_requested_field_keeps_fallback(self):
+        selected = {"medicine_code": "202400001", "product_name": "공식허가약정"}
+        with (
+            patch.object(gemini_service, "GEMINI_API_KEY", "configured"),
+            patch("app.services.external_api_service.fetch_e_drug_info", return_value=None),
+            patch.object(
+                gemini_service,
+                "_with_official_permission_ingredient",
+                return_value={
+                    **selected,
+                    "ingredient": "공식성분 100mg",
+                    "_permission_identity_verified": True,
+                },
+            ),
+            patch.object(gemini_service, "_generate_content_with_retry") as generate,
+        ):
+            reply = gemini_service.generate_chat_response(
+                "효능을 알려줘", user_id="U1", selected_medicine=selected, intent="efficacy"
             )
         self.assertIn("식약처 공식정보를 확인할 수 없어", reply)
         generate.assert_not_called()
