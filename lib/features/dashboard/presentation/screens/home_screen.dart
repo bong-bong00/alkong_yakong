@@ -14,7 +14,6 @@ import '../../../medicines/domain/drug_info.dart';
 import '../../../medicines/presentation/screens/drug_detail_screen.dart';
 import '../../../medicines/presentation/screens/my_medicines_screen.dart';
 import '../../../reminder/presentation/screens/alarm_settings_screen.dart';
-import '../../../medicines/presentation/screens/pharmacist_chat_screen.dart';
 import '../../../prescription/presentation/screens/prescription_screen.dart';
 import '../../../profile/presentation/screens/mypage_screen.dart';
 import 'medication_record_screen.dart';
@@ -66,11 +65,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                       builder: (_) => const PrescriptionScreen(),
                     ),
                   ),
-                  onOpenChat: () => Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (_) => const PharmacistChatScreen(),
-                    ),
-                  ),
+                  onOpenChat: () => context.push('/drug-explain'),
                   onOpenMedicines: () => Navigator.of(context).push(
                     MaterialPageRoute(
                       builder: (_) => MyMedicinesScreen(
