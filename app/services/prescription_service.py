@@ -1,6 +1,8 @@
 import base64
 import binascii
+import hashlib
 import json
+import re
 import uuid
 from datetime import date, timedelta
 
@@ -9,24 +11,41 @@ from fastapi import HTTPException
 from app.database import get_connection, purge_ocr_placeholder_rows
 from app.models.schemas import (
     OCRMedicineItem,
+    PrescriptionConfirmItem,
     PrescriptionConfirmRequest,
     PrescriptionOCRRequest,
 )
 from app.services.matching.name_matcher import compare_key
+from app.services.medicine_display import (
+    ingredient_strength_from,
+    infer_dosage_form,
+    split_take_amount,
+)
 from app.services.ocr.parser import (
     _clean_drug_label,
     _is_plausible_drug_candidate,
+    is_strength_dosage,
     looks_truncated_ocr_name,
+    persistable_take_dosage,
 )
 from app.services.ocr.pipeline import run_ocr_pipeline, run_ocr_text_pipeline
-from app.services.pharmacist.easy_category import derive_easy_category_from_medicine
+from app.services.pharmacist.easy_category import (
+    derive_easy_category_from_medicine,
+    display_product_name,
+    sync_medicine_guidance,
+)
+from app.services.pharmacist.efficacy_display import display_efficacy_text
 from app.services.pharmacist.ingredient import clean_ingredient_text
 from app.services.pharmacist.retrieve import retrieve_official
 
 
-RECOGNITION_MEANING = (
-    "이 숫자는 사진에서 읽은 약 이름을 공식 약으로 얼마나 맞췄는지예요. "
-    "약으로 보이지 않는 글자 조각은 점수에 넣지 않아요."
+OCR_RECOGNITION_MEANING = (
+    "글자 인식률은 CLOVA가 사진 속 글자를 읽은 신뢰도예요. "
+    "공식 의약품 확인 여부와 복용 정보의 정확성은 별도로 확인해야 해요."
+)
+OFFICIAL_MATCH_MEANING = (
+    "이 숫자는 사진에서 읽은 약 이름 중 공식 약으로 확인한 비율이에요. "
+    "글자 인식률과 복용 정보의 정확성은 별도로 확인해야 해요."
 )
 
 DEFAULT_SCHEDULE_TIMES = {
@@ -38,6 +57,78 @@ DEFAULT_SCHEDULE_TIMES = {
         ("20:00", "EVENING"),
     ],
 }
+
+
+def _compact_ocr_text(value: object) -> str:
+    return re.sub(r"[^0-9A-Za-z가-힣.%]", "", str(value or "")).casefold()
+
+
+def _confidence_pct_for_candidates(
+    fields: object,
+    candidates: list[object],
+) -> int | None:
+    targets = [_compact_ocr_text(value) for value in candidates]
+    targets = [value for value in targets if value]
+    if not targets or not isinstance(fields, list):
+        return None
+
+    values: list[float] = []
+    for field in fields:
+        if not isinstance(field, dict):
+            continue
+        field_text = _compact_ocr_text(field.get("text"))
+        if not field_text:
+            continue
+        if not any(
+            field_text == target or field_text in target or target in field_text
+            for target in targets
+        ):
+            continue
+        try:
+            confidence = float(field.get("confidence"))
+        except (TypeError, ValueError):
+            continue
+        if 0 <= confidence <= 1:
+            values.append(confidence)
+    if not values:
+        return None
+    return int(round(100 * min(values)))
+
+
+def _ocr_field_confidences(
+    item: OCRMedicineItem,
+    *,
+    raw_name: str,
+    ocr_trace: dict | None,
+) -> dict[str, int]:
+    fields = (ocr_trace or {}).get("fields")
+    values: dict[str, int] = {}
+
+    name_pct = _confidence_pct_for_candidates(fields, [raw_name, item.drug_name])
+    if name_pct is not None:
+        values["drug_name"] = name_pct
+
+    dose_pct = _confidence_pct_for_candidates(fields, [item.dosage])
+    if dose_pct is not None:
+        values["dose_amount"] = dose_pct
+
+    if item.frequency_per_day:
+        frequency_pct = _confidence_pct_for_candidates(
+            fields,
+            [f"{item.frequency_per_day}회", f"{item.frequency_per_day}번"],
+        )
+        if frequency_pct is not None:
+            values["frequency_per_day"] = frequency_pct
+
+    if item.duration_days:
+        duration_pct = _confidence_pct_for_candidates(
+            fields,
+            [f"{item.duration_days}일", f"{item.duration_days}일분"],
+        )
+        if duration_pct is not None:
+            values["duration_days"] = duration_pct
+
+    return values
 
 
 def _structured_items(structured: dict) -> list[OCRMedicineItem]:
@@ -170,7 +261,10 @@ def _upsert_official_medicine(cursor, official: dict) -> tuple[str, str]:
             usage = excluded.usage,
             precautions = excluded.precautions,
             image_url = excluded.image_url,
-            easy_category = COALESCE(excluded.easy_category, medicines.easy_category),
+            easy_category = COALESCE(
+                NULLIF(trim(medicines.easy_category), ''),
+                excluded.easy_category
+            ),
             updated_at = CURRENT_TIMESTAMP
         """,
         (
@@ -187,6 +281,14 @@ def _upsert_official_medicine(cursor, official: dict) -> tuple[str, str]:
     )
     status = "MATCHED" if official.get("source") == "local" else "MFDS"
     return code, status
+
+
+def _official_efficacy_text(medicine: dict | None) -> str | None:
+    if not medicine:
+        return None
+    return display_efficacy_text(
+        medicine.get("efficacy") or medicine.get("efficacy_text")
+    )
 
 
 def _official_display_name(medicine: dict, fallback: str) -> str:
@@ -216,9 +318,10 @@ def _resolve_medicine(cursor, item: OCRMedicineItem) -> tuple[str, str, str] | N
             _official_display_name(row, item.drug_name),
         )
 
+    dosage_hint = item.dosage if is_strength_dosage(item.dosage) else None
     official = retrieve_official(
         item.drug_name,
-        dosage_hint=item.dosage,
+        dosage_hint=dosage_hint,
     )
     if official:
         code, status = _upsert_official_medicine(cursor, official)
@@ -229,7 +332,8 @@ def _resolve_medicine(cursor, item: OCRMedicineItem) -> tuple[str, str, str] | N
 
 
 def _ensure_easy_category(cursor, medicine: dict) -> None:
-    if medicine.get("easy_category"):
+    # 기존 값은 수동 검토/이관된 값일 수 있으므로 자동 추론으로 덮어쓰지 않는다.
+    if str(medicine.get("easy_category") or "").strip():
         return
     category = derive_easy_category_from_medicine(medicine)
     if not category:
@@ -242,6 +346,7 @@ def _ensure_easy_category(cursor, medicine: dict) -> None:
         """,
         (category, medicine["medicine_code"]),
     )
+    medicine["easy_category"] = category
 
 
 def _parse_date(value: str | None, fallback: date) -> date:
@@ -258,11 +363,15 @@ def _schedule_dates(
     expire_date: str | None,
     duration_days: int | None,
 ) -> list[date]:
+    if duration_days is None or duration_days < 1:
+        return []
     start_date = _parse_date(prescribed_date, date.today())
+    duration_end = start_date + timedelta(days=duration_days - 1)
     if expire_date:
-        end_date = _parse_date(expire_date, start_date)
+        # 처방 유효일이 더 멀어도 OCR에서 확인한 복용 일수보다 늘리지 않는다.
+        end_date = min(_parse_date(expire_date, duration_end), duration_end)
     else:
-        end_date = start_date + timedelta(days=max(duration_days or 1, 1) - 1)
+        end_date = duration_end
 
     if end_date < start_date:
         end_date = start_date
@@ -280,7 +389,13 @@ def _create_medication_schedules(
     expire_date: str | None,
     item: OCRMedicineItem,
 ) -> list[dict]:
-    frequency = min(max(item.frequency_per_day or 1, 1), 3)
+    confirmed_times = _confirmed_clock_times(item.administration_times)
+    if not confirmed_times:
+        defaults = DEFAULT_SCHEDULE_TIMES.get(item.frequency_per_day)
+        if defaults:
+            confirmed_times = [clock for clock, _slot in defaults]
+    if not confirmed_times:
+        return []
     created_schedules = []
 
     for scheduled_date in _schedule_dates(
@@ -288,7 +403,8 @@ def _create_medication_schedules(
         expire_date,
         item.duration_days,
     ):
-        for scheduled_time, time_slot in DEFAULT_SCHEDULE_TIMES[frequency]:
+        for scheduled_time in confirmed_times:
+            time_slot = _time_slot_for_clock(scheduled_time)
             cursor.execute(
                 """
                 INSERT OR IGNORE INTO medication_schedules (
@@ -315,6 +431,120 @@ def _create_medication_schedules(
                 )
 
     return created_schedules
+
+
+_CLOCK_TIME = re.compile(r"^(?:[01]\d|2[0-3]):[0-5]\d$")
+_EXPLICIT_TIME_LABELS = {
+    "아침": "08:00",
+    "점심": "13:00",
+    "저녁": "20:00",
+    "취침전": "22:00",
+    "자기전": "22:00",
+    "MORNING": "08:00",
+    "LUNCH": "13:00",
+    "AFTERNOON": "13:00",
+    "EVENING": "20:00",
+    "NIGHT": "22:00",
+}
+
+
+def _confirmed_clock_times(values: list[str] | None) -> list[str]:
+    """사용자가 확인한 실제 시각만 스케줄로 쓴다."""
+    result: list[str] = []
+    for raw in values or []:
+        value = str(raw or "").strip()
+        normalized = value if _CLOCK_TIME.fullmatch(value) else _EXPLICIT_TIME_LABELS.get(
+            re.sub(r"\s+", "", value).upper()
+        )
+        if normalized and normalized not in result:
+            result.append(normalized)
+    return result
+
+
+def _time_slot_for_clock(value: str) -> str:
+    hour = int(value.split(":", 1)[0])
+    if hour < 11:
+        return "MORNING"
+    if hour < 16:
+        return "AFTERNOON"
+    return "EVENING"
+
+
+def _validated_confirm_dosage(
+    item: PrescriptionConfirmItem,
+    official_name: str,
+) -> str | None:
+    """OCR이 읽은 1회 복용량을 정규화한다. 비어 있어도 등록은 막지 않는다."""
+    return _normalized_confirm_take_amount(item)
+
+
+_TAKE_UNIT_LABELS = {
+    "T": "알",
+    "TAB": "알",
+    "정": "알",
+    "알": "알",
+    "C": "캡슐",
+    "CAP": "캡슐",
+    "캡슐": "캡슐",
+    "PKG": "포",
+    "포": "포",
+    "EA": "개",
+    "개": "개",
+    "ML": "mL",
+    "밀리리터": "mL",
+    "방울": "방울",
+}
+
+
+def _format_take_number(value: str) -> str:
+    number = float(value)
+    if number.is_integer():
+        return str(int(number))
+    return f"{number:.3f}".rstrip("0").rstrip(".")
+
+
+def _normalized_confirm_take_amount(item: PrescriptionConfirmItem) -> str | None:
+    raw = persistable_take_dosage(item.dosage)
+    unit_from_field = _TAKE_UNIT_LABELS.get(str(item.unit or "").strip().upper())
+
+    if raw:
+        compact = re.sub(r"\s+", "", raw)
+        fraction = re.fullmatch(
+            r"(?P<numerator>\d+)/(?P<denominator>\d+)(?P<unit>알|정|캡슐|포|개|mL|ml|방울|T|TAB|C|CAP|PKG|EA)",
+            compact,
+            re.IGNORECASE,
+        )
+        if fraction and int(fraction.group("denominator")) != 0:
+            amount = int(fraction.group("numerator")) / int(
+                fraction.group("denominator")
+            )
+            unit = _TAKE_UNIT_LABELS.get(fraction.group("unit").upper())
+            return f"{_format_take_number(str(amount))}{unit}" if unit else None
+        half = re.fullmatch(
+            r"반(?P<unit>알|정|캡슐|포|개)",
+            compact,
+            re.IGNORECASE,
+        )
+        if half:
+            unit = _TAKE_UNIT_LABELS.get(half.group("unit").upper())
+            return f"0.5{unit}" if unit else None
+        match = re.fullmatch(
+            r"(?P<amount>\d+(?:\.\d+)?)(?P<unit>알|정|캡슐|포|개|mL|ml|방울|T|TAB|C|CAP|PKG|EA)",
+            compact,
+            re.IGNORECASE,
+        )
+        if match:
+            amount = _format_take_number(match.group("amount"))
+            unit = _TAKE_UNIT_LABELS.get(match.group("unit").upper())
+            return f"{amount}{unit}" if unit else None
+        if re.fullmatch(r"\d+(?:\.\d+)?", compact) and unit_from_field:
+            return f"{_format_take_number(compact)}{unit_from_field}"
+        return None
+
+    if item.times_per_take is not None and item.times_per_take > 0 and unit_from_field:
+        amount = _format_take_number(str(item.times_per_take))
+        return f"{amount}{unit_from_field}"
+    return None
 
 
 def _same_drug_name(left: str, right: str) -> bool:
@@ -360,6 +590,8 @@ def _should_retake(
     *,
     matched_n: int = 0,
 ) -> bool:
+    if unrecognized_names:
+        return True
     if matched_n > 0 and pct >= 85:
         return False
     if pct < 60:
@@ -384,7 +616,7 @@ def _user_readiness(items: list[dict], ocr_trace: dict | None = None) -> dict:
             "pct": 0,
             "label": "poor",
             "summary": "공식 약으로 맞춘 약이 거의 없어요. 흔들리지 않게 다시 찍어 주세요.",
-            "meaning": RECOGNITION_MEANING,
+            "meaning": OFFICIAL_MATCH_MEANING,
             "missing_hints": ["약 이름"],
             "metric": "official_name",
         }
@@ -427,7 +659,7 @@ def _user_readiness(items: list[dict], ocr_trace: dict | None = None) -> dict:
         "pct": pct,
         "label": label,
         "summary": summary,
-        "meaning": RECOGNITION_MEANING,
+        "meaning": OFFICIAL_MATCH_MEANING,
         "missing_hints": unique_hints[:4],
         "metric": "official_name",
     }
@@ -468,18 +700,21 @@ def create_prescription_from_ocr(request: PrescriptionOCRRequest) -> dict:
                 )
                 continue
             medicine_code, match_status, official_name = resolved
+            official_name = display_product_name(official_name) or official_name
             ocr_raw = (item.ocr_drug_name_raw or item.drug_name or "").strip()
             med_row = cursor.execute(
                 "SELECT * FROM medicines WHERE medicine_code = ?",
                 (medicine_code,),
             ).fetchone()
-            easy_label = None
-            if med_row:
-                easy_label = derive_easy_category_from_medicine(dict(med_row))
-            easy_explanation = easy_label or None
-            ingredient = ""
-            if med_row:
-                ingredient = dict(med_row).get("ingredient") or ""
+            med_dict = dict(med_row) if med_row else {}
+            guidance = sync_medicine_guidance(cursor, med_dict)
+            official_spoken = guidance["short_explanation"]
+            ingredient = med_dict.get("ingredient") or ""
+            field_confidences = _ocr_field_confidences(
+                item,
+                raw_name=ocr_raw,
+                ocr_trace=ocr_trace,
+            )
             readiness_seed.append(
                 {
                     "drug_name": official_name,
@@ -489,25 +724,45 @@ def create_prescription_from_ocr(request: PrescriptionOCRRequest) -> dict:
                     "match_status": match_status,
                 }
             )
-            item_pct = _user_readiness([readiness_seed[-1]])["pct"]
             preview_items.append(
                 {
                     "medicine_code": medicine_code,
                     "drug_name": official_name,
+                    "display_name": official_name,
+                    "official_product_name": str(
+                        med_dict.get("product_name") or official_name
+                    ),
+                    "ingredient_name": ingredient,
+                    "ingredient_strength": (
+                        med_dict.get("ingredient_strength")
+                        or ingredient_strength_from(ingredient, official_name)
+                    ),
+                    "dosage_form": (
+                        med_dict.get("dosage_form") or infer_dosage_form(official_name)
+                    ),
+                    "administration_route": med_dict.get("administration_route") or "",
                     "ocr_drug_name_raw": ocr_raw if ocr_raw != official_name else None,
                     "match_status": match_status,
-                    "dosage": item.dosage,
+                    "dosage": persistable_take_dosage(item.dosage),
                     "unit": item.unit,
                     "frequency_per_day": item.frequency_per_day,
                     "times_per_take": item.times_per_take,
                     "duration_days": item.duration_days,
                     "administration_times": list(item.administration_times or []),
-                    "easy_explanation": easy_explanation,
-                    "easy_category": easy_label,
+                    "easy_explanation": official_spoken,
+                    "short_explanation": official_spoken,
+                    "easy_category": guidance["purpose_label"],
+                    "purpose_label": guidance["purpose_label"],
+                    "easy_purposes": guidance["easy_purposes"],
+                    "key_caution": guidance["key_caution"],
+                    "key_cautions": guidance["key_cautions"],
+                    "purpose_notice": guidance["purpose_notice"],
                     "warning_note": item.warning_note,
                     "uncertain": False,
-                    "recognition_pct": item_pct,
+                    "ocr_field_confidences": field_confidences,
+                    "recognition_pct": field_confidences.get("drug_name"),
                     "schedules": [],
+                    "interaction_conflicts": [],
                 }
             )
 
@@ -529,7 +784,8 @@ def create_prescription_from_ocr(request: PrescriptionOCRRequest) -> dict:
             if str(row.get("match_status") or "").upper() != "UNMATCHED"
             and row.get("uncertain") is not True
         ]
-        score_seed = matched_seed or readiness_seed
+        # 공식 약으로 못 맞춘 후보도 분모에 포함해야 전체 인식률이 부풀려지지 않는다.
+        score_seed = readiness_seed
 
         if not preview_items and not unrecognized_names:
             raise HTTPException(
@@ -539,7 +795,26 @@ def create_prescription_from_ocr(request: PrescriptionOCRRequest) -> dict:
 
         # 약 사전(medicines) upsert 만 커밋. 복용 등록은 confirm 에서.
         conn.commit()
+        try:
+            from app.services.dur_service import preview_conflicts_for_codes
+
+            conflict_map = preview_conflicts_for_codes(
+                request.user_id,
+                [str(row.get("medicine_code") or "") for row in preview_items],
+            )
+        except Exception:
+            conflict_map = {}
+        for row in preview_items:
+            row["interaction_conflicts"] = conflict_map.get(
+                str(row.get("medicine_code") or ""),
+                [],
+            )
         readiness = _user_readiness(score_seed, ocr_trace)
+        raw_engine_confidence = (ocr_trace or {}).get("engine_confidence")
+        try:
+            ocr_confidence_pct = int(round(float(raw_engine_confidence) * 100))
+        except (TypeError, ValueError):
+            ocr_confidence_pct = None
         retake_recommended = _should_retake(
             readiness["pct"],
             unrecognized_names,
@@ -562,14 +837,19 @@ def create_prescription_from_ocr(request: PrescriptionOCRRequest) -> dict:
             "prescribed_date": request.prescribed_date
             or structured.get("prescribed_date"),
             "user_readiness_pct": readiness["pct"],
+            "official_match_pct": readiness["pct"],
             "readiness_label": readiness["label"],
             "readiness_summary": readiness["summary"],
             "missing_hints": readiness["missing_hints"],
-            "recognition_pct": readiness["pct"],
-            "recognition_label": readiness["label"],
-            "recognition_summary": readiness["summary"],
-            "recognition_meaning": readiness.get("meaning") or RECOGNITION_MEANING,
-            "recognition_metric": readiness.get("metric") or "official_name",
+            "recognition_pct": ocr_confidence_pct,
+            "recognition_label": "clova_text" if ocr_confidence_pct is not None else None,
+            "recognition_summary": (
+                f"사진 글자 인식률은 {ocr_confidence_pct}%예요."
+                if ocr_confidence_pct is not None
+                else "글자 인식률 정보가 없어 직접 확인이 필요해요."
+            ),
+            "recognition_meaning": OCR_RECOGNITION_MEANING,
+            "recognition_metric": "clova_text_confidence",
             "retake_recommended": retake_recommended,
         }
     except Exception:
@@ -594,13 +874,56 @@ def confirm_prescription(request: PrescriptionConfirmRequest) -> dict:
         if not user:
             raise HTTPException(status_code=404, detail="사용자가 없습니다.")
 
+        fingerprint_payload = {
+            "user_id": request.user_id,
+            "prescribed_date": request.prescribed_date,
+            "hospital_name": request.hospital_name,
+            "items": [
+                {
+                    "medicine_code": item.medicine_code,
+                    "dosage": item.dosage,
+                    "unit": item.unit,
+                    "frequency_per_day": item.frequency_per_day,
+                    "duration_days": item.duration_days,
+                    "administration_times": list(item.administration_times or []),
+                    "ocr_drug_name_raw": item.ocr_drug_name_raw,
+                }
+                for item in request.items
+            ],
+        }
+        registration_fingerprint = hashlib.sha256(
+            json.dumps(
+                fingerprint_payload,
+                ensure_ascii=False,
+                sort_keys=True,
+                separators=(",", ":"),
+            ).encode("utf-8")
+        ).hexdigest()
+        duplicate = cursor.execute(
+            """
+            SELECT id FROM prescriptions
+            WHERE user_id = ? AND registration_fingerprint = ?
+            LIMIT 1
+            """,
+            (request.user_id, registration_fingerprint),
+        ).fetchone()
+        if duplicate:
+            return {
+                "prescription_id": duplicate["id"],
+                "user_id": request.user_id,
+                "registered": True,
+                "duplicate": True,
+                "items": [],
+            }
+
         prescription_id = str(uuid.uuid4())
         cursor.execute(
             """
             INSERT INTO prescriptions (
                 id, user_id, source_type, hospital_name, pharmacy_name,
-                prescribed_date, expire_date, original_image_path, ocr_text
-            ) VALUES (?, ?, 'OCR', ?, ?, ?, ?, ?, ?)
+                prescribed_date, expire_date, original_image_path, ocr_text,
+                registration_fingerprint
+            ) VALUES (?, ?, 'OCR', ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 prescription_id,
@@ -610,7 +933,8 @@ def confirm_prescription(request: PrescriptionConfirmRequest) -> dict:
                 request.prescribed_date,
                 request.expire_date,
                 None,
-                None,
+                request.ocr_text,
+                registration_fingerprint,
             ),
         )
 
@@ -639,21 +963,40 @@ def confirm_prescription(request: PrescriptionConfirmRequest) -> dict:
                     detail=f"알 수 없는 약 코드입니다: {code}",
                 )
             official_name = str(exists["product_name"] or item.drug_name).strip()
+            take_dosage = _validated_confirm_dosage(item, official_name)
+            dose_amount, dose_unit = split_take_amount(take_dosage)
+            schedule_dates = _schedule_dates(
+                request.prescribed_date,
+                request.expire_date,
+                item.duration_days,
+            )
+            if schedule_dates:
+                medicine_start_date = schedule_dates[0].isoformat()
+                medicine_end_date = schedule_dates[-1].isoformat()
+            else:
+                medicine_start_date = date.today().isoformat()
+                medicine_end_date = None
 
             cursor.execute(
                 """
                 INSERT INTO prescription_items (
-                    prescription_id, medicine_code, ocr_drug_name, dosage, unit,
+                    prescription_id, medicine_code, ocr_drug_name,
+                    ocr_drug_name_raw, ocr_field_confidences,
+                    dosage_form, administration_route, dosage, unit,
                     frequency_per_day, times_per_take, duration_days,
                     administration_times, match_status, easy_explanation,
                     warning_note
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     prescription_id,
                     code,
                     official_name,
-                    item.dosage,
+                    item.ocr_drug_name_raw,
+                    json.dumps(item.ocr_field_confidences, ensure_ascii=False),
+                    item.dosage_form,
+                    item.administration_route,
+                    take_dosage,
                     item.unit,
                     item.frequency_per_day,
                     item.times_per_take,
@@ -669,26 +1012,30 @@ def confirm_prescription(request: PrescriptionConfirmRequest) -> dict:
                 """
                 INSERT INTO user_medicines (
                     user_id, medicine_code, prescription_item_id, start_date,
-                    end_date, dosage, frequency_per_day, administration_times,
-                    is_active
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)
+                    end_date, dosage, dose_amount, dose_unit,
+                    frequency_per_day, administration_times,
+                    is_active, status, last_prescribed_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 'ACTIVE', ?)
                 """,
                 (
                     request.user_id,
                     code,
                     item_id,
-                    request.prescribed_date,
-                    request.expire_date,
-                    item.dosage,
+                    medicine_start_date,
+                    medicine_end_date,
+                    take_dosage,
+                    float(dose_amount) if dose_amount is not None else None,
+                    dose_unit,
                     item.frequency_per_day,
                     json.dumps(item.administration_times, ensure_ascii=False),
+                    request.prescribed_date or medicine_start_date,
                 ),
             )
             user_medicine_id = cursor.lastrowid
             ocr_item = OCRMedicineItem(
                 drug_name=official_name,
                 medicine_code=code,
-                dosage=item.dosage,
+                dosage=take_dosage,
                 unit=item.unit,
                 frequency_per_day=item.frequency_per_day,
                 times_per_take=item.times_per_take,
@@ -719,6 +1066,13 @@ def confirm_prescription(request: PrescriptionConfirmRequest) -> dict:
             )
 
         conn.commit()
+        try:
+            from app.models.schemas import DurAnalyzeRequest
+            from app.services.dur_service import analyze_dur
+
+            analyze_dur(DurAnalyzeRequest(user_id=request.user_id, medicine_codes=[]))
+        except Exception:
+            pass
         return {
             "prescription_id": prescription_id,
             "user_id": request.user_id,

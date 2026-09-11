@@ -7,9 +7,6 @@ import re
 import unicodedata
 from typing import Any
 
-from app.core.config import GEMINI_API_KEY, GEMINI_MODEL
-
-
 # 앱·DB가 기대하는 정형 필드. drug_name만 필수, 나머지는 원문에 있을 때만 채운다.
 PRESCRIPTION_SCHEMA = {
     "type": "object",
@@ -45,21 +42,88 @@ HEADER_FIELDS = ("hospital_name", "pharmacy_name", "prescribed_date")
 # 사용자 인식 점수는 약품명·성분만 본다. 횟수·일수는 문서에 없을 수 있다.
 SCORE_FIELDS = ("drug_name", "ingredient")
 
+# 제품명 함량(200밀리그램, 0.25%) — 처방 표의 투약량(0.50, 1알)과 구분한다.
+_STRENGTH_DOSAGE_RE = re.compile(
+    r"(?:mg|ml|g|%|밀리그램|밀리그람)(?:\b|(?=\s|$|[),/]))",
+    re.IGNORECASE,
+)
 
-def parse_prescription_text(raw_text: str) -> dict[str, Any] | None:
-    """Gemini 구조화 우선, 실패(할당량 등) 시 휴리스틱 구조화."""
+
+def is_strength_dosage(value: str | None) -> bool:
+    """함량 표기면 True. 0.50 / 1알 / 1정 같은 투약량은 False."""
+    return bool(_STRENGTH_DOSAGE_RE.search(str(value or "").strip()))
+
+
+def persistable_take_dosage(value: str | None) -> str | None:
+    text = str(value or "").strip()
+    if not text or is_strength_dosage(text):
+        return None
+    if re.match(
+        r"^\d+(?:\.\d+)?\s*(T|C|EA|PKG)$",
+        text.replace(" ", ""),
+        re.IGNORECASE,
+    ):
+        return None
+    return text
+
+
+def _should_replace_dosage_with_table(existing: str) -> bool:
+    if not existing:
+        return True
+    if is_strength_dosage(existing):
+        return True
+    return bool(
+        re.match(
+            r"^\d+(?:\.\d+)?\s*(T|C|EA|PKG|정|캡슐)$",
+            existing.replace(" ", ""),
+            re.IGNORECASE,
+        )
+    )
+
+
+def take_amount_for_display(
+    dosage: str | None,
+    *,
+    times_per_take: int | float | None = None,
+) -> str:
+    take = persistable_take_dosage(dosage)
+    if take:
+        return take
+    if times_per_take is not None:
+        try:
+            n = float(times_per_take)
+        except (TypeError, ValueError):
+            n = 0
+        if n > 0:
+            if n == int(n):
+                return f"{int(n)}알"
+            text = f"{n:.2f}".rstrip("0").rstrip(".")
+            return text
+    # 처방전에서 확인하지 못한 복용량을 임의로 "1알"로 만들지 않는다.
+    return ""
+
+
+def parse_prescription_text(
+    raw_text: str,
+    *,
+    tables: list[dict[str, Any]] | tuple[dict[str, Any], ...] | None = None,
+) -> dict[str, Any] | None:
+    """CLOVA 원문을 외부 생성 모델 없이 결정적으로 구조화한다."""
     text = (raw_text or "").strip()
     if not text:
         return None
 
     parsed = _parse_with_heuristic(text)
     parser_engine = "heuristic"
-    if not parsed or not parsed.get("items"):
-        parsed = _parse_with_gemini(text)
-        parser_engine = "gemini-json"
     if not parsed:
         parsed = {"items": []}
         parser_engine = "heuristic"
+
+    table_items = _items_from_clova_tables(tables or ())
+    if table_items:
+        # 표 행의 값이 같은 이름 주변에서 추측한 숫자보다 우선한다.
+        parsed["items"] = [*table_items, *(parsed.get("items") or [])]
+        parser_engine = "heuristic+clova-table"
 
     parsed = expand_inferred_drug_items(parsed, text)
     if not parsed.get("items"):
@@ -67,11 +131,7 @@ def parse_prescription_text(raw_text: str) -> dict[str, Any] | None:
 
     filtered = filter_to_source(parsed, text)
     if not filtered.get("items"):
-        # 원문이 붙어 있으면 필터가 전부 지울 수 있다. 그럴 때는 후보를 살린다.
-        filtered = dict(parsed)
-        filtered["discarded_names"] = list(
-            (filtered.get("discarded_names") or [])
-        )
+        return None
     filtered = enrich_dosing_from_raw(filtered, text)
     filtered = correct_drug_names(filtered)
 
@@ -86,78 +146,132 @@ def parse_prescription_text(raw_text: str) -> dict[str, Any] | None:
     return filtered
 
 
-def _parse_with_gemini(text: str) -> dict[str, Any] | None:
-    if not GEMINI_API_KEY:
+def _clova_cell_text(cell: dict[str, Any]) -> str:
+    """CLOVA 표 셀의 여러 응답 형태에서 읽힌 문자열을 꺼낸다."""
+    direct = cell.get("inferText") or cell.get("text")
+    if direct:
+        return str(direct).strip()
+
+    parts: list[str] = []
+    for line in cell.get("cellTextLines") or []:
+        if not isinstance(line, dict):
+            continue
+        words = line.get("cellWords") or line.get("words") or []
+        line_parts = []
+        for word in words:
+            if not isinstance(word, dict):
+                continue
+            value = word.get("inferText") or word.get("text")
+            if value:
+                line_parts.append(str(value).strip())
+        if line_parts:
+            parts.append(" ".join(line_parts))
+    return "\n".join(parts).strip()
+
+
+def _table_header_role(text: str) -> str | None:
+    compact = _compact(text)
+    if any(word in compact for word in ("투약일수", "복용일수", "처방일수")) or compact in {
+        "일수",
+        "투약일",
+    }:
+        return "duration_days"
+    if "1회" in compact and any(word in compact for word in ("투약량", "복용량", "사용량")):
+        return "dosage"
+    if any(word in compact for word in ("투약량", "복용량", "사용량")) and "일수" not in compact:
+        return "dosage"
+    if "1일" in compact and any(word in compact for word in ("투여횟수", "복용횟수", "횟수")):
+        return "frequency_per_day"
+    if any(word in compact for word in ("투여횟수", "복용횟수", "1일횟수", "횟수")):
+        return "frequency_per_day"
+    if any(word in compact for word in ("약품명", "의약품명", "제품명")):
+        return "drug_name"
+    return None
+
+
+def _table_number(text: str, *, integer: bool = False) -> str | int | None:
+    match = re.search(r"(?<!\d)(\d+(?:\.\d+)?)(?!\d)", str(text or ""))
+    if not match:
         return None
+    value = match.group(1)
+    if not integer:
+        return value
     try:
-        from google import genai
-
-        prompt = (
-            "아래 처방전/복약안내 원문만 근거로 JSON 구조화하세요.\n"
-            "규칙:\n"
-            "1) 공식 약 이름으로 바꾸지 마세요. OCR에 적힌 철자 그대로 drug_name에 넣으세요.\n"
-            "   (예: 프리마라정 → 프리마란정 으로 교정하지 말 것)\n"
-            "1-1) 글자가 붙어 있으면 약 이름과 투약 숫자를 나눠 추론하세요.\n"
-            "   예: '프리마라정1정2회7일' → drug_name=프리마라정, times_per_take=1,\n"
-            "   frequency_per_day=2, duration_days=7\n"
-            "   예: '프레베넥액0.25%' → drug_name=프레베넥액, dosage=0.25%\n"
-            "   이름에 0.25% 같은 숫자+% 는 넣지 마세요.\n"
-            "1-2) 한 덩어리에 약이 여러 개면 항목을 나누세요.\n"
-            "   예: '프리마라정...프레베넥액' → 항목 2개\n"
-            "1-3) 원문에 없는 약 이름을 새로 만들지 마세요.\n"
-            "2) 확인되지 않는 항목은 생략하세요.\n"
-            "2-1) '비)', '급)', '원내)', '비급여'는 약 이름이 아니라 "
-            "처방 구분 표시이므로 drug_name에서 제외하세요.\n"
-            "2-2) 표 머리글, 사업자번호, 약국명, 조제약사, 사진 옆의 "
-            "'비)슈...' 같은 잘린 글자는 약으로 뽑지 마세요.\n"
-            "3) 표/줄 형식이면 열을 이렇게 매핑하세요.\n"
-            "   - 처방의약품의 명칭 → drug_name (0.25mg 등 이름에 적힌 용량 포함)\n"
-            "   - 약품명에 있는 mg/% → dosage  (예: 0.25mg, 400mg)\n"
-            "   - '1 T' '1 C' '1 PKG'는 dosage가 아닙니다. unit=T/C/PKG, times_per_take=1\n"
-            "   - 1일 투여횟수 → frequency_per_day (정수, 보통 1~3. 총량 60을 넣지 마세요)\n"
-            "   - 총 투약 일수 → duration_days (정수, 예: 60)\n"
-            "   - 총량 열은 duration_days로 쓰지 마세요.\n"
-            "4) 한 줄에 '0.50 3 7' 또는 '0.50 | 3 | 7'이면\n"
-            "   dosage=0.50, frequency_per_day=3, duration_days=7 입니다.\n"
-            "4-1) 같은 약이 아침/점심/저녁으로 반복되면 항목을 하나로 합치고\n"
-            "   frequency_per_day는 반복 횟수(3)로 하세요.\n"
-            "5) 복용법/효능 설명 문장은 easy_explanation에 넣으세요.\n"
-            "6) prescribed_date는 YYYY-MM-DD로 정규화하세요.\n"
-            "7) hospital_name은 병원/의원명, pharmacy_name은 약국명 또는 조제약사명.\n\n"
-            f"처방전 원문:\n{text}"
-        )
-        with genai.Client(api_key=GEMINI_API_KEY) as client:
-            from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeout
-
-            def _run():
-                return client.models.generate_content(
-                    model=GEMINI_MODEL,
-                    contents=prompt,
-                    config={
-                        "temperature": 0.0,
-                        "response_mime_type": "application/json",
-                        "response_json_schema": PRESCRIPTION_SCHEMA,
-                    },
-                )
-
-            try:
-                with ThreadPoolExecutor(max_workers=1) as pool:
-                    response = pool.submit(_run).result(timeout=20)
-            except FuturesTimeout:
-                return None
-        parsed = getattr(response, "parsed", None)
-        if parsed is None:
-            response_text = str(getattr(response, "text", None) or "")
-            parsed = json.loads(response_text) if response_text else None
-        if not isinstance(parsed, dict) or not parsed.get("items"):
-            return None
-        return parsed
-    except Exception:
+        return int(float(value))
+    except ValueError:
         return None
+
+
+def _items_from_clova_tables(
+    tables: list[dict[str, Any]] | tuple[dict[str, Any], ...],
+) -> list[dict[str, Any]]:
+    """CLOVA 표 좌표로 약명과 1회량·횟수·일수를 같은 행에 묶는다."""
+    items: list[dict[str, Any]] = []
+    for table in tables:
+        if not isinstance(table, dict):
+            continue
+        rows: dict[int, dict[int, str]] = {}
+        for cell in table.get("cells") or []:
+            if not isinstance(cell, dict):
+                continue
+            try:
+                row_index = int(cell.get("rowIndex"))
+                column_index = int(cell.get("columnIndex"))
+            except (TypeError, ValueError):
+                continue
+            value = _clova_cell_text(cell)
+            if value:
+                rows.setdefault(row_index, {})[column_index] = value
+        if not rows:
+            continue
+
+        roles: dict[str, int] = {}
+        role_rows: dict[str, int] = {}
+        header_row = -1
+        for row_index in sorted(rows):
+            for column, value in rows[row_index].items():
+                role = _table_header_role(value)
+                if role is not None and role not in roles:
+                    roles[role] = column
+                    role_rows[role] = row_index
+            if {
+                "drug_name",
+                "dosage",
+                "frequency_per_day",
+                "duration_days",
+            }.issubset(roles):
+                header_row = max(role_rows.values())
+                break
+        required = {"drug_name", "dosage", "frequency_per_day", "duration_days"}
+        if not required.issubset(roles):
+            continue
+
+        for row_index in sorted(index for index in rows if index > header_row):
+            row = rows[row_index]
+            drug_cell = row.get(roles["drug_name"], "")
+            candidates = iter_glued_drug_tokens(drug_cell)
+            if not candidates:
+                continue
+            item = dict(candidates[0])
+            dosage = _table_number(row.get(roles["dosage"], ""))
+            frequency = _table_number(
+                row.get(roles["frequency_per_day"], ""), integer=True
+            )
+            duration = _table_number(
+                row.get(roles["duration_days"], ""), integer=True
+            )
+            if dosage is not None:
+                item["dosage"] = dosage
+            if frequency is not None:
+                item["frequency_per_day"] = frequency
+            if duration is not None:
+                item["duration_days"] = duration
+            items.append(item)
+    return items
 
 
 def _parse_with_heuristic(text: str) -> dict[str, Any] | None:
-    """Gemini 없이 CLOVA 원문 등에서 약 줄을 규칙으로 뽑는다."""
+    """CLOVA 원문에서 약 줄을 결정적 규칙으로 뽑는다."""
     if not text.strip():
         return None
 
@@ -297,13 +411,10 @@ def filter_to_source(parsed: dict[str, Any], raw_text: str) -> dict[str, Any]:
             if raw_name:
                 discarded.append(raw_name)
             continue
-        # 머리글·잘린 조각만 버린다. 약처럼 보이면 원문에 없어도 후보로 남긴다.
+        # 약처럼 보이는 이름이라도 OCR 원문에 근거가 없으면 등록 후보로 남기지 않는다.
         if name and not _name_in_source(name, compact_source, source):
             if not _name_in_source(name.split("(")[0].strip(), compact_source, source):
-                cleaned = dict(item)
-                cleaned["drug_name"] = name
-                cleaned["uncertain"] = True
-                items.append(cleaned)
+                discarded.append(name)
                 continue
         cleaned = dict(item)
         cleaned["drug_name"] = name
@@ -317,24 +428,93 @@ def filter_to_source(parsed: dict[str, Any], raw_text: str) -> dict[str, Any]:
     return result
 
 
+def _first_dosing_match(text: str):
+    triple = _DOSE_TRIPLE_RE.search(text)
+    pair = _DOSE_PAIR_RE.search(text)
+    candidates = [match for match in (triple, pair) if match]
+    if not candidates:
+        return None
+    return min(candidates, key=lambda match: (match.start(), -match.end()))
+
+
+def _trailing_dosing_text(text: str) -> str:
+    first = _first_dosing_match(text)
+    if first is None:
+        return ""
+    rest = text[first.end() :]
+    extra = _DOSE_TRIPLE_RE.search(rest) or _DOSE_PAIR_RE.search(rest)
+    return extra.group(0) if extra else ""
+
+
+def _apply_dosing(item: dict[str, Any], dosing: dict[str, Any]) -> dict[str, Any]:
+    cleaned = dict(item)
+    if not dosing:
+        return cleaned
+    existing = str(cleaned.get("dosage") or "").strip()
+    table_dose = dosing.get("dosage")
+    if table_dose and _should_replace_dosage_with_table(existing):
+        cleaned["dosage"] = table_dose
+    if cleaned.get("frequency_per_day") is None and dosing.get("frequency_per_day") is not None:
+        cleaned["frequency_per_day"] = dosing["frequency_per_day"]
+    if cleaned.get("duration_days") is None and dosing.get("duration_days") is not None:
+        cleaned["duration_days"] = dosing["duration_days"]
+    return cleaned
+
+
 def enrich_dosing_from_raw(structured: dict[str, Any], raw_text: str) -> dict[str, Any]:
     """구조화에서 빠진 용량·횟수·일수를 원문 표 숫자로 채운다."""
     source = raw_text or ""
+    raw_items = [
+        dict(item) for item in structured.get("items") or [] if isinstance(item, dict)
+    ]
+    if not raw_items:
+        return structured
+
+    lines = source.splitlines()
+    spans: list[int | None] = []
+    used: set[int] = set()
+    for item in raw_items:
+        name = str(item.get("drug_name") or "")
+        core = _name_core(name)
+        found = None
+        if len(core) >= 2:
+            for index, line in enumerate(lines):
+                if index in used:
+                    continue
+                if _line_matches_name(line, name, core):
+                    found = index
+                    used.add(index)
+                    break
+        spans.append(found)
+
+    leftovers = [""] * len(raw_items)
     items: list[dict[str, Any]] = []
-    for item in structured.get("items") or []:
-        if not isinstance(item, dict):
+    for index, item in enumerate(raw_items):
+        start = spans[index]
+        if start is None:
+            items.append(
+                _apply_dosing(
+                    item,
+                    _dosing_near_name(str(item.get("drug_name") or ""), source),
+                )
+            )
             continue
-        cleaned = dict(item)
-        name = str(cleaned.get("drug_name") or "")
-        dosing = _dosing_near_name(name, source)
-        if dosing:
-            if not cleaned.get("dosage") and dosing.get("dosage"):
-                cleaned["dosage"] = dosing["dosage"]
-            if cleaned.get("frequency_per_day") is None and dosing.get("frequency_per_day") is not None:
-                cleaned["frequency_per_day"] = dosing["frequency_per_day"]
-            if cleaned.get("duration_days") is None and dosing.get("duration_days") is not None:
-                cleaned["duration_days"] = dosing["duration_days"]
-        items.append(cleaned)
+        next_start = next(
+            (spans[j] for j in range(index + 1, len(spans)) if spans[j] is not None),
+            len(lines),
+        )
+        window = " ".join(lines[start:next_start])
+        combined = f"{leftovers[index]} {window}".strip()
+        dosing = _dosing_from_window(combined)
+        extra = _trailing_dosing_text(combined)
+        next_item = next(
+            (j for j in range(index + 1, len(spans)) if spans[j] is not None),
+            None,
+        )
+        if extra and next_item is not None:
+            leftovers[next_item] = extra
+        items.append(_apply_dosing(item, dosing))
+
     result = dict(structured)
     result["items"] = items
     return result
@@ -347,7 +527,6 @@ def _normalize_table_dosing(items: list[dict[str, Any]]) -> list[dict[str, Any]]
         if not isinstance(item, dict):
             continue
         cleaned = dict(item)
-        name = str(cleaned.get("drug_name") or "")
         dosage = str(cleaned.get("dosage") or "").strip()
         unit = str(cleaned.get("unit") or "").strip()
 
@@ -363,15 +542,12 @@ def _normalize_table_dosing(items: list[dict[str, Any]]) -> list[dict[str, Any]]
                 except ValueError:
                     cleaned["times_per_take"] = 1
                 cleaned["unit"] = take_match.group(2).upper()
-            strength = re.search(
-                r"(\d+(?:\.\d+)?)\s*(mg|ml|g|%|밀리그램|밀리그람)",
-                name,
-                re.IGNORECASE,
-            )
-            if strength:
-                cleaned["dosage"] = strength.group(0).replace(" ", "")
-            elif take_match:
+            if is_strength_dosage(dosage) or take_match:
                 cleaned.pop("dosage", None)
+
+        leftover = str(cleaned.get("dosage") or "")
+        if is_strength_dosage(leftover) and "%" not in leftover:
+            cleaned.pop("dosage", None)
 
         freq = cleaned.get("frequency_per_day")
         days = cleaned.get("duration_days")
@@ -538,56 +714,98 @@ def correct_drug_names(structured: dict[str, Any]) -> dict[str, Any]:
     return result
 
 
-def _dosing_near_name(drug_name: str, raw_text: str) -> dict[str, Any]:
-    """약이름이 있는 줄(또는 바로 다음 줄)에서만 투약량·횟수·일수를 찾는다."""
-    name = (drug_name or "").strip()
-    if not name or not raw_text:
-        return {}
-    core = _compact(name)
+_DRUG_NAME_LINE_RE = re.compile(
+    r"[가-힣A-Za-z][가-힣A-Za-z0-9.%]{1,40}(?:정|캡슐|액|시럽|산|주)"
+)
+_DOSE_TRIPLE_RE = re.compile(
+    r"(?P<dose>\d+\.\d+)\s*[|/\s]+\s*(?P<freq>[1-9])\s*[|/\s]+\s*(?P<days>\d{1,3})\b"
+)
+_DOSE_PAIR_RE = re.compile(
+    r"(?P<dose>\d+\.\d+)\s*[|/\s]+\s*(?P<freq>[1-9])\b"
+)
+
+
+def _name_core(drug_name: str) -> str:
+    core = _compact(drug_name)
     for suffix in ("필름코팅정", "서방정", "연질캡슐", "캡슐", "정", "시럽", "액"):
         if core.endswith(suffix) and len(core) > len(suffix) + 1:
-            core = core[: -len(suffix)]
-            break
-    if len(core) < 2:
-        return {}
+            return core[: -len(suffix)]
+    return core
 
-    lines = raw_text.splitlines()
-    window = ""
-    for index, line in enumerate(lines):
-        compact_line = _compact(line)
-        if core[: min(4, len(core))] in compact_line or _compact(name)[:6] in compact_line:
-            parts = [line]
-            if index + 1 < len(lines):
-                parts.append(lines[index + 1])
-            window = " ".join(parts)
-            break
-    if not window:
-        return {}
 
-    # 반드시 약 근처 줄에서만: 0.50 | 3 | 7
-    triple = re.search(
-        r"(?P<dose>\d+(?:\.\d+)?)\s*[|/\s]+\s*(?P<freq>\d+)\s*[|/\s]+\s*(?P<days>\d+)",
-        window,
-    )
+def _line_matches_name(line: str, name: str, core: str) -> bool:
+    compact_line = _compact(line)
+    if not compact_line:
+        return False
+    needle = core[: min(4, len(core))]
+    return needle in compact_line or _compact(name)[:6] in compact_line
+
+
+def _is_other_drug_line(line: str, core: str) -> bool:
+    compact_line = _compact(line)
+    if not compact_line or core[: min(4, len(core))] in compact_line:
+        return False
+    match = _DRUG_NAME_LINE_RE.search(line)
+    return match is not None and _compact(match.group(0)) != _compact(core)
+
+
+def _dosing_from_window(window: str) -> dict[str, Any]:
+    triple = _DOSE_TRIPLE_RE.search(window)
     if triple:
-        return {
+        days = int(triple.group("days"))
+        result = {
             "dosage": triple.group("dose"),
             "frequency_per_day": int(triple.group("freq")),
-            "duration_days": int(triple.group("days")),
         }
-    pair = re.search(
-        r"(?P<dose>\d+(?:\.\d+)?)\s*[|/\s]+\s*(?P<freq>\d+)\b",
-        window,
-    )
+        if 1 <= days <= 365:
+            result["duration_days"] = days
+        return result
+    pair = _DOSE_PAIR_RE.search(window)
     result: dict[str, Any] = {}
     if pair:
         result["dosage"] = pair.group("dose")
         result["frequency_per_day"] = int(pair.group("freq"))
-    # 전체 원문이 아니라 이 약 줄에서만 '7일분' 등을 본다 (헤더 '1일' 오인 방지)
+        leftover = re.search(r"(?<!\d)(\d{1,3})(?!\d(?:\.\d+)?)", window[pair.end() :])
+        if leftover:
+            days = int(leftover.group(1))
+            if 1 <= days <= 365:
+                result["duration_days"] = days
     days = re.search(r"(?<!\d)(\d{1,3})\s*일분", window)
     if days:
-        result["duration_days"] = int(days.group(1))
+        value = int(days.group(1))
+        if 1 <= value <= 365:
+            result["duration_days"] = value
     return result
+
+
+def _dosing_near_name(drug_name: str, raw_text: str) -> dict[str, Any]:
+    """약이름 앞뒤의 표 숫자(줄바꿈으로 떨어진 0.50 / 3 / 7)를 횟수·일수로 붙인다."""
+    name = (drug_name or "").strip()
+    if not name or not raw_text:
+        return {}
+    core = _name_core(name)
+    if len(core) < 2:
+        return {}
+
+    lines = raw_text.splitlines()
+    name_index = next(
+        (
+            index
+            for index, line in enumerate(lines)
+            if _line_matches_name(line, name, core)
+        ),
+        None,
+    )
+    if name_index is None:
+        return {}
+
+    end = name_index + 1
+    while end < len(lines) and not _is_other_drug_line(lines[end], core):
+        end += 1
+        if end - name_index > 40:
+            break
+    window = " ".join(lines[name_index:end])
+    return _dosing_from_window(window)
 
 
 _PERCENT_STRENGTH_RE = re.compile(r"\s*\d+(?:\.\d+)?\s*%")
@@ -660,11 +878,11 @@ def peel_glued_dosing(name: str) -> tuple[str, dict[str, Any]]:
         return raw, dosing
     peeled = match.group("name") or raw
     peeled, percent = split_percent_strength(peeled)
-    strength = match.group("strength")
+    strength = match.group("strength") or ""
     if percent:
         dosing["dosage"] = percent
-    if strength:
-        dosing["dosage"] = dosing.get("dosage") or strength
+    elif "%" in strength:
+        dosing["dosage"] = strength
     if match.group("take"):
         dosing["times_per_take"] = int(match.group("take"))
     if match.group("freq"):
@@ -692,7 +910,7 @@ def iter_glued_drug_tokens(text: str) -> list[dict[str, Any]]:
     tokens: list[dict[str, Any]] = []
     for match in _GLUED_TOKEN_RE.finditer(text or ""):
         name = match.group("name") or ""
-        strength = match.group("strength")
+        strength = match.group("strength") or ""
         name, peeled_pct = split_percent_strength(name)
         name = _clean_drug_label(name)
         if not name or _looks_like_shape_not_drug(name):
@@ -700,7 +918,7 @@ def iter_glued_drug_tokens(text: str) -> list[dict[str, Any]]:
         item: dict[str, Any] = {"drug_name": name}
         if peeled_pct:
             item["dosage"] = peeled_pct
-        elif strength:
+        elif "%" in strength:
             item["dosage"] = strength
         if match.group("take"):
             item["times_per_take"] = int(match.group("take"))

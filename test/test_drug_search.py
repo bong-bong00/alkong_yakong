@@ -4,6 +4,7 @@ from unittest.mock import patch
 import requests
 from fastapi import HTTPException
 
+from app.routes.dashboard import lookup_medicines
 from app.routes.drug_explain import search_official_drugs
 from app.services import external_api_service
 
@@ -73,6 +74,16 @@ class DrugCandidateSearchTest(unittest.TestCase):
     def test_no_official_result_returns_empty_items(self):
         result = self.search("없는약", [])
         self.assertEqual(result, {"query": "없는약", "count": 0, "items": []})
+
+    def test_official_database_error_returns_retryable_service_error(self):
+        with patch(
+            "app.services.mfds_drug_permission.db.search_permission_names",
+            side_effect=RuntimeError("permission database unavailable"),
+        ):
+            with self.assertRaises(HTTPException) as raised:
+                lookup_medicines("아디팜")
+        self.assertEqual(raised.exception.status_code, 503)
+        self.assertIn("다시 시도", raised.exception.detail)
 
     def test_candidate_results_are_limited_to_eight(self):
         result = self.search(

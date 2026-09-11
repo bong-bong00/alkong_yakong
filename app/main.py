@@ -1,8 +1,17 @@
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.core.config import (
+    APP_ENV,
+    APP_VERSION,
+    CLOVA_OCR_API_URL,
+    CLOVA_OCR_SECRET_KEY,
+    DEMO_SEED_ENABLED,
+)
+from app.database import DB_PATH
 from app.routes import (
     biosignal,
     biosignal_test,
@@ -18,6 +27,7 @@ from app.routes import (
 from init_db import initialize_database
 from app.services.pharmacist.easy_category_db import initialize_easy_category_map_db
 from app.services.seed_mvp_medicines import ensure_mvp_demo_medicines
+from app.services.pharmacist.retrieve import refresh_app_medicines_from_permission
 from app.services.dur_sync_service import start_background_dur_sync
 
 
@@ -25,14 +35,19 @@ from app.services.dur_sync_service import start_background_dur_sync
 async def lifespan(_: FastAPI):
     initialize_database()
     initialize_easy_category_map_db()
-    ensure_mvp_demo_medicines()
+    if DEMO_SEED_ENABLED:
+        ensure_mvp_demo_medicines()
+    try:
+        refresh_app_medicines_from_permission()
+    except Exception:
+        pass
     start_background_dur_sync()
     yield
 
 
 app = FastAPI(
     title="알콩약콩 MVP API",
-    version="1.1.0",
+    version=APP_VERSION,
     lifespan=lifespan,
 )
 
@@ -66,4 +81,12 @@ def root():
 
 @app.get("/health")
 def health():
-    return {"status": "ok"}
+    return {
+        "status": "ok",
+        "version": APP_VERSION,
+        "environment": APP_ENV,
+        "database": f"sqlite:{Path(DB_PATH).name}",
+        "demo_seed_enabled": DEMO_SEED_ENABLED,
+        "ocr_engine": "clova-ocr-v2",
+        "ocr_configured": bool(CLOVA_OCR_API_URL and CLOVA_OCR_SECRET_KEY),
+    }

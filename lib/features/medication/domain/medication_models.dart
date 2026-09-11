@@ -4,7 +4,7 @@
 /// 복약 완료 → "다 드셨어요", 미복약 → "아직 안 드셨어요".
 library;
 
-import 'package:flutter/material.dart';
+import '../../medicines/domain/display_policy.dart';
 
 /// 하루 세 번의 복약 시간대.
 enum DoseSlot {
@@ -40,8 +40,17 @@ enum DoseSlot {
 
 /// 약 한 가지.
 class Medicine {
-  /// 성분명 — "메트포르민 500mg". 3a에서는 이것이 약 행의 제목이다.
+  /// 화면 제목으로 쓰는 허가 제품명(기존 코드 호환 필드).
   final String ingredient;
+
+  /// 실제 주성분. 제품명과 섞지 않는다.
+  final String? ingredientName;
+
+  /// 서버가 계산한 카드용 복합 성분 요약.
+  final String? ingredientSummary;
+
+  /// 주성분 함량.
+  final String? ingredientStrength;
 
   /// "1알".
   final String amount;
@@ -51,62 +60,83 @@ class Medicine {
   /// 음성 안내([5d])와 스크린리더 설명에만 쓴다.
   final String? appearance;
 
-  /// 어르신용 쉬운 분류 — "혈압약". 화면에 `이름 (분류)` 로 붙인다.
+  /// 어르신용 짧은 분류. 홈·OCR 카드에는 이 값을 쓴다.
   final String? easyCategory;
 
-  /// 효능 한 줄 — "혈당 낮추는 약". 성분명 옆에 늘 붙는다.
-  /// 서버가 주는 [easyCategory]가 있으면 그것을 쓴다.
-  final String? _effect;
+  /// 허가 효능을 묶은 쉬운 목적 이름 — 예: "가려움 완화 · 불안·긴장 완화".
+  final String? purposeLabel;
 
-  /// 약 설명 화면을 찾을 키 — 'met' / 'aml' / 'asp'.
-  final String? key;
+  /// 환자 카드에서 읽을 쉬운 한 문장.
+  final String? shortExplanation;
+
+  /// 공식 주의사항에서 고른 가장 중요한 한 문장.
+  final String? keyCaution;
+
+  /// 식약처 허가 효능 원문. 홈 카드에는 쓰지 않는다.
+  final String? efficacy;
 
   /// 오늘 스케줄 id — 「먹었어요」 서버 기록용.
   final int? scheduleId;
 
+  /// 상세 화면 연결용 공식 약 코드.
+  final String? medicineCode;
+
   const Medicine({
     required this.ingredient,
     required this.amount,
+    this.ingredientName,
+    this.ingredientSummary,
+    this.ingredientStrength,
     this.appearance,
     this.easyCategory,
-    String? effect,
-    this.key,
+    this.purposeLabel,
+    this.shortExplanation,
+    this.keyCaution,
+    this.efficacy,
     this.scheduleId,
-  }) : _effect = effect;
+    this.medicineCode,
+  });
 
-  /// 홈·목록에 쓰는 한 줄 — "암로디핀 5mg (혈압약)".
-  String get displayName {
-    final category = easyCategory?.trim();
-    if (category == null || category.isEmpty) return ingredient;
-    return '$ingredient ($category)';
+  /// 홈·OCR 카드에 보여 줄 쉬운 한 줄. 허가 원문·폴백 문장은 쓰지 않는다.
+  String? get cardSpoken {
+    return cardSpokenOf(shortExplanation) ??
+        cardSpokenOf(easyCategory) ??
+        cardSpokenOf(efficacy);
   }
+
+  /// 화면에 보여 줄 약 이름. 허가 제품명을 그대로 쓴다.
+  String get displayName {
+    final name = stripEasyCategoryParen(stripExportAlias(ingredient));
+    return name.isEmpty ? '약' : name;
+  }
+
+  String? get ingredientLabel {
+    final name = (ingredientSummary?.trim().isNotEmpty ?? false)
+        ? ingredientSummary!.trim()
+        : compactIngredientSummary(ingredientName);
+    final strength = ingredientStrength?.trim() ?? '';
+    if (name.isEmpty && strength.isEmpty) return null;
+    return [name, strength].where((value) => value.isNotEmpty).join(' · ');
+  }
+
+  /// 메인 홈 카드의 짧은 분류. 증상 키워드 나열은 쓰지 않는다.
+  String? get effect => cardPurposeLabel(purposeLabel);
+
+  /// 메인 홈에서 DrugInfo 찾기에 쓰던 키. 서버 약 코드를 쓴다.
+  String? get key => medicineCode;
 
   /// 음성으로 읽어줄 때의 한 줄 — "메트포르민 500mg, 흰색 동그란 알약 1알".
-  /// 효능 한 줄. 손으로 넣은 값이 없으면 서버가 준 쉬운 분류를 쓴다.
-  String? get effect => _effect ?? easyCategory;
-
-  /// "흰색 알약 1알" — 이름 대신 생김새로 부르는 한 줄.
-  /// 잠결이나 알림에서는 성분명보다 이쪽이 먼저 읽힌다.
-  String get shapePhrase =>
-      appearance == null ? '$ingredient $amount' : '$appearance $amount';
-
-  /// 미리보기 동그라미 색. 사진이 붙기 전까지 생김새 글에서 뽑아 쓴다.
-  // TODO: 식약처 낱알식별 이미지가 붙으면 이 자리를 사진으로 바꾼다.
-  Color get pillColor {
-    final look = appearance ?? '';
-    if (look.contains('노란') || look.contains('노랑')) {
-      return const Color(0xFFF3D98B);
-    }
-    if (look.contains('분홍') || look.contains('붉은')) {
-      return const Color(0xFFEFC0BA);
-    }
-    if (look.contains('파란')) return const Color(0xFFB9C4F2);
-    return const Color(0xFFF0F0F4);
+  String get spoken {
+    final base = appearance == null
+        ? '$displayName $amount'
+        : '$displayName, $appearance $amount';
+    return [
+      base,
+      purposeLabel,
+      cardSpoken,
+      keyCaution,
+    ].where((value) => value != null && value.trim().isNotEmpty).join(', ');
   }
-
-  String get spoken => appearance == null
-      ? '$displayName $amount'
-      : '$displayName, $appearance $amount';
 }
 
 /// 한 시간대의 복약 상태.
@@ -176,13 +206,9 @@ class TodayMedication {
 
   final int heartRate;
   final bool heartRateNormal;
-
-  /// 이 처방으로 며칠 더 드실 수 있는지.
   final int daysLeft;
-
-  String get daysLeftPhrase => daysLeft == 0
-      ? '이 처방이 오늘로 끝나요'
-      : '이 처방 $daysLeft일치 남았어요';
+  final String? interactionAlert;
+  final List<InteractionPriorityCard> interactionCards;
 
   const TodayMedication({
     required this.doses,
@@ -191,6 +217,8 @@ class TodayMedication {
     required this.heartRate,
     required this.heartRateNormal,
     this.daysLeft = 3,
+    this.interactionAlert,
+    this.interactionCards = const [],
   });
 
   /// "딸 지안 님".
@@ -208,8 +236,12 @@ class TodayMedication {
     return null;
   }
 
-  DoseEntry doseOf(DoseSlot slot) =>
-      doses.firstWhere((d) => d.slot == slot);
+  DoseEntry doseOf(DoseSlot slot) {
+    for (final dose in doses) {
+      if (dose.slot == slot) return dose;
+    }
+    return DoseEntry(slot: slot, medicines: const []);
+  }
 
   /// "아침·점심 다 드셨어요" — 완료 요약 카드 문구.
   String get takenSummary {
@@ -219,12 +251,56 @@ class TodayMedication {
     return '${done.join('·')} 다 드셨어요';
   }
 
-  TodayMedication copyWith({List<DoseEntry>? doses, int? daysLeft}) => TodayMedication(
-    doses: doses ?? this.doses,
-    guardianRelation: guardianRelation,
-    guardianName: guardianName,
-    heartRate: heartRate,
-    heartRateNormal: heartRateNormal,
-          daysLeft: daysLeft ?? this.daysLeft,
+  /// "약 3일치 남았어요"
+  String get daysLeftPhrase =>
+      daysLeft <= 0 ? '오늘이 마지막이에요' : '이 처방 $daysLeft일치 남았어요';
+
+  TodayMedication copyWith({
+    List<DoseEntry>? doses,
+    int? daysLeft,
+    String? interactionAlert,
+    List<InteractionPriorityCard>? interactionCards,
+  }) =>
+      TodayMedication(
+        doses: doses ?? this.doses,
+        guardianRelation: guardianRelation,
+        guardianName: guardianName,
+        heartRate: heartRate,
+        heartRateNormal: heartRateNormal,
+        daysLeft: daysLeft ?? this.daysLeft,
+        interactionAlert: interactionAlert ?? this.interactionAlert,
+        interactionCards: interactionCards ?? this.interactionCards,
       );
+}
+
+class InteractionPriorityCard {
+  final String nameA;
+  final String nameB;
+  final String? codeA;
+  final String? codeB;
+  final String reason;
+  final String? cautionA;
+  final String? cautionB;
+
+  const InteractionPriorityCard({
+    required this.nameA,
+    required this.nameB,
+    required this.reason,
+    this.codeA,
+    this.codeB,
+    this.cautionA,
+    this.cautionB,
+  });
+
+  factory InteractionPriorityCard.fromJson(Map<String, dynamic> json) {
+    return InteractionPriorityCard(
+      nameA: json['name_a']?.toString() ?? '',
+      nameB: json['name_b']?.toString() ?? '',
+      codeA: json['code_a']?.toString(),
+      codeB: json['code_b']?.toString(),
+      reason: json['reason']?.toString() ?? '함께 먹을 때 주의가 필요해요',
+      cautionA: json['caution_a']?.toString(),
+      cautionB: json['caution_b']?.toString(),
+    );
+  }
 }

@@ -17,7 +17,6 @@ class PolarService {
       StreamController<double?>.broadcast();
   final StreamController<String> _errorController =
       StreamController<String>.broadcast();
-
   final List<int> _bpmSamples = <int>[];
   final Map<String, Set<PolarSdkFeature>> _availableFeatures =
       <String, Set<PolarSdkFeature>>{};

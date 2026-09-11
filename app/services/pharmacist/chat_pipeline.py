@@ -9,6 +9,7 @@ from app.services.matching.name_matcher import match_medicine_name
 from app.services.mfds_drug_permission.db import search_permission_names
 from app.services.pharmacist.generate import generate_from_source
 from app.services.pharmacist.guard import guard_reply
+from app.services.pharmacist.efficacy_display import display_efficacy_text
 from app.services.pharmacist.retrieve import retrieve_official
 from app.services.pharmacist.spell import extract_drug_name_candidates
 
@@ -185,18 +186,29 @@ def _enrich_lexicon(message: str, lexicon: list[str] | None) -> list[str]:
 
 
 def _together_from_dur(user_id: str | None, original: str, asked_name: str | None = None) -> ChatPipelineResult:
-    """챗봇 '같이 먹으면'은 추측 문장 대신 실제 DUR 검사 결과를 말한다."""
+    """챗봇 '같이 먹으면'은 최신 DUR 결과를 우선하고, 약이 바뀌었을 때만 다시 검사한다."""
     if not user_id:
         return ChatPipelineResult(
             False,
             "지금 드시는 약을 등록한 뒤, 약 함께먹기 주의에서 확인해 주세요.",
             {"original": original, "stage": "dur", "faq_kind": "together", "evidence_score": 0.0},
         )
+    result: dict[str, Any] | None = None
+    reused = False
     try:
         from app.models.schemas import DurAnalyzeRequest
-        from app.services.dur_service import analyze_dur
+        from app.services.chat_context_service import load_latest_dur_context
+        from app.services.dur_service import analyze_dur, get_latest_dur
 
-        result = analyze_dur(DurAnalyzeRequest(user_id=user_id, medicine_codes=[]))
+        ctx = load_latest_dur_context(user_id, {"combination"})
+        if ctx.get("status") == "current":
+            try:
+                result = get_latest_dur(user_id)
+                reused = True
+            except Exception:
+                result = None
+        if result is None:
+            result = analyze_dur(DurAnalyzeRequest(user_id=user_id, medicine_codes=[]))
     except Exception:
         return ChatPipelineResult(
             False,
@@ -205,6 +217,13 @@ def _together_from_dur(user_id: str | None, original: str, asked_name: str | Non
         )
 
     names = [str(name) for name in (result.get("medicine_names") or []) if name]
+    if not names:
+        names = [
+            str(item.get("product_name") or item.get("ingredient") or "").strip()
+            for item in (result.get("medicines") or [])
+            if isinstance(item, dict)
+        ]
+        names = [name for name in names if name]
     matches = result.get("matches") or []
     incomplete = bool(result.get("incomplete"))
     lines: list[str] = []
@@ -242,6 +261,7 @@ def _together_from_dur(user_id: str | None, original: str, asked_name: str | Non
             "evidence_score": 0.0,
             "dur_match_count": len(matches),
             "incomplete": incomplete,
+            "dur_reused": reused,
         },
     )
 
@@ -291,11 +311,13 @@ def _fixed_db_reply(kind: str | None, official: dict[str, Any], name: str) -> st
     """DB/공식 필드만으로 정해진 답을 만든다. 추측 문장 금지."""
     med = official.get("medicine") or {}
     product = str(med.get("product_name") or name).strip()
-    efficacy = _short_field(med.get("efficacy") or med.get("efficacy_text"))
+    efficacy = display_efficacy_text(
+        med.get("efficacy") or med.get("efficacy_text")
+    ) or ""
     usage = _short_field(med.get("usage") or med.get("usage_text"))
-    caution = _short_field(
+    caution = display_efficacy_text(
         med.get("cautions") or med.get("caution_text") or med.get("precautions")
-    )
+    ) or ""
 
     if kind == "missed":
         parts = [
@@ -339,7 +361,9 @@ def _fixed_db_reply(kind: str | None, official: dict[str, Any], name: str) -> st
 def _official_excerpt_reply(official: dict[str, Any], name: str) -> str | None:
     med = official.get("medicine") or {}
     product = str(med.get("product_name") or name).strip()
-    efficacy = _short_field(med.get("efficacy") or med.get("efficacy_text"))
+    efficacy = display_efficacy_text(
+        med.get("efficacy") or med.get("efficacy_text")
+    ) or ""
     usage = _short_field(med.get("usage") or med.get("usage_text"))
     if not efficacy and not usage:
         return None

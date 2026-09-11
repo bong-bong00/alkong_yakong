@@ -10,12 +10,7 @@ import '../../../../core/widgets/senior_bottom_nav.dart';
 import '../../../biosignal/presentation/screens/measure_screen.dart';
 import '../../../medication/domain/medication_models.dart';
 import '../../../medication/presentation/screens/dose_done_screen.dart';
-import '../../../medicines/domain/drug_info.dart';
-import '../../../medicines/presentation/screens/drug_detail_screen.dart';
-import '../../../medicines/presentation/screens/my_medicines_screen.dart';
-import '../../../reminder/presentation/screens/alarm_settings_screen.dart';
 import '../../../medicines/presentation/screens/pharmacist_chat_screen.dart';
-import '../../../prescription/presentation/screens/prescription_screen.dart';
 import '../../../profile/presentation/screens/mypage_screen.dart';
 import 'medication_record_screen.dart';
 import 'patient_home_screen.dart';
@@ -61,53 +56,28 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               ? PatientHomeScreen(
                   onOpenRecord: () => setState(() => _index = 1),
                   onOpenHeartbeat: () => context.push('/biosignal'),
-                  onOpenPrescription: () => Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (_) => const PrescriptionScreen(),
-                    ),
-                  ),
+                  onOpenPrescription: () => context.push('/prescription'),
                   onOpenChat: () => Navigator.of(context).push(
                     MaterialPageRoute(
                       builder: (_) => const PharmacistChatScreen(),
                     ),
                   ),
-                  onOpenMedicines: () => Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (_) => MyMedicinesScreen(
-                        onOpenAlarm: () => Navigator.of(context).push(
-                          MaterialPageRoute<void>(
-                            builder: (_) => const AlarmSettingsScreen(),
-                          ),
-                        ),
-                        onAddPrescription: () => Navigator.of(context)
-                            .pushReplacement(
-                              MaterialPageRoute(
-                                builder: (_) => const PrescriptionScreen(),
-                              ),
-                            ),
-                      ),
-                    ),
-                  ),
+                  onOpenMedicines: () => context.push('/my-medicines'),
                   onOpenDrug: (medicine) {
-                    final drug = DrugInfo.find(medicine.key);
-                    if (drug == null) return;
-                    Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (_) => DrugDetailScreen(
-                          drug: drug,
-                          onOpenInteraction: () =>
-                              context.push('/dur-analysis'),
-                        ),
-                      ),
-                    );
+                    final code = (medicine.medicineCode ?? medicine.key ?? '')
+                        .trim();
+                    if (code.isEmpty) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('이 약의 상세 정보를 찾지 못했어요.')),
+                      );
+                      return;
+                    }
+                    context.push('/medicines/$code');
                   },
-                  onDone: () =>
-                      setState(() => _justRecorded = DoseSlot.dinner),
+                  onDone: () => setState(() => _justRecorded = DoseSlot.dinner),
                   onMeasure: () async {
                     await Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (_) => const MeasureScreen(),
-                      ),
+                      MaterialPageRoute(builder: (_) => const MeasureScreen()),
                     );
                     if (mounted) {
                       setState(() => _justRecorded = DoseSlot.dinner);

@@ -18,6 +18,7 @@ class ClovaOcrResult:
     ok: bool
     raw_text: str = ""
     fields: tuple[dict[str, Any], ...] = ()
+    tables: tuple[dict[str, Any], ...] = ()
     error: str | None = None
     status_code: int | None = None
 
@@ -103,8 +104,9 @@ def extract_with_clova(
         )
 
     fields_raw = first.get("fields") or []
+    tables_raw = first.get("tables") or []
     fields: list[dict[str, Any]] = []
-    texts: list[str] = []
+    text_parts: list[str] = []
     if isinstance(fields_raw, list):
         for field in fields_raw:
             if not isinstance(field, dict):
@@ -112,7 +114,8 @@ def extract_with_clova(
             text = str(field.get("inferText") or "").strip()
             if not text:
                 continue
-            texts.append(text)
+            text_parts.append(text)
+            text_parts.append("\n" if field.get("lineBreak") else " ")
             fields.append(
                 {
                     "text": text,
@@ -122,17 +125,21 @@ def extract_with_clova(
                 }
             )
 
-    raw_text = "\n".join(texts).strip()
+    raw_text = "".join(text_parts).strip()
+    # CLOVA가 준 표·셀의 row/column/span/좌표를 가공하지 않고 추적값으로 보존한다.
+    tables = tuple(table for table in tables_raw if isinstance(table, dict))
     if not raw_text:
         return ClovaOcrResult(
             False,
             error="empty_raw_text",
             status_code=response.status_code,
             fields=tuple(fields),
+            tables=tables,
         )
     return ClovaOcrResult(
         True,
         raw_text=raw_text,
         fields=tuple(fields),
+        tables=tables,
         status_code=response.status_code,
     )

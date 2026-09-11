@@ -11,67 +11,237 @@ DB_PATH = EASY_CATEGORY_MAP_DB_PATH
 
 # (공식 표현, 쉬운 말, name|efficacy, 메모)
 SEED_ROWS: tuple[tuple[str, str, str, str], ...] = (
-    ("암로디핀", "혈압 낮춤", "name", "제품명/성분"),
-    ("메트포르민", "혈당 조절", "name", "제품명/성분"),
-    ("아스피린", "피 묽게", "name", "제품명/성분"),
-    ("아스트릭스", "피 묽게", "name", "아스피린 계열"),
-    ("타이레놀", "해열·통증", "name", "제품명"),
-    ("아세트아미노펜", "해열·통증", "name", "성분명"),
-    ("부루펜", "해열·통증", "name", "제품명"),
-    ("이부프로펜", "해열·통증", "name", "성분명"),
-    ("게보린", "두통·통증", "name", "제품명"),
-    ("메퀴타진", "가려움·알레르기", "name", "성분명"),
-    ("프리마란", "가려움·알레르기", "name", "제품명"),
-    ("스멕타", "설사", "name", "지사제"),
-    ("정로환", "설사·배아픔", "name", "지사제"),
-    ("로페라", "설사", "name", "지사제"),
-    ("듀파락", "변비", "name", "변비약"),
-    ("마그밀", "변비", "name", "변비약"),
-    ("감기의 제증상", "감기 증상", "efficacy", "큰 묶음"),
-    ("감기로 인한 발열", "열", "efficacy", ""),
-    ("콧물", "콧물", "efficacy", ""),
-    ("재채기", "재채기", "efficacy", ""),
-    ("코막힘", "코막힘", "efficacy", ""),
-    ("인후통", "목아픔", "efficacy", ""),
-    ("인후", "목아픔", "efficacy", ""),
-    ("기침", "기침", "efficacy", ""),
-    ("오한", "오한", "efficacy", ""),
-    ("해열", "해열", "efficacy", ""),
-    ("발열", "열", "efficacy", ""),
-    ("진통", "통증", "efficacy", ""),
-    ("동통", "통증", "efficacy", ""),
-    ("두통", "두통", "efficacy", ""),
-    ("치통", "이앓이", "efficacy", ""),
-    ("근육통", "근육통", "efficacy", ""),
-    ("생리통", "생리통", "efficacy", ""),
-    ("관절통", "관절통", "efficacy", ""),
-    ("설사", "설사", "efficacy", ""),
-    ("묽은변", "설사", "efficacy", ""),
-    ("변비", "변비", "efficacy", ""),
-    ("배변", "배변", "efficacy", ""),
-    ("복통", "배아픔", "efficacy", ""),
-    ("복부", "배아픔", "efficacy", ""),
-    ("고혈압", "혈압 낮춤", "efficacy", ""),
-    ("혈압을 낮", "혈압 낮춤", "efficacy", ""),
-    ("혈압강하", "혈압 낮춤", "efficacy", ""),
-    ("당뇨", "혈당 조절", "efficacy", ""),
-    ("혈당", "혈당 조절", "efficacy", ""),
-    ("혈전", "피 묽게", "efficacy", ""),
-    ("항혈소판", "피 묽게", "efficacy", ""),
-    ("알레르기 비염", "코알레르기", "efficacy", ""),
-    ("알레르기", "알레르기", "efficacy", ""),
-    ("가려움", "가려움", "efficacy", ""),
-    ("두드러기", "두드러기", "efficacy", ""),
-    ("결막염", "눈충혈", "efficacy", ""),
-    ("위염", "속쓰림·위", "efficacy", ""),
-    ("속쓰림", "속쓰림", "efficacy", ""),
-    ("소화불량", "소화", "efficacy", ""),
-    ("소화", "소화", "efficacy", ""),
-    ("구역", "메스꺼움", "efficacy", ""),
-    ("구토", "토함", "efficacy", ""),
-    ("어지러", "어지러움", "efficacy", ""),
-    ("불면", "잠", "efficacy", ""),
+    ("암로디핀", "혈압약", "name", "제품명/성분"),
+    ("메트포르민", "당뇨약", "name", "제품명/성분"),
+    ("아스피린", "피가 굳지 않게 하는 약", "name", "제품명/성분"),
+    ("아스트릭스", "피가 굳지 않게 하는 약", "name", "아스피린 계열"),
+    ("타이레놀", "해열제", "name", "제품명"),
+    ("아세트아미노펜", "해열제", "name", "성분명"),
+    ("부루펜", "해열제", "name", "제품명"),
+    ("이부프로펜", "해열제", "name", "성분명"),
+    ("게보린", "두통약", "name", "제품명"),
+    ("메퀴타진", "가려움 약", "name", "성분명"),
+    ("프리마란", "가려움 약", "name", "제품명"),
+    ("스멕타", "설사약", "name", "지사제"),
+    ("정로환", "설사약", "name", "지사제"),
+    ("로페라", "설사약", "name", "지사제"),
+    ("듀파락", "변비약", "name", "변비약"),
+    ("마그밀", "변비약", "name", "변비약"),
+    ("세프디니르", "감염약", "name", "항생제 성분"),
+    ("옴니세프", "감염약", "name", "항생제 제품명"),
+    ("클래리트로마이신", "감염약", "name", "항생제 성분"),
+    ("레보플록사신", "감염약", "name", "항생제 성분"),
+    ("목시플록사신", "감염약", "name", "항생제 성분"),
+    ("에리트로마이신", "감염약", "name", "항생제 성분"),
+    ("펜타미딘", "특정 감염 치료약", "name", "항원충제 성분"),
+    ("반데타닙", "갑상선암 치료약", "name", "항암제 성분"),
+    ("감기의 제증상", "감기약", "efficacy", "큰 묶음"),
+    ("감기로 인한 발열", "해열제", "efficacy", ""),
+    ("콧물", "감기약", "efficacy", ""),
+    ("재채기", "감기약", "efficacy", ""),
+    ("코막힘", "감기약", "efficacy", ""),
+    ("인후통", "목아픔 약", "efficacy", ""),
+    ("기침", "감기약", "efficacy", ""),
+    ("오한", "감기약", "efficacy", ""),
+    ("해열", "해열제", "efficacy", ""),
+    ("발열", "해열제", "efficacy", ""),
+    ("진통", "진통제", "efficacy", ""),
+    ("동통", "진통제", "efficacy", ""),
+    ("두통", "두통약", "efficacy", ""),
+    ("치통", "이앓이 약", "efficacy", ""),
+    ("근육통", "진통제", "efficacy", ""),
+    ("생리통", "진통제", "efficacy", ""),
+    ("관절통", "진통제", "efficacy", ""),
+    ("설사", "설사약", "efficacy", ""),
+    ("묽은변", "설사약", "efficacy", ""),
+    ("변비", "변비약", "efficacy", ""),
+    ("복통", "배아픔 약", "efficacy", ""),
+    ("고혈압", "혈압약", "efficacy", ""),
+    ("혈압을 낮", "혈압약", "efficacy", ""),
+    ("혈압강하", "혈압약", "efficacy", ""),
+    ("당뇨병", "당뇨약", "efficacy", ""),
+    ("당뇨", "당뇨약", "efficacy", ""),
+    ("혈당강하", "당뇨약", "efficacy", ""),
+    ("항혈소판", "피가 굳지 않게 하는 약", "efficacy", ""),
+    ("혈전 생성", "피가 굳지 않게 하는 약", "efficacy", ""),
+    ("알레르기 비염", "알레르기 약", "efficacy", ""),
+    ("두드러기", "가려움 약", "efficacy", ""),
+    ("가려움", "가려움 약", "efficacy", ""),
+    ("알레르기", "알레르기 약", "efficacy", ""),
+    ("결막염", "눈약", "efficacy", ""),
+    ("역류성식도염", "속쓰림 약", "efficacy", ""),
+    ("십이지장궤양", "속쓰림 약", "efficacy", ""),
+    ("위궤양", "속쓰림 약", "efficacy", ""),
+    ("위염", "속쓰림 약", "efficacy", ""),
+    ("속쓰림", "속쓰림 약", "efficacy", ""),
+    ("소화불량", "소화제", "efficacy", ""),
+    ("구역", "메스꺼움 약", "efficacy", ""),
+    ("구토", "토하는 약", "efficacy", ""),
+    ("어지러", "어지럼 약", "efficacy", ""),
+    ("불면", "잠 오는 약", "efficacy", ""),
+    ("불안장애의 치료", "불안약", "efficacy", "자낙스 오탐 방지"),
+    ("불안증상", "불안약", "efficacy", ""),
+    ("공황장애", "불안약", "efficacy", ""),
+    ("주요우울장애", "우울약", "efficacy", ""),
+    ("주요 우울", "우울약", "efficacy", ""),
+    ("우울증", "우울약", "efficacy", ""),
+    ("정신분열", "조현병약", "efficacy", ""),
+    ("조현병", "조현병약", "efficacy", ""),
+    ("정신병적", "조현병약", "efficacy", ""),
+    ("뇌전증", "뇌전증약", "efficacy", ""),
+    ("간질", "뇌전증약", "efficacy", ""),
+    ("부정맥", "심장 박동 약", "efficacy", ""),
+    ("부정빈맥", "심장 박동 약", "efficacy", ""),
+    ("심방세동", "심장 박동 약", "efficacy", ""),
+    ("울혈성심부전", "심장 박동 약", "efficacy", ""),
+    ("고콜레스테롤혈증", "피 기름 약", "efficacy", ""),
+    ("고지혈증", "피 기름 약", "efficacy", ""),
+    ("고콜레스테롤", "피 기름 약", "efficacy", ""),
+    ("심근경색", "피가 굳지 않게 하는 약", "efficacy", ""),
+    ("허혈뇌졸중", "피가 굳지 않게 하는 약", "efficacy", ""),
+    ("뇌졸중", "피가 굳지 않게 하는 약", "efficacy", ""),
+    ("기능성소화불량", "소화제", "efficacy", ""),
+    ("위식도역류", "속쓰림 약", "efficacy", ""),
+    ("위점막", "속쓰림 약", "efficacy", ""),
+    ("급성위염", "속쓰림 약", "efficacy", "진통 오탐보다 김"),
+    ("헬리코박터", "속쓰림 약", "efficacy", ""),
+    ("아토피피부염", "가려움 약", "efficacy", "알레르기 오탐보다 김"),
+    ("가려움발진", "가려움 약", "efficacy", ""),
+    ("접촉성알레르기피부염", "가려움 약", "efficacy", ""),
+    ("피부염", "가려움 약", "efficacy", ""),
+    ("습진", "가려움 약", "efficacy", ""),
+    ("건선", "가려움 약", "efficacy", ""),
+    ("화농", "상처약", "efficacy", ""),
+    ("상처", "상처약", "efficacy", ""),
+    ("전립샘비대", "소변약", "efficacy", ""),
+    ("전립선비대", "소변약", "efficacy", ""),
+    ("배뇨장애", "소변약", "efficacy", ""),
+    ("인플루엔자", "독감약", "efficacy", ""),
+    ("B형 간염", "간염약", "efficacy", ""),
+    ("만성 B형", "간염약", "efficacy", ""),
+    ("기억력저하", "기억약", "efficacy", ""),
+    ("알츠하이머", "치매약", "efficacy", ""),
+    ("치매", "치매약", "efficacy", ""),
+    ("비타민 B1", "비타민약", "efficacy", ""),
+    ("비타민 B2", "비타민약", "efficacy", ""),
+    ("비타민 C의 보급", "비타민약", "efficacy", ""),
+    ("육체피로", "비타민약", "efficacy", ""),
+    ("골관절염", "진통제", "efficacy", ""),
+    ("류마티양", "진통제", "efficacy", ""),
+    ("폐렴", "감염약", "efficacy", ""),
+    ("기관지염", "감염약", "efficacy", ""),
+    ("중이염", "감염약", "efficacy", ""),
+    ("신우신염", "감염약", "efficacy", ""),
+    ("방광염", "감염약", "efficacy", ""),
+    ("기관지천식", "숨 쉬기 약", "efficacy", ""),
+    ("호흡곤란", "숨 쉬기 약", "efficacy", ""),
+    ("천식", "숨 쉬기 약", "efficacy", ""),
+    ("고뇨산", "통풍약", "efficacy", ""),
+    ("통풍", "통풍약", "efficacy", ""),
+    ("간기능", "간 약", "efficacy", ""),
+    ("간질환", "간 약", "efficacy", ""),
+    ("말라리아", "말라리아약", "efficacy", ""),
+    ("체중감량", "체중약", "efficacy", ""),
+    ("티눈", "티눈약", "efficacy", ""),
+    ("사마귀", "티눈약", "efficacy", ""),
+    ("굳은살", "티눈약", "efficacy", ""),
+    ("아미오다론", "심장 박동 약", "name", ""),
+    ("코다론", "심장 박동 약", "name", ""),
+    ("게루삼", "속쓰림 약", "name", ""),
+    ("소타롤", "심장 박동 약", "name", ""),
+    ("알프라졸람", "불안약", "name", ""),
+    ("자낙스", "불안약", "name", ""),
+    ("부스피론", "불안약", "name", ""),
+    ("로라제팜", "불안약", "name", ""),
+    ("할로페리돌", "조현병약", "name", ""),
+    ("미르타자핀", "우울약", "name", ""),
+    ("플루옥세틴", "우울약", "name", ""),
+    ("에스시탈로프람", "우울약", "name", ""),
+    ("아미트리프틸린", "우울약", "name", ""),
+    ("클로나제팜", "뇌전증약", "name", ""),
+    ("페니토인", "뇌전증약", "name", ""),
+    ("클로피도그렐", "피가 굳지 않게 하는 약", "name", ""),
+    ("플라빅스", "피가 굳지 않게 하는 약", "name", ""),
+    ("아토르바스타틴", "피 기름 약", "name", ""),
+    ("로수바스타틴", "피 기름 약", "name", ""),
+    ("리피토", "피 기름 약", "name", ""),
+    ("크레스토", "피 기름 약", "name", ""),
+    ("프레드니카르베이트", "가려움 약", "name", ""),
+    ("탐스로신", "소변약", "name", ""),
+    ("하루날", "소변약", "name", ""),
+    ("피나스테리드", "소변약", "name", ""),
+    ("프로스카", "소변약", "name", ""),
+    ("오셀타미비르", "독감약", "name", ""),
+    ("타미플루", "독감약", "name", ""),
+    ("엔테카비르", "간염약", "name", ""),
+    ("바라크루드", "간염약", "name", ""),
+    ("콜린알포세레이트", "기억약", "name", ""),
+    ("글리아티린", "기억약", "name", ""),
+    ("리바스티그민", "치매약", "name", ""),
+    ("엑셀론", "치매약", "name", ""),
+    ("삐콤", "비타민약", "name", ""),
+    ("아로나민", "비타민약", "name", ""),
+    ("임팩타민", "비타민약", "name", ""),
+    ("후시딘", "상처약", "name", ""),
+    ("마데카솔", "상처약", "name", ""),
+    ("퓨시드산", "상처약", "name", ""),
 )
+
+# (easy_label, eat|apply|patch|eye, B 문장)
+SPOKEN_ROWS: tuple[tuple[str, str, str], ...] = (
+    ("혈압약", "eat", "혈압을 낮추는 약이에요"),
+    ("당뇨약", "eat", "혈당을 낮추는 약이에요"),
+    ("소화제", "eat", "소화가 안 될 때 먹는 약이에요"),
+    ("속쓰림 약", "eat", "속쓰림이나 위 불편감을 완화하는 데 쓰이는 약이에요."),
+    ("해열제", "eat", "열나고 아플 때 먹는 약이에요"),
+    ("진통제", "eat", "열나고 아플 때 먹는 약이에요"),
+    ("진통제", "apply", "아픈 곳에 바르는 약이에요"),
+    ("진통제", "patch", "아픈 곳에 붙이는 약이에요"),
+    ("두통약", "eat", "머리 아플 때 먹는 약이에요"),
+    ("이앓이 약", "eat", "이 아플 때 먹는 약이에요"),
+    ("감기약", "eat", "감기 기운에 먹는 약이에요"),
+    ("목아픔 약", "eat", "목 아플 때 먹는 약이에요"),
+    ("가려움 약", "eat", "가려울 때 먹는 약이에요"),
+    ("가려움 약", "apply", "가려운 피부에 바르는 약이에요"),
+    ("알레르기 약", "eat", "알레르기 때 먹는 약이에요"),
+    ("눈약", "eat", "눈에 넣는 약이에요"),
+    ("눈약", "eye", "눈에 넣는 약이에요"),
+    ("변비약", "eat", "변비에 먹는 약이에요"),
+    ("설사약", "eat", "설사할 때 먹는 약이에요"),
+    ("배아픔 약", "eat", "배 아플 때 먹는 약이에요"),
+    ("메스꺼움 약", "eat", "메스꺼울 때 먹는 약이에요"),
+    ("토하는 약", "eat", "토할 때 먹는 약이에요"),
+    ("어지럼 약", "eat", "어지러울 때 먹는 약이에요"),
+    ("잠 오는 약", "eat", "잠 올 때 먹는 약이에요"),
+    ("피가 굳지 않게 하는 약", "eat", "피가 굳지 않게 하는 약이에요"),
+    ("피 기름 약", "eat", "피 속 기름을 낮추는 약이에요"),
+    ("심장 박동 약", "eat", "심장 박동을 고르게 하는 약이에요"),
+    ("우울약", "eat", "기분이 가라앉을 때 먹는 약이에요"),
+    ("불안약", "eat", "마음이 불안할 때 먹는 약이에요"),
+    ("조현병약", "eat", "마음을 가라앉히는 약이에요"),
+    ("뇌전증약", "eat", "경련을 줄이는 약이에요"),
+    ("감염약", "eat", "세균을 죽이는 약이에요"),
+    ("숨 쉬기 약", "eat", "숨 쉴 때 편한 약이에요"),
+    ("통풍약", "eat", "통풍에 먹는 약이에요"),
+    ("비타민약", "eat", "기운 없을 때 먹는 약이에요"),
+    ("간 약", "eat", "간을 도와주는 약이에요"),
+    ("간염약", "eat", "간염에 먹는 약이에요"),
+    ("치매약", "eat", "기억을 도와주는 약이에요"),
+    ("치매약", "patch", "기억에 붙이는 약이에요"),
+    ("기억약", "eat", "기억을 도와주는 약이에요"),
+    ("말라리아약", "eat", "말라리아에 먹는 약이에요"),
+    ("체중약", "eat", "체중 관리에 먹는 약이에요"),
+    ("티눈약", "apply", "티눈에 바르는 약이에요"),
+    ("티눈약", "patch", "티눈에 붙이는 약이에요"),
+    ("소변약", "eat", "소변이 잘 나오게 하는 약이에요"),
+    ("독감약", "eat", "독감에 먹는 약이에요"),
+    ("상처약", "apply", "상처에 바르는 약이에요"),
+    ("상처약", "eat", "상처에 바르는 약이에요"),
+    ("특정 감염 치료약", "eat", "특정 감염을 치료하는 데 쓰이는 약이에요"),
+    ("갑상선암 치료약", "eat", "갑상선암을 치료하는 데 쓰이는 약이에요"),
+)
+
+FALLBACK_SPOKEN = ""
 
 # (일상어 trigger, link_type, link_value, note)
 # link_type: search=약검색키, phrase=연관검색어(입력만), faq=질문전송
@@ -180,7 +350,6 @@ CHAT_LINK_SEED: tuple[tuple[str, str, str, str], ...] = (
     ("체한", "phrase", "체함", ""),
     ("소화", "phrase", "체함", ""),
     ("소화", "phrase", "속쓰림", ""),
-    ("속쓰림", "phrase", "위", ""),
     ("속쓰림", "phrase", "소화", ""),
     ("속안좋", "phrase", "속쓰림", ""),
     ("속안좋", "phrase", "소화", ""),
@@ -251,8 +420,6 @@ CHAT_LINK_SEED: tuple[tuple[str, str, str, str], ...] = (
     ("ㅍㄹㅁ", "search", "프리마란", ""),
 )
 
-_MAX_DETAIL_LABELS = 3
-
 SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS category_map (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -272,6 +439,13 @@ CREATE TABLE IF NOT EXISTS chat_links (
     note TEXT,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(trigger, link_type, link_value)
+);
+
+CREATE TABLE IF NOT EXISTS spoken_map (
+    easy_label TEXT NOT NULL,
+    route TEXT NOT NULL,
+    sentence TEXT NOT NULL,
+    PRIMARY KEY (easy_label, route)
 );
 
 CREATE INDEX IF NOT EXISTS idx_category_map_phrase ON category_map(official_phrase);
@@ -296,16 +470,57 @@ def initialize_easy_category_map_db(*, reset_seed: bool = False) -> Path:
         if reset_seed:
             conn.execute("DELETE FROM category_map")
             conn.execute("DELETE FROM chat_links")
-        cat_n = conn.execute("SELECT COUNT(*) AS n FROM category_map").fetchone()["n"]
-        if cat_n == 0 or reset_seed:
+            conn.execute("DELETE FROM spoken_map")
+        conn.executemany(
+            """
+            INSERT INTO spoken_map (easy_label, route, sentence)
+            VALUES (?, ?, ?)
+            ON CONFLICT(easy_label, route) DO UPDATE SET
+                sentence = excluded.sentence
+            """,
+            SPOKEN_ROWS,
+        )
+        spoken_keys = {(label, route) for label, route, _s in SPOKEN_ROWS}
+        stale_spoken = [
+            (row["easy_label"], row["route"])
+            for row in conn.execute("SELECT easy_label, route FROM spoken_map")
+            if (row["easy_label"], row["route"]) not in spoken_keys
+        ]
+        if stale_spoken:
             conn.executemany(
-                """
-                INSERT OR REPLACE INTO category_map (
-                    official_phrase, easy_label, match_scope, note
-                ) VALUES (?, ?, ?, ?)
-                """,
-                SEED_ROWS,
+                "DELETE FROM spoken_map WHERE easy_label = ? AND route = ?",
+                stale_spoken,
             )
+        conn.executemany(
+            """
+            INSERT INTO category_map (
+                official_phrase, easy_label, match_scope, note
+            ) VALUES (?, ?, ?, ?)
+            ON CONFLICT(official_phrase, match_scope) DO UPDATE SET
+                easy_label = excluded.easy_label,
+                note = excluded.note
+            """,
+            SEED_ROWS,
+        )
+        seed_keys = {(phrase, scope) for phrase, _label, scope, _note in SEED_ROWS}
+        stale_ids = [
+            row["id"]
+            for row in conn.execute(
+                "SELECT id, official_phrase, match_scope FROM category_map"
+            ).fetchall()
+            if (row["official_phrase"], row["match_scope"]) not in seed_keys
+        ]
+        if stale_ids:
+            conn.executemany(
+                "DELETE FROM category_map WHERE id = ?",
+                [(row_id,) for row_id in stale_ids],
+            )
+        conn.execute(
+            """
+            DELETE FROM chat_links
+            WHERE trigger = '속쓰림' AND link_type = 'phrase' AND link_value = '위'
+            """
+        )
         link_n = conn.execute("SELECT COUNT(*) AS n FROM chat_links").fetchone()["n"]
         if link_n == 0 or reset_seed:
             conn.executemany(
@@ -342,10 +557,8 @@ def lookup_easy_label(
     finally:
         conn.close()
 
-    detail_hits: list[tuple[int, str]] = []
-    seen: set[str] = set()
-    name_fallback: str | None = None
-    has_cold_bundle = False
+    name_best: tuple[int, str] | None = None
+    efficacy_best: tuple[int, str] | None = None
 
     for row in rows:
         phrase = str(row["official_phrase"] or "").casefold()
@@ -353,25 +566,109 @@ def lookup_easy_label(
         if not phrase or not label:
             continue
         scope = row["match_scope"]
-        if scope == "efficacy" and phrase in efficacy_blob:
-            if label == "감기 증상":
-                has_cold_bundle = True
-                continue
-            if label in seen:
-                continue
-            seen.add(label)
-            detail_hits.append((efficacy_blob.find(phrase), label))
-        elif scope == "name" and phrase in name_blob and name_fallback is None:
-            name_fallback = label
+        if scope == "name" and phrase in name_blob:
+            plen = len(phrase)
+            if name_best is None or plen > name_best[0]:
+                name_best = (plen, label)
+        elif scope == "efficacy" and phrase in efficacy_blob:
+            plen = len(phrase)
+            if efficacy_best is None or plen > efficacy_best[0]:
+                efficacy_best = (plen, label)
 
-    if detail_hits:
-        detail_hits.sort(key=lambda item: item[0])
-        labels = [label for _, label in detail_hits[:_MAX_DETAIL_LABELS]]
-        return "·".join(labels)
+    # 제품명·성분은 효능 문장 속 부수적인 병명보다 강한 근거다.
+    # 예: 아스피린 효능에 '고콜레스테롤'이 함께 있어도 혈전 예방약 분류를 유지한다.
+    if name_best:
+        return name_best[1]
+    if efficacy_best:
+        return efficacy_best[1]
+    return None
 
-    if has_cold_bundle or "감기" in efficacy_blob:
-        return "감기 증상"
-    return name_fallback
+
+def lookup_easy_matches(
+    *,
+    name_text: str = "",
+    efficacy_text: str = "",
+) -> list[dict[str, str]]:
+    """Return matched map rows with the exact evidence phrase.
+
+    Name/ingredient matches are returned first because they are less ambiguous than
+    disease words embedded in a long official efficacy paragraph.
+    """
+    initialize_easy_category_map_db()
+    blobs = {
+        "name": (name_text or "").casefold(),
+        "efficacy": (efficacy_text or "").casefold(),
+    }
+    conn = get_connection()
+    try:
+        rows = conn.execute(
+            """
+            SELECT official_phrase, easy_label, match_scope
+            FROM category_map
+            ORDER BY CASE match_scope WHEN 'name' THEN 0 ELSE 1 END,
+                     LENGTH(official_phrase) DESC, id ASC
+            """
+        ).fetchall()
+    finally:
+        conn.close()
+
+    matches: list[dict[str, str]] = []
+    seen: set[tuple[str, str]] = set()
+    for row in rows:
+        scope = str(row["match_scope"] or "")
+        phrase = str(row["official_phrase"] or "").strip()
+        label = str(row["easy_label"] or "").strip()
+        if scope not in blobs or not phrase or not label:
+            continue
+        if phrase.casefold() not in blobs[scope]:
+            continue
+        key = (scope, label)
+        if key in seen:
+            continue
+        seen.add(key)
+        matches.append(
+            {
+                "match_scope": scope,
+                "official_phrase": phrase,
+                "easy_label": label,
+            }
+        )
+    return matches
+
+
+def lookup_spoken_sentence(easy_label: str | None, route: str) -> str:
+    initialize_easy_category_map_db()
+    if not (easy_label or "").strip():
+        return FALLBACK_SPOKEN
+    conn = get_connection()
+    try:
+        row = conn.execute(
+            """
+            SELECT sentence FROM spoken_map
+            WHERE easy_label = ? AND route = ?
+            """,
+            (easy_label, route),
+        ).fetchone()
+        if row:
+            return str(row["sentence"])
+        fallback = conn.execute(
+            """
+            SELECT sentence FROM spoken_map
+            WHERE easy_label = ? AND route = 'eat'
+            """,
+            (easy_label,),
+        ).fetchone()
+        if fallback:
+            return str(fallback["sentence"])
+        any_row = conn.execute(
+            "SELECT sentence FROM spoken_map WHERE easy_label = ? LIMIT 1",
+            (easy_label,),
+        ).fetchone()
+        if any_row:
+            return str(any_row["sentence"])
+    finally:
+        conn.close()
+    return FALLBACK_SPOKEN
 
 
 def lookup_chat_links(query: str) -> dict[str, list[str]]:

@@ -14,6 +14,7 @@ import '../../medication/application/medication_controller.dart';
 import '../../medication/domain/medication_models.dart';
 import '../../medication/presentation/screens/dose_done_screen.dart';
 import '../../medicines/presentation/screens/my_medicines_screen.dart';
+import '../../medicines/presentation/screens/drug_detail_screen.dart';
 import '../../medicines/presentation/screens/pharmacist_chat_screen.dart';
 import '../../prescription/presentation/screens/prescription_screen.dart';
 import '../../profile/presentation/screens/mypage_screen.dart';
@@ -40,8 +41,7 @@ class _EasyFlowShellState extends ConsumerState<EasyFlowShell> {
   final List<EasyScreen> _history = <EasyScreen>[];
 
   /// 흐름 안에서 지금 화면이 몇 번째인지. 흐름 밖이면 -1.
-  int get _flowIndex =>
-      kEasyFlow.indexWhere((step) => step.screen == _screen);
+  int get _flowIndex => kEasyFlow.indexWhere((step) => step.screen == _screen);
 
   String get _nextLabel {
     final index = _flowIndex;
@@ -73,20 +73,20 @@ class _EasyFlowShellState extends ConsumerState<EasyFlowShell> {
       return;
     }
 
-    // 오늘 화면에서 저녁 약을 아직 안 눌렀는데 넘어가려 하면 한 번 묻는다.
+    // 오늘 화면에서 아직 안 드신 약이 있는데 넘어가려 하면 한 번 묻는다.
     if (_screen == EasyScreen.today) {
-      final dose = ref.read(medicationProvider).doseOf(DoseSlot.dinner);
-      if (!dose.taken) {
+      final pending = ref.read(medicationProvider).nextDose;
+      if (pending != null) {
         final choice = await showSkipConfirmSheet(
           context,
-          slotLabel: dose.slot.label,
+          slotLabel: pending.slot.label,
         );
         if (!mounted) return;
         switch (choice) {
           case SkipChoice.stay:
             return;
           case SkipChoice.takeAndContinue:
-            ref.read(medicationProvider.notifier).takeAnyway(DoseSlot.dinner);
+            ref.read(medicationProvider.notifier).takeAnyway(pending.slot);
           case SkipChoice.skip:
             break;
         }
@@ -123,6 +123,20 @@ class _EasyFlowShellState extends ConsumerState<EasyFlowShell> {
           onOpenMedicines: () => _goTo(EasyScreen.medicines),
           onOpenChat: () => _goTo(EasyScreen.chat),
           onOpenPrescription: () => _goTo(EasyScreen.prescription),
+          onOpenDrug: (medicine) {
+            final code = medicine.medicineCode?.trim() ?? '';
+            if (code.isEmpty) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('이 약의 상세 정보를 찾지 못했어요.')),
+              );
+              return;
+            }
+            Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (_) => DrugDetailScreen(medicineCode: code),
+              ),
+            );
+          },
           onDone: () => _goTo(EasyScreen.done),
           onMeasure: () => _goTo(EasyScreen.measure),
         );
@@ -141,6 +155,7 @@ class _EasyFlowShellState extends ConsumerState<EasyFlowShell> {
         // 등록이 끝나면 손대지 않아도 함께먹기 주의로 넘어간다.
         return PrescriptionScreen(
           onCompleted: () => _goTo(EasyScreen.interaction),
+          onGoHome: () => _goTo(EasyScreen.today),
         );
       case EasyScreen.interaction:
         return const DurAnalysisScreen();

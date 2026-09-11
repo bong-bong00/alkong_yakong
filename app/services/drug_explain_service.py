@@ -241,8 +241,8 @@ def _upsert_medicine(
         or local.get("product_name")
         or medicine_code,
     }
-    easy_category = derive_easy_category_from_medicine(merged) or local.get(
-        "easy_category"
+    easy_category = local.get("easy_category") or derive_easy_category_from_medicine(
+        merged
     )
     cursor.execute(
         """
@@ -258,7 +258,10 @@ def _upsert_medicine(
             usage = excluded.usage,
             precautions = excluded.precautions,
             image_url = excluded.image_url,
-            easy_category = COALESCE(excluded.easy_category, medicines.easy_category),
+            easy_category = COALESCE(
+                NULLIF(trim(medicines.easy_category), ''),
+                excluded.easy_category
+            ),
             updated_at = CURRENT_TIMESTAMP
         """,
         (

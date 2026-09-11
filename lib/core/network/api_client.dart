@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
 import 'api_config.dart';
@@ -16,8 +17,17 @@ class ApiException implements Exception {
 
 class ApiClient {
   final http.Client _client;
+  static bool _didLogEnvironment = false;
 
-  ApiClient({http.Client? client}) : _client = client ?? http.Client();
+  ApiClient({http.Client? client}) : _client = client ?? http.Client() {
+    if (kDebugMode && !_didLogEnvironment) {
+      _didLogEnvironment = true;
+      debugPrint(
+        '[API] environment=${ApiConfig.environmentLabel} '
+        'baseUrl=${ApiConfig.baseUrl}',
+      );
+    }
+  }
 
   Future<dynamic> get(String path) async {
     try {
@@ -74,7 +84,8 @@ class ApiClient {
     final detail = data is Map<String, dynamic> ? data['detail'] : null;
     var message = 'API 요청에 실패했습니다. (${response.statusCode})';
     if (detail is Map) {
-      message = detail['message']?.toString() ??
+      message =
+          detail['message']?.toString() ??
           detail['error']?.toString() ??
           detail.toString();
     } else if (detail != null) {

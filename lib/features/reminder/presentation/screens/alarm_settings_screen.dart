@@ -1,16 +1,19 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_tabler_icons/flutter_tabler_icons.dart';
 
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../core/widgets/senior_card.dart';
 import '../../../../core/widgets/senior_header.dart';
+import '../../../medication/application/medication_controller.dart';
+import '../../../medication/domain/medication_models.dart';
 
 /// 32 · 복약 알림.
 ///
 /// **소리로 알려주기만 한다.** 말로 대답해서 기록하는 기능은 없다 —
 /// 잘못 들으면 그대로 오기록이 되기 때문이다.
-class AlarmSettingsScreen extends StatefulWidget {
+class AlarmSettingsScreen extends ConsumerStatefulWidget {
   final String userName;
   final String guardianTitle;
 
@@ -21,10 +24,10 @@ class AlarmSettingsScreen extends StatefulWidget {
   });
 
   @override
-  State<AlarmSettingsScreen> createState() => _AlarmSettingsScreenState();
+  ConsumerState<AlarmSettingsScreen> createState() => _AlarmSettingsScreenState();
 }
 
-class _AlarmSettingsScreenState extends State<AlarmSettingsScreen> {
+class _AlarmSettingsScreenState extends ConsumerState<AlarmSettingsScreen> {
   bool _autoAlarm = true;
   bool _repeatOnce = true;
   bool _tellGuardian = true;
@@ -47,10 +50,25 @@ class _AlarmSettingsScreenState extends State<AlarmSettingsScreen> {
     return '${isAfternoon ? '저녁' : '아침'} $display시';
   }
 
+  String _namesFor(DoseSlot slot) {
+    final dose = ref.read(medicationProvider).doseOf(slot);
+    final names = [
+      for (final med in dose.medicines)
+        if (med.displayName.trim().isNotEmpty) med.displayName.trim(),
+    ];
+    if (names.isEmpty) return '등록된 약이 없어요';
+    return names.join(' · ');
+  }
+
   @override
   Widget build(BuildContext context) {
+    final today = ref.watch(medicationProvider);
     final morning = _spoken(_morningHour);
     final evening = _spoken(_eveningHour);
+    final morningNames = _namesFor(DoseSlot.morning);
+    final eveningNames = today.doseOf(DoseSlot.dinner).medicines.isNotEmpty
+        ? _namesFor(DoseSlot.dinner)
+        : _namesFor(DoseSlot.lunch);
 
     return Scaffold(
       backgroundColor: AppColors.bg,
@@ -119,13 +137,13 @@ class _AlarmSettingsScreenState extends State<AlarmSettingsScreen> {
                         const SizedBox(height: 14),
                         _TimeRow(
                           time: morning,
-                          medicines: '아스피린 100mg',
+                          medicines: morningNames,
                           onChange: _cycleMorning,
                         ),
                         const SeniorDivider(),
                         _TimeRow(
                           time: evening,
-                          medicines: '메트포르민 500mg · 암로디핀 5mg',
+                          medicines: eveningNames,
                           onChange: _cycleEvening,
                         ),
                         const SizedBox(height: 12),
@@ -253,7 +271,7 @@ class _SpokenExample extends StatelessWidget {
             ),
             child: Text(
               '$userName 님, $evening예요.\n'
-              '흰색 알약 하나와 노란 알약 하나를 물과 함께 드세요.',
+              '지금 드실 약을 물과 함께 드세요.',
               style: AppText.body(
                 size: 21,
                 color: AppColors.textPrimary,

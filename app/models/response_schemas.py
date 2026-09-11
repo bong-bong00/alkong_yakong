@@ -1,6 +1,6 @@
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class ApiResponse(BaseModel):
@@ -115,17 +115,34 @@ class DurMatchResponse(ApiResponse):
     reason: str | None = None
     source: str | None = None
     external_id: str | None = None
+    medicine_names_a: list[str] = Field(default_factory=list)
+    medicine_names_b: list[str] = Field(default_factory=list)
 
 
 class DurAnalyzeResponse(ApiResponse):
-    risk_result_id: int
-    analysis_id: str
+    risk_result_id: int | None
+    analysis_id: str | None
     user_id: str
     risk_level: str
+    assessment_status: str
+    analysis_complete: bool
+    has_risk: bool
     total_matches: int
+    total_count: int
     representative_type: str | None = None
+    message: str
+    by_type: dict[str, dict[str, Any]]
     ingredients: list[str]
+    medicine_names: list[str]
     matches: list[DurMatchResponse]
+    incomplete: bool
+    incomplete_reasons: list[str]
+    incomplete_types: list[str]
+    skipped_medicine_names: list[str]
+    taboo_row_count: int
+    dur_sync_status: str
+    dur_sync_fetched: int
+    dur_sync_upserted: int
 
 
 class DurLatestResponse(ApiResponse):

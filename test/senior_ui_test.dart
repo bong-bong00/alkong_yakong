@@ -11,6 +11,7 @@ import 'package:alkong_yakong/features/dashboard/presentation/screens/guardian_h
 import 'package:alkong_yakong/features/dashboard/presentation/screens/medication_record_screen.dart';
 import 'package:alkong_yakong/features/dashboard/presentation/screens/patient_home_screen.dart';
 import 'package:alkong_yakong/features/medication/domain/medication_models.dart';
+import 'package:alkong_yakong/features/medication/application/medication_controller.dart';
 import 'package:alkong_yakong/features/onboarding/presentation/screens/first_run_screen.dart';
 import 'package:alkong_yakong/features/profile/presentation/screens/mypage_screen.dart';
 import 'package:alkong_yakong/features/reminder/domain/reminder_ladder.dart';
@@ -37,6 +38,9 @@ void main() {
   _calendarTests();
   Widget wrap(Widget child, {double textScale = 1.0}) {
     return ProviderScope(
+      overrides: [
+        medicationProvider.overrideWith(_SeniorTestMedicationController.new),
+      ],
       child: MaterialApp(
         theme: AppTheme.build(),
         home: MediaQuery(
@@ -96,7 +100,6 @@ void main() {
     expect(find.text('먹었어요'), findsOneWidget);
     await tester.tap(find.text('먹었어요'));
     await tester.pumpAndSettle();
-
     // 기록보다 시트가 먼저다. 띠를 차고 계시면 심박수를 잴 기회이기 때문이다.
     expect(find.textContaining('가슴 띠를'), findsOneWidget);
     expect(find.text('차고 있어요 · 재기'), findsOneWidget);
@@ -139,6 +142,10 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('안 차고 있어요 · 복약만 기록'));
     await tester.pumpAndSettle();
+    if (find.text('그래도 먹었어요').evaluate().isNotEmpty) {
+      await tester.tap(find.text('그래도 먹었어요'));
+      await tester.pumpAndSettle();
+    }
 
     expect(done, 1);
   });
@@ -189,10 +196,7 @@ void main() {
   });
 
   test('절대시간으로 말한다 — 상대시간은 보조다', () {
-    expect(
-      DoseSlot.absoluteTime(DateTime(2026, 8, 20, 18, 2)),
-      '오후 6시 2분',
-    );
+    expect(DoseSlot.absoluteTime(DateTime(2026, 8, 20, 18, 2)), '오후 6시 2분');
     expect(DoseSlot.dinner.spokenTime, '저녁 6시');
   });
 
@@ -240,7 +244,10 @@ void _easyModeTests() {
     SharedPreferences.setMockInitialValues({});
     await tester.pumpWidget(
       ProviderScope(
-        overrides: [appModeProvider.overrideWith((ref) => _EasyMode())],
+        overrides: [
+          appModeProvider.overrideWith((ref) => _EasyMode()),
+          medicationProvider.overrideWith(_SeniorTestMedicationController.new),
+        ],
         child: MaterialApp(theme: AppTheme.build(), home: const HomeScreen()),
       ),
     );
@@ -601,4 +608,27 @@ void _shippingTests() {
     expect(profile.contains('showAddCareSheet'), isTrue);
     expect(profile.contains('ProfileEditScreen'), isTrue);
   });
+}
+
+class _SeniorTestMedicationController extends MedicationController {
+  @override
+  TodayMedication build() {
+    return const TodayMedication(
+      doses: [
+        DoseEntry(
+          slot: DoseSlot.morning,
+          medicines: [Medicine(ingredient: '테스트정', amount: '1알')],
+          taken: true,
+        ),
+        DoseEntry(
+          slot: DoseSlot.dinner,
+          medicines: [Medicine(ingredient: '테스트정', amount: '1알')],
+        ),
+      ],
+      guardianRelation: '가족',
+      guardianName: '테스트',
+      heartRate: 72,
+      heartRateNormal: true,
+    );
+  }
 }
