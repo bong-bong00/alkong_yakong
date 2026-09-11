@@ -477,6 +477,8 @@ class _OtherMedicineDialogState extends State<_OtherMedicineDialog> {
   List<_DrugSearchCandidate> _candidates = const [];
   bool _isSearching = false;
   String? _errorMessage;
+  String? _inFlightQuery;
+  String? _lastCompletedQuery;
   int _requestSequence = 0;
 
   @override
@@ -491,6 +493,10 @@ class _OtherMedicineDialogState extends State<_OtherMedicineDialog> {
     _debounce?.cancel();
     final sequence = ++_requestSequence;
     final query = value.trim();
+    final composing = _controller.value.composing;
+    if (composing.isValid && !composing.isCollapsed) {
+      return;
+    }
     if (query.length < 2) {
       setState(() {
         _candidates = const [];
@@ -499,8 +505,11 @@ class _OtherMedicineDialogState extends State<_OtherMedicineDialog> {
       });
       return;
     }
+    if (query == _inFlightQuery || query == _lastCompletedQuery) {
+      return;
+    }
     _debounce = Timer(
-      const Duration(milliseconds: 400),
+      const Duration(milliseconds: 550),
       () => _search(query, sequence),
     );
   }
@@ -509,10 +518,13 @@ class _OtherMedicineDialogState extends State<_OtherMedicineDialog> {
     _debounce?.cancel();
     final query = value.trim();
     if (query.length < 2) return;
+    if (query == _inFlightQuery || query == _lastCompletedQuery) return;
     _search(query, ++_requestSequence);
   }
 
   Future<void> _search(String query, int sequence) async {
+    if (query == _inFlightQuery) return;
+    _inFlightQuery = query;
     setState(() {
       _isSearching = true;
       _errorMessage = null;
@@ -539,7 +551,10 @@ class _OtherMedicineDialogState extends State<_OtherMedicineDialog> {
                 .where((item) => item.itemName.isNotEmpty)
                 .toList()
           : <_DrugSearchCandidate>[];
-      setState(() => _candidates = candidates);
+      setState(() {
+        _candidates = candidates;
+        _lastCompletedQuery = query;
+      });
     } on ApiException catch (error) {
       if (!mounted || sequence != _requestSequence) return;
       setState(() {
@@ -555,6 +570,9 @@ class _OtherMedicineDialogState extends State<_OtherMedicineDialog> {
         _errorMessage = '의약품 정보를 불러오지 못했습니다. 다시 시도해주세요.';
       });
     } finally {
+      if (_inFlightQuery == query) {
+        _inFlightQuery = null;
+      }
       if (mounted && sequence == _requestSequence) {
         setState(() => _isSearching = false);
       }

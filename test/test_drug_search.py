@@ -18,6 +18,9 @@ def _permission_item(name: str, manufacturer: str, sequence: str) -> dict:
 
 
 class DrugCandidateSearchTest(unittest.TestCase):
+    def setUp(self):
+        external_api_service._drug_search_cache.clear()
+
     def search(
         self,
         query: str,
@@ -38,14 +41,19 @@ class DrugCandidateSearchTest(unittest.TestCase):
             ) as permission_search,
         ):
             result = external_api_service.search_drug_candidates(query)
-        request_items.assert_called_once_with(query, page_no=1, num_of_rows=16)
+        request_items.assert_called_once_with(
+            query,
+            page_no=1,
+            num_of_rows=16,
+            timeout=external_api_service.DRUG_SEARCH_TIMEOUT_SECONDS,
+        )
         if items:
             permission_search.assert_not_called()
         else:
             permission_search.assert_called_once_with(
                 query,
                 limit=16,
-                timeout=external_api_service.TIMEOUT_SECONDS,
+                timeout=external_api_service.DRUG_SEARCH_TIMEOUT_SECONDS,
             )
         return result
 
@@ -125,6 +133,72 @@ class DrugCandidateSearchTest(unittest.TestCase):
         ):
             external_api_service.search_drug_candidates("게보")
         self.assertEqual(raised.exception.status_code, 504)
+
+    def test_successful_result_is_served_from_cache(self):
+        with (
+            patch.object(external_api_service, "E_DRUG_API_KEY", "test-key"),
+            patch.object(
+                external_api_service,
+                "_request_drug_items",
+                return_value=[_item("게보린정", "삼진제약", "1")],
+            ) as request_items,
+        ):
+            first = external_api_service.search_drug_candidates(" 게보 ")
+            second = external_api_service.search_drug_candidates("게보")
+
+        self.assertEqual(first, second)
+        request_items.assert_called_once()
+
+    def test_expired_cache_calls_external_api_again(self):
+        clock = iter((100.0, 100.0, 100.0, 146.0, 146.0, 146.0))
+        with (
+            patch.object(external_api_service, "E_DRUG_API_KEY", "test-key"),
+            patch.object(external_api_service.time, "monotonic", side_effect=clock),
+            patch.object(
+                external_api_service,
+                "_request_drug_items",
+                return_value=[_item("게보린정", "삼진제약", "1")],
+            ) as request_items,
+        ):
+            external_api_service.search_drug_candidates("게보")
+            external_api_service.search_drug_candidates("게보")
+
+        self.assertEqual(request_items.call_count, 2)
+
+    def test_timeout_is_not_cached(self):
+        with (
+            patch.object(external_api_service, "E_DRUG_API_KEY", "test-key"),
+            patch.object(
+                external_api_service,
+                "_request_drug_items",
+                side_effect=[requests.Timeout, [_item("게보린정", "삼진제약", "1")]],
+            ) as request_items,
+            patch.object(
+                external_api_service.permission_client,
+                "search_permission_products",
+                side_effect=RuntimeError,
+            ),
+        ):
+            with self.assertRaises(HTTPException):
+                external_api_service.search_drug_candidates("게보")
+            result = external_api_service.search_drug_candidates("게보")
+
+        self.assertEqual(result["count"], 1)
+        self.assertEqual(request_items.call_count, 2)
+
+    def test_successful_empty_result_keeps_empty_response_semantics(self):
+        with (
+            patch.object(external_api_service, "E_DRUG_API_KEY", "test-key"),
+            patch.object(external_api_service, "_request_drug_items", return_value=[]),
+            patch.object(
+                external_api_service.permission_client,
+                "search_permission_products",
+                return_value=[],
+            ),
+        ):
+            result = external_api_service.search_drug_candidates("없는약")
+
+        self.assertEqual(result, {"query": "없는약", "count": 0, "items": []})
 
     def test_permission_result_supplements_empty_e_drug_result(self):
         result = self.search(

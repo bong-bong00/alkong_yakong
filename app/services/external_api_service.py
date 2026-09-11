@@ -1,5 +1,8 @@
 import logging
 import re
+import threading
+import time
+from copy import deepcopy
 from html import unescape
 from typing import Any
 
@@ -13,6 +16,13 @@ from app.services.mfds_drug_permission import client as permission_client
 logger = logging.getLogger(__name__)
 TIMEOUT_SECONDS = 10
 DRUG_CANDIDATE_LIMIT = 8
+DRUG_SEARCH_TIMEOUT_SECONDS = 5.0
+DRUG_SEARCH_TOTAL_BUDGET_SECONDS = 10.0
+DRUG_SEARCH_CACHE_TTL_SECONDS = 45.0
+DRUG_SEARCH_CACHE_MAX_ENTRIES = 128
+
+_drug_search_cache: dict[str, tuple[float, dict[str, Any]]] = {}
+_drug_search_cache_lock = threading.Lock()
 
 
 def fetch_e_drug_info(
@@ -234,10 +244,16 @@ def search_drug_candidates(
     if len(cleaned_query) < 2:
         raise HTTPException(status_code=422, detail="검색어는 2글자 이상이어야 합니다.")
     compact_query = _compact_drug_name(cleaned_query)
+    cached = _get_cached_drug_search(compact_query)
+    if cached is not None:
+        return cached
+
+    started_at = time.monotonic()
     e_drug_candidates: list[tuple[int, int, int, str, dict[str, Any]]] = []
     permission_candidates: list[tuple[int, int, int, str, dict[str, Any]]] = []
     errors: list[Exception] = []
     source_succeeded = False
+    result_is_cacheable = False
 
     if E_DRUG_API_KEY:
         try:
@@ -245,6 +261,7 @@ def search_drug_candidates(
                 cleaned_query,
                 page_no=1,
                 num_of_rows=max(limit * 2, 10),
+                timeout=DRUG_SEARCH_TIMEOUT_SECONDS,
             )
             e_drug_candidates = _build_drug_candidates(
                 raw_items,
@@ -255,6 +272,7 @@ def search_drug_candidates(
                 dedupe_by_name_within_source=True,
             )
             source_succeeded = True
+            result_is_cacheable = bool(e_drug_candidates)
         except (requests.RequestException, ValueError, TypeError, KeyError) as error:
             errors.append(error)
     else:
@@ -262,10 +280,15 @@ def search_drug_candidates(
 
     if not e_drug_candidates:
         try:
+            remaining_budget = max(
+                0.1,
+                DRUG_SEARCH_TOTAL_BUDGET_SECONDS
+                - (time.monotonic() - started_at),
+            )
             permission_items = permission_client.search_permission_products(
                 cleaned_query,
                 limit=max(limit * 2, 10),
-                timeout=TIMEOUT_SECONDS,
+                timeout=min(DRUG_SEARCH_TIMEOUT_SECONDS, remaining_budget),
             )
             permission_candidates = _build_drug_candidates(
                 permission_items,
@@ -276,6 +299,7 @@ def search_drug_candidates(
                 dedupe_by_name_within_source=False,
             )
             source_succeeded = True
+            result_is_cacheable = True
         except (requests.RequestException, RuntimeError, ValueError, TypeError, KeyError) as error:
             errors.append(error)
 
@@ -301,7 +325,42 @@ def search_drug_candidates(
         if len(items) >= limit:
             break
 
-    return {"query": cleaned_query, "count": len(items), "items": items}
+    result = {"query": cleaned_query, "count": len(items), "items": items}
+    if result_is_cacheable:
+        _cache_drug_search(compact_query, result)
+    return result
+
+
+def _get_cached_drug_search(cache_key: str) -> dict[str, Any] | None:
+    now = time.monotonic()
+    with _drug_search_cache_lock:
+        cached = _drug_search_cache.get(cache_key)
+        if cached is None:
+            return None
+        cached_at, result = cached
+        if now - cached_at >= DRUG_SEARCH_CACHE_TTL_SECONDS:
+            _drug_search_cache.pop(cache_key, None)
+            return None
+        return deepcopy(result)
+
+
+def _cache_drug_search(cache_key: str, result: dict[str, Any]) -> None:
+    now = time.monotonic()
+    with _drug_search_cache_lock:
+        expired_keys = [
+            key
+            for key, (cached_at, _) in _drug_search_cache.items()
+            if now - cached_at >= DRUG_SEARCH_CACHE_TTL_SECONDS
+        ]
+        for key in expired_keys:
+            _drug_search_cache.pop(key, None)
+        if len(_drug_search_cache) >= DRUG_SEARCH_CACHE_MAX_ENTRIES:
+            oldest_key = min(
+                _drug_search_cache,
+                key=lambda key: _drug_search_cache[key][0],
+            )
+            _drug_search_cache.pop(oldest_key, None)
+        _drug_search_cache[cache_key] = (now, deepcopy(result))
 
 
 def _build_drug_candidates(
@@ -369,6 +428,7 @@ def _request_drug_items(
     *,
     page_no: int,
     num_of_rows: int,
+    timeout: float = TIMEOUT_SECONDS,
 ) -> list[dict[str, Any]]:
     params = {
         "serviceKey": E_DRUG_API_KEY,
@@ -380,7 +440,7 @@ def _request_drug_items(
     response = requests.get(
         E_DRUG_BASE_URL,
         params=params,
-        timeout=TIMEOUT_SECONDS,
+        timeout=timeout,
     )
     payload = _load_e_drug_payload(response, operation="search")
     _log_e_drug_response(response, payload, operation="search")

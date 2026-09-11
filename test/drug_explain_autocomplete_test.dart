@@ -24,7 +24,7 @@ void main() {
     );
   }
 
-  testWidgets('두 글자와 400ms debounce 뒤에만 공식 후보를 검색한다', (tester) async {
+  testWidgets('두 글자와 550ms debounce 뒤에만 공식 후보를 검색한다', (tester) async {
     var searchCalls = 0;
     final client = MockClient((request) async {
       if (request.url.path.endsWith('/dashboard')) {
@@ -59,7 +59,7 @@ void main() {
       find.byKey(const Key('otherMedicineSearchField')),
       '게보',
     );
-    await tester.pump(const Duration(milliseconds: 399));
+    await tester.pump(const Duration(milliseconds: 549));
     expect(searchCalls, 0);
     await tester.pump(const Duration(milliseconds: 1));
     await tester.pump();
@@ -96,9 +96,9 @@ void main() {
     final field = find.byKey(const Key('otherMedicineSearchField'));
 
     await tester.enterText(field, '게보');
-    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pump(const Duration(milliseconds: 550));
     await tester.enterText(field, '게보린');
-    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pump(const Duration(milliseconds: 550));
     await tester.pump();
     expect(find.text('게보린정'), findsOneWidget);
 
@@ -147,7 +147,7 @@ void main() {
       find.byKey(const Key('otherMedicineSearchField')),
       '게보',
     );
-    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pump(const Duration(milliseconds: 550));
     await tester.pump();
     await tester.tap(find.text('게보린정'));
     await tester.pumpAndSettle();
@@ -331,7 +331,7 @@ void main() {
         find.byKey(const Key('otherMedicineSearchField')),
         query,
       );
-      await tester.pump(const Duration(milliseconds: 400));
+      await tester.pump(const Duration(milliseconds: 550));
       await tester.pump();
       await tester.tap(find.text(result));
       await tester.pumpAndSettle();
@@ -514,15 +514,94 @@ void main() {
     final field = find.byKey(const Key('otherMedicineSearchField'));
 
     await tester.enterText(field, '없음');
-    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pump(const Duration(milliseconds: 550));
     await tester.pump();
     expect(find.text('검색된 공식 의약품이 없습니다.'), findsOneWidget);
 
     failSearch = true;
     await tester.enterText(field, '오류');
-    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pump(const Duration(milliseconds: 550));
     await tester.pump();
     expect(find.text('네트워크 연결을 확인한 후 다시 시도해주세요.'), findsOneWidget);
     expect(find.textContaining('private network detail'), findsNothing);
+  });
+
+  testWidgets('동일 검색어의 진행 중 요청과 직전 성공 요청을 중복 전송하지 않는다', (tester) async {
+    var searchCalls = 0;
+    final pending = Completer<http.Response>();
+    final client = MockClient((request) async {
+      if (request.url.path.endsWith('/dashboard')) {
+        return jsonResponse({
+          'latest_prescription': null,
+          'today_medications': [],
+        });
+      }
+      searchCalls++;
+      return pending.future;
+    });
+
+    await tester.pumpWidget(appWith(client));
+    await tester.pump();
+    await tester.tap(find.text('다른 약 검색하기'));
+    await tester.pumpAndSettle();
+    final field = find.byKey(const Key('otherMedicineSearchField'));
+
+    await tester.enterText(field, '게보');
+    await tester.pump(const Duration(milliseconds: 550));
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pump();
+    expect(searchCalls, 1);
+
+    pending.complete(
+      jsonResponse({
+        'query': '게보',
+        'count': 1,
+        'items': [
+          {'item_name': '게보린정', 'manufacturer': '삼진제약', 'item_seq': '1'},
+        ],
+      }),
+    );
+    await tester.pump();
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pump();
+    expect(searchCalls, 1);
+  });
+
+  testWidgets('검색 실패 후에는 같은 검색어를 다시 요청할 수 있다', (tester) async {
+    var searchCalls = 0;
+    final client = MockClient((request) async {
+      if (request.url.path.endsWith('/dashboard')) {
+        return jsonResponse({
+          'latest_prescription': null,
+          'today_medications': [],
+        });
+      }
+      searchCalls++;
+      if (searchCalls == 1) throw http.ClientException('temporary failure');
+      return jsonResponse({
+        'query': '게보',
+        'count': 1,
+        'items': [
+          {'item_name': '게보린정', 'manufacturer': '삼진제약', 'item_seq': '1'},
+        ],
+      });
+    });
+
+    await tester.pumpWidget(appWith(client));
+    await tester.pump();
+    await tester.tap(find.text('다른 약 검색하기'));
+    await tester.pumpAndSettle();
+    final field = find.byKey(const Key('otherMedicineSearchField'));
+
+    await tester.enterText(field, '게보');
+    await tester.pump(const Duration(milliseconds: 550));
+    await tester.pump();
+    expect(searchCalls, 1);
+    expect(find.text('네트워크 연결을 확인한 후 다시 시도해주세요.'), findsOneWidget);
+
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pump();
+    expect(searchCalls, 2);
+    expect(find.text('게보린정'), findsOneWidget);
   });
 }
