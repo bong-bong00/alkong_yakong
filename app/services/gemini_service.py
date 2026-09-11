@@ -413,7 +413,11 @@ def _finalize_chat_response(response) -> str:
     return reply
 
 
-def _dur_context_unavailable_reply(intents: set[str], status: str) -> str:
+def _dur_context_unavailable_reply(
+    intents: set[str],
+    status: str,
+    reason: str | None = None,
+) -> str:
     if intents & {"combination", "interaction"}:
         if status == "missing":
             return (
@@ -445,6 +449,16 @@ def _dur_context_unavailable_reply(intents: set[str], status: str) -> str:
             "보기 어렵습니다. DUR 재분석이 필요합니다."
         )
     if "duplicate" in intents:
+        if reason == "official_medicine_unavailable":
+            return (
+                "선택한 약의 공식 성분 정보를 확인하지 못해 중복 여부를 "
+                "확인할 수 없습니다."
+            )
+        if reason == "dur_data_unavailable":
+            return (
+                "현재 공식 DUR 정보를 확인하기 어렵습니다. "
+                "잠시 후 다시 시도해주세요."
+            )
         if status == "missing":
             return (
                 "현재 복용 중인 약 조합의 DUR 효능군중복 분석 결과를 확인할 수 "
@@ -470,7 +484,12 @@ def _dur_no_match_reply(intents: set[str]) -> str:
     elif "pregnancy" in intents:
         risk_type = "임부금기"
     elif "duplicate" in intents:
-        risk_type = "효능군중복"
+        return (
+            "현재 복용 중인 약과 선택한 약 사이에서 공식 DUR 기준으로 확인된 "
+            "중복 성분 또는 효능군 중복 정보가 없습니다. 이는 모든 복약 위험이 "
+            "없다는 의미는 아니며, 다른 상호작용이나 개인 상태에 따른 주의사항은 "
+            "별도로 확인해야 합니다."
+        )
     else:
         risk_type = "DUR 주의"
     return (
@@ -596,7 +615,11 @@ def generate_chat_response(
 
             if not selected_official:
                 return (
-                    _dur_context_unavailable_reply(intents, "missing")
+                    _dur_context_unavailable_reply(
+                        intents,
+                        "missing",
+                        "official_medicine_unavailable",
+                    )
                     if safety_question
                     else unavailable_reply
                 )
@@ -717,6 +740,7 @@ def generate_chat_response(
                 return _dur_context_unavailable_reply(
                     intents,
                     dur_result["status"],
+                    dur_result.get("reason"),
                 )
             if (
                 safety_question

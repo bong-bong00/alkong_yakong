@@ -343,11 +343,106 @@ class ChatContextTest(unittest.TestCase):
             intent="duplicate",
             e_drug_result=None,
         )
-        self.assertIn("확인되지 않았습니다", reply)
+        self.assertIn("공식 DUR 기준으로 확인된 중복 성분 또는 효능군 중복 정보가 없습니다", reply)
+        self.assertIn("모든 복약 위험이 없다는 의미는 아니며", reply)
         self.assertEqual(
             analyze.call_args.kwargs["risk_types"],
             {"중복성분", "효능군중복"},
         )
+
+    def test_duplicate_positive_match_keeps_gemini_explanation_flow(self):
+        selected = {"medicine_code": "202400001", "product_name": "공식허가약정"}
+        verified = {
+            **selected,
+            "ingredient": "공식성분 100mg",
+            "_permission_identity_verified": True,
+        }
+        fake_client = MagicMock()
+        fake_client.__enter__.return_value = fake_client
+        fake_client.__exit__.return_value = False
+        with (
+            patch.object(gemini_service, "GEMINI_API_KEY", "configured"),
+            patch("google.genai.Client", return_value=fake_client),
+            patch("app.services.external_api_service.fetch_e_drug_info", return_value=None),
+            patch.object(gemini_service, "_with_official_permission_ingredient", return_value=verified),
+            patch(
+                "app.services.dur_service.analyze_dur_consultation",
+                return_value={
+                    "status": "current",
+                    "items": [{"type": "중복성분", "reason": "공식 중복 근거"}],
+                    "reason": None,
+                },
+            ),
+            patch("app.services.chat_context_service.enrich_dur_matches", side_effect=lambda items: items),
+            patch.object(
+                gemini_service,
+                "_generate_content_with_retry",
+                side_effect=[
+                    SimpleNamespace(parsed={"drug_names": []}),
+                    SimpleNamespace(text="공식 중복 결과를 이해하기 쉽게 설명한 답변입니다."),
+                ],
+            ) as generate,
+        ):
+            reply = gemini_service.generate_chat_response(
+                "빠른 질문", user_id="U1", selected_medicine=selected, intent="duplicate"
+            )
+        self.assertIn("공식 중복 결과", reply)
+        self.assertNotIn("중복 성분 또는 효능군 중복 정보가 없습니다", reply)
+        self.assertEqual(generate.call_count, 2)
+
+    def test_duplicate_dur_failure_is_not_reported_as_zero_match(self):
+        selected = {"medicine_code": "202400001", "product_name": "공식허가약정"}
+        with (
+            patch.object(gemini_service, "GEMINI_API_KEY", "configured"),
+            patch("google.genai.Client"),
+            patch("app.services.external_api_service.fetch_e_drug_info", return_value=None),
+            patch.object(
+                gemini_service,
+                "_with_official_permission_ingredient",
+                return_value={**selected, "ingredient": "공식성분 100mg"},
+            ),
+            patch.object(
+                gemini_service,
+                "_generate_content_with_retry",
+                return_value=SimpleNamespace(parsed={"drug_names": []}),
+            ),
+            patch(
+                "app.services.dur_service.analyze_dur_consultation",
+                return_value={
+                    "status": "missing",
+                    "items": [],
+                    "reason": "dur_data_unavailable",
+                },
+            ),
+        ):
+            reply = gemini_service.generate_chat_response(
+                "빠른 질문", user_id="U1", selected_medicine=selected, intent="duplicate"
+            )
+        self.assertIn("현재 공식 DUR 정보를 확인하기 어렵습니다", reply)
+        self.assertNotIn("중복 정보가 없습니다", reply)
+
+    def test_duplicate_missing_ingredient_is_not_reported_as_zero_match(self):
+        selected = {"medicine_code": "202400001", "product_name": "공식허가약정"}
+        with (
+            patch.object(gemini_service, "GEMINI_API_KEY", "configured"),
+            patch("app.services.external_api_service.fetch_e_drug_info", return_value=None),
+            patch.object(
+                gemini_service,
+                "_with_official_permission_ingredient",
+                return_value={**selected, "ingredient": None},
+            ),
+        ):
+            reply = gemini_service.generate_chat_response(
+                "빠른 질문", user_id="U1", selected_medicine=selected, intent="duplicate"
+            )
+        self.assertIn("공식 성분 정보를 확인하지 못해", reply)
+        self.assertNotIn("중복 정보가 없습니다", reply)
+
+    def test_duplicate_zero_match_message_does_not_apply_to_other_safety_intents(self):
+        for intent in ("combination", "age", "pregnancy"):
+            with self.subTest(intent=intent):
+                reply, _ = self._run_permission_only_safety(intent=intent)
+                self.assertNotIn("중복 성분 또는 효능군 중복 정보가 없습니다", reply)
 
     def test_unverified_selected_medicine_keeps_missing_fallback(self):
         selected = {
