@@ -40,7 +40,57 @@ class UserMedicinesController extends AsyncNotifier<List<UserMedicine>> {
     if (med is! Map) {
       throw const ApiException('약 정보를 읽을 수 없습니다.');
     }
-    return UserMedicine.fromJson(Map<String, dynamic>.from(med));
+    final data = Map<String, dynamic>.from(med);
+    final explanation = response['explanation'];
+    if (explanation is Map) {
+      data['short_explanation'] =
+          explanation['short_explanation'] ?? data['short_explanation'];
+      data['ingredient_explanation'] = explanation['ingredient_explanation'];
+      data['approved_use_summary'] = explanation['approved_use_summary'];
+      data['approved_uses'] = explanation['approved_uses'];
+      data['all_approved_uses'] = explanation['all_approved_uses'];
+      data['detail_review_status'] = explanation['review_status'];
+      data['detail_status'] = explanation['status'];
+    }
+    final patientDosage = response['patient_dosage'];
+    if (patientDosage is Map) {
+      data['amount'] = patientDosage['amount'] ?? data['amount'];
+      data['dosage'] = patientDosage['dosage'] ?? data['dosage'];
+      data['frequency_per_day'] =
+          patientDosage['frequency_per_day'] ?? data['frequency_per_day'];
+      data['administration_times'] =
+          patientDosage['administration_times'] ??
+          data['administration_times'];
+    }
+    final officialUsage = response['official_usage'];
+    if (officialUsage is Map) {
+      data['official_usage'] = officialUsage['text'];
+      data['official_usage_notice'] = officialUsage['notice'];
+    }
+    final safety = response['safety'];
+    if (safety is Map) {
+      data['key_cautions'] = safety['key_cautions'] ?? data['key_cautions'];
+      data['ask_doctor_when'] = safety['ask_doctor_when'];
+      data['possible_side_effects'] = safety['possible_side_effects'];
+      data['interaction_status'] =
+          safety['interaction_status'] ?? data['interaction_status'];
+      data['interaction_summary'] =
+          safety['interaction_summary'] ?? data['interaction_summary'];
+      data['interaction_risk_level'] =
+          safety['interaction_risk_level'] ?? data['interaction_risk_level'];
+      data['interaction_conflict_names'] =
+          safety['interaction_conflict_names'] ??
+          data['interaction_conflict_names'];
+    }
+    final source = response['source'];
+    if (source is Map) {
+      data['detail_source_name'] = source['name'];
+      data['detail_source_verified'] = source['source_verified'];
+      data['detail_content_generated_by'] = source['content_generated_by'];
+      data['detail_served_from'] = source['served_from'];
+      data['detail_content_version'] = source['content_version'];
+    }
+    return UserMedicine.fromJson(data);
   }
 
   Future<List<UserMedicine>> _loadMedicines() async {

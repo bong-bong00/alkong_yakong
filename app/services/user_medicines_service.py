@@ -9,6 +9,7 @@ from typing import Any
 from fastapi import HTTPException
 
 from app.database import get_connection
+from app.services.drug_explain_service import reviewed_detail_payload
 from app.services.today_medication_service import _visible_medicine_item
 
 
@@ -148,7 +149,7 @@ def _active_medicine_rows(conn, user_id: str) -> list[dict[str, Any]]:
                   JOIN medication_schedules ms ON ms.id = ml.schedule_id
                  WHERE ms.user_medicine_id = um.id) AS last_taken_at,
                m.medicine_code, m.product_name, m.ingredient, m.easy_category,
-               m.efficacy, m.precautions, m.short_explanation,
+               m.efficacy, m.precautions, m.short_explanation, m.manufacturer,
                m.explanation_review_status, m.ingredient_strength,
                m.dosage_form, m.administration_route{usage_select}
         FROM user_medicines um
@@ -266,7 +267,7 @@ def get_user_medicine(user_id: str, medicine_code: str) -> dict[str, Any]:
                       JOIN medication_schedules ms ON ms.id = ml.schedule_id
                      WHERE ms.user_medicine_id = um.id) AS last_taken_at,
                    m.medicine_code, m.product_name, m.ingredient, m.easy_category,
-                   m.efficacy, m.precautions, m.short_explanation,
+                   m.efficacy, m.precautions, m.short_explanation, m.manufacturer,
                    m.explanation_review_status, m.ingredient_strength,
                    m.dosage_form, m.administration_route{usage_select}
             FROM user_medicines um
@@ -289,10 +290,36 @@ def get_user_medicine(user_id: str, medicine_code: str) -> dict[str, Any]:
         if medicine is None:
             raise HTTPException(status_code=404, detail="해당 약을 찾을 수 없습니다.")
 
-        return {
-            "user_id": uid,
-            "medicine": medicine,
-            "source": "server",
+        detail = reviewed_detail_payload(conn.cursor(), dict(row))
+        reviewed_safety = detail.get("safety") or {}
+        detail["medicine"] = {
+            **(detail.get("medicine") or {}),
+            **medicine,
+            "manufacturer": row["manufacturer"],
         }
+        detail["patient_dosage"] = {
+            "amount": medicine.get("amount") or "",
+            "dosage": medicine.get("dosage"),
+            "frequency_per_day": medicine.get("frequency_per_day"),
+            "administration_times": medicine.get("administration_times") or [],
+        }
+        detail["safety"] = {
+            **reviewed_safety,
+            "key_cautions": (
+                reviewed_safety.get("key_cautions")
+                or medicine.get("key_cautions")
+                or []
+            )[:3],
+            "interaction_status": medicine.get("interaction_status"),
+            "interaction_summary": medicine.get("interaction_summary"),
+            "interaction_risk_level": medicine.get("interaction_risk_level"),
+            "interaction_conflict_names": medicine.get(
+                "interaction_conflict_names"
+            )
+            or [],
+        }
+        detail["user_id"] = uid
+        detail["response_source"] = "server"
+        return detail
     finally:
         conn.close()

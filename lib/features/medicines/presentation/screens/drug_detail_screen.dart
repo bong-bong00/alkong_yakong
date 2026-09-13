@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_tabler_icons/flutter_tabler_icons.dart';
 
 import '../../../../core/constants/app_colors.dart';
+import '../../../../core/mode/app_mode.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../core/widgets/recovery_view.dart';
 import '../../../../core/widgets/senior_card.dart';
@@ -57,6 +58,7 @@ class _DrugDetailScreenState extends ConsumerState<DrugDetailScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final easyMode = ref.watch(appModeProvider).isEasy;
     return Scaffold(
       backgroundColor: AppColors.bg,
       body: Column(
@@ -79,7 +81,7 @@ class _DrugDetailScreenState extends ConsumerState<DrugDetailScreen> {
                     stillWorksTitle: '지금도 할 수 있는 것',
                     stillWorksBody: '오늘 홈에서 복약 기록은 그대로 쓸 수 있어요.',
                   )
-                : _DetailBody(medicine: _medicine!),
+                : _DetailBody(medicine: _medicine!, easyMode: easyMode),
           ),
         ],
       ),
@@ -89,18 +91,25 @@ class _DrugDetailScreenState extends ConsumerState<DrugDetailScreen> {
 
 class _DetailBody extends StatelessWidget {
   final UserMedicine medicine;
+  final bool easyMode;
 
-  const _DetailBody({required this.medicine});
+  const _DetailBody({required this.medicine, required this.easyMode});
 
   @override
   Widget build(BuildContext context) {
     final ingredients = ingredientParts(medicine.ingredientName);
-    final cautions = [
+    final extraOfficialUses = medicine.allApprovedUses.where((purpose) {
+      final normalized = purpose.trim();
+      return normalized.isNotEmpty &&
+          normalized != medicine.approvedUseSummary.trim() &&
+          !medicine.approvedUses.any((shown) => shown.trim() == normalized);
+    }).toList();
+    final cautions = <String>[
       if ((medicine.keyCaution ?? '').trim().isNotEmpty) medicine.keyCaution!,
       ...medicine.keyCautions.where(
         (c) => c.trim().isNotEmpty && c != medicine.keyCaution,
       ),
-    ];
+    ].take(3).toList();
 
     return SingleChildScrollView(
       padding: const EdgeInsets.fromLTRB(20, 16, 20, 28),
@@ -116,6 +125,13 @@ class _DetailBody extends StatelessWidget {
                   medicine.displayName,
                   style: AppText.screenTitle(size: 24),
                 ),
+                if (medicine.manufacturer.trim().isNotEmpty) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    '제조사: ${medicine.manufacturer}',
+                    style: AppText.caption(color: AppColors.textSecondary),
+                  ),
+                ],
                 if (ingredients.isNotEmpty) ...[
                   const SizedBox(height: 8),
                   Text('주성분', style: AppText.label(size: 17)),
@@ -151,6 +167,102 @@ class _DetailBody extends StatelessWidget {
               ],
             ),
           ),
+          if (medicine.hasDetailContent) ...[
+            if (medicine.ingredientExplanation.trim().isNotEmpty) ...[
+              const SizedBox(height: 12),
+              SeniorCard(
+                padding: const EdgeInsets.all(22),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    IconTitle(
+                      icon: Icons.science_outlined,
+                      text: easyMode ? '이 성분은 어떤 역할을 하나요?' : '주성분 설명',
+                      style: AppText.cardTitle(),
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      medicine.ingredientExplanation,
+                      style: AppText.body(size: 18),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+            if (medicine.approvedUseSummary.trim().isNotEmpty ||
+                medicine.approvedUses.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              SeniorCard(
+                padding: const EdgeInsets.all(22),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    IconTitle(
+                      icon: Icons.medical_information_outlined,
+                      text: '어떤 치료에 쓰이나요?',
+                      style: AppText.cardTitle(),
+                    ),
+                    if (medicine.approvedUseSummary.trim().isNotEmpty) ...[
+                      const SizedBox(height: 12),
+                      Text(
+                        medicine.approvedUseSummary,
+                        style: AppText.body(size: 18),
+                      ),
+                    ],
+                    for (final purpose in medicine.approvedUses) ...[
+                      const SizedBox(height: 8),
+                      Text('· $purpose', style: AppText.body(size: 18)),
+                    ],
+                    const SizedBox(height: 10),
+                    Text(
+                      '실제 처방 이유는 의료진에게 확인해 주세요.',
+                      style: AppText.caption(color: AppColors.textSecondary),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+            if (extraOfficialUses.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              SeniorCard(
+                padding: EdgeInsets.zero,
+                child: Theme(
+                  data: Theme.of(
+                    context,
+                  ).copyWith(dividerColor: Colors.transparent),
+                  child: ExpansionTile(
+                    tilePadding: const EdgeInsets.symmetric(
+                      horizontal: 22,
+                      vertical: 6,
+                    ),
+                    childrenPadding: const EdgeInsets.fromLTRB(22, 0, 22, 22),
+                    title: Text(
+                      easyMode ? '더 자세한 사용 목적 보기' : '전체 허가 목적',
+                      style: AppText.cardTitle(),
+                    ),
+                    children: [
+                      for (final purpose in extraOfficialUses) ...[
+                        Align(
+                          alignment: Alignment.centerLeft,
+                          child: Text('· $purpose', style: AppText.body(size: 17)),
+                        ),
+                        const SizedBox(height: 8),
+                      ],
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ] else ...[
+            const SizedBox(height: 12),
+            SeniorCard(
+              padding: const EdgeInsets.all(20),
+              child: Text(
+                _detailStatusMessage(medicine.detailStatus),
+                style: AppText.body(size: 18, color: AppColors.textSecondary),
+              ),
+            ),
+          ],
           if (cautions.isNotEmpty) ...[
             const SizedBox(height: 12),
             SeniorCard(
@@ -233,7 +345,7 @@ class _DetailBody extends StatelessWidget {
               children: [
                 IconTitle(
                   icon: TablerIcons.clock,
-                  text: '복용 방법',
+                  text: '내가 처방받은 복용 방법',
                   style: AppText.cardTitle(),
                 ),
                 const SizedBox(height: 12),
@@ -253,6 +365,90 @@ class _DetailBody extends StatelessWidget {
               ],
             ),
           ),
+          if (medicine.officialUsage.trim().isNotEmpty) ...[
+            const SizedBox(height: 12),
+            SeniorCard(
+              padding: EdgeInsets.zero,
+              child: Theme(
+                data: Theme.of(
+                  context,
+                ).copyWith(dividerColor: Colors.transparent),
+                child: ExpansionTile(
+                  tilePadding: const EdgeInsets.symmetric(
+                    horizontal: 22,
+                    vertical: 6,
+                  ),
+                  childrenPadding: const EdgeInsets.fromLTRB(22, 0, 22, 22),
+                  title: Text(
+                    easyMode ? '공식 복용 안내 보기' : '제품 공식 용법·용량',
+                    style: AppText.cardTitle(),
+                  ),
+                  children: [
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        medicine.officialUsageNotice.trim().isNotEmpty
+                            ? medicine.officialUsageNotice
+                            : '제품 설명서의 일반적인 사용법이에요. 실제로는 처방전과 의료진의 안내대로 복용하세요.',
+                        style: AppText.caption(color: AppColors.textSecondary),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        medicine.officialUsage,
+                        style: AppText.body(size: 17),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+          if (medicine.askDoctorWhen.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            SeniorCard(
+              padding: const EdgeInsets.all(22),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  IconTitle(
+                    icon: Icons.contact_support_outlined,
+                    text: '언제 의료진에게 알려야 하나요?',
+                    style: AppText.cardTitle(),
+                  ),
+                  const SizedBox(height: 12),
+                  for (final situation in medicine.askDoctorWhen) ...[
+                    Text('· $situation', style: AppText.body(size: 18)),
+                    const SizedBox(height: 8),
+                  ],
+                ],
+              ),
+            ),
+          ],
+          if (medicine.detailSourceName.trim().isNotEmpty) ...[
+            const SizedBox(height: 12),
+            SeniorCard(
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('정보 출처', style: AppText.label(size: 17)),
+                  const SizedBox(height: 6),
+                  Text(
+                    medicine.detailSourceName,
+                    style: AppText.caption(color: AppColors.textSecondary),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    _sourceStatusLabel(medicine),
+                    style: AppText.caption(color: AppColors.textSecondary),
+                  ),
+                ],
+              ),
+            ),
+          ],
           if ((medicine.purposeNotice ?? '').trim().isNotEmpty) ...[
             const SizedBox(height: 12),
             SeniorCard(
@@ -274,6 +470,27 @@ class _DetailBody extends StatelessWidget {
       'none' => '확인된 상호작용이 없어요',
       'check_needed' => '함께먹기 확인이 필요해요',
       _ => '함께먹기 검사 전이에요',
+    };
+  }
+
+  static String _detailStatusMessage(String status) {
+    return switch (status.toUpperCase()) {
+      'FAILED' => '자세한 설명을 불러오지 못했지만 제품 기본 정보는 볼 수 있어요.',
+      'OUTDATED' => '기존 안전 정보는 볼 수 있어요. 최신 공식 정보로 갱신 중이에요.',
+      'NEEDS_REVIEW' => '공식 정보에서 안전하게 정리한 기본 설명을 보여드려요.',
+      _ => '현재 확인할 수 있는 제품 기본 정보를 보여드려요.',
+    };
+  }
+
+  static String _sourceStatusLabel(UserMedicine medicine) {
+    final source = medicine.detailSourceVerified ? '공식 출처 확인' : '출처 확인 필요';
+    return switch (medicine.detailStatus.toUpperCase()) {
+      'READY' => '$source · 쉬운 설명 검토 완료 · 내용 버전 ${medicine.detailContentVersion}',
+      'OFFICIAL_ONLY' => '$source · 공식 정보만 제공 · 내용 버전 ${medicine.detailContentVersion}',
+      'OUTDATED' => '$source · 최신 정보 갱신 중 · 내용 버전 ${medicine.detailContentVersion}',
+      'NEEDS_REVIEW' => '$source · 쉬운 설명 검토 필요 · 내용 버전 ${medicine.detailContentVersion}',
+      'FAILED' => '$source · 상세 설명 불러오기 실패',
+      _ => '$source · 현재 확인된 기본 정보',
     };
   }
 

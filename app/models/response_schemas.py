@@ -207,27 +207,31 @@ class MedicineResponse(ApiResponse):
     updated_at: str
 
 
-class DrugExplanationDetailResponse(ApiResponse):
-    medicine_code: str | None = None
-    drug_name: str | None = None
-    ingredient: str | None = None
-    easy_summary: str
-    what_it_does: str
-    how_to_take: str
-    cautions: list[str]
-    possible_side_effects: list[str]
-    storage: str
-    ask_doctor_when: list[str]
-    generated_by: str
-    source: str
-    is_verified: bool
-    source_based: bool
-    official_raw_summary: str
+class DrugExplanationMedicineResponse(ApiResponse):
+    medicine_code: str
+    display_name: str
+    manufacturer: str | None = None
+    ingredients: list[dict[str, Any]] = Field(default_factory=list)
 
 
-class DrugExplanationResponse(DrugExplanationDetailResponse):
-    medicine: MedicineResponse
-    explanation: DrugExplanationDetailResponse
+class DrugExplanationContentResponse(ApiResponse):
+    content_available: bool
+    short_explanation: str = ""
+    ingredient_explanation: str = ""
+    approved_use_summary: str = ""
+    approved_uses: list[str] = Field(default_factory=list)
+    all_approved_uses: list[str] = Field(default_factory=list)
+    review_status: str
+    status: str = "PENDING"
+    quality_flags: list[str] = Field(default_factory=list)
+
+
+class DrugExplanationResponse(ApiResponse):
+    medicine: DrugExplanationMedicineResponse
+    explanation: DrugExplanationContentResponse
+    official_usage: dict[str, Any]
+    safety: dict[str, Any]
+    source: dict[str, Any]
 
 
 class BaselineResponse(ApiResponse):

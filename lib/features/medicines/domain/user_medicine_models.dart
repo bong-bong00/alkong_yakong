@@ -7,6 +7,7 @@ class UserMedicine {
   final String medicineCode;
   final String displayName;
   final String officialProductName;
+  final String manufacturer;
   final String ingredientName;
   final String ingredientSummary;
   final String ingredientStrength;
@@ -27,11 +28,27 @@ class UserMedicine {
   final String? dosage;
   final int? frequencyPerDay;
   final List<String> administrationTimes;
+  final String ingredientExplanation;
+  final String approvedUseSummary;
+  final List<String> approvedUses;
+  final List<String> allApprovedUses;
+  final String officialUsage;
+  final String officialUsageNotice;
+  final List<String> askDoctorWhen;
+  final List<String> possibleSideEffects;
+  final String detailStatus;
+  final String detailReviewStatus;
+  final String detailSourceName;
+  final bool detailSourceVerified;
+  final String detailContentGeneratedBy;
+  final String detailServedFrom;
+  final int detailContentVersion;
 
   const UserMedicine({
     required this.medicineCode,
     required this.displayName,
     required this.officialProductName,
+    this.manufacturer = '',
     required this.ingredientName,
     this.ingredientSummary = '',
     this.ingredientStrength = '',
@@ -52,6 +69,21 @@ class UserMedicine {
     this.dosage,
     this.frequencyPerDay,
     this.administrationTimes = const [],
+    this.ingredientExplanation = '',
+    this.approvedUseSummary = '',
+    this.approvedUses = const [],
+    this.allApprovedUses = const [],
+    this.officialUsage = '',
+    this.officialUsageNotice = '',
+    this.askDoctorWhen = const [],
+    this.possibleSideEffects = const [],
+    this.detailStatus = 'PENDING',
+    this.detailReviewStatus = 'UNAVAILABLE',
+    this.detailSourceName = '',
+    this.detailSourceVerified = false,
+    this.detailContentGeneratedBy = '',
+    this.detailServedFrom = '',
+    this.detailContentVersion = 0,
   });
 
   factory UserMedicine.fromJson(Map<String, dynamic> json) {
@@ -69,6 +101,7 @@ class UserMedicine {
       displayName: card.name,
       officialProductName:
           json['official_product_name']?.toString() ?? card.name,
+      manufacturer: json['manufacturer']?.toString() ?? '',
       ingredientName:
           json['ingredient_name']?.toString() ??
           json['ingredient']?.toString() ??
@@ -93,12 +126,44 @@ class UserMedicine {
       dosage: json['dosage']?.toString(),
       frequencyPerDay: _intOrNull(json['frequency_per_day']),
       administrationTimes: _stringList(json['administration_times']),
+      ingredientExplanation:
+          json['ingredient_explanation']?.toString() ?? '',
+      approvedUseSummary: json['approved_use_summary']?.toString() ?? '',
+      approvedUses: _stringList(json['approved_uses']),
+      allApprovedUses: _stringList(json['all_approved_uses']),
+      officialUsage: json['official_usage']?.toString() ?? '',
+      officialUsageNotice: json['official_usage_notice']?.toString() ?? '',
+      askDoctorWhen: _stringList(json['ask_doctor_when']),
+      possibleSideEffects: _stringList(json['possible_side_effects']),
+      detailStatus: json['detail_status']?.toString() ?? 'PENDING',
+      detailReviewStatus:
+          json['detail_review_status']?.toString() ?? 'UNAVAILABLE',
+      detailSourceName: json['detail_source_name']?.toString() ?? '',
+      detailSourceVerified: json['detail_source_verified'] == true,
+      detailContentGeneratedBy:
+          json['detail_content_generated_by']?.toString() ?? '',
+      detailServedFrom: json['detail_served_from']?.toString() ?? '',
+      detailContentVersion: _intOrNull(json['detail_content_version']) ?? 0,
     );
   }
 
   String? get effect => cardPurposeLabel(purposeLabel);
 
   String? get cardSpoken => cardSpokenOf(shortExplanation);
+
+  bool get hasReviewedDetail =>
+      detailReviewStatus.toUpperCase() == 'REVIEWED' &&
+      (ingredientExplanation.trim().isNotEmpty ||
+          approvedUseSummary.trim().isNotEmpty ||
+          approvedUses.isNotEmpty ||
+          allApprovedUses.isNotEmpty);
+
+  bool get hasDetailContent =>
+      const {'READY', 'OFFICIAL_ONLY', 'NEEDS_REVIEW', 'OUTDATED'}
+          .contains(detailStatus.toUpperCase()) &&
+      (ingredientExplanation.trim().isNotEmpty ||
+          approvedUseSummary.trim().isNotEmpty ||
+          approvedUses.isNotEmpty);
 
   String get ingredientLabel {
     final summary = ingredientSummary.trim().isNotEmpty

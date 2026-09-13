@@ -185,6 +185,10 @@ def ensure_mvp_demo_medicines() -> str:
                     ),
                 )
         conn.commit()
+        from init_db import seed_reviewed_detail_explanations
+
+        seed_reviewed_detail_explanations(conn)
+        conn.commit()
         try:
             from app.services.pharmacist.easy_category import (
                 backfill_all_medicine_guidance,

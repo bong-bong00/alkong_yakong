@@ -3,7 +3,12 @@
 from __future__ import annotations
 
 import re
+import threading
 from typing import Any
+
+
+_detail_refresh_lock = threading.Lock()
+_detail_refresh_thread: threading.Thread | None = None
 
 from app.services.mfds_drug_permission.db import (
     find_permission_product,
@@ -138,8 +143,10 @@ def refresh_app_medicines_from_permission() -> int:
             ).fetchone()
             if saved:
                 from app.services.pharmacist.easy_category import sync_medicine_guidance
+                from app.services.medicine_detail_service import ensure_medicine_detail
 
                 sync_medicine_guidance(conn, dict(saved))
+                ensure_medicine_detail(conn, str(saved["medicine_code"]))
         from app.services.pharmacist.easy_category import backfill_all_medicine_guidance
 
         backfill_all_medicine_guidance(conn)
@@ -147,6 +154,30 @@ def refresh_app_medicines_from_permission() -> int:
     finally:
         conn.close()
     return updated
+
+
+def start_background_medicine_detail_refresh() -> bool:
+    """Refresh missing official details without delaying app/server startup."""
+    global _detail_refresh_thread
+    with _detail_refresh_lock:
+        if _detail_refresh_thread and _detail_refresh_thread.is_alive():
+            return False
+
+        def _run() -> None:
+            try:
+                refresh_app_medicines_from_permission()
+            except Exception:
+                # Each medicine keeps its local PENDING/OFFICIAL_ONLY profile and
+                # can be retried on the next server start.
+                return
+
+        _detail_refresh_thread = threading.Thread(
+            target=_run,
+            name="medicine-detail-refresh",
+            daemon=True,
+        )
+        _detail_refresh_thread.start()
+        return True
 
 
 def upsert_official_app_medicine(official: dict[str, Any]) -> str | None:
@@ -212,6 +243,9 @@ def upsert_official_app_medicine(official: dict[str, Any]) -> str | None:
         ).fetchone()
         if saved:
             sync_medicine_guidance(conn, dict(saved))
+            from app.services.medicine_detail_service import ensure_medicine_detail
+
+            ensure_medicine_detail(conn, code)
         conn.commit()
     finally:
         conn.close()

@@ -21,6 +21,7 @@ from app.services.medicine_display import (
     infer_dosage_form,
     split_take_amount,
 )
+from app.services.medicine_detail_service import ensure_medicine_detail
 from app.services.ocr.parser import (
     _clean_drug_label,
     _is_plausible_drug_candidate,
@@ -57,6 +58,30 @@ DEFAULT_SCHEDULE_TIMES = {
         ("20:00", "EVENING"),
     ],
 }
+
+
+def _prepare_detail_without_blocking(cursor, medicine_code: str) -> None:
+    """Isolate detail preparation so its failure cannot roll back OCR registration."""
+    cursor.execute("SAVEPOINT medicine_detail_prepare")
+    try:
+        ensure_medicine_detail(cursor, medicine_code)
+        cursor.execute("RELEASE SAVEPOINT medicine_detail_prepare")
+    except Exception as error:
+        cursor.execute("ROLLBACK TO SAVEPOINT medicine_detail_prepare")
+        cursor.execute("RELEASE SAVEPOINT medicine_detail_prepare")
+        try:
+            cursor.execute(
+                """
+                INSERT INTO medicine_detail_jobs (medicine_code, status, last_error)
+                VALUES (?, 'FAILED', ?)
+                ON CONFLICT(medicine_code) DO UPDATE SET
+                    status='FAILED', last_error=excluded.last_error,
+                    finished_at=CURRENT_TIMESTAMP, updated_at=CURRENT_TIMESTAMP
+                """,
+                (medicine_code, str(error)[:500]),
+            )
+        except Exception:
+            pass
 
 
 def _compact_ocr_text(value: object) -> str:
@@ -279,6 +304,9 @@ def _upsert_official_medicine(cursor, official: dict) -> tuple[str, str]:
             easy_category,
         ),
     )
+    # OCR로 처음 들어온 공식 약도 기존 DB 약과 같은 상세 준비 경로를 탄다.
+    # 로컬 공식 정보만 사용하므로 외부 API·Gemini를 기다리지 않는다.
+    _prepare_detail_without_blocking(cursor, code)
     status = "MATCHED" if official.get("source") == "local" else "MFDS"
     return code, status
 
@@ -962,6 +990,7 @@ def confirm_prescription(request: PrescriptionConfirmRequest) -> dict:
                     status_code=422,
                     detail=f"알 수 없는 약 코드입니다: {code}",
                 )
+            _prepare_detail_without_blocking(cursor, code)
             official_name = str(exists["product_name"] or item.drug_name).strip()
             take_dosage = _validated_confirm_dosage(item, official_name)
             dose_amount, dose_unit = split_take_amount(take_dosage)

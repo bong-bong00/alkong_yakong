@@ -1,3 +1,4 @@
+import json
 import sqlite3
 from datetime import datetime
 
@@ -332,7 +333,77 @@ TABLE_DEFINITIONS = {
             generated_by TEXT NOT NULL DEFAULT 'mock',
             source TEXT NOT NULL DEFAULT 'local',
             is_verified INTEGER NOT NULL DEFAULT 0,
+            ingredient_explanation TEXT,
+            approved_use_summary TEXT,
+            approved_uses TEXT,
+            review_status TEXT NOT NULL DEFAULT 'DRAFT',
+            source_verified INTEGER NOT NULL DEFAULT 0,
+            content_generated_by TEXT,
+            source_url TEXT,
+            content_version INTEGER NOT NULL DEFAULT 1,
+            reviewed_at TEXT,
             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (medicine_code) REFERENCES medicines(medicine_code) ON DELETE CASCADE
+        )
+    """,
+    "ingredient_explanations": """
+        CREATE TABLE ingredient_explanations (
+            normalized_key TEXT PRIMARY KEY,
+            ingredient_name TEXT NOT NULL,
+            explanation TEXT NOT NULL,
+            role_explanation TEXT,
+            use_help TEXT,
+            role_group TEXT,
+            group_explanation TEXT,
+            review_status TEXT NOT NULL DEFAULT 'DRAFT',
+            source TEXT NOT NULL DEFAULT 'local',
+            source_verified INTEGER NOT NULL DEFAULT 0,
+            generated_by TEXT NOT NULL DEFAULT 'manual',
+            content_version INTEGER NOT NULL DEFAULT 1,
+            reviewed_at TEXT,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+    """,
+    "medicine_detail_profiles": """
+        CREATE TABLE medicine_detail_profiles (
+            medicine_code TEXT PRIMARY KEY,
+            status TEXT NOT NULL DEFAULT 'PENDING',
+            ingredient_keys TEXT NOT NULL DEFAULT '[]',
+            ingredient_explanation TEXT,
+            approved_use_summary TEXT,
+            approved_uses TEXT NOT NULL DEFAULT '[]',
+            all_approved_uses TEXT NOT NULL DEFAULT '[]',
+            official_usage TEXT,
+            key_cautions TEXT NOT NULL DEFAULT '[]',
+            possible_side_effects TEXT NOT NULL DEFAULT '[]',
+            ask_doctor_when TEXT NOT NULL DEFAULT '[]',
+            source_name TEXT NOT NULL DEFAULT '식약처 의약품 허가정보',
+            source_url TEXT,
+            source_verified INTEGER NOT NULL DEFAULT 0,
+            review_status TEXT NOT NULL DEFAULT 'UNREVIEWED',
+            generated_by TEXT NOT NULL DEFAULT 'official-parser',
+            source_hash TEXT,
+            quality_flags TEXT NOT NULL DEFAULT '[]',
+            parser_version TEXT NOT NULL DEFAULT '2.0',
+            content_version INTEGER NOT NULL DEFAULT 1,
+            prepared_at TEXT,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (medicine_code) REFERENCES medicines(medicine_code) ON DELETE CASCADE
+        )
+    """,
+    "medicine_detail_jobs": """
+        CREATE TABLE medicine_detail_jobs (
+            medicine_code TEXT PRIMARY KEY,
+            status TEXT NOT NULL DEFAULT 'PENDING',
+            attempts INTEGER NOT NULL DEFAULT 0,
+            source_hash TEXT,
+            last_error TEXT,
+            requested_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            started_at TEXT,
+            finished_at TEXT,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (medicine_code) REFERENCES medicines(medicine_code) ON DELETE CASCADE
         )
     """,
@@ -385,6 +456,9 @@ INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_abnormal_events_user_occurred ON abnormal_events(user_id, occurred_at)",
     "CREATE INDEX IF NOT EXISTS idx_notifications_user_created ON notifications(user_id, created_at)",
     "CREATE INDEX IF NOT EXISTS idx_notifications_schedule ON notifications(schedule_id, notification_type)",
+    "CREATE INDEX IF NOT EXISTS idx_ingredient_explanations_review ON ingredient_explanations(review_status, normalized_key)",
+    "CREATE INDEX IF NOT EXISTS idx_medicine_detail_profiles_status ON medicine_detail_profiles(status, updated_at)",
+    "CREATE INDEX IF NOT EXISTS idx_medicine_detail_jobs_status ON medicine_detail_jobs(status, requested_at)",
 ]
 
 OBSOLETE_TABLES = ("prescription_drugs",)
@@ -424,6 +498,15 @@ ADDITIVE_COLUMNS = {
         "generated_by": "TEXT NOT NULL DEFAULT 'mock'",
         "source": "TEXT NOT NULL DEFAULT 'local'",
         "is_verified": "INTEGER NOT NULL DEFAULT 0",
+        "ingredient_explanation": "TEXT",
+        "approved_use_summary": "TEXT",
+        "approved_uses": "TEXT",
+        "review_status": "TEXT NOT NULL DEFAULT 'DRAFT'",
+        "source_verified": "INTEGER NOT NULL DEFAULT 0",
+        "content_generated_by": "TEXT",
+        "source_url": "TEXT",
+        "content_version": "INTEGER NOT NULL DEFAULT 1",
+        "reviewed_at": "TEXT",
     },
     "prescription_items": {
         "easy_explanation": "TEXT",
@@ -449,6 +532,17 @@ ADDITIVE_COLUMNS = {
         "dose_unit": "TEXT",
         "status": "TEXT NOT NULL DEFAULT 'ACTIVE'",
         "last_prescribed_at": "TEXT",
+    },
+    "medicine_detail_profiles": {
+        "all_approved_uses": "TEXT NOT NULL DEFAULT '[]'",
+        "quality_flags": "TEXT NOT NULL DEFAULT '[]'",
+        "parser_version": "TEXT NOT NULL DEFAULT '2.0'",
+    },
+    "ingredient_explanations": {
+        "role_explanation": "TEXT",
+        "use_help": "TEXT",
+        "role_group": "TEXT",
+        "group_explanation": "TEXT",
     },
     "users": {
         "is_pregnant": "INTEGER NOT NULL DEFAULT 0",
@@ -492,6 +586,218 @@ def _deactivate_legacy_demo_medicines(cursor: sqlite3.Cursor) -> None:
     )
 
 
+_REVIEWED_INGREDIENT_EXPLANATIONS = {
+    "아미오다론염산염": {
+        "explanation": "아미오다론염산염은 심장 박동을 만드는 전기 신호가 지나치게 빠르거나 불규칙해지는 것을 조절하는 성분이에요.",
+        "role_explanation": "심장 박동을 만드는 전기 신호를 조절해요.",
+        "use_help": "지나치게 빠르거나 불규칙한 심장 박동을 조절하는 데 도움을 줘요.",
+    },
+    "이부프로펜": {
+        "explanation": "이부프로펜은 몸에서 통증과 열, 염증 반응에 관여하는 물질이 만들어지는 것을 줄이는 성분이에요.",
+        "role_explanation": "통증과 열, 염증 반응에 관여하는 물질이 만들어지는 것을 줄여요.",
+        "use_help": "열과 통증, 염증을 줄이는 데 도움을 줘요.",
+    },
+    "에스시탈로프람옥살산염": {
+        "explanation": "에스시탈로프람옥살산염은 뇌에서 세로토닌의 작용을 조절해 우울감과 불안 증상을 완화하는 데 도움을 주는 성분이에요.",
+        "role_explanation": "뇌에서 세로토닌의 작용을 조절해요.",
+        "use_help": "우울감과 불안 증상을 완화하는 데 도움을 줘요.",
+    },
+    "탄산마그네슘": {
+        "explanation": "탄산마그네슘은 위산을 중화해 속쓰림과 위 불편감을 줄이는 데 도움을 주는 성분이에요.",
+        "role_explanation": "위산을 중화해요.",
+        "use_help": "속쓰림과 위 불편감을 줄이는 데 도움을 줘요.",
+        "role_group": "antacid-neutralizer",
+        "group_explanation": "이 약의 여러 주성분은 위산을 중화해 속쓰림과 위 불편감을 줄이는 데 함께 도움을 줘요.",
+    },
+    "침강탄산칼슘": {
+        "explanation": "침강탄산칼슘은 위산을 중화해 속쓰림과 위 불편감을 줄이는 데 도움을 주는 성분이에요.",
+        "role_explanation": "위산을 중화해요.",
+        "use_help": "속쓰림과 위 불편감을 줄이는 데 도움을 줘요.",
+        "role_group": "antacid-neutralizer",
+        "group_explanation": "이 약의 여러 주성분은 위산을 중화해 속쓰림과 위 불편감을 줄이는 데 함께 도움을 줘요.",
+    },
+    "탄산수소나트륨": {
+        "explanation": "탄산수소나트륨은 위산을 중화해 속쓰림과 위 불편감을 줄이는 데 도움을 주는 성분이에요.",
+        "role_explanation": "위산을 중화해요.",
+        "use_help": "속쓰림과 위 불편감을 줄이는 데 도움을 줘요.",
+        "role_group": "antacid-neutralizer",
+        "group_explanation": "이 약의 여러 주성분은 위산을 중화해 속쓰림과 위 불편감을 줄이는 데 함께 도움을 줘요.",
+    },
+    "건조수산화알루미늄 겔": {
+        "explanation": "건조수산화알루미늄 겔은 위산을 중화해 속쓰림과 위 불편감을 줄이는 데 도움을 주는 성분이에요.",
+        "role_explanation": "위산을 중화해요.",
+        "use_help": "속쓰림과 위 불편감을 줄이는 데 도움을 줘요.",
+        "role_group": "antacid-neutralizer",
+        "group_explanation": "이 약의 여러 주성분은 위산을 중화해 속쓰림과 위 불편감을 줄이는 데 함께 도움을 줘요.",
+    },
+}
+
+
+def _invalidate_unusable_ingredient_explanations(cursor: sqlite3.Cursor) -> None:
+    """Keep reviewed copy, but quarantine old drafts that end mid-sentence."""
+    from app.services.medicine_detail_providers import (
+        is_displayable_ingredient_explanation,
+    )
+
+    rows = cursor.execute(
+        """
+        SELECT normalized_key, explanation
+        FROM ingredient_explanations
+        WHERE review_status='REVIEWED'
+        """
+    ).fetchall()
+    for normalized_key, explanation in rows:
+        if is_displayable_ingredient_explanation(explanation):
+            continue
+        cursor.execute(
+            """
+            UPDATE ingredient_explanations
+            SET review_status='DRAFT', source_verified=0,
+                updated_at=CURRENT_TIMESTAMP
+            WHERE normalized_key=?
+            """,
+            (normalized_key,),
+        )
+
+
+def _seed_reviewed_ingredient_explanations(cursor: sqlite3.Cursor) -> None:
+    """Seed reusable ingredient-level copy without product-specific branches."""
+    from app.services.medicine_detail_service import normalize_ingredient_key
+
+    for ingredient_name, content in _REVIEWED_INGREDIENT_EXPLANATIONS.items():
+        cursor.execute(
+            """
+            INSERT INTO ingredient_explanations (
+                normalized_key, ingredient_name, explanation,
+                role_explanation, use_help, role_group, group_explanation,
+                review_status, source, source_verified, generated_by,
+                content_version, reviewed_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, 'REVIEWED',
+                      '식약처 허가정보·성분 검토본', 1,
+                      'reviewed-ingredient-seed-v2', 2, CURRENT_TIMESTAMP)
+            ON CONFLICT(normalized_key) DO UPDATE SET
+                ingredient_name=excluded.ingredient_name,
+                explanation=CASE
+                    WHEN ingredient_explanations.review_status='REVIEWED'
+                         AND ingredient_explanations.source_verified=1
+                    THEN ingredient_explanations.explanation
+                    ELSE excluded.explanation
+                END,
+                role_explanation=COALESCE(
+                    ingredient_explanations.role_explanation,
+                    excluded.role_explanation
+                ),
+                use_help=COALESCE(
+                    ingredient_explanations.use_help,
+                    excluded.use_help
+                ),
+                role_group=COALESCE(
+                    ingredient_explanations.role_group,
+                    excluded.role_group
+                ),
+                group_explanation=COALESCE(
+                    ingredient_explanations.group_explanation,
+                    excluded.group_explanation
+                ),
+                review_status='REVIEWED', source_verified=1,
+                source=CASE
+                    WHEN ingredient_explanations.review_status='REVIEWED'
+                    THEN ingredient_explanations.source
+                    ELSE excluded.source
+                END,
+                generated_by=CASE
+                    WHEN ingredient_explanations.review_status='REVIEWED'
+                    THEN ingredient_explanations.generated_by
+                    ELSE excluded.generated_by
+                END,
+                content_version=MAX(
+                    ingredient_explanations.content_version,
+                    excluded.content_version
+                ),
+                reviewed_at=COALESCE(
+                    ingredient_explanations.reviewed_at,
+                    CURRENT_TIMESTAMP
+                ),
+                updated_at=CURRENT_TIMESTAMP
+            """,
+            (
+                normalize_ingredient_key(ingredient_name),
+                ingredient_name,
+                content["explanation"],
+                content.get("role_explanation"),
+                content.get("use_help"),
+                content.get("role_group"),
+                content.get("group_explanation"),
+            ),
+        )
+
+
+def seed_reviewed_detail_explanations(cursor: sqlite3.Cursor) -> None:
+    """개발 화면에서 사용할, 출처와 문장을 검토한 상세 설명."""
+    medicine_code = "200701021"
+    exists = cursor.execute(
+        """
+        SELECT 1 FROM ai_explanation_cards
+        WHERE medicine_code = ? AND review_status = 'REVIEWED'
+        LIMIT 1
+        """,
+        (medicine_code,),
+    ).fetchone()
+    if exists:
+        return
+    medicine = cursor.execute(
+        "SELECT usage FROM medicines WHERE medicine_code = ?",
+        (medicine_code,),
+    ).fetchone()
+    if medicine is None:
+        return
+    cautions = [
+        "숨이 차거나 마른기침이 계속되면 의사나 약사에게 알려주세요.",
+        "시야가 흐려지거나 시력이 떨어지면 의료진에게 알려주세요.",
+        "복용 중에는 의료진의 안내에 따라 심장·간·갑상선 검사가 필요할 수 있어요.",
+    ]
+    ask_doctor_when = [
+        "숨쉬기 어렵거나 마른기침이 계속될 때",
+        "시야가 흐려지거나 피부에 심한 발진이나 물집이 생길 때",
+    ]
+    cursor.execute(
+        """
+        INSERT INTO ai_explanation_cards (
+            medicine_code, summary, what_it_does, how_to_take,
+            warnings, cautions, side_effects, storage, ask_doctor_when,
+            source_based, official_raw_summary, source_document_ids,
+            model_name, generated_by, source, is_verified,
+            ingredient_explanation, approved_use_summary, approved_uses,
+            review_status, source_verified, content_generated_by,
+            source_url, content_version, reviewed_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, '', '[]', ?, ?, ?, 1,
+                  ?, ?, ?, 'REVIEWED', 1, ?, ?, 1, CURRENT_TIMESTAMP)
+        """,
+        (
+            medicine_code,
+            "심장 박동을 고르게 하는 약이에요.",
+            "다른 치료로 잘 조절되지 않는 부정맥 치료에 사용될 수 있어요.",
+            str(medicine[0] or ""),
+            json.dumps(cautions, ensure_ascii=False),
+            json.dumps(cautions, ensure_ascii=False),
+            "[]",
+            "실온(30℃ 이하)에서 어린이의 손이 닿지 않는 곳에 보관하세요.",
+            json.dumps(ask_doctor_when, ensure_ascii=False),
+            "reviewed-seed-v1",
+            "reviewed-seed-v1",
+            "식약처 의약품 허가정보",
+            "아미오다론염산염은 심장 박동을 만드는 전기 신호가 지나치게 빠르거나 불규칙해지는 것을 조절하는 성분이에요.",
+            "다른 치료로 잘 조절되지 않는 부정맥 치료에 사용될 수 있어요.",
+            json.dumps(
+                ["재발하는 중증 부정맥", "심장 질환을 동반한 부정맥"],
+                ensure_ascii=False,
+            ),
+            "reviewed-seed-v1",
+            "https://nedrug.mfds.go.kr",
+        ),
+    )
+
+
 def initialize_database() -> None:
     conn = sqlite3.connect(DB_PATH)
     conn.execute("PRAGMA foreign_keys = ON")
@@ -520,6 +826,9 @@ def initialize_database() -> None:
         cursor.execute(statement)
 
     _seed_reviewed_home_explanations(cursor)
+    _invalidate_unusable_ingredient_explanations(cursor)
+    _seed_reviewed_ingredient_explanations(cursor)
+    seed_reviewed_detail_explanations(cursor)
     _deactivate_legacy_demo_medicines(cursor)
     conn.commit()
     purge_ocr_placeholder_rows(conn)
@@ -531,6 +840,10 @@ def initialize_database() -> None:
     columns = [item[0] for item in cursor.description] if cursor.description else []
     for row in rows:
         sync_medicine_guidance(cursor, dict(zip(columns, row)))
+    # 기존 DB 약 전체를 같은 상세 구조로 준비한다. 네트워크·AI 호출은 하지 않는다.
+    from app.services.medicine_detail_service import prepare_all_medicine_details
+
+    prepare_all_medicine_details(cursor)
     conn.commit()
     conn.close()
 
