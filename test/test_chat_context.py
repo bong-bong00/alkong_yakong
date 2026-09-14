@@ -6,6 +6,8 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
+from fastapi import HTTPException
+
 from app.services import chat_context_service, gemini_service
 from app.services.mfds_drug_permission import client as permission_client
 from app.services.mfds_drug_permission import db as permission_db
@@ -782,6 +784,33 @@ class ChatContextTest(unittest.TestCase):
             reply = gemini_service.generate_chat_response("감사합니다", user_id="U1")
         self.assertIn("도움이 되어", reply)
         generate.assert_not_called()
+
+    def test_chat_http_exception_is_not_converted_to_generic_reply(self):
+        with (
+            patch.object(gemini_service, "GEMINI_API_KEY", "configured"),
+            patch("google.genai.Client"),
+            patch.object(
+                gemini_service,
+                "_generate_content_with_retry",
+                side_effect=HTTPException(status_code=404, detail="사용자가 없습니다."),
+            ),
+        ):
+            with self.assertRaises(HTTPException) as raised:
+                gemini_service.generate_chat_response("약 질문", user_id="missing")
+        self.assertEqual(raised.exception.status_code, 404)
+
+    def test_chat_general_exception_keeps_generic_fallback(self):
+        with (
+            patch.object(gemini_service, "GEMINI_API_KEY", "configured"),
+            patch("google.genai.Client"),
+            patch.object(
+                gemini_service,
+                "_generate_content_with_retry",
+                side_effect=RuntimeError("temporary failure"),
+            ),
+        ):
+            reply = gemini_service.generate_chat_response("약 질문", user_id="U1")
+        self.assertIn("정보를 불러오는 중 문제가 발생했습니다", reply)
 
 
 if __name__ == "__main__":

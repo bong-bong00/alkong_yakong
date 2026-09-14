@@ -6,6 +6,8 @@ import time
 from pathlib import Path
 from typing import Any
 
+from fastapi import HTTPException
+
 from app.core.config import GEMINI_API_KEY, GEMINI_MODEL
 from app.services.pharmacist.generate import generate_card_from_source
 
@@ -769,6 +771,8 @@ def generate_chat_response(
                 },
             )
             return _finalize_chat_response(response)
+    except HTTPException:
+        raise
     except Exception as error:
         logger.warning("Gemini chat failed: %s", error, exc_info=True)
         return (

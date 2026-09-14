@@ -5,7 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../domain/exclusive_choice.dart';
 import '../../../../core/network/api_client.dart';
-import '../../../../core/session/mvp_session.dart';
+import '../../../../core/session/auth_session.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../core/widgets/senior_button.dart';
 import '../../../../core/widgets/senior_feedback.dart';
@@ -295,7 +295,7 @@ class _SignupScreenState extends State<SignupScreen> {
         throw const ApiException('회원가입 응답에 사용자 ID가 없습니다.');
       }
 
-      MvpSession.userId = userId;
+      await AuthSession.persistUserId(userId);
       if (!mounted) return;
       await _showSignupComplete();
       if (!mounted) return;
