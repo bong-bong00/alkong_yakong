@@ -148,6 +148,7 @@ class _PolarScreenState extends State<PolarScreen> {
     showSeniorSnackbar(
       context,
       found ? '폴라 베리티 센스를 찾았어요' : '센서를 찾지 못했어요. 단추를 한 번 눌러 주세요.',
+      error: !found,
     );
   }
 }

@@ -5,6 +5,7 @@ import '../../../core/constants/app_colors.dart';
 import '../../../core/mode/app_mode.dart';
 import '../../../core/theme/app_typography.dart';
 import '../../../core/widgets/senior_button.dart';
+import '../../../core/widgets/senior_feedback.dart';
 import '../../biosignal/presentation/screens/heart_screen.dart';
 import '../../biosignal/presentation/screens/measure_screen.dart';
 import '../../dashboard/presentation/screens/medication_record_screen.dart';
@@ -130,8 +131,10 @@ class _EasyFlowShellState extends ConsumerState<EasyFlowShell> {
           onOpenDrug: (medicine) {
             final code = medicine.medicineCode?.trim() ?? '';
             if (code.isEmpty) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('이 약의 상세 정보를 찾지 못했어요.')),
+              showSeniorSnackbar(
+                context,
+                '이 약의 상세 정보를 찾지 못했어요.',
+                error: true,
               );
               return;
             }

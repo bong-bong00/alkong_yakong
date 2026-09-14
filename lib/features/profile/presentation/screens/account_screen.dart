@@ -156,7 +156,9 @@ class AccountScreen extends ConsumerWidget {
     try {
       await ref.read(userRepositoryProvider).delete(userId);
     } on ApiException catch (error) {
-      if (context.mounted) showSeniorSnackbar(context, error.message);
+      if (context.mounted) {
+        showSeniorSnackbar(context, error.message, error: true);
+      }
       return;
     }
     await endSession(ref);

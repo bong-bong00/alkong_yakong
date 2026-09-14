@@ -26,9 +26,9 @@ class SignupScreen extends ConsumerStatefulWidget {
 
 class _SignupScreenState extends ConsumerState<SignupScreen> {
   int _step = 0;
-  /// 틀린 곳 한 군데. **버튼 바로 위**에 둔다 —
-  /// 위로 스크롤해서 찾아야 하는 오류는 없는 것과 같다.
-  String? _error;
+
+  /// 아래 버튼 영역. 오류 스낵바를 이 높이만큼 올려 버튼을 가리지 않는다.
+  final _actionsKey = GlobalKey();
   bool _isSubmitting = false;
 
   /// 처음에는 아무것도 고르지 않은 상태다. 기본값이 있으면
@@ -232,28 +232,30 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
   void _next(List<_StepDef> steps) {
     final err = steps[_step].validate();
     if (err != null) {
-      setState(() => _error = err);
+      _showError(err);
       return;
     }
     if (_step >= steps.length - 1) {
       _submit();
     } else {
-      setState(() {
-        _error = null;
-        _step++;
-      });
+      ScaffoldMessenger.of(context).hideCurrentSnackBar();
+      setState(() => _step++);
     }
   }
 
   void _prev() {
+    ScaffoldMessenger.of(context).hideCurrentSnackBar();
     if (_step == 0) {
       Navigator.of(context).maybePop();
     } else {
-      setState(() {
-        _error = null;
-        _step--;
-      });
+      setState(() => _step--);
     }
+  }
+
+  /// 틀린 곳 한 군데를 스낵바로 알린다. 아래 버튼을 가리지 않도록 그 위에 띄운다.
+  void _showError(String message) {
+    final actionsHeight = _actionsKey.currentContext?.size?.height ?? 0;
+    showSeniorSnackbar(context, message, error: true, bottom: actionsHeight);
   }
 
   String? _optionalTrimmed(String value) {
@@ -312,16 +314,17 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
     );
     ref.invalidate(guardiansProvider);
     if (!result.isSent && mounted) {
-      showSeniorSnackbar(context, '보호자 연락처는 저장하지 못했어요. 내 정보에서 다시 초대해 주세요.');
+      showSeniorSnackbar(
+        context,
+        '보호자 연락처는 저장하지 못했어요. 내 정보에서 다시 초대해 주세요.',
+        error: true,
+      );
     }
   }
 
   Future<void> _submit() async {
     if (_isSubmitting) return;
-    setState(() {
-      _error = null;
-      _isSubmitting = true;
-    });
+    setState(() => _isSubmitting = true);
 
     try {
       final user = await ref
@@ -340,13 +343,7 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
       }
     } catch (error) {
       if (!mounted) return;
-      setState(() => _error = error.toString());
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('회원가입에 실패했습니다: $error'),
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
+      _showError('회원가입에 실패했습니다: $error');
     } finally {
       if (mounted) {
         setState(() => _isSubmitting = false);
@@ -946,15 +943,12 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
               ),
             ),
             Padding(
+              key: _actionsKey,
               padding: const EdgeInsets.fromLTRB(20, 0, 20, 30),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  if (_error != null) ...[
-                    SeniorErrorBox(_error!),
-                    const SizedBox(height: 10),
-                  ],
                   SeniorButton(
                     label: isLast && _isSubmitting
                         ? '가입 중...'

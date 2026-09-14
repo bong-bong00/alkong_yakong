@@ -430,10 +430,11 @@ void _signupTests() {
     expect(find.text('어떤 분이신가요?'), findsOneWidget);
   });
 
-  testWidgets('역할을 고르지 않으면 버튼 위에 이유가 뜬다 (02)', (tester) async {
+  testWidgets('역할을 고르지 않으면 스낵바로 이유를 알린다 (02)', (tester) async {
     await tester.pumpWidget(wrap(const SignupScreen()));
     await tester.tap(find.text('다음'));
     await tester.pump();
+    expect(find.byType(SnackBar), findsOneWidget);
     expect(find.text('어떤 분인지 골라주세요'), findsOneWidget);
     // 오류가 떠도 화면은 그대로다 — 다음으로 넘어가지 않는다.
     expect(find.text('어떤 분이신가요?'), findsOneWidget);

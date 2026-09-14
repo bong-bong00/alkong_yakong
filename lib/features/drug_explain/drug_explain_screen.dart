@@ -6,6 +6,7 @@ import '../../core/constants/app_colors.dart';
 import '../../core/network/api_client.dart';
 import '../../core/session/mvp_session.dart';
 import '../../core/widgets/rounded_gradient_app_bar.dart';
+import '../../core/widgets/senior_feedback.dart';
 
 class DrugExplainScreen extends StatefulWidget {
   final ApiClient? apiClient;
@@ -108,12 +109,7 @@ class _DrugExplainScreenState extends State<DrugExplainScreen> {
 
     final medicine = _selectedMedicine;
     if (medicine == null || medicine.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('먼저 궁금한 약을 선택해주세요.'),
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
+      showSeniorSnackbar(context, '먼저 궁금한 약을 선택해주세요.', error: true);
       return;
     }
 

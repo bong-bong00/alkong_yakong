@@ -8,6 +8,7 @@ import '../../../../core/network/api_client.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../core/widgets/app_logo.dart';
 import '../../../../core/widgets/senior_button.dart';
+import '../../../../core/widgets/senior_feedback.dart';
 import '../../../onboarding/presentation/screens/first_run_screen.dart';
 import '../../../profile/application/current_user_controller.dart';
 import '../../../profile/application/session_actions.dart';
@@ -39,9 +40,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
   Future<void> _login() async {
     if (_phone.text.trim().isEmpty || _password.text.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('전화번호와 비밀번호를 넣어주세요')),
-      );
+      showSeniorSnackbar(context, '전화번호와 비밀번호를 넣어주세요', error: true);
       return;
     }
     if (_loggingIn) return;
@@ -55,9 +54,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       if (mounted) context.go('/');
     } on ApiException catch (error) {
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(error.message)));
+      showSeniorSnackbar(context, error.message, error: true);
     } finally {
       if (mounted) setState(() => _loggingIn = false);
     }

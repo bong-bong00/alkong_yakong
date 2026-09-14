@@ -7,6 +7,7 @@ import '../../../../core/constants/app_colors.dart';
 import '../../../../core/mode/app_mode.dart';
 import '../../../easy_flow/presentation/easy_flow_shell.dart';
 import '../../../../core/widgets/senior_bottom_nav.dart';
+import '../../../../core/widgets/senior_feedback.dart';
 import '../../../biosignal/presentation/screens/measure_screen.dart';
 import '../../../medication/domain/medication_models.dart';
 import '../../../medication/presentation/screens/dose_done_screen.dart';
@@ -67,8 +68,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                     final code = (medicine.medicineCode ?? medicine.key ?? '')
                         .trim();
                     if (code.isEmpty) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('이 약의 상세 정보를 찾지 못했어요.')),
+                      showSeniorSnackbar(
+                        context,
+                        '이 약의 상세 정보를 찾지 못했어요.',
+                        error: true,
                       );
                       return;
                     }
