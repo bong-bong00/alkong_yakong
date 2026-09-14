@@ -40,6 +40,7 @@ def search_official_drugs(
     return search_drug_candidates(query)
 
 
+# 검토된 상세 카드만 읽는다. 화면 요청 중 외부 API·Gemini를 호출하지 않는다.
 @router.get("/drug-explain/{medicine_code}", response_model=DrugExplanationResponse)
 def explain_drug(
     medicine_code: str,

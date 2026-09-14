@@ -121,6 +121,15 @@ abstract final class AppColors {
   /// 카메라 화면의 어두운 칩·버튼.
   static const Color camChip = Color(0xFF2A2A31);
 
+  /// 처방전 촬영 배경.
+  static const Color cameraBg = Color(0xFF111114);
+
+  /// 카메라 위 어두운 면.
+  static const Color darkSurface = Color(0xFF2A2A31);
+
+  /// 어두운 배경 위 보조 글씨.
+  static const Color onDarkMuted = Color(0xFFC6C6CE);
+
   /// 스낵바 배경과 그 안의 체크 아이콘.
   static const Color snackbarBg = Color(0xFF221F1B);
   static const Color snackbarCheck = Color(0xFF8FE3B0);

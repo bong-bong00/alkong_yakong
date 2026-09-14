@@ -79,30 +79,26 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                               MaterialPageRoute(
                                 builder: (_) => const PrescriptionScreen(),
                               ),
+                              ),
                             ),
                       ),
                     ),
-                  ),
+                  onOpenChat: () => context.push('/drug-explain'),
                   onOpenDrug: (medicine) {
-                    final drug = DrugInfo.find(medicine.key);
-                    if (drug == null) return;
-                    Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (_) => DrugDetailScreen(
-                          drug: drug,
-                          onOpenInteraction: () =>
-                              context.push('/dur-analysis'),
-                        ),
-                      ),
-                    );
+                    final code = (medicine.medicineCode ?? medicine.key ?? '')
+                        .trim();
+                    if (code.isEmpty) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('이 약의 상세 정보를 찾지 못했어요.')),
+                      );
+                      return;
+                    }
+                    context.push('/medicines/$code');
                   },
-                  onDone: () =>
-                      setState(() => _justRecorded = DoseSlot.dinner),
+                  onDone: () => setState(() => _justRecorded = DoseSlot.dinner),
                   onMeasure: () async {
                     await Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (_) => const MeasureScreen(),
-                      ),
+                      MaterialPageRoute(builder: (_) => const MeasureScreen()),
                     );
                     if (mounted) {
                       setState(() => _justRecorded = DoseSlot.dinner);

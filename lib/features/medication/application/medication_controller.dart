@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/network/api_client.dart';
 import '../../../core/session/mvp_session.dart';
+import '../../medicines/domain/display_policy.dart';
 import '../../reminder/domain/reminder_ladder.dart';
 import '../domain/medication_models.dart';
 
@@ -28,29 +29,13 @@ class MedicationController extends Notifier<TodayMedication> {
   @override
   TodayMedication build() {
     Future.microtask(refreshFromServer);
-    return _demoToday();
-  }
-
-  /// 오늘 리필 시트를 이미 물어봤는지. 하루에 한 번만 뜬다.
-  bool _refillAsked = false;
-
-  bool get refillAsked => _refillAsked;
-
-  /// 처방이 오늘로 끝나는데 아직 안 물어봤으면 물어본다.
-  bool get shouldAskRefill => state.daysLeft == 0 && !_refillAsked;
-
-  void markRefillAsked() => _refillAsked = true;
-
-  /// 하루가 지나면 남은 날수를 하나 줄인다.
-  void decrementDaysLeft() {
-    if (state.daysLeft <= 0) return;
-    state = state.copyWith(daysLeft: state.daysLeft - 1);
-  }
-
-  /// 새 처방을 받으면 날수를 다시 채우고 리필 질문도 풀어 둔다.
-  void refill({int days = 21}) {
-    _refillAsked = false;
-    state = state.copyWith(daysLeft: days);
+    return const TodayMedication(
+      doses: [],
+      guardianRelation: '보호자',
+      guardianName: '가족',
+      heartRate: 72,
+      heartRateNormal: true,
+    );
   }
 
   Future<void> refreshFromServer() async {
@@ -79,31 +64,43 @@ class MedicationController extends Notifier<TodayMedication> {
         if (rawMeds is List) {
           for (final m in rawMeds) {
             if (m is! Map) continue;
-            final ingredient =
-                m['ingredient']?.toString() ??
-                m['product_name']?.toString() ??
-                '약';
+            final card = resolveMyMedicineCard(
+              medicineCode: m['medicine_code']?.toString(),
+              productName: m['product_name']?.toString(),
+              displayName: m['display_name']?.toString(),
+              ingredient: m['ingredient']?.toString(),
+              purposeLabel: m['purpose_label']?.toString(),
+              shortExplanation: m['short_explanation']?.toString(),
+              easyCategory: m['easy_category']?.toString(),
+            );
+            if (isMockDrugInfoName(card.name)) continue;
             final scheduleRaw = m['schedule_id'];
             final scheduleId = scheduleRaw is num
                 ? scheduleRaw.toInt()
                 : int.tryParse(scheduleRaw?.toString() ?? '');
             meds.add(
               Medicine(
-                ingredient: ingredient,
-                amount: m['amount']?.toString() ?? '1알',
-                easyCategory: m['easy_category']?.toString(),
+                ingredient: card.name,
+                ingredientName:
+                    m['ingredient_name']?.toString() ??
+                    m['ingredient']?.toString(),
+                ingredientSummary: m['ingredient_summary']?.toString(),
+                ingredientStrength: m['ingredient_strength']?.toString(),
+                amount: m['amount']?.toString() ?? '',
+                easyCategory: card.spoken,
+                purposeLabel: card.purposeLabel,
+                shortExplanation: card.spoken,
+                keyCaution: m['key_caution']?.toString(),
+                efficacy: null,
                 scheduleId: scheduleId,
+                medicineCode: m['medicine_code']?.toString(),
               ),
             );
           }
         }
         if (meds.isEmpty) continue;
         doses.add(
-          DoseEntry(
-            slot: slot,
-            medicines: meds,
-            taken: raw['taken'] == true,
-          ),
+          DoseEntry(slot: slot, medicines: meds, taken: raw['taken'] == true),
         );
       }
     }
@@ -113,7 +110,19 @@ class MedicationController extends Notifier<TodayMedication> {
       guardianName: data['guardian_name']?.toString() ?? '가족',
       heartRate: 72,
       heartRateNormal: true,
+      daysLeft: state.daysLeft,
+      interactionAlert: data['interaction_alert']?.toString(),
+      interactionCards: _interactionCards(data['interaction_cards']),
     );
+  }
+
+  static List<InteractionPriorityCard> _interactionCards(dynamic raw) {
+    if (raw is! List) return const [];
+    return [
+      for (final row in raw)
+        if (row is Map)
+          InteractionPriorityCard.fromJson(Map<String, dynamic>.from(row)),
+    ];
   }
 
   DoseSlot? _slotOf(String? raw) {
@@ -129,76 +138,18 @@ class MedicationController extends Notifier<TodayMedication> {
     }
   }
 
-  TodayMedication _demoToday() {
-    return const TodayMedication(
-      doses: [
-        DoseEntry(
-          slot: DoseSlot.morning,
-          medicines: [
-            Medicine(
-              ingredient: '암로디핀 5mg',
-              amount: '1알',
-              appearance: '노란 길쭉한 알약',
-              easyCategory: '혈압 낮춤',
-              effect: '혈압 내리는 약',
-              key: 'aml',
-            ),
-            Medicine(
-              ingredient: '아스피린 100mg',
-              amount: '1알',
-              appearance: '작은 흰색 알약',
-              easyCategory: '피 묽게',
-              effect: '피를 묽게 하는 약',
-              key: 'asp',
-            ),
-          ],
-          taken: true,
-        ),
-        DoseEntry(
-          slot: DoseSlot.lunch,
-          medicines: [
-            Medicine(
-              ingredient: '메트포르민 500mg',
-              amount: '1알',
-              appearance: '흰색 동그란 알약',
-              easyCategory: '혈당 조절',
-              effect: '혈당 낮추는 약',
-              key: 'met',
-            ),
-          ],
-          taken: true,
-        ),
-        DoseEntry(
-          slot: DoseSlot.dinner,
-          medicines: [
-            Medicine(
-              ingredient: '메트포르민 500mg',
-              amount: '1알',
-              appearance: '흰색 동그란 알약',
-              easyCategory: '혈당 조절',
-              effect: '혈당 낮추는 약',
-              key: 'met',
-            ),
-            Medicine(
-              ingredient: '암로디핀 5mg',
-              amount: '1알',
-              appearance: '노란 길쭉한 알약',
-              easyCategory: '혈압 낮춤',
-              effect: '혈압 내리는 약',
-              key: 'aml',
-            ),
-          ],
-        ),
-      ],
-      guardianRelation: '딸',
-      guardianName: '지안',
-      heartRate: 72,
-      heartRateNormal: true,
-    );
-  }
-
   final Set<DoseSlot> _guardianNotified = <DoseSlot>{};
   final Map<DoseSlot, int> _snoozeCount = <DoseSlot, int>{};
+  bool _refillAsked = false;
+
+  bool get shouldAskRefill => state.daysLeft == 0 && !_refillAsked;
+
+  void markRefillAsked() => _refillAsked = true;
+
+  void refill({int days = 21}) {
+    _refillAsked = false;
+    state = state.copyWith(daysLeft: days);
+  }
 
   bool guardianNotifiedFor(DoseSlot slot) => _guardianNotified.contains(slot);
 
@@ -283,6 +234,11 @@ class MedicationController extends Notifier<TodayMedication> {
     );
     _scheduleLadder(slot, now: at);
     return until;
+  }
+
+  void decrementDaysLeft() {
+    final next = state.daysLeft <= 0 ? 0 : state.daysLeft - 1;
+    state = state.copyWith(daysLeft: next);
   }
 
   void _scheduleLadder(DoseSlot slot, {DateTime? now}) {

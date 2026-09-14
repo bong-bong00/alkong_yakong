@@ -15,7 +15,6 @@ import 'package:alkong_yakong/features/medication/domain/medication_models.dart'
 import 'package:alkong_yakong/features/prescription/presentation/screens/prescription_screen.dart';
 import 'package:alkong_yakong/features/profile/presentation/screens/account_screen.dart';
 import 'package:alkong_yakong/features/reminder/presentation/screens/lock_screen_alert.dart';
-import 'package:alkong_yakong/features/medicines/domain/drug_info.dart';
 import 'package:alkong_yakong/features/medicines/presentation/screens/drug_detail_screen.dart';
 import 'package:alkong_yakong/features/medicines/presentation/screens/my_medicines_screen.dart';
 import 'package:alkong_yakong/features/medicines/presentation/screens/pharmacist_chat_screen.dart';
@@ -53,7 +52,7 @@ void main() {
     '약 넣기 방법 고르기 (07)': () => AddMedicineScreen(onPick: (_) {}),
     '손으로 적기 (10)': () => const ManualMedicineScreen(),
     '내 약 목록 (20)': () => const MyMedicinesScreen(),
-    '약 설명 (21)': () => const DrugDetailScreen(drug: DrugInfo.metformin),
+    '약 설명 (21)': () => const DrugDetailScreen(medicineCode: '200701021'),
     'AI 약사 상담 (22)': () => const PharmacistChatScreen(),
     '심박수 관리 (24)': () => const HeartScreen(),
     '폴라 센서 (25)': () => const PolarScreen(data: HeartData.demo),

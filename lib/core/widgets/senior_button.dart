@@ -25,6 +25,9 @@ enum SeniorButtonKind {
 
   /// 어두운 화면(카메라) 위의 보조 액션.
   dark,
+
+  /// 예전 화면 호환. secondary와 같다.
+  outline,
 }
 
 /// 시니어 규격 버튼.
@@ -80,6 +83,7 @@ class _SeniorButtonState extends State<SeniorButton> {
       case SeniorButtonKind.danger:
         return _pressed ? AppColors.dangerPressed : AppColors.danger;
       case SeniorButtonKind.secondary:
+      case SeniorButtonKind.outline:
         return _pressed ? AppColors.secondaryPressed : AppColors.secondaryFill;
       case SeniorButtonKind.neutral:
       case SeniorButtonKind.dangerQuiet:
@@ -97,6 +101,7 @@ class _SeniorButtonState extends State<SeniorButton> {
       case SeniorButtonKind.dangerQuiet:
         return AppColors.danger;
       case SeniorButtonKind.secondary:
+      case SeniorButtonKind.outline:
       case SeniorButtonKind.neutral:
         return AppColors.textBody;
       case SeniorButtonKind.dark:
@@ -121,6 +126,7 @@ class _SeniorButtonState extends State<SeniorButton> {
   BoxBorder? get _border {
     switch (widget.kind) {
       case SeniorButtonKind.secondary:
+      case SeniorButtonKind.outline:
         return Border.all(color: AppColors.strongLine, width: 2);
       case SeniorButtonKind.dark:
         return Border.all(color: const Color(0x80FFFFFF), width: 2);

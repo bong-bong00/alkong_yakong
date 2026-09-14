@@ -1,4 +1,5 @@
 import 'package:alkong_yakong/core/theme/app_theme.dart';
+import 'package:alkong_yakong/features/dashboard/presentation/screens/patient_home_screen.dart';
 import 'package:alkong_yakong/features/medication/application/medication_controller.dart';
 import 'package:alkong_yakong/features/medication/domain/medication_models.dart';
 import 'package:alkong_yakong/features/medication/presentation/widgets/dose_guard_sheets.dart';
@@ -10,7 +11,13 @@ void main() {
   group('복약 체크 판정', () {
     late ProviderContainer container;
 
-    setUp(() => container = ProviderContainer());
+    setUp(
+      () => container = ProviderContainer(
+        overrides: [
+          medicationProvider.overrideWith(_TestMedicationController.new),
+        ],
+      ),
+    );
     tearDown(() => container.dispose());
 
     MedicationController controller() =>
@@ -22,15 +29,19 @@ void main() {
         controller().take(DoseSlot.dinner, now: now),
         DoseCheckOutcome.recorded,
       );
-      expect(container.read(medicationProvider).doseOf(DoseSlot.dinner).taken,
-          isTrue);
+      expect(
+        container.read(medicationProvider).doseOf(DoseSlot.dinner).taken,
+        isTrue,
+      );
     });
 
     test('두 번째로 누르면 기록하지 않고 차단한다 (5f)', () {
       final now = DoseSlot.dinner.todayAt(DateTime.now());
       controller().take(DoseSlot.dinner, now: now);
-      final takenAt =
-          container.read(medicationProvider).doseOf(DoseSlot.dinner).takenAt;
+      final takenAt = container
+          .read(medicationProvider)
+          .doseOf(DoseSlot.dinner)
+          .takenAt;
 
       expect(
         controller().take(DoseSlot.dinner, now: now),
@@ -51,17 +62,22 @@ void main() {
         controller().take(DoseSlot.dinner, now: late),
         DoseCheckOutcome.tooLate,
       );
-      expect(container.read(medicationProvider).doseOf(DoseSlot.dinner).taken,
-          isFalse);
+      expect(
+        container.read(medicationProvider).doseOf(DoseSlot.dinner).taken,
+        isFalse,
+      );
 
       // "그래도 먹었어요"를 고르면 그때 기록된다.
       controller().takeAnyway(DoseSlot.dinner, now: late);
-      expect(container.read(medicationProvider).doseOf(DoseSlot.dinner).taken,
-          isTrue);
+      expect(
+        container.read(medicationProvider).doseOf(DoseSlot.dinner).taken,
+        isTrue,
+      );
     });
 
     test('되돌리면 기록과 보호자 알림이 함께 취소된다 (4b)', () {
-      controller().take(DoseSlot.dinner);
+      final now = DoseSlot.dinner.todayAt(DateTime.now());
+      controller().take(DoseSlot.dinner, now: now);
       expect(controller().guardianNotifiedFor(DoseSlot.dinner), isTrue);
 
       controller().undo(DoseSlot.dinner);
@@ -119,4 +135,73 @@ void main() {
     expect(undone, isFalse);
     expect(find.text('알겠어요'), findsNothing);
   });
+
+  testWidgets('약 상세에서 돌아오면 오늘 홈의 스크롤 위치가 유지된다', (tester) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          medicationProvider.overrideWith(_TestMedicationController.new),
+        ],
+        child: MaterialApp(
+          theme: AppTheme.build(),
+          home: Builder(
+            builder: (context) => Scaffold(
+              body: PatientHomeScreen(
+                onOpenDrug: (_) => Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => const Scaffold(body: Text('약 상세')),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    final scrollFinder = find.byType(SingleChildScrollView);
+    await tester.drag(scrollFinder, const Offset(0, -100));
+    await tester.pumpAndSettle();
+    final before = tester
+        .state<ScrollableState>(find.byType(Scrollable).first)
+        .position
+        .pixels;
+    expect(before, greaterThan(0));
+
+    await tester.tap(find.text('테스트정'));
+    await tester.pumpAndSettle();
+    expect(find.text('약 상세'), findsOneWidget);
+
+    Navigator.of(tester.element(find.text('약 상세'))).pop();
+    await tester.pumpAndSettle();
+    final after = tester
+        .state<ScrollableState>(find.byType(Scrollable).first)
+        .position
+        .pixels;
+
+    expect(after, before);
+  });
+}
+
+class _TestMedicationController extends MedicationController {
+  @override
+  TodayMedication build() {
+    return const TodayMedication(
+      doses: [
+        DoseEntry(
+          slot: DoseSlot.dinner,
+          medicines: [Medicine(ingredient: '테스트정', amount: '1알')],
+        ),
+      ],
+      guardianRelation: '가족',
+      guardianName: '테스트',
+      heartRate: 72,
+      heartRateNormal: true,
+    );
+  }
 }

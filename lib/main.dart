@@ -14,15 +14,17 @@ import 'features/dashboard/presentation/screens/home_screen.dart';
 import 'features/drug_explain/drug_explain_screen.dart';
 import 'features/dur_analysis/presentation/screens/dur_analysis_screen.dart';
 import 'features/medication/application/medication_controller.dart';
+import 'features/medicines/presentation/screens/drug_detail_screen.dart';
+import 'features/medicines/presentation/screens/my_medicines_screen.dart';
 import 'features/onboarding/presentation/screens/first_run_screen.dart';
+import 'features/prescription/presentation/screens/manual_medicine_screen.dart';
 import 'features/prescription/presentation/screens/prescription_screen.dart';
 import 'features/reminder/presentation/screens/lock_screen_alert.dart';
 
 /// 화면을 둘러보는 동안 로그인을 건너뛴다.
 ///
-/// **지금은 켜져 있다** — 앱을 실행하면 바로 오늘 홈으로 들어간다.
-/// 화면을 훑어볼 때만 로그인을 건너뛴다.
-/// `flutter run --dart-define=SKIP_LOGIN=true` 로 켠다.
+/// 기본은 로그인부터 시작한다.
+/// 화면만 훑어볼 때는 `flutter run --dart-define=SKIP_LOGIN=true` 로 켠다.
 const bool kSkipLogin = bool.fromEnvironment('SKIP_LOGIN');
 
 final _router = GoRouter(
@@ -42,6 +44,20 @@ final _router = GoRouter(
     GoRoute(
       path: '/prescription',
       builder: (context, state) => const PrescriptionScreen(),
+    ),
+    GoRoute(
+      path: '/manual-medicine',
+      builder: (context, state) => const ManualMedicineScreen(),
+    ),
+    GoRoute(
+      path: '/my-medicines',
+      builder: (context, state) => const MyMedicinesScreen(),
+    ),
+    GoRoute(
+      path: '/medicines/:code',
+      builder: (context, state) => DrugDetailScreen(
+        medicineCode: state.pathParameters['code'] ?? '',
+      ),
     ),
     GoRoute(
       path: '/dur-analysis',
@@ -112,6 +128,11 @@ class LockScreenAlertRoute extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final today = ref.watch(medicationProvider);
+    if (today.doses.isEmpty) {
+      return const Scaffold(
+        body: Center(child: Text('등록된 약이 없어요')),
+      );
+    }
     final dose = today.nextDose ?? today.doses.last;
 
     return LockScreenAlert(

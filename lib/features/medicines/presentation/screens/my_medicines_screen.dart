@@ -1,195 +1,45 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_tabler_icons/flutter_tabler_icons.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
+import '../../../../core/widgets/recovery_view.dart';
 import '../../../../core/widgets/senior_button.dart';
 import '../../../../core/widgets/senior_card.dart';
 import '../../../../core/widgets/senior_header.dart';
-import '../../../medication/application/medication_controller.dart';
-import '../../domain/drug_info.dart';
-import 'drug_detail_screen.dart';
+import '../../application/user_medicines_controller.dart';
+import '../../domain/user_medicine_models.dart';
 
-/// 20 · 내 약 목록.
-///
-/// 검색창을 두지 않는다. **지금 드시는 약**만 보여주고, 누르면 설명으로 간다.
-/// 목록 한 줄. 서버가 준 약과, 우리가 가진 설명을 짝지은 것.
-///
-/// 설명이 없는 약도 목록에는 나온다. **드시는 약을 빼놓지 않는다** —
-/// 설명이 없다고 목록에서 지우면 그 약은 없는 약이 된다.
-@immutable
-class MedicineEntry {
-  /// 서버가 준 이름. 설명이 있으면 그쪽 이름을 쓴다.
-  final String name;
-
-  /// 효능 한 줄. 없으면 빈 문자열.
-  final String effect;
-
-  /// 언제·얼마나. 없으면 빈 문자열.
-  final String schedule;
-
-  /// 눌러서 볼 설명. 없으면 null.
-  final DrugInfo? info;
-
-  const MedicineEntry({
-    required this.name,
-    required this.effect,
-    required this.schedule,
-    required this.info,
-  });
-}
-
+/// 내 약 목록 — 활성 약 종류당 1행 (서버 `/medicines`).
 class MyMedicinesScreen extends ConsumerWidget {
-  final List<DrugInfo> medicines;
-
-  /// 알림 시간 설정으로 가는 길.
-  final VoidCallback? onOpenAlarm;
-
-  /// 새 처방전 넣기.
-  final VoidCallback? onAddPrescription;
-
-  /// 지금 설정된 알림 시각 — "아침 8시, 저녁 6시".
-  final String alarmSummary;
-
-  const MyMedicinesScreen({
-    super.key,
-    this.medicines = DrugInfo.all,
-    this.onOpenAlarm,
-    this.onAddPrescription,
-    this.alarmSummary = '아침 8시, 저녁 6시',
-  });
-
-  /// 오늘 드시는 약을 모아 설명과 짝짓는다.
-  ///
-  /// 같은 약이 아침·저녁에 나와도 목록에는 한 번만 올린다.
-  List<MedicineEntry> _entries(WidgetRef ref) {
-    final today = ref.watch(medicationProvider);
-    final seen = <String>{};
-    final entries = <MedicineEntry>[];
-    final slotsOf = <String, List<String>>{};
-
-    for (final dose in today.doses) {
-      for (final medicine in dose.medicines) {
-        slotsOf.putIfAbsent(medicine.ingredient, () => []).add(dose.slot.label);
-      }
-    }
-
-    for (final dose in today.doses) {
-      for (final medicine in dose.medicines) {
-        if (!seen.add(medicine.ingredient)) continue;
-        final info = DrugInfo.find(medicine.key ?? medicine.ingredient);
-        final slots = slotsOf[medicine.ingredient] ?? const <String>[];
-        entries.add(
-          MedicineEntry(
-            name: info?.name ?? medicine.ingredient,
-            effect: medicine.effect ?? info?.effect ?? '',
-            schedule: slots.isEmpty
-                ? ''
-                : '${slots.join('·')} · ${medicine.amount}',
-            info: info,
-          ),
-        );
-      }
-    }
-
-    // 서버가 아직 아무것도 안 줬으면 넘겨받은 목록을 쓴다.
-    if (entries.isEmpty) {
-      return [
-        for (final drug in medicines)
-          MedicineEntry(
-            name: drug.name,
-            effect: drug.effect,
-            schedule: '${drug.when.replaceAll(' 드세요.', '')} · ${drug.dosage}',
-            info: drug,
-          ),
-      ];
-    }
-    return entries;
-  }
+  const MyMedicinesScreen({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final entries = _entries(ref);
+    final medicines = ref.watch(userMedicinesProvider);
+
     return Scaffold(
       backgroundColor: AppColors.bg,
       body: Column(
         children: [
-          const SeniorBackHeader(title: '내 약 목록'),
+          SeniorBackHeader(title: '내 약 목록', onBack: () => context.pop()),
           Expanded(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.fromLTRB(20, 16, 20, 28),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Text(
-                    '지금 드시는 약 ${entries.length}가지 · 눌러서 설명 보기',
-                    style: AppText.label(
-                      size: 17.5,
-                      color: AppColors.textSecondary,
-                    ),
-                  ),
-                  const SizedBox(height: 14),
-                  for (final entry in entries) ...[
-                    _MedicineCard(
-                      entry: entry,
-                      onTap: entry.info == null
-                          ? null
-                          : () => Navigator.of(context).push(
-                                MaterialPageRoute(
-                                  builder: (_) =>
-                                      DrugDetailScreen(drug: entry.info!),
-                                ),
-                              ),
-                    ),
-                    const SizedBox(height: 10),
-                  ],
-                  SeniorCard(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 20,
-                      vertical: 17,
-                    ),
-                    onTap: onOpenAlarm,
-                    child: Row(
-                      children: [
-                        const ExcludeSemantics(
-                          child: Icon(
-                            TablerIcons.alarm,
-                            size: 26,
-                            color: AppColors.point,
-                          ),
-                        ),
-                        const SizedBox(width: 14),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                '알림 시간 바꾸기',
-                                style: AppText.cardTitle(size: 19),
-                              ),
-                              Text(
-                                '지금 · $alarmSummary',
-                                style: AppText.caption(size: 17),
-                              ),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        const SeniorChevron(),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  SeniorButton(
-                    label: '새 처방전 넣기',
-                    kind: SeniorButtonKind.secondary,
-                    minHeight: 66,
-                    fontSize: 21,
-                    onPressed: onAddPrescription,
-                  ),
-                ],
+            child: medicines.when(
+              loading: () => const Center(child: CircularProgressIndicator()),
+              error: (error, _) => RecoveryView(
+                title: '약 목록을\n불러오지 못했어요',
+                reassurance: '인터넷이나 서버가 잠깐 끊겼을 수 있어요. ',
+                reassuranceEmphasis: '고장이 아니니 걱정하지 마세요.',
+                steps: const ['잠시 후 다시 시도해 보세요', '와이파이나 데이터 연결을 확인해 보세요'],
+                actionLabel: '다시 불러오기',
+                onAction: () =>
+                    ref.read(userMedicinesProvider.notifier).refresh(),
+                stillWorksTitle: '지금도 할 수 있는 것',
+                stillWorksBody: '오늘 홈에서 복약 기록과 처방전 사진 찍기는 그대로 쓸 수 있어요.',
               ),
+              data: (items) => _MedicineList(items: items),
             ),
           ),
         ],
@@ -198,64 +48,148 @@ class MyMedicinesScreen extends ConsumerWidget {
   }
 }
 
+class _MedicineList extends StatelessWidget {
+  final List<UserMedicine> items;
+
+  const _MedicineList({required this.items});
+
+  @override
+  Widget build(BuildContext context) {
+    if (items.isEmpty) {
+      return Padding(
+        padding: const EdgeInsets.fromLTRB(20, 24, 20, 28),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            SeniorCard(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                children: [
+                  const Icon(
+                    TablerIcons.pill,
+                    size: 42,
+                    color: AppColors.point,
+                  ),
+                  const SizedBox(height: 14),
+                  Text('등록된 약이 없어요', style: AppText.cardTitle(size: 22)),
+                  const SizedBox(height: 8),
+                  Text(
+                    '처방전 사진을 찍으면 약을 확인한 뒤 등록할 수 있어요.',
+                    textAlign: TextAlign.center,
+                    style: AppText.body(color: AppColors.textSecondary),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+            SeniorButton(
+              label: '처방전 사진 찍기',
+              onPressed: () => context.push('/prescription'),
+            ),
+          ],
+        ),
+      );
+    }
+
+    final active = items.where((item) => item.status == 'active').toList();
+    final past = items.where((item) => item.status != 'active').toList();
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(20, 16, 20, 28),
+      children: [
+        Text(
+          '등록한 약 ${items.length}가지',
+          style: AppText.body(size: 19, color: AppColors.textSecondary),
+        ),
+        const SizedBox(height: 14),
+        if (active.isNotEmpty) ...[
+          Text('현재 복용 중', style: AppText.cardTitle(size: 21)),
+          const SizedBox(height: 10),
+          for (final med in active) ...[
+            _MedicineCard(medicine: med),
+            const SizedBox(height: 10),
+          ],
+        ],
+        if (past.isNotEmpty) ...[
+          if (active.isNotEmpty) const SizedBox(height: 12),
+          Text('이전에 등록한 약', style: AppText.cardTitle(size: 21)),
+          const SizedBox(height: 10),
+          for (final med in past) ...[
+            _MedicineCard(medicine: med),
+            const SizedBox(height: 10),
+          ],
+        ],
+        const SizedBox(height: 18),
+        SeniorButton(
+          label: '새 처방전 넣기',
+          onPressed: () => context.push('/prescription'),
+        ),
+      ],
+    );
+  }
+}
+
 class _MedicineCard extends StatelessWidget {
-  final MedicineEntry entry;
+  final UserMedicine medicine;
 
-  /// 설명이 없으면 null — 눌러도 열 것이 없다.
-  final VoidCallback? onTap;
-
-  const _MedicineCard({required this.entry, required this.onTap});
+  const _MedicineCard({required this.medicine});
 
   @override
   Widget build(BuildContext context) {
     return SeniorCard(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
-      onTap: onTap,
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+      onTap: () => context.push('/medicines/${medicine.medicineCode}'),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          ExcludeSemantics(
-            child: Container(
-              width: 60,
-              height: 60,
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                color: AppColors.bg,
-                shape: BoxShape.circle,
-                border: Border.all(color: AppColors.border, width: 2),
-              ),
-              child: const Icon(
-                TablerIcons.pill,
-                size: 28,
-                color: AppColors.inactive,
-              ),
-            ),
+          Expanded(child: _MedicineSummary(medicine: medicine)),
+          const SizedBox(width: 12),
+          Text(
+            medicine.dosageLabel,
+            style: AppText.cardTitle(size: 19, color: AppColors.textSecondary),
           ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(entry.name, style: AppText.cardTitle(size: 20)),
-                if (entry.effect.isNotEmpty)
-                  Text(
-                    entry.effect,
-                    style: AppText.label(size: 17.5, color: AppColors.point),
-                  ),
-                if (entry.schedule.isNotEmpty)
-                  Text(entry.schedule, style: AppText.caption(size: 16.5)),
-                // 설명이 없다고 목록에서 빼지 않는다. 대신 없다고 적는다.
-                if (entry.info == null)
-                  Text(
-                    '설명은 아직 준비 중이에요',
-                    style: AppText.caption(size: 16.5),
-                  ),
-              ],
-            ),
-          ),
-          const SizedBox(width: 10),
-          if (entry.info != null) const SeniorChevron(),
+          const SizedBox(width: 4),
+          const SeniorChevron(),
         ],
       ),
+    );
+  }
+}
+
+class _MedicineSummary extends StatelessWidget {
+  final UserMedicine medicine;
+
+  const _MedicineSummary({required this.medicine});
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          medicine.displayName,
+          style: AppText.label(size: 20, color: AppColors.textBody),
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+        ),
+        if (medicine.ingredientLabel.isNotEmpty) ...[
+          const SizedBox(height: 4),
+          Text(
+            '주성분: ${medicine.ingredientLabel}',
+            style: AppText.caption(color: AppColors.textSecondary),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ],
+        if (medicine.cardSpoken != null) ...[
+          const SizedBox(height: 4),
+          Text(
+            medicine.cardSpoken!,
+            style: AppText.caption(color: AppColors.textSecondary),
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ],
+      ],
     );
   }
 }

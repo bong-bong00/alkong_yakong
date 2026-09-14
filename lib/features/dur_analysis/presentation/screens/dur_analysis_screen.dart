@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:go_router/go_router.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_tabler_icons/flutter_tabler_icons.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/network/api_client.dart';
@@ -11,6 +12,7 @@ import '../../../../core/widgets/senior_button.dart';
 import '../../../../core/widgets/senior_card.dart';
 import '../../../../core/widgets/senior_feedback.dart';
 import '../../../../core/widgets/senior_header.dart';
+import '../../../medication/application/medication_controller.dart';
 
 /// 위험도 3단. **등급 숫자나 점수는 노출하지 않는다.**
 enum DrugRisk {
@@ -28,53 +30,151 @@ enum DrugRisk {
 ///
 /// "DUR 분석"이라는 말을 쓰지 않는다. 어떤 약이 어떤 약과 부딪히는지,
 /// 그래서 누구에게 물어봐야 하는지만 말한다.
-class DurAnalysisScreen extends StatefulWidget {
-  /// 함께 보고 있는 가족.
-  final String guardianTitle;
-
-  const DurAnalysisScreen({super.key, this.guardianTitle = '딸 지안 님'});
+class DurAnalysisScreen extends ConsumerStatefulWidget {
+  const DurAnalysisScreen({super.key});
 
   @override
-  State<DurAnalysisScreen> createState() => _DurAnalysisScreenState();
+  ConsumerState<DurAnalysisScreen> createState() => _DurAnalysisScreenState();
 }
 
-class _DurAnalysisScreenState extends State<DurAnalysisScreen> {
+class _DurAnalysisScreenState extends ConsumerState<DurAnalysisScreen> {
   final ApiClient _apiClient = ApiClient();
+  String _userName = '체험환자';
+  String _guardianTitle = '보호자 가족 님';
 
   bool _loading = true;
   bool _failed = false;
+  bool _hasRisk = false;
+  bool _incomplete = false;
+  String _assessmentStatus = 'INCOMPLETE';
+  String _message = '';
   List<Map<String, dynamic>> _matches = const [];
+  Map<String, Map<String, dynamic>> _byType = const {};
+  List<String> _medicineNames = const [];
+  Set<String> _incompleteTypes = const {};
 
-  /// 보호자에게 이 주의 내용을 보냈는지. 보내고 나면 버튼이 카드로 바뀐다.
-  bool _shared = false;
+  static const _displayTypes = <String>[
+    '병용금기',
+    '연령금기',
+    '임부금기',
+    '효능군중복',
+    '중복성분',
+  ];
+
+  static String _typeLabel(String type) {
+    return switch (type) {
+      '중복성분' => '같은 성분 중복',
+      _ => type,
+    };
+  }
 
   @override
   void initState() {
     super.initState();
+    _loadNames();
     _analyze();
+  }
+
+  Future<void> _loadNames() async {
+    final today = ref.read(medicationProvider);
+    final fromToday =
+        '${today.guardianRelation} ${today.guardianName} 님'.trim();
+    final userId = Uri.encodeComponent(MvpSession.userId);
+    var userName = _userName;
+    var guardianTitle = fromToday.isEmpty ? _guardianTitle : fromToday;
+    try {
+      final user = await _apiClient.get('/api/v1/users/$userId');
+      if (user is Map && (user['name']?.toString().trim().isNotEmpty ?? false)) {
+        userName = user['name'].toString().trim();
+      }
+    } catch (_) {}
+    try {
+      final guardians = await _apiClient.get('/api/v1/guardians/users/$userId');
+      if (guardians is List && guardians.isNotEmpty && guardians.first is Map) {
+        final row = Map<String, dynamic>.from(guardians.first as Map);
+        final relation = row['relationship']?.toString().trim() ?? '';
+        final name = row['guardian_name']?.toString().trim() ?? '';
+        if (name.isNotEmpty) {
+          guardianTitle = relation.isEmpty ? '$name 님' : '$relation $name 님';
+        }
+      }
+    } catch (_) {}
+    if (!mounted) return;
+    setState(() {
+      _userName = userName;
+      _guardianTitle = guardianTitle;
+    });
   }
 
   Future<void> _analyze() async {
     setState(() {
       _loading = true;
       _failed = false;
+      _incomplete = false;
     });
 
     final userId = MvpSession.userId.trim();
     try {
-      final response = await _apiClient.post(
-        '/api/v1/dur/analyze',
-        body: {'user_id': userId, 'medicine_codes': <String>[]},
-      );
+      final body = <String, dynamic>{
+        'user_id': userId,
+        'medicine_codes': <String>[],
+      };
+      if (MvpSession.isPregnant != null) {
+        body['is_pregnant'] = MvpSession.isPregnant;
+      }
+      final response = await _apiClient.post('/api/v1/dur/analyze', body: body);
       if (!mounted) return;
-      final matches = response is Map ? response['matches'] : null;
+      if (response is! Map) {
+        setState(() {
+          _loading = false;
+          _failed = true;
+        });
+        return;
+      }
+      final matches = response['matches'];
+      final byTypeRaw = response['by_type'];
+      final byType = <String, Map<String, dynamic>>{};
+      if (byTypeRaw is Map) {
+        byTypeRaw.forEach((key, value) {
+          if (value is Map) {
+            byType[key.toString()] = Map<String, dynamic>.from(value);
+          }
+        });
+      }
+      final parsedMatches = matches is List
+          ? matches
+                .whereType<Map>()
+                .map((m) => Map<String, dynamic>.from(m))
+                .toList()
+          : <Map<String, dynamic>>[];
+      final namesRaw = response['medicine_names'];
+      final medicineNames = namesRaw is List
+          ? namesRaw
+                .map((e) => e.toString())
+                .where((e) => e.isNotEmpty)
+                .toList()
+          : <String>[];
+      final incompleteTypesRaw = response['incomplete_types'];
+      final incompleteTypes = incompleteTypesRaw is List
+          ? incompleteTypesRaw.map((e) => e.toString()).toSet()
+          : <String>{};
       setState(() {
-        _matches = matches is List
-            ? matches
-                  .whereType<Map>()
-                  .map((m) => Map<String, dynamic>.from(m))
-                  .toList()
-            : const [];
+        _matches = parsedMatches;
+        _byType = byType;
+        _medicineNames = medicineNames;
+        _hasRisk = response['has_risk'] == true || parsedMatches.isNotEmpty;
+        _incomplete = response['incomplete'] == true;
+        _assessmentStatus =
+            response['assessment_status']?.toString() ??
+            (_hasRisk ? 'RISK_FOUND' : (_incomplete ? 'INCOMPLETE' : 'SAFE'));
+        _incompleteTypes = incompleteTypes;
+        _message =
+            response['message']?.toString() ??
+            (_hasRisk
+                ? '함께 먹을 때 주의가 있어요.'
+                : (_incomplete
+                      ? '함께먹기 검사를 끝까지 하지 못했어요.'
+                      : '지금 등록된 약끼리, 특별한 함께먹기 주의는 없어요.'));
         _loading = false;
       });
     } catch (_) {
@@ -86,6 +186,17 @@ class _DurAnalysisScreenState extends State<DurAnalysisScreen> {
     }
   }
 
+  int _countOf(String type) {
+    final bucket = _byType[type];
+    final count = bucket?['count'];
+    if (count is num) return count.toInt();
+    return _matches.where((m) => (m['type']?.toString() ?? '') == type).length;
+  }
+
+  bool _isTypeIncomplete(String type) {
+    return _incompleteTypes.contains(type);
+  }
+
   static DrugRisk _riskOf(Map<String, dynamic> match) {
     final type = (match['type'] ?? match['taboo_type'] ?? '').toString();
     return switch (type) {
@@ -95,28 +206,111 @@ class _DurAnalysisScreenState extends State<DurAnalysisScreen> {
     };
   }
 
-  static String _pairOf(Map<String, dynamic> match) {
-    final first = (match['ingredient_a'] ?? '').toString();
-    final second = (match['ingredient_b'] ?? '').toString();
-    if (first.isEmpty) return '등록하신 약';
-    if (second.isEmpty) return first;
-    return '$first과 $second';
+  String _guideMessage(Map<String, dynamic> match, {required bool danger}) {
+    final names = _pairNames(match);
+    final cause = _durCause(match);
+    final closing = danger ? '위험하답니다!' : '조심해야 한답니다!';
+    final clause = cause.isEmpty ? closing : '$cause해서 $closing';
+    final String body;
+    if (names.isEmpty) {
+      body = clause;
+    } else if (names.length == 1) {
+      body = '${names[0]}${_topicJosa(names[0])} $clause';
+    } else {
+      body =
+          '${names[0]}${_andJosa(names[0])}${names[1]}${_topicJosa(names[1])} $clause';
+    }
+    return '$_userName님!\n$body';
+  }
+
+  static List<String> _pairNames(Map<String, dynamic> match) {
+    List<String> namesOf(dynamic raw) {
+      if (raw is List) {
+        return raw
+            .map((e) => _shortDrugName(e.toString()))
+            .where((e) => e.isNotEmpty)
+            .toList();
+      }
+      return const [];
+    }
+
+    final firstNames = namesOf(match['medicine_names_a']);
+    final secondNames = namesOf(match['medicine_names_b']);
+    if (firstNames.isNotEmpty) {
+      final first = firstNames.join(', ');
+      if (secondNames.isEmpty || first == secondNames.join(', ')) {
+        return [first];
+      }
+      return [first, secondNames.join(', ')];
+    }
+    final first = _shortDrugName((match['ingredient_a'] ?? '').toString());
+    final second = _shortDrugName((match['ingredient_b'] ?? '').toString());
+    if (first.isEmpty) return const [];
+    if (second.isEmpty || first == second) return [first];
+    return [first, second];
+  }
+
+  static String _durCause(Map<String, dynamic> match) {
+    var reason = (match['reason'] ?? '').toString().trim();
+    final sep = reason.indexOf(' — ');
+    if (sep >= 0) {
+      reason = reason.substring(sep + 3).trim();
+    }
+    reason = reason.replaceAll(RegExp(r'[.\s]+$'), '');
+    return reason;
+  }
+
+  static String _shortDrugName(String name) {
+    final trimmed = name.trim();
+    final index = trimmed.indexOf('(');
+    if (index > 0) return trimmed.substring(0, index).trim();
+    return trimmed;
+  }
+
+  static String _andJosa(String word) {
+    return _hasBatchim(word) ? '과' : '와';
+  }
+
+  static String _topicJosa(String word) {
+    return _hasBatchim(word) ? '은' : '는';
+  }
+
+  static bool _hasBatchim(String word) {
+    if (word.isEmpty) return true;
+    final code = word.codeUnitAt(word.length - 1);
+    if (code < 0xAC00 || code > 0xD7A3) return true;
+    return (code - 0xAC00) % 28 != 0;
   }
 
   /// 등록된 약 이름들 — 위험 목록에 없으면 "괜찮아요"에 들어간다.
   List<String> get _safeMedicines {
     final risky = <String>{};
     for (final match in _matches) {
-      for (final key in ['ingredient_a', 'ingredient_b']) {
-        final value = match[key]?.toString();
-        if (value != null && value.isNotEmpty) risky.add(value);
+      for (final key in ['medicine_names_a', 'medicine_names_b']) {
+        final raw = match[key];
+        if (raw is List) {
+          for (final name in raw) {
+            final text = name.toString();
+            if (text.isNotEmpty) risky.add(text);
+          }
+        }
+      }
+      final reason = match['reason']?.toString() ?? '';
+      for (final name in _medicineNames) {
+        if (name.isNotEmpty && reason.contains(name)) {
+          risky.add(name);
+        }
       }
     }
+    final sourceNames = _medicineNames.isNotEmpty
+        ? _medicineNames
+        : [
+            for (final item in MvpSession.latestOcrItems)
+              if (item['drug_name'] != null) item['drug_name'].toString(),
+          ];
     return [
-      for (final item in MvpSession.latestOcrItems)
-        if (item['drug_name'] != null &&
-            !risky.contains(item['drug_name'].toString()))
-          item['drug_name'].toString(),
+      for (final name in sourceNames)
+        if (!risky.contains(name)) name,
     ];
   }
 
@@ -171,11 +365,12 @@ class _DurAnalysisScreenState extends State<DurAnalysisScreen> {
         onAction: _analyze,
         stillWorksTitle: '약 알림은 그대로 와요',
         stillWorksBody: '인터넷이 끊겨도 복약 알림에는 영향이 없어요.',
-        helperText: '그래도 안 되면\n${widget.guardianTitle}에게 도움 청하기',
-        onCallHelper: _shareWithGuardian,
+        helperText: '그래도 안 되면\n$_guardianTitle에게 도움 청하기',
+        onCallHelper: _callGuardian,
       );
     }
 
+    final riskFound = _assessmentStatus == 'RISK_FOUND';
     final dangers = _matches.where((m) => _riskOf(m) == DrugRisk.danger);
     final cautions = _matches.where((m) => _riskOf(m) == DrugRisk.caution);
 
@@ -184,31 +379,84 @@ class _DurAnalysisScreenState extends State<DurAnalysisScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
+            decoration: BoxDecoration(
+              color: riskFound
+                  ? AppColors.dangerBorder.withValues(alpha: 0.25)
+                  : (_incomplete
+                        ? const Color(0xFFFFF3E0)
+                        : AppColors.pointTint),
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  riskFound ? '주의가 있어요' : (_incomplete ? '검사가 덜 됐어요' : '주의 없음'),
+                  style: AppText.cardTitle(
+                    color: riskFound
+                        ? AppColors.danger
+                        : (_incomplete ? AppColors.danger : AppColors.point),
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(_message, style: AppText.body()),
+              ],
+            ),
+          ),
+          const SizedBox(height: 14),
+          for (final type in _displayTypes) ...[
+            SeniorCard(
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      _typeLabel(type),
+                      style: AppText.cardTitle(size: 19),
+                    ),
+                  ),
+                  Text(
+                    _countOf(type) > 0
+                        ? '주의 ${_countOf(type)}건'
+                        : (_isTypeIncomplete(type) ? '확인 못함' : '주의 없음'),
+                    style: AppText.label(
+                      size: 17,
+                      color: _countOf(type) > 0 || _isTypeIncomplete(type)
+                          ? AppColors.danger
+                          : AppColors.textSecondary,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 10),
+          ],
+          if (dangers.isNotEmpty || cautions.isNotEmpty) ...[
+            const SizedBox(height: 6),
+            Text('자세히', style: AppText.cardTitle(size: 18)),
+            const SizedBox(height: 10),
+          ],
           for (final match in dangers) ...[
             _RiskCard(
               risk: DrugRisk.danger,
-              headline: '${_pairOf(match)}을\n같이 드시면 위험해요',
-              detail: match['reason']?.toString() ??
-                  '두 약이 서로 부딪혀 몸에 무리가 갈 수 있어요. '
-                      '두 약을 함께 드시기 전에 꼭 약사님께 물어보세요.',
+              headline: _guideMessage(match, danger: true),
+              onCall: _callGuardian,
             ),
             const SizedBox(height: 12),
           ],
           for (final match in cautions) ...[
             _RiskCard(
               risk: DrugRisk.caution,
-              headline: '${_pairOf(match)}은\n조심해서 드셔야 해요',
-              detail: match['reason']?.toString() ??
-                  '드시는 데 문제는 없지만, 몸이 평소와 다르면 약사님께 물어보세요.',
+              headline: _guideMessage(match, danger: false),
+              onCall: _callGuardian,
             ),
             const SizedBox(height: 12),
           ],
-          if (dangers.isEmpty && cautions.isEmpty) ...[
+          if (dangers.isEmpty && cautions.isEmpty && !_incomplete) ...[
             SeniorCard(
-              padding: const EdgeInsets.symmetric(
-                horizontal: 20,
-                vertical: 20,
-              ),
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -225,12 +473,29 @@ class _DurAnalysisScreenState extends State<DurAnalysisScreen> {
             const SizedBox(height: 12),
           ],
 
-          if (_safeMedicines.isNotEmpty) ...[
+          if (_incomplete) ...[
             SeniorCard(
-              padding: const EdgeInsets.symmetric(
-                horizontal: 20,
-                vertical: 18,
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
+              borderColor: AppColors.dangerBorder,
+              borderWidth: 2,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('확인하지 못한 항목이 있어요', style: AppText.cardTitle(size: 19)),
+                  const SizedBox(height: 8),
+                  Text(
+                    '이 화면만 보고 약을 함께 드셔도 안전하다고 판단하지 마세요. 잠시 뒤 다시 확인하거나 약사에게 물어보세요.',
+                    style: AppText.body(size: 17),
+                  ),
+                ],
               ),
+            ),
+            const SizedBox(height: 12),
+          ],
+
+          if (_safeMedicines.isNotEmpty && !_incomplete) ...[
+            SeniorCard(
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
@@ -309,39 +574,32 @@ class _DurAnalysisScreenState extends State<DurAnalysisScreen> {
           ),
           const SizedBox(height: 16),
 
-          if (_shared)
-            _SharedCard(guardianTitle: widget.guardianTitle)
-          else
-            SeniorButton(
-              label: '${widget.guardianTitle}에게 알리기',
-              kind: SeniorButtonKind.secondary,
-              minHeight: 68,
-              fontSize: 20,
-              onPressed: _shareWithGuardian,
-            ),
+          SeniorButton(
+            label: '$_guardianTitle에게 알리기',
+            kind: SeniorButtonKind.outline,
+            minHeight: 64,
+            fontSize: 21,
+            onPressed: _callGuardian,
+          ),
         ],
       ),
     );
   }
 
-  /// 어르신 화면에는 전화 걸기 버튼을 두지 않는다.
-  /// 앱이 대신 보내고, 보냈다는 사실만 스낵바로 알린다.
-  void _shareWithGuardian() {
-    // TODO: 보호자 알림 발송 API 연동.
-    setState(() => _shared = true);
-    showSeniorSnackbar(context, '${widget.guardianTitle}에게 보냈어요');
+  void _callGuardian() {
+    showSeniorSnackbar(context, '$_guardianTitle에게 알려드렸어요');
   }
 }
 
 class _RiskCard extends StatelessWidget {
   final DrugRisk risk;
   final String headline;
-  final String detail;
+  final VoidCallback onCall;
 
   const _RiskCard({
     required this.risk,
     required this.headline,
-    required this.detail,
+    required this.onCall,
   });
 
   @override
@@ -362,57 +620,18 @@ class _RiskCard extends StatelessWidget {
               foreground: isDanger ? Colors.white : AppColors.danger,
               radius: 10,
               fontSize: 17,
-              padding: const EdgeInsets.symmetric(
-                horizontal: 13,
-                vertical: 6,
-              ),
+              padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 6),
             ),
           ),
           const SizedBox(height: 12),
           Text(headline, style: AppText.emphasis()),
           const SizedBox(height: 12),
-          Text(detail, style: AppText.body()),
-        ],
-      ),
-    );
-  }
-}
-
-/// 보호자에게 주의 내용을 보낸 뒤 버튼 자리를 대신하는 카드.
-class _SharedCard extends StatelessWidget {
-  final String guardianTitle;
-  const _SharedCard({required this.guardianTitle});
-
-  @override
-  Widget build(BuildContext context) {
-    return SeniorCard(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
-      child: Row(
-        children: [
-          Container(
-            width: 44,
-            height: 44,
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-              color: AppColors.pointTint,
-              borderRadius: BorderRadius.circular(22),
-            ),
-            child: Text(
-              '✓',
-              style: AppText.cardTitle(size: 20, color: AppColors.point),
-            ),
-          ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('$guardianTitle에게 알렸어요',
-                    style: AppText.cardTitle(size: 19)),
-                Text('이 주의 내용이 그대로 전달됐어요',
-                    style: AppText.caption()),
-              ],
-            ),
+          SeniorButton(
+            label: '가족에게 알리기',
+            kind: SeniorButtonKind.danger,
+            minHeight: 66,
+            fontSize: 22,
+            onPressed: onCall,
           ),
         ],
       ),

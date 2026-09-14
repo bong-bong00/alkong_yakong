@@ -5,6 +5,7 @@ from fastapi import APIRouter, HTTPException
 from app.database import get_connection
 from app.models.schemas import UserCreate
 from app.models.response_schemas import UserCreateResponse, UserResponse
+from app.services.user_medicines_service import get_user_medicine, get_user_medicines
 
 
 router = APIRouter(prefix="/api/v1/users", tags=["Users"])
@@ -67,6 +68,18 @@ def get_users():
         ]
     finally:
         conn.close()
+
+
+@router.get("/{user_id}/medicines")
+def user_medicines(user_id: str):
+    """현재·과거 내 약 보관 목록 (약 종류당 1행). 오늘 차는 /today-medicines."""
+    return get_user_medicines(user_id)
+
+
+@router.get("/{user_id}/medicines/{medicine_code}")
+def user_medicine_detail(user_id: str, medicine_code: str):
+    """내 약 한 종류 상세 (쉬운말·주의 포함)."""
+    return get_user_medicine(user_id, medicine_code)
 
 
 @router.get("/{user_id}", response_model=UserResponse)

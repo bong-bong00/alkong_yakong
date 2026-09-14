@@ -16,6 +16,7 @@ from app.services.mfds_drug_permission.client import (
     fetch_permission_list_page,
 )
 from app.services.mfds_drug_permission.db import (
+    backfill_plain_texts,
     count_stats,
     find_permission_product,
     get_permission_connection,
@@ -103,7 +104,7 @@ def sync_permission_details(
             item_seq = row["item_seq"]
             item_name = row["item_name"]
             try:
-                detail = fetch_permission_detail(item_name)
+                detail = fetch_permission_detail(item_name, item_seq=item_seq)
                 if detail:
                     # Prefer matching the same item_seq when API returns one.
                     if str(detail.get("ITEM_SEQ") or "") != str(item_seq):
@@ -264,7 +265,7 @@ def _detail_one(conn: Any, item: dict[str, Any], log: ProgressCb) -> bool:
     if not item_seq or not item_name:
         return False
     try:
-        detail = fetch_permission_detail(item_name)
+        detail = fetch_permission_detail(item_name, item_seq=item_seq)
     except Exception as error:
         log(f"detail fail {item_name}: {type(error).__name__}")
         return False
@@ -280,7 +281,7 @@ def ensure_detail_for_product(item_seq: str, item_name: str) -> bool:
     """Fetch and cache one product detail on demand."""
     initialize_permission_db()
     try:
-        detail = fetch_permission_detail(item_name)
+        detail = fetch_permission_detail(item_name, item_seq=item_seq)
     except Exception:
         return False
     if not detail:
@@ -292,6 +293,43 @@ def ensure_detail_for_product(item_seq: str, item_name: str) -> bool:
         return True
     finally:
         conn.close()
+
+
+def refresh_all_product_details(*, sleep_seconds: float = 0.25) -> dict[str, Any]:
+    """미러 전 제품의 허가 상세를 다시 받아 효능·용법·주의를 현재 파서로 저장한다."""
+    initialize_permission_db()
+    conn = get_permission_connection()
+    fetched = 0
+    failed: list[str] = []
+    try:
+        rows = conn.execute(
+            "SELECT item_seq, item_name FROM products ORDER BY item_name"
+        ).fetchall()
+        for row in rows:
+            item_seq = str(row["item_seq"] or "")
+            item_name = str(row["item_name"] or "")
+            try:
+                detail = fetch_permission_detail(item_name, item_seq=item_seq)
+            except Exception:
+                detail = None
+            if not detail:
+                failed.append(item_name)
+            else:
+                update_detail_item(conn, item_seq, detail)
+                conn.commit()
+                fetched += 1
+            if sleep_seconds:
+                time.sleep(sleep_seconds)
+        backfill_plain_texts(conn)
+    finally:
+        conn.close()
+    stats = count_stats()
+    return {
+        "fetched": fetched,
+        "failed_count": len(failed),
+        "failed_names": failed,
+        **stats,
+    }
 
 
 def _ocr_name_query_variants(name: str, *, similar: bool = False) -> list[str]:

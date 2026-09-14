@@ -124,8 +124,13 @@ class FirstRunScreen extends StatelessWidget {
               ),
               const SizedBox(height: 22),
 
-              // 지금 안 해도 된다는 말을 버튼 안에 넣는다.
-              // 따로 떨어진 회색 안내문은 읽히지 않는다.
+              SeniorTextButton(
+                label: '약 이름을 손으로 적을게요',
+                color: AppColors.point,
+                fontSize: 19,
+                onPressed: () => context.push('/manual-medicine'),
+              ),
+              const SizedBox(height: 10),
               SeniorButton(
                 label: '건너뛰기',
                 subLabel: '나중에 넣어도 됩니다',

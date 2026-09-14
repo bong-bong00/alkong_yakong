@@ -29,6 +29,8 @@ class OCRMedicineItem(BaseModel):
     ingredient: Optional[str] = None
     dosage: Optional[str] = None
     unit: Optional[str] = None
+    dose_amount: Optional[str] = None
+    dose_unit: Optional[str] = None
     frequency_per_day: Optional[int] = None
     times_per_take: Optional[int] = None
     duration_days: Optional[int] = None
@@ -53,14 +55,21 @@ class PrescriptionOCRRequest(BaseModel):
 class PrescriptionConfirmItem(BaseModel):
     medicine_code: str
     drug_name: str
+    ocr_drug_name_raw: Optional[str] = None
+    ocr_field_confidences: dict = Field(default_factory=dict)
+    dosage_form: Optional[str] = None
+    administration_route: Optional[str] = None
     dosage: Optional[str] = None
     unit: Optional[str] = None
+    dose_amount: Optional[str] = None
+    dose_unit: Optional[str] = None
     frequency_per_day: Optional[int] = None
     times_per_take: Optional[int] = None
     duration_days: Optional[int] = None
     administration_times: List[str] = Field(default_factory=list)
     match_status: Optional[str] = None
     easy_explanation: Optional[str] = None
+    short_explanation: Optional[str] = None
     warning_note: Optional[str] = None
 
 
@@ -71,6 +80,7 @@ class PrescriptionConfirmRequest(BaseModel):
     pharmacy_name: Optional[str] = None
     prescribed_date: Optional[str] = None
     expire_date: Optional[str] = None
+    ocr_text: Optional[str] = None
 
 
 class DurAnalyzeRequest(BaseModel):

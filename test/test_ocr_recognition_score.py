@@ -1,5 +1,10 @@
 from app.services.ocr.parser import measure_field_coverage
-from app.services.prescription_service import _druglike_misses, _user_readiness
+from app.models.schemas import OCRMedicineItem
+from app.services.prescription_service import (
+    _druglike_misses,
+    _ocr_field_confidences,
+    _user_readiness,
+)
 
 
 def test_coverage_excludes_hospital_pharmacy_date():
@@ -102,3 +107,30 @@ def test_four_matched_drugs_are_one_hundred():
     result = _user_readiness(matched)
     assert result["pct"] == 100
     assert result["label"] == "good"
+
+
+def test_ocr_field_confidence_uses_real_clova_values():
+    result = _ocr_field_confidences(
+        OCRMedicineItem(
+            drug_name="아디팜정",
+            dosage="0.50",
+            frequency_per_day=3,
+            duration_days=7,
+        ),
+        raw_name="아디팜정",
+        ocr_trace={
+            "fields": [
+                {"text": "아디팜정", "confidence": 0.97},
+                {"text": "0.50", "confidence": 0.88},
+                {"text": "3회", "confidence": 0.91},
+                {"text": "7일", "confidence": 0.89},
+            ]
+        },
+    )
+
+    assert result == {
+        "drug_name": 97,
+        "dose_amount": 88,
+        "frequency_per_day": 91,
+        "duration_days": 89,
+    }

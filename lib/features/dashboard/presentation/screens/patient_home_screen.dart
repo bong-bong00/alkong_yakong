@@ -149,9 +149,7 @@ class _PatientHomeScreenState extends ConsumerState<PatientHomeScreen> {
 
   void _snooze(DoseSlot slot) {
     final until = ref.read(medicationProvider.notifier).snooze(slot);
-    setState(
-      () => _snoozeNotice = '${DoseSlot.absoluteTime(until)}에 다시 알려드려요',
-    );
+    setState(() => _snoozeNotice = '${DoseSlot.absoluteTime(until)}에 다시 알려드려요');
   }
 
   @override
@@ -184,23 +182,95 @@ class _PatientHomeScreenState extends ConsumerState<PatientHomeScreen> {
                   _SnoozeNotice(text: _snoozeNotice!),
                   const SizedBox(height: 12),
                 ],
-                if (next != null)
+                if (today.interactionCards.isNotEmpty) ...[
+                  for (final card in today.interactionCards) ...[
+                    _InteractionPriorityCard(
+                      card: card,
+                      onOpenDrug: widget.onOpenDrug,
+                      medicines: [
+                        for (final dose in today.doses)
+                          ...dose.medicines,
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                  ],
+                ] else if ((today.interactionAlert ?? '').trim().isNotEmpty) ...[
+                  SeniorCard(
+                    padding: const EdgeInsets.all(18),
+                    borderColor: AppColors.dangerBorder,
+                    borderWidth: 2,
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Icon(
+                          TablerIcons.alert_triangle,
+                          color: AppColors.danger,
+                          size: 28,
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                '함께먹기 주의가 있어요',
+                                style: AppText.cardTitle(
+                                  size: 19,
+                                  color: AppColors.danger,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                today.interactionAlert!,
+                                style: AppText.body(size: 17),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                ],
+                if (today.doses.isEmpty)
+                  SeniorCard(
+                    padding: const EdgeInsets.all(22),
+                    child: Column(
+                      children: [
+                        Text('등록된 약이 없어요', style: AppText.cardTitle(size: 22)),
+                        const SizedBox(height: 8),
+                        Text(
+                          '처방전 사진을 찍으면 오늘 먹을 약을 알려드려요.',
+                          textAlign: TextAlign.center,
+                          style: AppText.body(color: AppColors.textSecondary),
+                        ),
+                        const SizedBox(height: 14),
+                        SeniorButton(
+                          label: '처방전 사진 찍기',
+                          onPressed: widget.onOpenPrescription,
+                        ),
+                      ],
+                    ),
+                  )
+                else if (next != null)
                   _NextDoseCard(
                     today: today,
                     dose: next,
                     onTake: () => _take(next.slot),
                     onSnooze: () => _snooze(next.slot),
                     onOpenDrug: widget.onOpenDrug,
-                    onDaysTap: () =>
-                        ref.read(medicationProvider.notifier).decrementDaysLeft(),
+                    onDaysTap: () => ref
+                        .read(medicationProvider.notifier)
+                        .decrementDaysLeft(),
                   )
                 else
                   _AllDoneCard(
                     today: today,
                     onReTake: () => _take(DoseSlot.dinner),
                     onOpenDrug: widget.onOpenDrug,
-                    onDaysTap: () =>
-                        ref.read(medicationProvider.notifier).decrementDaysLeft(),
+                    onDaysTap: () => ref
+                        .read(medicationProvider.notifier)
+                        .decrementDaysLeft(),
                   ),
                 const SizedBox(height: 12),
                 _ProgressRow(today: today, onOpenRecord: widget.onOpenRecord),
@@ -300,6 +370,93 @@ class _SnoozeNotice extends StatelessWidget {
   }
 }
 
+class _InteractionPriorityCard extends StatelessWidget {
+  final InteractionPriorityCard card;
+  final void Function(Medicine)? onOpenDrug;
+  final List<Medicine> medicines;
+
+  const _InteractionPriorityCard({
+    required this.card,
+    required this.onOpenDrug,
+    required this.medicines,
+  });
+
+  Medicine? _byCode(String? code) {
+    final needle = (code ?? '').trim();
+    if (needle.isEmpty) return null;
+    for (final medicine in medicines) {
+      if ((medicine.medicineCode ?? '').trim() == needle) return medicine;
+    }
+    return null;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SeniorCard(
+      padding: const EdgeInsets.all(18),
+      borderColor: AppColors.dangerBorder,
+      borderWidth: 2,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '함께먹기 주의가 있어요',
+            style: AppText.cardTitle(size: 19, color: AppColors.danger),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            '${card.nameA} ↔ ${card.nameB}',
+            style: AppText.body(size: 18),
+          ),
+          const SizedBox(height: 4),
+          Text(card.reason, style: AppText.body(size: 17)),
+          if ((card.cautionA ?? '').trim().isNotEmpty) ...[
+            const SizedBox(height: 10),
+            Text(
+              '${card.nameA}: ${card.cautionA}',
+              style: AppText.label(size: 17, color: AppColors.danger),
+            ),
+          ],
+          if ((card.cautionB ?? '').trim().isNotEmpty) ...[
+            const SizedBox(height: 6),
+            Text(
+              '${card.nameB}: ${card.cautionB}',
+              style: AppText.label(size: 17, color: AppColors.danger),
+            ),
+          ],
+          const SizedBox(height: 8),
+          Text(
+            '의사나 약사에게 확인해 주세요.',
+            style: AppText.label(size: 17, color: AppColors.danger),
+          ),
+          if (onOpenDrug != null) ...[
+            const SizedBox(height: 10),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final medicine in [_byCode(card.codeA), _byCode(card.codeB)])
+                  if (medicine != null)
+                    OutlinedButton(
+                      onPressed: () => onOpenDrug!(medicine),
+                      child: Text(_shortName(medicine.ingredient)),
+                    ),
+              ],
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  static String _shortName(String name) {
+    final trimmed = name.trim();
+    final index = trimmed.indexOf('(');
+    if (index > 0) return trimmed.substring(0, index).trim();
+    return trimmed;
+  }
+}
+
 /// 지금 드실 약 — 이 화면의 주인공.
 class _NextDoseCard extends StatelessWidget {
   final TodayMedication today;
@@ -333,10 +490,7 @@ class _NextDoseCard extends StatelessWidget {
           ),
           const SizedBox(height: 12),
           LabelValueRow(
-            label: Text(
-              dose.slot.spokenTime,
-              style: AppText.bigTime(size: 36),
-            ),
+            label: Text(dose.slot.spokenTime, style: AppText.bigTime(size: 36)),
             value: Text(
               '눌러서 설명 보기',
               textAlign: TextAlign.right,
@@ -395,17 +549,33 @@ class _MedicineRow extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(medicine.ingredient, style: AppText.cardTitle(size: 21)),
-                  if (medicine.effect != null)
+                  Text(
+                    medicine.displayName,
+                    style: AppText.cardTitle(size: 21),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  if ((medicine.ingredientLabel ?? '').trim().isNotEmpty) ...[
+                    const SizedBox(height: 2),
                     Text(
-                      medicine.effect!,
-                      style: AppText.label(size: 18, color: AppColors.point),
+                      '주성분: ${medicine.ingredientLabel!}',
+                      style: AppText.caption(
+                        size: 16.5,
+                        color: AppColors.textSecondary,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                     ),
-                  if (medicine.appearance != null)
+                  ],
+                  if (medicine.cardSpoken != null) ...[
+                    const SizedBox(height: 2),
                     Text(
-                      medicine.appearance!,
+                      medicine.cardSpoken!,
                       style: AppText.caption(size: 17),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
                     ),
+                  ],
                 ],
               ),
             ),
@@ -414,6 +584,10 @@ class _MedicineRow extends StatelessWidget {
               medicine.amount,
               style: AppText.cardTitle(size: 20, color: AppColors.point),
             ),
+            if (onTap != null) ...[
+              const SizedBox(width: 4),
+              const SeniorChevron(),
+            ],
           ],
         ),
       ),
@@ -479,7 +653,7 @@ class _OtherDosesBlock extends StatelessWidget {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            medicine.ingredient,
+                            medicine.displayName,
                             style: AppText.label(
                               size: 18,
                               color: AppColors.textPrimary,
@@ -552,10 +726,7 @@ class _AllDoneCard extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text('오늘 약 다 드셨어요', style: AppText.cardTitle(size: 22)),
-                    Text(
-                      '다음 약은 내일 아침 8시',
-                      style: AppText.caption(size: 17.5),
-                    ),
+                    Text('다음 약은 내일 아침 8시', style: AppText.caption(size: 17.5)),
                   ],
                 ),
               ),

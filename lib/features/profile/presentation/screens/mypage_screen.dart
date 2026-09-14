@@ -21,7 +21,7 @@ import '../../../../core/session/auth_session.dart';
 import '../../../biosignal/domain/heart_data.dart';
 import '../../../biosignal/presentation/screens/polar_screen.dart';
 import '../../../dur_analysis/presentation/screens/dur_analysis_screen.dart';
-import '../../../medicines/presentation/screens/my_medicines_screen.dart';
+import '../../../medicines/application/user_medicines_controller.dart';
 import '../widgets/logout_sheet.dart';
 import 'account_screen.dart';
 
@@ -81,11 +81,15 @@ class _MyPageScreenState extends ConsumerState<MyPageScreen> {
   Widget build(BuildContext context) {
     final today = ref.watch(medicationProvider);
     final mode = ref.watch(appModeProvider);
+    final medicines = ref.watch(userMedicinesProvider);
     final age = DateTime.now().year - widget.birthYear;
-    final medicineCount = today.doses
-        .expand((d) => d.medicines.map((m) => m.ingredient))
-        .toSet()
-        .length;
+    final medicineCount = medicines.maybeWhen(
+      data: (items) => items.length,
+      orElse: () => today.doses
+          .expand((d) => d.medicines.map((m) => m.medicineCode ?? m.ingredient))
+          .toSet()
+          .length,
+    );
 
     return Column(
       children: [
@@ -192,11 +196,7 @@ class _MyPageScreenState extends ConsumerState<MyPageScreen> {
                         icon: TablerIcons.pill,
                         value: '$medicineCount가지',
                         trailing: const SeniorChevron(),
-                        onTap: () => Navigator.of(context).push(
-                          MaterialPageRoute<void>(
-                            builder: (_) => const MyMedicinesScreen(),
-                          ),
-                        ),
+                        onTap: () => context.push('/my-medicines'),
                       ),
                       const SeniorDivider(),
                       SeniorListRow(

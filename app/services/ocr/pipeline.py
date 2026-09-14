@@ -1,8 +1,4 @@
-"""OCR pipeline: image/text input -> raw text -> structured prescription.
-
-엔진 우선순위: Gemini → (할당량 등 실패 시) CLOVA
-구조화 우선순위: Gemini JSON → (실패 시) 휴리스틱
-"""
+"""CLOVA OCR fields -> deterministic prescription structure."""
 
 from __future__ import annotations
 
@@ -23,7 +19,7 @@ class OcrPipelineResult:
 
 
 def _parse_result(raw_text: str, engine_name: str | None = None, **extra_trace: Any) -> OcrPipelineResult:
-    parsed = parse_prescription_text(raw_text)
+    parsed = parse_prescription_text(raw_text, tables=extra_trace.get("tables"))
     if not parsed or not parsed.get("items"):
         trace = {"stage": "parser", **extra_trace}
         if engine_name:
@@ -41,9 +37,7 @@ def _parse_result(raw_text: str, engine_name: str | None = None, **extra_trace: 
 
 def run_ocr_pipeline(image_bytes: bytes) -> OcrPipelineResult:
     engine = extract_raw_text(image_bytes)
-    extra = {}
-    if getattr(engine, "fallback_from", None):
-        extra["fallback_from"] = engine.fallback_from
+    extra: dict[str, Any] = {}
     if not engine.ok:
         return OcrPipelineResult(
             False,
@@ -52,6 +46,10 @@ def run_ocr_pipeline(image_bytes: bytes) -> OcrPipelineResult:
         )
     if engine.confidence is not None:
         extra["engine_confidence"] = engine.confidence
+    if engine.fields:
+        extra["fields"] = [dict(field) for field in engine.fields]
+    if engine.tables:
+        extra["tables"] = [dict(table) for table in engine.tables]
     return _parse_result(engine.raw_text, engine.engine_name, **extra)
 
 
