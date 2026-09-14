@@ -145,7 +145,11 @@ class _NoPatientTab extends StatelessWidget {
 Future<void> _callPatient(BuildContext context, CarePatient patient) async {
   final digits = (patient.phone ?? '').replaceAll(RegExp(r'[^0-9]'), '');
   if (digits.isEmpty) {
-    showSeniorSnackbar(context, '${patient.name} 님 전화번호가 등록돼 있지 않아요');
+    showSeniorSnackbar(
+      context,
+      '${patient.name} 님 전화번호가 등록돼 있지 않아요',
+      error: true,
+    );
     return;
   }
   var opened = false;
@@ -155,7 +159,7 @@ Future<void> _callPatient(BuildContext context, CarePatient patient) async {
     opened = false;
   }
   if (!opened && context.mounted) {
-    showSeniorSnackbar(context, '전화 앱을 열지 못했어요');
+    showSeniorSnackbar(context, '전화 앱을 열지 못했어요', error: true);
   }
 }
 

@@ -8,6 +8,7 @@ import '../../../../core/session/mvp_session.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../core/widgets/senior_button.dart';
 import '../../../../core/widgets/senior_card.dart';
+import '../../../../core/widgets/senior_feedback.dart';
 import '../../../../core/widgets/senior_header.dart';
 import '../../../medication/application/medication_controller.dart';
 import '../../../medicines/application/user_medicines_controller.dart';
@@ -35,7 +36,6 @@ class _ManualMedicineScreenState extends ConsumerState<ManualMedicineScreen> {
   int? _days;
   bool _searching = false;
   bool _saving = false;
-  String? _error;
 
   @override
   void dispose() {
@@ -44,15 +44,19 @@ class _ManualMedicineScreenState extends ConsumerState<ManualMedicineScreen> {
     super.dispose();
   }
 
+  /// 오류는 버튼 아래에 끼워 넣지 않고 스낵바로 알린다.
+  void _showError(String message) =>
+      showSeniorSnackbar(context, message, error: true);
+
   Future<void> _search() async {
     final q = _query.text.trim();
     if (q.length < 2) {
-      setState(() => _error = '약 이름을 두 글자 이상 적어 주세요.');
+      _showError('약 이름을 두 글자 이상 적어 주세요.');
       return;
     }
+    ScaffoldMessenger.of(context).hideCurrentSnackBar();
     setState(() {
       _searching = true;
-      _error = null;
       _picked = null;
     });
     try {
@@ -70,16 +74,14 @@ class _ManualMedicineScreenState extends ConsumerState<ManualMedicineScreen> {
       setState(() {
         _hits = hits;
         _searching = false;
-        if (hits.isEmpty) {
-          _error = '공식 약 이름을 찾지 못했어요. 처방전 사진으로 등록해 주세요.';
-        }
       });
+      if (hits.isEmpty) {
+        _showError('공식 약 이름을 찾지 못했어요. 처방전 사진으로 등록해 주세요.');
+      }
     } catch (error) {
       if (!mounted) return;
-      setState(() {
-        _searching = false;
-        _error = '약 이름을 찾지 못했어요. 잠시 후 다시 시도해 주세요.';
-      });
+      setState(() => _searching = false);
+      _showError('약 이름을 찾지 못했어요. 잠시 후 다시 시도해 주세요.');
     }
   }
 
@@ -87,22 +89,20 @@ class _ManualMedicineScreenState extends ConsumerState<ManualMedicineScreen> {
     final picked = _picked;
     final code = picked?['medicine_code']?.toString().trim() ?? '';
     if (code.isEmpty) {
-      setState(() => _error = '목록에서 약을 먼저 골라 주세요.');
+      _showError('목록에서 약을 먼저 골라 주세요.');
       return;
     }
     final amount = _amount.text.trim();
     if (amount.isEmpty) {
-      setState(() => _error = '한 번에 먹는 양을 적어 주세요.');
+      _showError('한 번에 먹는 양을 적어 주세요.');
       return;
     }
     if (_frequency == null || _days == null) {
-      setState(() => _error = '하루 복용 횟수와 복용 일수를 확인해 주세요.');
+      _showError('하루 복용 횟수와 복용 일수를 확인해 주세요.');
       return;
     }
-    setState(() {
-      _saving = true;
-      _error = null;
-    });
+    ScaffoldMessenger.of(context).hideCurrentSnackBar();
+    setState(() => _saving = true);
     final userId = MvpSession.userId.trim().isEmpty
         ? 'mvp-user'
         : MvpSession.userId.trim();
@@ -137,10 +137,8 @@ class _ManualMedicineScreenState extends ConsumerState<ManualMedicineScreen> {
       context.push('/dur-analysis');
     } catch (_) {
       if (!mounted) return;
-      setState(() {
-        _saving = false;
-        _error = '공식 약으로 확인되지 않아 등록하지 못했어요.';
-      });
+      setState(() => _saving = false);
+      _showError('공식 약으로 확인되지 않아 등록하지 못했어요.');
     }
   }
 
@@ -180,13 +178,6 @@ class _ManualMedicineScreenState extends ConsumerState<ManualMedicineScreen> {
                   kind: SeniorButtonKind.secondary,
                   onPressed: _searching ? () {} : _search,
                 ),
-                if (_error != null) ...[
-                  const SizedBox(height: 12),
-                  Text(
-                    _error!,
-                    style: AppText.body(size: 18, color: AppColors.danger),
-                  ),
-                ],
                 for (final hit in _hits) ...[
                   const SizedBox(height: 10),
                   SeniorCard(

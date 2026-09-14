@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/constants/app_colors.dart';
+import '../../../../core/widgets/senior_feedback.dart';
 import '../../../auth/presentation/screens/login_screen.dart';
 import '../../../guardian/application/guardians_provider.dart';
 import '../../../guardian/data/guardian_repository.dart';
@@ -33,17 +34,16 @@ class _PatientLinkScreenState extends ConsumerState<PatientLinkScreen> {
     super.dispose();
   }
 
-  void _toast(String m) => ScaffoldMessenger.of(context).showSnackBar(
-    SnackBar(content: Text(m), behavior: SnackBarBehavior.floating),
-  );
+  void _toast(String m, {bool error = false}) =>
+      showSeniorSnackbar(context, m, error: error);
 
   Future<void> _sendRequest() async {
     if (_phone.text.trim().isEmpty) {
-      _toast('환자의 휴대폰번호를 입력해주세요');
+      _toast('환자의 휴대폰번호를 입력해주세요', error: true);
       return;
     }
     if (_relation == null) {
-      _toast('환자와의 관계를 선택해주세요');
+      _toast('환자와의 관계를 선택해주세요', error: true);
       return;
     }
     setState(() => _sending = true);
@@ -54,7 +54,7 @@ class _PatientLinkScreenState extends ConsumerState<PatientLinkScreen> {
     if (!mounted) return;
     setState(() => _sending = false);
     if (!result.isSent) {
-      _toast(result.error ?? '연결을 요청하지 못했어요');
+      _toast(result.error ?? '연결을 요청하지 못했어요', error: true);
       return;
     }
     ref.invalidate(careOverviewProvider);

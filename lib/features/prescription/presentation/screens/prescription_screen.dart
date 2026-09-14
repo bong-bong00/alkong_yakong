@@ -14,6 +14,7 @@ import '../../../../core/theme/app_typography.dart';
 import '../../../../core/widgets/recovery_view.dart';
 import '../../../../core/widgets/senior_button.dart';
 import '../../../../core/widgets/senior_card.dart';
+import '../../../../core/widgets/senior_feedback.dart';
 import '../../../../core/widgets/senior_header.dart';
 import '../../../medication/application/medication_controller.dart';
 import '../../../medicines/application/user_medicines_controller.dart';
@@ -228,8 +229,10 @@ class _PrescriptionScreenState extends ConsumerState<PrescriptionScreen> {
 
     if (confirmItems.isEmpty) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('등록할 약을 찾지 못했어요. 다시 찍어 주세요.')),
+      showSeniorSnackbar(
+        context,
+        '등록할 약을 찾지 못했어요. 다시 찍어 주세요.',
+        error: true,
       );
       return;
     }
@@ -249,8 +252,10 @@ class _PrescriptionScreenState extends ConsumerState<PrescriptionScreen> {
     } catch (error) {
       debugPrint('처방 확정 등록 실패: $error');
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('약 등록에 실패했어요. 잠시 후 다시 시도해 주세요.')),
+      showSeniorSnackbar(
+        context,
+        '약 등록에 실패했어요. 잠시 후 다시 시도해 주세요.',
+        error: true,
       );
       return;
     }
@@ -944,8 +949,10 @@ class _ConfirmScreenState extends State<_ConfirmScreen> {
                 .toList()
           : <Map<String, dynamic>>[];
       if (hits.isEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('공식 의약품 목록에서 해당 이름을 찾지 못했어요.')),
+        showSeniorSnackbar(
+          context,
+          '공식 의약품 목록에서 해당 이름을 찾지 못했어요.',
+          error: true,
         );
         return;
       }
@@ -974,8 +981,10 @@ class _ConfirmScreenState extends State<_ConfirmScreen> {
       });
     } catch (_) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('공식 약을 찾지 못했어요. 잠시 후 다시 시도해 주세요.')),
+      showSeniorSnackbar(
+        context,
+        '공식 약을 찾지 못했어요. 잠시 후 다시 시도해 주세요.',
+        error: true,
       );
     }
   }

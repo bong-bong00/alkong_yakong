@@ -47,7 +47,11 @@ class CareFamilyScreen extends ConsumerWidget {
     // 서버가 받아 준 뒤에만 목록에 올린다. 실패했는데 올려 두면
     // 어르신은 요청을 받은 적이 없는데 보호자만 기다리게 된다.
     if (!result.isSent) {
-      showSeniorSnackbar(context, result.error ?? '연결을 요청하지 못했어요');
+      showSeniorSnackbar(
+        context,
+        result.error ?? '연결을 요청하지 못했어요',
+        error: true,
+      );
       return;
     }
     ref.invalidate(careOverviewProvider);
@@ -66,7 +70,9 @@ class CareFamilyScreen extends ConsumerWidget {
       await _repository.remove(id);
       ref.invalidate(careOverviewProvider);
     } on ApiException catch (error) {
-      if (context.mounted) showSeniorSnackbar(context, error.message);
+      if (context.mounted) {
+        showSeniorSnackbar(context, error.message, error: true);
+      }
     }
   }
 
