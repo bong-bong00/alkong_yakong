@@ -276,7 +276,12 @@ def analyze_dur_consultation(
             (user_id,),
         ).fetchone()
         if not user:
-            raise HTTPException(status_code=404, detail="사용자가 없습니다.")
+            user = {
+                "id": user_id,
+                "birth_date": None,
+                "gender": None,
+                "is_pregnant": None,
+            }
 
         medicine_code = str(selected_medicine.get("medicine_code") or "").strip()
         product_name = str(selected_medicine.get("product_name") or "").strip()

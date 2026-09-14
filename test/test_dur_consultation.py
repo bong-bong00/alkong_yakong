@@ -83,7 +83,7 @@ class DurConsultationTest(unittest.TestCase):
         conn.row_factory = sqlite3.Row
         return conn
 
-    def _analyze(self, selected, risk_types, *, sync_result=None):
+    def _analyze(self, selected, risk_types, *, sync_result=None, user_id="U1"):
         sync_result = sync_result or {"status": "ok", "fetched": 0, "upserted": 0}
         with (
             patch.object(dur_service, "get_connection", side_effect=self._connect),
@@ -93,7 +93,7 @@ class DurConsultationTest(unittest.TestCase):
             ),
         ):
             return dur_service.analyze_dur_consultation(
-                user_id="U1",
+                user_id=user_id,
                 selected_medicine=selected,
                 risk_types=risk_types,
             )
@@ -363,6 +363,85 @@ class DurConsultationTest(unittest.TestCase):
 
         self.assertEqual(result["status"], "current")
         self.assertNotEqual(result.get("reason"), "missing_birth_date")
+        self.assertEqual(self._snapshot(), before)
+
+    def test_missing_user_combination_returns_current_without_persisting(self):
+        before = self._snapshot()
+        result = self._analyze(
+            {
+                "medicine_code": "C",
+                "product_name": "Drug C",
+                "ingredient": "ingredientc",
+            },
+            {"병용금기"},
+            user_id="missing-user",
+        )
+
+        self.assertEqual(result["status"], "current")
+        self.assertEqual(result["items"], [])
+        self.assertEqual(self._snapshot(), before)
+
+    def test_missing_user_age_returns_official_criteria_as_unknown(self):
+        conn = self._connect()
+        conn.execute(
+            """
+            INSERT INTO dur_taboo (
+                ingredient_a, taboo_type, severity, description, source,
+                external_id, max_age
+            ) VALUES ('ingredientc', '연령금기', 'MEDIUM', 'under 12',
+                      'official', 'AGE-C', 11)
+            """
+        )
+        conn.commit()
+        conn.close()
+
+        result = self._analyze(
+            {"medicine_code": "C", "product_name": "Drug C", "ingredient": "ingredientc"},
+            {"연령금기"},
+            user_id="missing-user",
+        )
+
+        self.assertEqual(result["status"], "current")
+        self.assertEqual(result["items"][0]["external_id"], "AGE-C")
+        self.assertEqual(result["items"][0]["user_applicability"], "unknown")
+
+    def test_missing_user_pregnancy_returns_official_criteria_as_unknown(self):
+        conn = self._connect()
+        conn.execute(
+            """
+            INSERT INTO dur_taboo (
+                ingredient_a, taboo_type, severity, description, source, external_id
+            ) VALUES ('ingredientc', '임부금기', 'MEDIUM', 'pregnancy caution',
+                      'official', 'PREG-C')
+            """
+        )
+        conn.commit()
+        conn.close()
+
+        result = self._analyze(
+            {"medicine_code": "C", "product_name": "Drug C", "ingredient": "ingredientc"},
+            {"임부금기"},
+            user_id="missing-user",
+        )
+
+        self.assertEqual(result["status"], "current")
+        self.assertEqual(result["items"][0]["external_id"], "PREG-C")
+        self.assertEqual(result["items"][0]["user_applicability"], "unknown")
+
+    def test_missing_user_duplicate_returns_current_without_persisting(self):
+        before = self._snapshot()
+        result = self._analyze(
+            {
+                "medicine_code": "C",
+                "product_name": "Drug C",
+                "ingredient": "ingredientc",
+            },
+            {"중복성분", "효능군중복"},
+            user_id="missing-user",
+        )
+
+        self.assertEqual(result["status"], "current")
+        self.assertEqual(result["items"], [])
         self.assertEqual(self._snapshot(), before)
 
     def test_unusable_selected_ingredient_logs_existing_reason(self):
