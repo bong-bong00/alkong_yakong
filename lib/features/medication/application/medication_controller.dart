@@ -1,3 +1,4 @@
+import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/network/api_client.dart';
@@ -18,6 +19,30 @@ final medicationProvider =
       MedicationController.new,
     );
 
+/// 보호자가 보는 어르신의 오늘 복약. 기록은 어르신 전화기에서만 바뀐다.
+final patientTodayProvider = FutureProvider.family<TodayMedication, String>((
+  ref,
+  userId,
+) async {
+  final response = await ApiClient().get(
+    '/api/v1/users/${Uri.encodeComponent(userId)}/today-medicines',
+  );
+  if (response is! Map) {
+    throw const ApiException('오늘 복약을 받지 못했어요.');
+  }
+  return MedicationController.parse(Map<String, dynamic>.from(response));
+});
+
+/// 보호자 호칭. 넘겨받은 값이 없으면 서버에 등록된 가족으로 채운다.
+String resolveGuardianTitle(BuildContext context, String? given) {
+  final trimmed = given?.trim() ?? '';
+  if (trimmed.isNotEmpty) return trimmed;
+  return ProviderScope.containerOf(
+    context,
+    listen: false,
+  ).read(medicationProvider).guardianTitle;
+}
+
 /// 오늘 복약 상태를 들고 있는 컨트롤러.
 ///
 /// 서버 응답을 우선한다. 서버가 빈 목록을 주면 데모약을 치운다.
@@ -33,8 +58,6 @@ class MedicationController extends Notifier<TodayMedication> {
       doses: [],
       guardianRelation: '보호자',
       guardianName: '가족',
-      heartRate: 72,
-      heartRateNormal: true,
     );
   }
 
@@ -43,7 +66,7 @@ class MedicationController extends Notifier<TodayMedication> {
       final userId = Uri.encodeComponent(MvpSession.userId);
       final response = await _api.get('/api/v1/users/$userId/today-medicines');
       if (response is! Map) return;
-      final parsed = _fromServer(Map<String, dynamic>.from(response));
+      final parsed = parse(Map<String, dynamic>.from(response));
       // 서버가 정상 응답했으면 비어 있어도 그대로 반영 (데모 유지 금지)
       state = parsed;
     } catch (_) {
@@ -51,7 +74,8 @@ class MedicationController extends Notifier<TodayMedication> {
     }
   }
 
-  TodayMedication _fromServer(Map<String, dynamic> data) {
+  /// `/today-medicines` 응답을 화면 상태로. 보호자 화면도 같은 규칙으로 읽는다.
+  static TodayMedication parse(Map<String, dynamic> data) {
     final rawDoses = data['doses'];
     final doses = <DoseEntry>[];
     if (rawDoses is List) {
@@ -108,9 +132,13 @@ class MedicationController extends Notifier<TodayMedication> {
       doses: doses,
       guardianRelation: data['guardian_relation']?.toString() ?? '보호자',
       guardianName: data['guardian_name']?.toString() ?? '가족',
-      heartRate: 72,
-      heartRateNormal: true,
-      daysLeft: state.daysLeft,
+      heartRate: (data['latest_heart_rate'] as num?)?.toInt(),
+      heartRateNormal: data['latest_heart_rate_normal'] as bool?,
+      daysLeft: (data['days_left'] as num?)?.toInt(),
+      courseStartedOn: DateTime.tryParse(
+        data['course_started_on']?.toString() ?? '',
+      ),
+      courseTotalDays: (data['course_total_days'] as num?)?.toInt(),
       interactionAlert: data['interaction_alert']?.toString(),
       interactionCards: _interactionCards(data['interaction_cards']),
     );
@@ -125,7 +153,7 @@ class MedicationController extends Notifier<TodayMedication> {
     ];
   }
 
-  DoseSlot? _slotOf(String? raw) {
+  static DoseSlot? _slotOf(String? raw) {
     switch ((raw ?? '').toLowerCase()) {
       case 'morning':
         return DoseSlot.morning;
@@ -142,7 +170,12 @@ class MedicationController extends Notifier<TodayMedication> {
   final Map<DoseSlot, int> _snoozeCount = <DoseSlot, int>{};
   bool _refillAsked = false;
 
-  bool get shouldAskRefill => state.daysLeft == 0 && !_refillAsked;
+  /// 처방이 오늘 끝나고, 언제 받은 몇 일치인지 알 때만 묻는다.
+  bool get shouldAskRefill =>
+      state.daysLeft == 0 &&
+      state.courseStartedOn != null &&
+      state.courseTotalDays != null &&
+      !_refillAsked;
 
   void markRefillAsked() => _refillAsked = true;
 
@@ -234,11 +267,6 @@ class MedicationController extends Notifier<TodayMedication> {
     );
     _scheduleLadder(slot, now: at);
     return until;
-  }
-
-  void decrementDaysLeft() {
-    final next = state.daysLeft <= 0 ? 0 : state.daysLeft - 1;
-    state = state.copyWith(daysLeft: next);
   }
 
   void _scheduleLadder(DoseSlot slot, {DateTime? now}) {

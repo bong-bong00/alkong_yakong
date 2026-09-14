@@ -45,6 +45,10 @@ dependencies:
   fl_chart: ^1.2.0
   # 화면 아이콘. 로고와 같은 둥근 선 조형이라 함께 놓아도 따로 놀지 않는다.
   flutter_tabler_icons: ^1.43.0
+  flutter_local_notifications: ^22.3.1
+  timezone: ^0.11.1
+  flutter_timezone: ^5.1.0
+  url_launcher: ^6.3.2
 
 dev_dependencies:
   flutter_test:

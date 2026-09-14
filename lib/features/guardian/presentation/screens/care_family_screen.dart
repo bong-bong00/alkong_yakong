@@ -1,80 +1,82 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_tabler_icons/flutter_tabler_icons.dart';
 
 import '../../../../core/constants/app_colors.dart';
+import '../../../../core/network/api_client.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../core/widgets/senior_button.dart';
 import '../../../../core/widgets/senior_card.dart';
 import '../../../../core/widgets/senior_feedback.dart';
 import '../../../../core/widgets/senior_header.dart';
 import '../../../dashboard/presentation/screens/patient_data.dart';
+import '../../application/guardians_provider.dart';
 import '../../data/guardian_repository.dart';
 import '../widgets/add_care_sheet.dart';
 
 /// 36 · 보호자 · 돌보는 분 목록.
 ///
-/// 보호자는 여러 어르신을 볼 수 있다. 그런데 설정은 **한 분씩 따로** 저장된다 —
-/// 알림 시간도, 재알림 사다리도, 전화 대상도. 그 사실을 화면에 적어 두지 않으면
-/// 한 분에게 바꾼 설정이 모두에게 적용된 줄 안다.
-class CareFamilyScreen extends StatefulWidget {
-  final List<PatientData> patients;
+/// 서버에 연결된 어르신만 보여준다. 연결을 요청한 분은 어르신이 수락할 때까지
+/// "수락을 기다리는 중"으로 따로 둔다 — 동의 없이 남의 복약을 들여다보는 길을
+/// 만들지 않는다.
+class CareFamilyScreen extends ConsumerWidget {
+  /// 어르신 카드를 눌렀을 때.
+  final ValueChanged<CarePatient> onOpenPatient;
 
-  /// 어르신 카드를 눌렀을 때. 목록에서 몇 번째인지 넘긴다.
-  final ValueChanged<int> onOpenPatient;
-
-  /// 초대를 보낼 곳. 없으면 이 화면이 하나 만들어 쓴다.
+  /// 요청을 보낼 곳. 없으면 이 화면이 하나 만들어 쓴다.
   final GuardianRepository? repository;
 
   const CareFamilyScreen({
     super.key,
-    this.patients = DemoPatients.all,
     required this.onOpenPatient,
     this.repository,
   });
 
-  @override
-  State<CareFamilyScreen> createState() => _CareFamilyScreenState();
-}
+  GuardianRepository get _repository => repository ?? GuardianRepository();
 
-class _CareFamilyScreenState extends State<CareFamilyScreen> {
-  late List<PendingInvite> _pending = List.of(DemoPatients.pending);
-
-  late final GuardianRepository _repository =
-      widget.repository ?? GuardianRepository();
-
-  /// 오늘 약이 남은 분들. 목록 맨 위에 이름만 먼저 올린다.
-  List<PatientData> get _needAttention => widget.patients
-      .where((p) => p.takenCount < p.totalCount)
-      .toList();
-
-  Future<void> _add() async {
+  Future<void> _add(BuildContext context, WidgetRef ref) async {
     final draft = await showAddCareSheet(context);
-    if (draft == null || !mounted) return;
+    if (draft == null || !context.mounted) return;
 
-    final result = await _repository.invite(
-      name: draft.name,
+    final result = await _repository.requestLink(
       relation: draft.relation,
       phone: draft.phone,
     );
-    if (!mounted) return;
+    if (!context.mounted) return;
 
     // 서버가 받아 준 뒤에만 목록에 올린다. 실패했는데 올려 두면
-    // 어르신은 초대를 받은 적이 없는데 보호자만 기다리게 된다.
+    // 어르신은 요청을 받은 적이 없는데 보호자만 기다리게 된다.
     if (!result.isSent) {
-      showSeniorSnackbar(context, result.error ?? '초대를 보내지 못했어요');
+      showSeniorSnackbar(context, result.error ?? '연결을 요청하지 못했어요');
       return;
     }
-    setState(() => _pending = [..._pending, result.invite!]);
-    showSeniorSnackbar(context, '${result.invite!.name} 님에게 초대를 보냈어요');
+    ref.invalidate(careOverviewProvider);
+    final name = result.invite!.name.isEmpty ? draft.name : result.invite!.name;
+    showSeniorSnackbar(context, '$name 님에게 연결을 요청했어요');
   }
 
-  void _cancel(PendingInvite invite) {
-    setState(() => _pending = _pending.where((p) => p != invite).toList());
+  Future<void> _cancel(
+    BuildContext context,
+    WidgetRef ref,
+    PendingInvite invite,
+  ) async {
+    final id = invite.id;
+    if (id == null) return;
+    try {
+      await _repository.remove(id);
+      ref.invalidate(careOverviewProvider);
+    } on ApiException catch (error) {
+      if (context.mounted) showSeniorSnackbar(context, error.message);
+    }
   }
 
   @override
-  Widget build(BuildContext context) {
-    final needAttention = _needAttention;
+  Widget build(BuildContext context, WidgetRef ref) {
+    final overview = ref.watch(careOverviewProvider);
+    final data = overview.valueOrNull;
+    final patients = data?.patients ?? const <CarePatient>[];
+    final pending = data?.pending ?? const <PendingInvite>[];
+    final needAttention = patients.where((p) => p.needsAttention).toList();
 
     return Column(
       children: [
@@ -84,71 +86,69 @@ class _CareFamilyScreenState extends State<CareFamilyScreen> {
             children: [
               Text('보호자 화면', style: AppText.label(size: 17)),
               Text(
-                '돌보는 분 ${widget.patients.length}명',
+                data == null ? '돌보는 분' : '돌보는 분 ${patients.length}명',
                 style: AppText.screenTitle(size: 28),
               ),
             ],
           ),
         ),
         Expanded(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(20, 16, 20, 28),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                if (needAttention.isNotEmpty) ...[
-                  _AttentionBanner(patients: needAttention),
-                  const SizedBox(height: 12),
-                ],
-                for (int i = 0; i < widget.patients.length; i++) ...[
-                  if (i > 0) const SizedBox(height: 12),
-                  _PatientCard(
-                    patient: widget.patients[i],
-                    onTap: () => widget.onOpenPatient(i),
+          child: RefreshIndicator(
+            onRefresh: () => ref.refresh(careOverviewProvider.future),
+            child: SingleChildScrollView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              padding: const EdgeInsets.fromLTRB(20, 16, 20, 28),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  if (data == null && overview.isLoading)
+                    const _InfoCard(text: '불러오는 중이에요')
+                  else if (data == null)
+                    _InfoCard(
+                      text: '돌보는 분 목록을 불러오지 못했어요',
+                      actionLabel: '다시 불러오기',
+                      onAction: () => ref.invalidate(careOverviewProvider),
+                    )
+                  else if (patients.isEmpty && pending.isEmpty)
+                    const _InfoCard(
+                      text: '아직 연결된 어르신이 없어요. 아래 "돌보는 분 추가하기"에서 '
+                          '어르신 전화번호로 연결을 요청해 주세요.',
+                    ),
+                  if (needAttention.isNotEmpty) ...[
+                    _AttentionBanner(patients: needAttention),
+                    const SizedBox(height: 12),
+                  ],
+                  for (int i = 0; i < patients.length; i++) ...[
+                    if (i > 0) const SizedBox(height: 12),
+                    _PatientCard(
+                      patient: patients[i],
+                      onTap: () => onOpenPatient(patients[i]),
+                    ),
+                  ],
+                  for (final invite in pending) ...[
+                    const SizedBox(height: 12),
+                    _PendingCard(
+                      invite: invite,
+                      onCancel: () => _cancel(context, ref, invite),
+                    ),
+                  ],
+                  const SizedBox(height: 16),
+                  SeniorButton(
+                    label: '돌보는 분 추가하기',
+                    icon: TablerIcons.user_plus,
+                    kind: SeniorButtonKind.secondary,
+                    minHeight: 64,
+                    fontSize: 21,
+                    onPressed: () => _add(context, ref),
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    '보호자 계정에서는 어르신 화면이 열리지 않습니다',
+                    textAlign: TextAlign.center,
+                    style: AppText.caption(size: 17),
                   ),
                 ],
-                for (final invite in _pending) ...[
-                  const SizedBox(height: 12),
-                  _PendingCard(invite: invite, onCancel: () => _cancel(invite)),
-                ],
-                const SizedBox(height: 12),
-                SeniorCard(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 20,
-                    vertical: 18,
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      Text(
-                        '한 분씩 따로 설정돼요',
-                        style: AppText.cardTitle(size: 20),
-                      ),
-                      const SizedBox(height: 6),
-                      Text(
-                        '알림 시간, 재알림 사다리, 전화 대상은 어르신마다 따로 '
-                        '저장됩니다. 형제·자매가 같은 어르신을 함께 볼 수도 있어요.',
-                        style: AppText.body(size: 17.5),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 16),
-                SeniorButton(
-                  label: '돌보는 분 추가하기',
-                  icon: TablerIcons.user_plus,
-                  kind: SeniorButtonKind.secondary,
-                  minHeight: 64,
-                  fontSize: 21,
-                  onPressed: _add,
-                ),
-                const SizedBox(height: 16),
-                Text(
-                  '보호자 계정에서는 어르신 화면이 열리지 않습니다',
-                  textAlign: TextAlign.center,
-                  style: AppText.caption(size: 17),
-                ),
-              ],
+              ),
             ),
           ),
         ),
@@ -157,9 +157,40 @@ class _CareFamilyScreenState extends State<CareFamilyScreen> {
   }
 }
 
+class _InfoCard extends StatelessWidget {
+  final String text;
+  final String? actionLabel;
+  final VoidCallback? onAction;
+
+  const _InfoCard({required this.text, this.actionLabel, this.onAction});
+
+  @override
+  Widget build(BuildContext context) {
+    return SeniorCard(
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(text, style: AppText.body(size: 18)),
+          if (actionLabel != null) ...[
+            const SizedBox(height: 12),
+            SeniorButton(
+              label: actionLabel!,
+              kind: SeniorButtonKind.secondary,
+              minHeight: 58,
+              fontSize: 20,
+              onPressed: onAction,
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
 /// 먼저 확인할 분. 색이 아니라 **이름**을 앞세운다.
 class _AttentionBanner extends StatelessWidget {
-  final List<PatientData> patients;
+  final List<CarePatient> patients;
 
   const _AttentionBanner({required this.patients});
 
@@ -191,10 +222,7 @@ class _AttentionBanner extends StatelessWidget {
                     ),
                     const SizedBox(height: 6),
                     for (final patient in patients)
-                      Text(
-                        '${patient.relation} · ${patient.name}',
-                        style: AppText.cardTitle(size: 20),
-                      ),
+                      Text(patient.title, style: AppText.cardTitle(size: 20)),
                   ],
                 ),
               ),
@@ -207,16 +235,19 @@ class _AttentionBanner extends StatelessWidget {
 }
 
 class _PatientCard extends StatelessWidget {
-  final PatientData patient;
+  final CarePatient patient;
   final VoidCallback onTap;
 
   const _PatientCard({required this.patient, required this.onTap});
 
   String get _status {
-    if (patient.takenCount >= patient.totalCount) {
-      return '오늘 약을 다 드셨어요. 심장 박동도 정상입니다.';
+    if (patient.totalCount == 0) return '오늘 드실 약이 등록돼 있지 않아요.';
+    if (patient.needsAttention) {
+      return '${patient.nextDoseLabel} 기록이 아직 오지 않았어요.';
     }
-    return '${patient.nextDose} 기록이 아직 오지 않았어요.';
+    return patient.heartRateNormal == true
+        ? '오늘 약을 다 드셨어요. 심장 박동도 정상입니다.'
+        : '오늘 약을 다 드셨어요.';
   }
 
   @override
@@ -240,13 +271,10 @@ class _PatientCard extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      '${patient.relation} · ${patient.name}',
-                      style: AppText.cardTitle(size: 21),
-                    ),
+                    Text(patient.title, style: AppText.cardTitle(size: 21)),
                     Text(
                       '오늘 복약 ${patient.takenCount} / ${patient.totalCount}'
-                      ' · 심박수 ${patient.currentHr}',
+                      '${patient.heartRate == null ? '' : ' · 심박수 ${patient.heartRate}'}',
                       style: AppText.caption(size: 17.5),
                     ),
                   ],
@@ -271,7 +299,7 @@ class _PatientCard extends StatelessWidget {
   }
 }
 
-/// 아직 수락하지 않은 초대. 점선 테두리로 "아직 아님"을 눈에 보이게 한다.
+/// 아직 수락하지 않은 요청. 점선 테두리로 "아직 아님"을 눈에 보이게 한다.
 class _PendingCard extends StatelessWidget {
   final PendingInvite invite;
   final VoidCallback onCancel;
@@ -280,6 +308,9 @@ class _PendingCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final title = invite.relation.isEmpty
+        ? invite.name
+        : '${invite.relation} · ${invite.name}';
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
       decoration: BoxDecoration(
@@ -301,10 +332,7 @@ class _PendingCard extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  '${invite.relation} · ${invite.name}',
-                  style: AppText.cardTitle(size: 20),
-                ),
+                Text(title, style: AppText.cardTitle(size: 20)),
                 Text(
                   '${invite.phone} · 수락을 기다리는 중',
                   style: AppText.caption(size: 17),

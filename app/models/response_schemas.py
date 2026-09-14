@@ -26,6 +26,17 @@ class UserCreateResponse(ApiResponse):
     gender: str | None = None
     phone: str | None = None
     role: str
+    is_pregnant: bool = False
+    pregnancy_status: str | None = None
+    height_cm: float | None = None
+    weight_kg: float | None = None
+    blood_type: str | None = None
+    smoking: str | None = None
+    drinking: str | None = None
+    allergies: list[str] = Field(default_factory=list)
+    diseases: list[str] = Field(default_factory=list)
+    past_history: bool | None = None
+    family_history: bool | None = None
 
 
 class UserResponse(UserCreateResponse):

@@ -1,5 +1,6 @@
 import '../../../core/network/api_client.dart';
 import '../../../core/session/mvp_session.dart';
+import '../../medication/domain/medication_models.dart';
 import '../domain/heart_data.dart';
 
 /// 저장된 심박 기록을 읽어 온다.
@@ -13,6 +14,9 @@ class HeartRepository {
   final ApiClient _apiClient;
 
   /// 서버에서 읽어 [HeartData]로 만든다.
+  ///
+  /// [userId]가 없으면 로그인한 사람의 기록을 읽는다. 보호자가 어르신
+  /// 기록을 볼 때는 어르신 id를 넘긴다.
   ///
   /// 못 읽으면 **null**을 돌려준다. 데모 데이터로 조용히 갈아끼우지 않는다 —
   /// 가짜 숫자를 진짜처럼 보여주면 그것대로 판단의 근거가 된다.
@@ -36,20 +40,22 @@ class HeartRepository {
 
     return HeartData(
       today: today,
-      todaySlotLabel: json['today_slot_label']?.toString() ?? '저녁 약',
+      // 서버는 오늘 잰 것이 없어도 "저녁 약"을 채워 보낸다. 여기서 또
+      // 지어내지 않고, 오늘 값이 없으면 화면이 이 이름을 숨긴다.
+      todaySlotLabel: json['today_slot_label']?.toString() ?? '',
       // 못 잰 쪽은 시각도 비운다. "--:--"를 채워 넣지 않는다.
-      beforeAt: json['before_at']?.toString() ?? '',
-      afterAt: json['after_at']?.toString() ?? '',
+      beforeAt: _clock(json['before_at']),
+      afterAt: _clock(json['after_at']),
       week: _week(json['week']),
       month: _month(json['month']),
       streakDays: _int(json['streak_days']) ?? 0,
       bestStreakDays: _int(json['best_streak_days']) ?? 0,
       anomaly: anomaly,
       // 센서 상태는 기록이 아니라 지금 붙어 있는지의 문제라
-      // 여기서 말하지 않는다. HeartSensor 쪽이 채운다.
+      // 여기서 말하지 않는다. 화면이 HeartSensor 에서 직접 읽는다.
       sensorConnected: false,
       sensorBattery: null,
-      sensorLastReadAt: json['after_at']?.toString() ?? '',
+      sensorLastReadAt: '',
       notifyGuardian: true,
     );
   }
@@ -58,6 +64,19 @@ class HeartRepository {
     if (value is int) return value;
     if (value is num) return value.round();
     return int.tryParse(value?.toString() ?? '');
+  }
+
+  /// 서버의 "17:45"를 앱이 늘 쓰는 "오후 5시 45분"으로.
+  ///
+  /// 어르신 화면은 24시간 표기를 쓰지 않는다. 모양을 모르면 받은 그대로 둔다.
+  static String _clock(Object? raw) {
+    final text = raw?.toString().trim() ?? '';
+    final match = RegExp(r'^(\d{1,2}):(\d{2})').firstMatch(text);
+    if (match == null) return text;
+    final hour = int.parse(match.group(1)!);
+    final minute = int.parse(match.group(2)!);
+    if (hour > 23 || minute > 59) return text;
+    return DoseSlot.absoluteTime(DateTime(2000, 1, 1, hour, minute));
   }
 
   static HeartPair _pair(Object? raw) {
@@ -92,7 +111,9 @@ class HeartRepository {
     if (day == null || before == null || after == null) return null;
     return HeartAnomaly(
       day: day,
-      slotLabel: raw['label']?.toString() ?? '$day일',
+      // 서버의 'label'은 "9월 12일"처럼 날짜다. 화면이 날짜를 따로 붙이므로
+      // 여기에 넣으면 "9월 12일 9월 12일"이 된다. 때(아침·저녁)만 받는다.
+      slotLabel: raw['slot_label']?.toString() ?? '',
       before: before,
       after: after,
     );

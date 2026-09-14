@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../medication/application/medication_controller.dart';
 import 'package:flutter_tabler_icons/flutter_tabler_icons.dart';
 
 import '../../../../core/constants/app_colors.dart';
@@ -7,6 +8,8 @@ import '../../../../core/widgets/senior_button.dart';
 import '../../../../core/widgets/senior_card.dart';
 import '../../../../core/widgets/senior_feedback.dart';
 import '../../../../core/widgets/senior_header.dart';
+import '../../../medication/domain/medication_models.dart';
+import '../../domain/heart_data.dart';
 import 'saved_screen.dart';
 
 /// 29 · 심박수 이상.
@@ -16,15 +19,20 @@ import 'saved_screen.dart';
 class HrAlertScreen extends StatefulWidget {
   final int bpm;
   final String guardianTitle;
-  final String measuredAt;
-  final String usualRange;
+
+  /// 잰 시각. 없으면 이 화면을 여는 지금 시각을 쓴다.
+  final DateTime? measuredAt;
+
+  /// 이 분의 평소 범위(예: "68~78회"). 서버가 알려준 값만 넘긴다.
+  /// 없으면 "평소"를 지어 말하지 않고 앱의 기준 수치와 비교해 말한다.
+  final String? usualRange;
 
   const HrAlertScreen({
     super.key,
     required this.bpm,
-    this.guardianTitle = '딸 지안 님',
-    this.measuredAt = '오늘 오전 9시 40분',
-    this.usualRange = '68~78회',
+    this.guardianTitle = '',
+    this.measuredAt,
+    this.usualRange,
   });
 
   @override
@@ -32,13 +40,16 @@ class HrAlertScreen extends StatefulWidget {
 }
 
 class _HrAlertScreenState extends State<HrAlertScreen> {
+  /// 화면을 연 순간을 한 번만 잡는다. 다시 그릴 때마다 시각이 흐르면 안 된다.
+  late final DateTime _measuredAt = widget.measuredAt ?? DateTime.now();
+
   @override
   void initState() {
     super.initState();
     // 화면에 들어오는 순간 이미 보호자에게 갔다는 사실을 알린다.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
-        showSeniorSnackbar(context, '${widget.guardianTitle}에게 연락이 갔어요');
+        showSeniorSnackbar(context, '${resolveGuardianTitle(context, widget.guardianTitle)}에게 연락이 갔어요');
       }
     });
   }
@@ -77,7 +88,7 @@ class _HrAlertScreenState extends State<HrAlertScreen> {
                 children: [
                   _ValueCard(
                     bpm: widget.bpm,
-                    measuredAt: widget.measuredAt,
+                    measuredAt: '오늘 ${DoseSlot.absoluteTime(_measuredAt)}',
                     usualRange: widget.usualRange,
                   ),
                   const SizedBox(height: 12),
@@ -118,8 +129,9 @@ class _HrAlertScreenState extends State<HrAlertScreen> {
                       MaterialPageRoute(
                         builder: (_) => SavedScreen(
                           bpm: widget.bpm,
-                          guardianTitle: widget.guardianTitle,
+                          guardianTitle: resolveGuardianTitle(context, widget.guardianTitle),
                           fromAlert: true,
+                          savedAt: DateTime.now(),
                         ),
                       ),
                     ),
@@ -137,7 +149,7 @@ class _HrAlertScreenState extends State<HrAlertScreen> {
 class _ValueCard extends StatelessWidget {
   final int bpm;
   final String measuredAt;
-  final String usualRange;
+  final String? usualRange;
 
   const _ValueCard({
     required this.bpm,
@@ -147,6 +159,12 @@ class _ValueCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final usualRange = this.usualRange;
+    final hasUsual = usualRange != null && usualRange.isNotEmpty;
+    // 평소 범위를 모르면 앱이 쓰는 기준(HeartPair.isFast)과 비교해 말한다.
+    final headline = hasUsual
+        ? '평소보다 빠릅니다'
+        : '기준(${HeartPair.fastBpm}회)보다 빠릅니다';
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
       decoration: const BoxDecoration(
@@ -169,15 +187,17 @@ class _ValueCard extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 8),
-              Text(
-                '방금 잰 심박수',
-                style: AppText.cardTitle(size: 19, color: AppColors.danger),
+              Flexible(
+                child: Text(
+                  '방금 잰 심박수',
+                  style: AppText.cardTitle(size: 19, color: AppColors.danger),
+                ),
               ),
             ],
           ),
           const SizedBox(height: 10),
           Semantics(
-            label: '방금 잰 심박수 $bpm회, 평소보다 많이 빠릅니다',
+            label: '방금 잰 심박수 $bpm회, $headline',
             child: ExcludeSemantics(
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.center,
@@ -203,10 +223,14 @@ class _ValueCard extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 10),
-          Text('평소보다 많이 빠릅니다', style: AppText.cardTitle(size: 22)),
+          Text(
+            headline,
+            textAlign: TextAlign.center,
+            style: AppText.cardTitle(size: 22),
+          ),
           const SizedBox(height: 6),
           Text(
-            '$measuredAt · 평소 $usualRange',
+            hasUsual ? '$measuredAt · 평소 $usualRange' : measuredAt,
             textAlign: TextAlign.center,
             style: AppText.body(size: 18, color: AppColors.textSecondary),
           ),

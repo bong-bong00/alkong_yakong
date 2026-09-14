@@ -14,6 +14,9 @@ import 'package:alkong_yakong/features/reminder/presentation/screens/alarm_setti
 import 'package:alkong_yakong/features/medication/domain/medication_models.dart';
 import 'package:alkong_yakong/features/prescription/presentation/screens/prescription_screen.dart';
 import 'package:alkong_yakong/features/profile/presentation/screens/account_screen.dart';
+import 'package:alkong_yakong/features/profile/presentation/screens/help_screen.dart';
+import 'package:alkong_yakong/features/profile/presentation/screens/notices_screen.dart';
+import 'package:alkong_yakong/features/profile/presentation/screens/policy_screen.dart';
 import 'package:alkong_yakong/features/reminder/presentation/screens/lock_screen_alert.dart';
 import 'package:alkong_yakong/features/medicines/presentation/screens/drug_detail_screen.dart';
 import 'package:alkong_yakong/features/medicines/presentation/screens/my_medicines_screen.dart';
@@ -23,6 +26,81 @@ import 'package:alkong_yakong/features/prescription/presentation/screens/manual_
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:alkong_yakong/features/biosignal/data/heart_repository.dart';
+
+/// 서버 대신 정해 둔 기록을 돌려준다. null이면 "못 읽음"이다.
+class _FakeHeartRepository extends HeartRepository {
+  _FakeHeartRepository(this.result);
+  final HeartData? result;
+
+  @override
+  Future<HeartData?> fetch({String? userId}) async => result;
+}
+
+/// 테스트에서만 쓰는 채워진 기록. 앱 코드에는 이런 값을 두지 않는다.
+const _heartSample = HeartData(
+  today: HeartPair(before: 78, after: 72),
+  todaySlotLabel: '저녁 약',
+  beforeAt: '오후 5시 52분',
+  afterAt: '오후 6시 40분',
+  week: [
+    HeartDay('월', HeartPair(before: 80, after: 74)),
+    HeartDay('화', HeartPair(before: 78, after: 71)),
+    HeartDay('수', HeartPair()),
+    HeartDay('목', HeartPair(before: 77, after: 70)),
+    HeartDay('금', HeartPair(before: 84, after: 86)),
+    HeartDay('토', HeartPair()),
+    HeartDay('일', HeartPair(before: 78, after: 72)),
+  ],
+  month: [
+    HeartMonthDay(1, HeartPair(before: 79, after: 73)),
+    HeartMonthDay(2, HeartPair()),
+    HeartMonthDay(3, HeartPair(before: 96, after: 84)),
+    HeartMonthDay(4, HeartPair(before: 78, after: 72)),
+    HeartMonthDay(5, HeartPair(before: 76, after: 70)),
+    HeartMonthDay(6, HeartPair(before: 80, after: 74)),
+    HeartMonthDay(7, HeartPair()),
+    HeartMonthDay(8, HeartPair(before: 77, after: 72)),
+    HeartMonthDay(9, HeartPair(before: 79, after: 73)),
+    HeartMonthDay(10, HeartPair(before: 78, after: 71)),
+    HeartMonthDay(11, HeartPair(before: 82, after: 76)),
+    HeartMonthDay(12, HeartPair(before: 80, after: 74)),
+    HeartMonthDay(13, HeartPair(before: 77, after: 70)),
+    HeartMonthDay(14, HeartPair(before: 78, after: 72)),
+  ],
+  streakDays: 9,
+  bestStreakDays: 9,
+  anomaly: HeartAnomaly(day: 3, slotLabel: '저녁', before: 96, after: 84),
+  sensorConnected: false,
+  sensorBattery: null,
+  sensorLastReadAt: '',
+  notifyGuardian: true,
+);
+
+/// 읽기는 됐지만 잰 값이 하나도 없는 기록 — 서버가 빈 칸만 채워 보낸 모양.
+const _heartEmpty = HeartData(
+  today: HeartPair(),
+  todaySlotLabel: '저녁 약',
+  beforeAt: '',
+  afterAt: '',
+  week: [
+    HeartDay('월', HeartPair()),
+    HeartDay('화', HeartPair()),
+    HeartDay('수', HeartPair()),
+    HeartDay('목', HeartPair()),
+    HeartDay('금', HeartPair()),
+    HeartDay('토', HeartPair()),
+    HeartDay('일', HeartPair()),
+  ],
+  month: [HeartMonthDay(1, HeartPair()), HeartMonthDay(2, HeartPair())],
+  streakDays: 0,
+  bestStreakDays: 0,
+  anomaly: null,
+  sensorConnected: false,
+  sensorBattery: null,
+  sensorLastReadAt: '',
+  notifyGuardian: true,
+);
 
 /// 나머지 화면들이 두 배율 모두에서 터지지 않고 그려지는지 본다.
 void main() {
@@ -54,9 +132,18 @@ void main() {
     '내 약 목록 (20)': () => const MyMedicinesScreen(),
     '약 설명 (21)': () => const DrugDetailScreen(medicineCode: '200701021'),
     'AI 약사 상담 (22)': () => const PharmacistChatScreen(),
-    '심박수 관리 (24)': () => const HeartScreen(),
-    '폴라 센서 (25)': () => const PolarScreen(data: HeartData.demo),
-    '한 달 기록 (26)': () => const MonthlyHeartScreen(data: HeartData.demo),
+    // 심박 화면은 서버에서 읽은 기록만 그린다. 채운·빈·실패 세 모양을 다 본다.
+    '심박수 관리 (24)': () =>
+        HeartScreen(repository: _FakeHeartRepository(_heartSample)),
+    '심박수 관리 · 기록 없음 (24)': () =>
+        HeartScreen(repository: _FakeHeartRepository(_heartEmpty)),
+    '심박수 관리 · 못 불러옴 (24)': () =>
+        HeartScreen(repository: _FakeHeartRepository(null)),
+    '폴라 센서 (25)': () => const PolarScreen(),
+    '한 달 기록 (26)': () =>
+        MonthlyHeartScreen(data: _heartSample, now: DateTime(2026, 9, 14)),
+    '한 달 기록 · 기록 없음 (26)': () =>
+        MonthlyHeartScreen(data: _heartEmpty, now: DateTime(2026, 9, 14)),
     '심박수 재는 중 (27)': () => const MeasureScreen(),
     '기록 저장 (30)': () => const SavedScreen(bpm: 72),
     '회원가입 (02~05)': () => const SignupScreen(),
@@ -67,6 +154,11 @@ void main() {
       body: CareFamilyScreen(onOpenPatient: (_) {}),
     ),
     '계정 관리': () => const AccountScreen(),
+    '도움이 필요할 때': () => const HelpScreen(),
+    '도움이 필요할 때 (모두 펼침)': () => const HelpScreen(openAll: true),
+    '알려드릴 소식': () => const NoticesScreen(),
+    '이용약관': () => const PolicyScreen.terms(),
+    '개인정보처리방침': () => const PolicyScreen.privacy(),
     '잠금화면 알림 (5b)': () => LockScreenAlert(
       dose: dose,
       now: DateTime(2026, 8, 20, 18),

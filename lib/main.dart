@@ -19,6 +19,8 @@ import 'features/medicines/presentation/screens/my_medicines_screen.dart';
 import 'features/onboarding/presentation/screens/first_run_screen.dart';
 import 'features/prescription/presentation/screens/manual_medicine_screen.dart';
 import 'features/prescription/presentation/screens/prescription_screen.dart';
+import 'features/reminder/application/alarm_preferences.dart';
+import 'features/reminder/application/reminder_notifications.dart';
 import 'features/reminder/presentation/screens/lock_screen_alert.dart';
 
 /// 화면을 둘러보는 동안 로그인을 건너뛴다.
@@ -86,7 +88,20 @@ final _router = GoRouter(
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await AuthSession.load();
-  runApp(const ProviderScope(child: AlkongYakongApp()));
+  try {
+    await ReminderNotifications.instance.initialize();
+  } catch (_) {
+    // 알림을 못 켜도 앱은 떠야 한다.
+  }
+  final container = ProviderContainer();
+  // 알림 설정을 미리 읽어 두어야 내 정보 화면을 열지 않아도 약 시간 알림이 예약된다.
+  container.read(alarmPreferencesProvider);
+  runApp(
+    UncontrolledProviderScope(
+      container: container,
+      child: const AlkongYakongApp(),
+    ),
+  );
 }
 
 class AlkongYakongApp extends StatelessWidget {

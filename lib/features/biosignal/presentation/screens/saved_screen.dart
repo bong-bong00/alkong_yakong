@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../medication/application/medication_controller.dart';
 import 'package:flutter_tabler_icons/flutter_tabler_icons.dart';
 
 import '../../../../core/constants/app_colors.dart';
@@ -6,10 +7,12 @@ import '../../../../core/theme/app_typography.dart';
 import '../../../../core/widgets/senior_button.dart';
 import '../../../../core/widgets/senior_card.dart';
 import '../../../../core/widgets/senior_header.dart';
+import '../../../medication/domain/medication_models.dart';
 
 /// 30 · 기록 저장.
 ///
-/// 무엇이 남았는지 두 가지로만 말한다 — 복약 기록과 심박수 기록.
+/// 무엇이 남았는지만 말한다 — 심박수 기록, 그리고 넘겨받았으면 복약 기록.
+/// 넘겨받지 않은 복약 내용("저녁 약 3가지" 같은)을 지어 적지 않는다.
 class SavedScreen extends StatelessWidget {
   final int bpm;
   final String guardianTitle;
@@ -17,10 +20,12 @@ class SavedScreen extends StatelessWidget {
   /// 심박수 이상 화면을 거쳐 왔는지. 문구가 달라진다.
   final bool fromAlert;
 
-  /// 오늘 저녁 약을 기록한 상태인지.
-  final bool doseTaken;
+  /// 함께 남은 복약 기록 한 줄. 예: "저녁 약 3가지 · 오후 6시 2분에 드셨어요".
+  /// 없으면 복약 기록 칸을 그리지 않는다.
+  final String? doseSummary;
 
-  final String savedAt;
+  /// 저장한 시각. 없으면 화면을 여는 지금 시각을 쓴다.
+  final DateTime? savedAt;
 
   /// 기록 탭으로 보내는 길. 없으면 버튼을 그리지 않는다.
   final VoidCallback? onOpenRecord;
@@ -28,15 +33,17 @@ class SavedScreen extends StatelessWidget {
   const SavedScreen({
     super.key,
     required this.bpm,
-    this.guardianTitle = '딸 지안 님',
+    this.guardianTitle = '',
     this.fromAlert = false,
-    this.doseTaken = true,
-    this.savedAt = '오늘 오전 9시 41분',
+    this.doseSummary,
+    this.savedAt,
     this.onOpenRecord,
   });
 
   @override
   Widget build(BuildContext context) {
+    final at = DoseSlot.absoluteTime(savedAt ?? DateTime.now());
+    final doseSummary = this.doseSummary;
     return Scaffold(
       backgroundColor: AppColors.bg,
       body: Column(
@@ -74,7 +81,7 @@ class SavedScreen extends StatelessWidget {
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    '$savedAt 기준으로\n아래 두 가지가 남았습니다.',
+                    '오늘 $at 기준으로\n아래 기록이 남았습니다.',
                     textAlign: TextAlign.center,
                     style: AppText.body(
                       size: 18.5,
@@ -82,14 +89,14 @@ class SavedScreen extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(height: 20),
-                  _SavedItem(
-                    icon: TablerIcons.pill,
-                    title: '복약 기록',
-                    description: doseTaken
-                        ? '저녁 약 3가지 · 오후 6시 2분에 드신 것으로 남았어요'
-                        : '오늘 아침·점심 약 2번이 기록되어 있어요',
-                  ),
-                  const SizedBox(height: 12),
+                  if (doseSummary != null && doseSummary.isNotEmpty) ...[
+                    _SavedItem(
+                      icon: TablerIcons.pill,
+                      title: '복약 기록',
+                      description: doseSummary,
+                    ),
+                    const SizedBox(height: 12),
+                  ],
                   _SavedItem(
                     icon: TablerIcons.activity_heartbeat,
                     title: '심박수 기록',
@@ -110,14 +117,14 @@ class SavedScreen extends StatelessWidget {
                     child: Row(
                       children: [
                         InitialAvatar(
-                          name: guardianTitle,
+                          name: resolveGuardianTitle(context, guardianTitle),
                           size: 44,
                           background: AppColors.surface,
                         ),
                         const SizedBox(width: 14),
                         Expanded(
                           child: Text(
-                            '$guardianTitle에게도 전해졌어요',
+                            '${resolveGuardianTitle(context, guardianTitle)}에게도 전해졌어요',
                             style: AppText.label(
                               size: 18,
                               color: AppColors.textPrimary,
