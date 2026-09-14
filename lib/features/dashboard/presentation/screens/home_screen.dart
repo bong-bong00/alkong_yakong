@@ -68,22 +68,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   onOpenChat: () => context.push('/drug-explain'),
                   onOpenMedicines: () => Navigator.of(context).push(
                     MaterialPageRoute(
-                      builder: (_) => MyMedicinesScreen(
-                        onOpenAlarm: () => Navigator.of(context).push(
-                          MaterialPageRoute<void>(
-                            builder: (_) => const AlarmSettingsScreen(),
-                          ),
-                        ),
-                        onAddPrescription: () => Navigator.of(context)
-                            .pushReplacement(
-                              MaterialPageRoute(
-                                builder: (_) => const PrescriptionScreen(),
-                              ),
-                              ),
-                            ),
-                      ),
+                      builder: (_) => const MyMedicinesScreen(),
                     ),
-                  onOpenChat: () => context.push('/drug-explain'),
+                  ),
                   onOpenDrug: (medicine) {
                     final code = (medicine.medicineCode ?? medicine.key ?? '')
                         .trim();

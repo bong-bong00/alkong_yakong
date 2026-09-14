@@ -19,8 +19,7 @@ abstract final class ApiConfig {
     }
 
     return switch (defaultTargetPlatform) {
-      TargetPlatform.android =>
-        kReleaseMode ? productionBaseUrl : androidDevelopmentBaseUrl,
+      TargetPlatform.android => productionBaseUrl,
       _ => kReleaseMode ? productionBaseUrl : desktopDevelopmentBaseUrl,
     };
   }
