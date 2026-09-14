@@ -27,6 +27,7 @@ class _DrugExplainScreenState extends State<DrugExplainScreen> {
   String? _selectedKeyword;
   String? _selectedMedicine;
   _DrugSearchCandidate? _selectedOfficialMedicine;
+  final Map<String, _DrugSearchCandidate> _officialMedicinesByName = {};
   String? _medicineLoadError;
   final List<String> _medicines = [];
   final List<Map<String, dynamic>> _messages = [];
@@ -121,15 +122,35 @@ class _DrugExplainScreenState extends State<DrugExplainScreen> {
 
   Future<void> _loadMedicines() async {
     final names = <String>[];
+    final officialMedicines = <String, _DrugSearchCandidate>{};
+    final ambiguousNames = <String>{};
 
     void addName(dynamic value) {
       final name = value?.toString().trim() ?? '';
       if (name.isNotEmpty && !names.contains(name)) names.add(name);
     }
 
+    void addMedicine(dynamic nameValue, dynamic codeValue) {
+      final name = nameValue?.toString().trim() ?? '';
+      final code = codeValue?.toString().trim() ?? '';
+      addName(name);
+      if (name.isEmpty || code.isEmpty || ambiguousNames.contains(name)) return;
+      final existing = officialMedicines[name];
+      if (existing != null && existing.itemSeq != code) {
+        officialMedicines.remove(name);
+        ambiguousNames.add(name);
+        return;
+      }
+      officialMedicines[name] = _DrugSearchCandidate(
+        itemName: name,
+        itemSeq: code,
+      );
+    }
+
     for (final item in MvpSession.latestOcrItems) {
-      addName(
+      addMedicine(
         item['medicine_name'] ?? item['drug_name'] ?? item['ocr_drug_name'],
+        item['medicine_code'] ?? item['item_seq'] ?? item['itemSeq'],
       );
     }
 
@@ -140,6 +161,9 @@ class _DrugExplainScreenState extends State<DrugExplainScreen> {
         _medicines
           ..clear()
           ..addAll(names);
+        _officialMedicinesByName
+          ..clear()
+          ..addAll(officialMedicines);
         _medicineLoadError = names.isEmpty ? '로그인 후 내 약을 불러올 수 있어요.' : null;
       });
       return;
@@ -156,6 +180,20 @@ class _DrugExplainScreenState extends State<DrugExplainScreen> {
       final dashboard = Map<String, dynamic>.from(response as Map);
       final prescription = dashboard['latest_prescription'];
       if (prescription is Map) {
+        final prescriptionItems = prescription['items'];
+        if (prescriptionItems is List) {
+          for (final item in prescriptionItems) {
+            if (item is Map) {
+              addMedicine(
+                item['medicine_name'] ??
+                    item['product_name'] ??
+                    item['drug_name'] ??
+                    item['ocr_drug_name'],
+                item['medicine_code'] ?? item['item_seq'] ?? item['itemSeq'],
+              );
+            }
+          }
+        }
         final medicineNames = prescription['medicine_names'];
         if (medicineNames is List) {
           for (final name in medicineNames) {
@@ -167,10 +205,13 @@ class _DrugExplainScreenState extends State<DrugExplainScreen> {
       if (todayMedications is List) {
         for (final medication in todayMedications) {
           if (medication is Map) {
-            addName(
+            addMedicine(
               medication['product_name'] ??
                   medication['drug_name'] ??
                   medication['medicine_name'],
+              medication['medicine_code'] ??
+                  medication['item_seq'] ??
+                  medication['itemSeq'],
             );
           }
         }
@@ -180,7 +221,14 @@ class _DrugExplainScreenState extends State<DrugExplainScreen> {
         _medicines
           ..clear()
           ..addAll(names);
-        _selectedMedicine ??= names.length == 1 ? names.first : null;
+        _officialMedicinesByName
+          ..clear()
+          ..addAll(officialMedicines);
+        if (_selectedMedicine == null && names.length == 1) {
+          _selectedMedicine = names.first;
+        }
+        _selectedOfficialMedicine ??=
+            _officialMedicinesByName[_selectedMedicine];
         _medicineLoadError = names.isEmpty ? '등록된 처방/복용약이 없습니다.' : null;
       });
     } on ApiException catch (error) {
@@ -189,6 +237,9 @@ class _DrugExplainScreenState extends State<DrugExplainScreen> {
         _medicines
           ..clear()
           ..addAll(names);
+        _officialMedicinesByName
+          ..clear()
+          ..addAll(officialMedicines);
         _medicineLoadError = names.isEmpty ? _apiError(error) : null;
       });
     } catch (_) {
@@ -197,6 +248,9 @@ class _DrugExplainScreenState extends State<DrugExplainScreen> {
         _medicines
           ..clear()
           ..addAll(names);
+        _officialMedicinesByName
+          ..clear()
+          ..addAll(officialMedicines);
         _medicineLoadError = names.isEmpty ? '내 약을 불러오지 못했습니다.' : null;
       });
     } finally {
@@ -214,6 +268,7 @@ class _DrugExplainScreenState extends State<DrugExplainScreen> {
       if (!_medicines.contains(medicine.itemName)) {
         _medicines.add(medicine.itemName);
       }
+      _officialMedicinesByName[medicine.itemName] = medicine;
       _selectedMedicine = medicine.itemName;
       _selectedOfficialMedicine = medicine;
       _selectedKeyword = null;
@@ -362,7 +417,8 @@ class _DrugExplainScreenState extends State<DrugExplainScreen> {
                             _selectedOfficialMedicine = null;
                           } else {
                             _selectedMedicine = medicine;
-                            _selectedOfficialMedicine = null;
+                            _selectedOfficialMedicine =
+                                _officialMedicinesByName[medicine];
                           }
                           _selectedKeyword = null;
                         });

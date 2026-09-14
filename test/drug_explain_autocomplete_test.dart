@@ -170,8 +170,43 @@ void main() {
     expect(tester.widget<ChoiceChip>(selectedMedicineChip).selected, isTrue);
     await tester.tap(find.text('#복용방법'));
     await tester.pumpAndSettle();
-    expect(chatBodies.last.containsKey('selected_medicine'), isFalse);
+    expect(chatBodies.last['selected_medicine'], {
+      'medicine_code': '1',
+      'product_name': '게보린정',
+    });
     expect(find.text('복용방법 답변'), findsNWidgets(2));
+  });
+
+  testWidgets('공식 code가 있는 저장 약 chip은 selected_medicine을 전송한다', (tester) async {
+    Map<String, dynamic>? chatBody;
+    final client = MockClient((request) async {
+      if (request.url.path.endsWith('/dashboard')) {
+        return jsonResponse({
+          'latest_prescription': null,
+          'today_medications': [
+            {
+              'medicine_code': '197900145',
+              'product_name': '유한메토트렉세이트정',
+            },
+          ],
+        });
+      }
+      if (request.url.path.endsWith('/drug-explain/chat')) {
+        chatBody = jsonDecode(request.body) as Map<String, dynamic>;
+        return jsonResponse({'reply': '공식정보 답변'});
+      }
+      throw StateError('unexpected request: ${request.url.path}');
+    });
+
+    await tester.pumpWidget(appWith(client));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('#약효·효능'));
+    await tester.pumpAndSettle();
+
+    expect(chatBody?['selected_medicine'], {
+      'medicine_code': '197900145',
+      'product_name': '유한메토트렉세이트정',
+    });
   });
 
   testWidgets('빠른 질문 8종은 선택 약으로 만든 기존 문장을 즉시 전송한다', (tester) async {
