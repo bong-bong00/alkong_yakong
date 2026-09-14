@@ -8,9 +8,9 @@ import '../../../../core/widgets/senior_card.dart';
 import '../../../../core/widgets/senior_header.dart';
 import '../../../medication/application/medication_controller.dart';
 import '../../../dur_analysis/presentation/screens/dur_analysis_screen.dart';
+import '../../application/medication_history_provider.dart';
 import '../../../medication/domain/medication_models.dart';
 import 'month_calendar_screen.dart';
-import 'patient_data.dart';
 
 /// 4c — 기록 탭.
 ///
@@ -26,20 +26,31 @@ class MedicationRecordScreen extends ConsumerWidget {
   /// push로 열릴 때 true → B형 헤더(뒤로가기). 탭일 땐 A형.
   final bool showBack;
 
-  /// 환자별 기록. null이면 본인의 오늘 상태를 쓴다.
-  final List<DayRecord>? records;
+  /// 보호자가 볼 어르신 id. null이면 로그인한 본인의 기록이다.
+  final String? patientUserId;
 
   const MedicationRecordScreen({
     super.key,
     this.patientName,
     this.showBack = false,
-    this.records,
+    this.patientUserId,
   });
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final today = ref.watch(medicationProvider);
-    final days = records;
+    final patientId = patientUserId;
+    // 본인은 이 전화기의 오늘 상태를, 보호자는 서버에 올라온 어르신 기록을 쓴다.
+    final today = patientId == null
+        ? ref.watch(medicationProvider)
+        : ref.watch(patientTodayProvider(patientId)).valueOrNull ??
+              TodayMedication.empty;
+    final history =
+        (patientId == null
+                ? ref.watch(medicationHistoryProvider)
+                : ref.watch(patientHistoryProvider(patientId)))
+            .valueOrNull ??
+        const <DateTime, DayAdherence>{};
+    final interactionCount = today.interactionCount;
 
     final title = patientName == null ? '복약 기록' : '$patientName님 복약 기록';
 
@@ -55,18 +66,21 @@ class MedicationRecordScreen extends ConsumerWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                _MonthCard(rate: _monthRate(days)),
+                _MonthCard(rate: _monthRate(today, history)),
                 const SizedBox(height: 12),
                 _WeekCard(
-                  days: _weekStatuses(days, today),
+                  days: _weekStatuses(today, history),
                   onOpenCalendar: () => Navigator.of(context).push(
                     MaterialPageRoute<void>(
-                      builder: (_) => const MonthCalendarScreen(),
+                      builder: (_) =>
+                          MonthCalendarScreen(patientUserId: patientId),
                     ),
                   ),
                 ),
                 const SizedBox(height: 12),
-                _TodayCard(rows: _todayRows(days, today)),
+                _TodayCard(rows: _todayRows(today)),
+                // 함께먹기 주의 화면은 로그인한 본인 약만 분석한다.
+                if (patientId == null) ...[
                 const SizedBox(height: 12),
                 SeniorCard(
                   padding: const EdgeInsets.symmetric(
@@ -76,9 +90,13 @@ class MedicationRecordScreen extends ConsumerWidget {
                   child: SeniorListRow(
                     label: '약 함께먹기 주의',
                     icon: TablerIcons.alert_triangle,
-                    iconColor: AppColors.danger,
-                    value: '1건',
-                    valueColor: AppColors.danger,
+                    iconColor: interactionCount > 0
+                        ? AppColors.danger
+                        : AppColors.textTertiary,
+                    value: interactionCount > 0 ? '$interactionCount건' : '없어요',
+                    valueColor: interactionCount > 0
+                        ? AppColors.danger
+                        : AppColors.textTertiary,
                     trailing: const SeniorChevron(),
                     onTap: () => Navigator.of(context).push(
                       MaterialPageRoute<void>(
@@ -87,6 +105,7 @@ class MedicationRecordScreen extends ConsumerWidget {
                     ),
                   ),
                 ),
+                ],
               ],
             ),
           ),
@@ -96,21 +115,33 @@ class MedicationRecordScreen extends ConsumerWidget {
   }
 
   // ── 데이터 정리 ───────────────────────────────────────────────
-  // TODO: 백엔드 복약기록 API로 교체한다.
+  // 서버의 날짜별 기록 + 오늘 상태로 센다.
 
-  int _monthRate(List<DayRecord>? days) {
-    if (days == null || days.isEmpty) return 94;
+  /// 기록이 하나도 없으면 null. 없는 기록을 퍼센트로 지어내지 않는다.
+  int? _monthRate(TodayMedication today, Map<DateTime, DayAdherence> history) {
     var taken = 0;
     var total = 0;
-    for (final day in days) {
-      total += day.slots.length;
-      taken += day.slots.where((s) => s.taken).length;
+    final now = dateOnly(DateTime.now());
+    for (final record in history.values) {
+      if (record.date.year != now.year ||
+          record.date.month != now.month ||
+          record.date == now) {
+        continue;
+      }
+      taken += record.taken;
+      total += record.total;
     }
-    if (total == 0) return 0;
+    final live = todayAdherence(today);
+    taken += live.taken;
+    total += live.total;
+    if (total == 0) return null;
     return (taken * 100 / total).round();
   }
 
-  List<_DayStatus> _weekStatuses(List<DayRecord>? days, TodayMedication today) {
+  List<_DayStatus> _weekStatuses(
+    TodayMedication today,
+    Map<DateTime, DayAdherence> history,
+  ) {
     final now = DateTime.now();
     final monday = DateTime(
       now.year,
@@ -118,33 +149,16 @@ class MedicationRecordScreen extends ConsumerWidget {
       now.day,
     ).subtract(Duration(days: now.weekday - 1));
 
-    if (days != null && days.isNotEmpty) {
-      // 보호자 경로: 최근 기록을 이번 주에 오래된 순으로 채운다.
-      final ordered = days.reversed.toList();
-      return [
-        for (int i = 0; i < 7; i++)
-          if (i >= ordered.length)
-            _DayStatus(date: monday.add(Duration(days: i)), taken: 0, total: 0)
-          else
-            _DayStatus(
-              date: monday.add(Duration(days: i)),
-              taken: ordered[i].slots.where((s) => s.taken).length,
-              total: ordered[i].slots.length,
-            ),
-      ];
-    }
-
-    // 본인 경로: 지난 날은 데모, 오늘은 실제 상태, 앞날은 비운다.
-    const demoTaken = <int>[3, 3, 2, 3, 3, 3, 3];
+    // 지난 날은 서버 기록, 오늘은 오늘 상태, 앞날은 비운다.
+    final todayDate = dateOnly(now);
     return [
       for (int i = 0; i < 7; i++)
         () {
           final date = monday.add(Duration(days: i));
-          final isToday = date.day == now.day && date.month == now.month;
-          if (date.isAfter(DateTime(now.year, now.month, now.day))) {
-            return _DayStatus(date: date, taken: 0, total: 0);
+          if (date.isAfter(todayDate)) {
+            return _DayStatus(date: date, taken: 0, total: 0, isFuture: true);
           }
-          if (isToday) {
+          if (date == todayDate) {
             return _DayStatus(
               date: date,
               taken: today.takenCount,
@@ -152,24 +166,17 @@ class MedicationRecordScreen extends ConsumerWidget {
               isToday: true,
             );
           }
-          return _DayStatus(date: date, taken: demoTaken[i], total: 3);
+          final record = history[date];
+          return _DayStatus(
+            date: date,
+            taken: record?.taken ?? 0,
+            total: record?.total ?? 0,
+          );
         }(),
     ];
   }
 
-  List<_RecordRow> _todayRows(List<DayRecord>? days, TodayMedication today) {
-    if (days != null && days.isNotEmpty) {
-      return [
-        for (final slot in days.first.slots)
-          _RecordRow(
-            time: slot.label,
-            medicines: [
-              for (final name in slot.meds) _RecordMedicine(name: name),
-            ],
-            taken: slot.taken,
-          ),
-      ];
-    }
+  List<_RecordRow> _todayRows(TodayMedication today) {
     return [
       for (final dose in today.doses)
         _RecordRow(
@@ -194,16 +201,21 @@ class _DayStatus {
   final int taken;
   final int total;
   final bool isToday;
+  final bool isFuture;
 
   const _DayStatus({
     required this.date,
     required this.taken,
     required this.total,
     this.isToday = false,
+    this.isFuture = false,
   });
 
   bool get complete => total > 0 && taken == total;
-  bool get future => total == 0;
+  bool get future => isFuture;
+
+  /// 지난 날인데 약 일정이 없었던 날. 다 드신 날로도 빠뜨린 날로도 치지 않는다.
+  bool get noRecord => !isFuture && !isToday && total == 0;
   bool get partial => total > 0 && taken < total;
 }
 
@@ -234,7 +246,8 @@ class _RecordRow {
 
 /// 카드 1 — 이번 달.
 class _MonthCard extends StatelessWidget {
-  final int rate;
+  /// 기록이 없으면 null.
+  final int? rate;
   const _MonthCard({required this.rate});
 
   @override
@@ -261,23 +274,29 @@ class _MonthCard extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 12),
-          Wrap(
-            spacing: 10,
-            runSpacing: 4,
-            crossAxisAlignment: WrapCrossAlignment.center,
-            children: [
-              Text('$rate%', style: AppText.hero(size: 40)),
-              Text(
-                rate >= 90 ? '잘 지키고 계세요' : '조금만 더 챙겨보세요',
-                style: AppText.label(size: 18, color: AppColors.textTertiary),
-              ),
-            ],
-          ),
+          if (rate == null)
+            Text(
+              '아직 쌓인 기록이 없어요',
+              style: AppText.label(size: 18, color: AppColors.textTertiary),
+            )
+          else
+            Wrap(
+              spacing: 10,
+              runSpacing: 4,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                Text('$rate%', style: AppText.hero(size: 40)),
+                Text(
+                  rate! >= 90 ? '잘 지키고 계세요' : '조금만 더 챙겨보세요',
+                  style: AppText.label(size: 18, color: AppColors.textTertiary),
+                ),
+              ],
+            ),
           const SizedBox(height: 12),
           ClipRRect(
             borderRadius: BorderRadius.circular(6),
             child: LinearProgressIndicator(
-              value: rate / 100,
+              value: (rate ?? 0) / 100,
               minHeight: 12,
               backgroundColor: AppColors.divider,
               valueColor: const AlwaysStoppedAnimation<Color>(AppColors.point),
@@ -391,7 +410,7 @@ class _WeekDay extends StatelessWidget {
         status.complete ? '✓' : '${status.taken}',
         style: AppText.cardTitle(size: 17, color: Colors.white),
       );
-    } else if (status.future) {
+    } else if (status.future || status.noRecord) {
       background = AppColors.headerBg;
       mark = Text(
         '·',
@@ -414,7 +433,7 @@ class _WeekDay extends StatelessWidget {
 
     return Semantics(
       label: '${status.date.day}일 $label요일, '
-          '${status.future ? '아직 오지 않은 날' : '${status.total}번 중 ${status.taken}번'}',
+          '${status.future ? '아직 오지 않은 날' : status.noRecord ? '기록 없음' : '${status.total}번 중 ${status.taken}번'}',
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [

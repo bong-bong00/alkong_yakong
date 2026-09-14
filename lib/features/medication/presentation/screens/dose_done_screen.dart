@@ -7,6 +7,7 @@ import '../../../../core/theme/app_typography.dart';
 import '../../../../core/widgets/senior_button.dart';
 import '../../../../core/widgets/senior_card.dart';
 import '../../../../core/widgets/senior_header.dart';
+import '../../../profile/application/current_user_controller.dart';
 import '../../application/medication_controller.dart';
 import '../../domain/medication_models.dart';
 
@@ -37,7 +38,7 @@ class DoseDoneScreen extends ConsumerWidget {
                 child: Text('복약 기록', style: AppText.screenTitle(size: 24)),
               ),
               InitialAvatar(
-                name: '김복자',
+                name: ref.watch(currentUserNameProvider),
                 size: 52,
                 background: AppColors.bg,
               ),

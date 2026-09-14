@@ -1,16 +1,19 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../core/widgets/senior_button.dart';
 import '../../../../core/widgets/senior_card.dart';
 import '../../../../core/widgets/senior_header.dart';
+import '../../application/medication_history_provider.dart';
 
 /// 한 칸이 가질 수 있는 상태.
 ///
-/// **네 가지뿐이다.** 칸 안에 복용 횟수를 적지 않는다 —
+/// 칸 안에 복용 횟수를 적지 않는다 —
 /// 숫자가 들어가면 한 달치를 한눈에 읽는 일이 다시 계산이 된다.
-enum DayMark { done, missed, today, future }
+/// 약 일정이 없던 날은 [noRecord]다. 다 드신 날로 채우지 않는다.
+enum DayMark { done, missed, today, future, noRecord }
 
 /// 달력 한 칸.
 @immutable
@@ -38,76 +41,115 @@ class MissedDay {
 /// 색은 세 가지뿐이다. 다 드신 날·빠뜨린 날·오늘.
 /// 빠뜨린 날은 색만으로 끝내지 않고 아래에 글로 한 번 더 적는다 —
 /// 색을 구분하기 어려운 눈에도 같은 사실이 남아야 한다.
-class MonthCalendarScreen extends StatelessWidget {
-  final int month;
-  final List<CalendarDay> days;
+///
+/// 칸을 넘겨주지 않으면 내 복약 기록으로 이번 달을 그린다.
+class MonthCalendarScreen extends ConsumerWidget {
+  final int? month;
+  final List<CalendarDay>? days;
 
   /// 달력 앞의 빈 칸 수. 1일이 무슨 요일인지에 따라 달라진다.
-  final int leadingBlanks;
+  final int? leadingBlanks;
 
-  final List<MissedDay> missed;
+  final List<MissedDay>? missed;
+
+  /// 보호자가 볼 어르신 id. null이면 로그인한 본인의 기록이다.
+  final String? patientUserId;
 
   const MonthCalendarScreen({
     super.key,
-    this.month = 8,
-    this.days = kDemoAugust,
-    this.leadingBlanks = 5,
-    this.missed = kDemoMissed,
+    this.month,
+    this.days,
+    this.leadingBlanks,
+    this.missed,
+    this.patientUserId,
   });
 
-  /// 8월 데모. 1일이 토요일이라 앞에 빈 칸 5개.
-  static const List<CalendarDay> kDemoAugust = [
-    CalendarDay(1, DayMark.done),
-    CalendarDay(2, DayMark.done),
-    CalendarDay(3, DayMark.done),
-    CalendarDay(4, DayMark.done),
-    CalendarDay(5, DayMark.done),
-    CalendarDay(6, DayMark.done),
-    CalendarDay(7, DayMark.missed),
-    CalendarDay(8, DayMark.done),
-    CalendarDay(9, DayMark.done),
-    CalendarDay(10, DayMark.done),
-    CalendarDay(11, DayMark.done),
-    CalendarDay(12, DayMark.done),
-    CalendarDay(13, DayMark.done),
-    CalendarDay(14, DayMark.done),
-    CalendarDay(15, DayMark.done),
-    CalendarDay(16, DayMark.done),
-    CalendarDay(17, DayMark.done),
-    CalendarDay(18, DayMark.done),
-    CalendarDay(19, DayMark.missed),
-    CalendarDay(20, DayMark.done),
-    CalendarDay(21, DayMark.today),
-    CalendarDay(22, DayMark.future),
-    CalendarDay(23, DayMark.future),
-    CalendarDay(24, DayMark.future),
-    CalendarDay(25, DayMark.future),
-    CalendarDay(26, DayMark.future),
-    CalendarDay(27, DayMark.future),
-    CalendarDay(28, DayMark.future),
-    CalendarDay(29, DayMark.future),
-    CalendarDay(30, DayMark.future),
-    CalendarDay(31, DayMark.future),
-  ];
-
-  static const List<MissedDay> kDemoMissed = [
-    MissedDay(label: '8월 19일 수', detail: '점심 약 한 번'),
-    MissedDay(label: '8월 7일 금', detail: '저녁 약 한 번'),
-  ];
-
   static const List<String> _weekdays = ['월', '화', '수', '목', '금', '토', '일'];
+  static const List<String> _counts = ['한 번', '두 번', '세 번', '네 번'];
 
-  int get _doneCount => days.where((d) => d.mark == DayMark.done).length;
+  static List<CalendarDay> _daysFrom(
+    DateTime today,
+    Map<DateTime, DayAdherence> history,
+  ) {
+    final daysInMonth = DateUtils.getDaysInMonth(today.year, today.month);
+    return [
+      for (int day = 1; day <= daysInMonth; day++)
+        () {
+          final date = DateTime(today.year, today.month, day);
+          if (date == today) return CalendarDay(day, DayMark.today);
+          if (date.isAfter(today)) return CalendarDay(day, DayMark.future);
+          final record = history[date];
+          if (record == null || record.total == 0) {
+            return CalendarDay(day, DayMark.noRecord);
+          }
+          return CalendarDay(
+            day,
+            record.complete ? DayMark.done : DayMark.missed,
+          );
+        }(),
+    ];
+  }
 
-  int get _pastCount =>
-      days.where((d) => d.mark != DayMark.future).length;
+  static List<MissedDay> _missedFrom(
+    DateTime today,
+    Map<DateTime, DayAdherence> history,
+  ) {
+    final records =
+        history.values
+            .where(
+              (r) =>
+                  r.date.isBefore(today) &&
+                  r.date.month == today.month &&
+                  r.date.year == today.year &&
+                  r.total > 0 &&
+                  !r.complete,
+            )
+            .toList()
+          ..sort((a, b) => b.date.compareTo(a.date));
+    return [
+      for (final r in records)
+        MissedDay(
+          label:
+              '${r.date.month}월 ${r.date.day}일 ${_weekdays[r.date.weekday - 1]}',
+          detail:
+              '${r.missedSlots.join('·')} 약 '
+              '${_counts[(r.total - r.taken - 1).clamp(0, _counts.length - 1)]}',
+        ),
+    ];
+  }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final today = dateOnly(DateTime.now());
+    final useHistory = days == null;
+    final patientId = patientUserId;
+    final AsyncValue<Map<DateTime, DayAdherence>> historyAsync = !useHistory
+        ? const AsyncData(<DateTime, DayAdherence>{})
+        : patientId == null
+        ? ref.watch(medicationHistoryProvider)
+        : ref.watch(patientHistoryProvider(patientId));
+    final history = historyAsync.valueOrNull ?? const {};
+
+    final shownMonth = month ?? today.month;
+    final shownDays = days ?? _daysFrom(today, history);
+    final blanks =
+        leadingBlanks ?? DateTime(today.year, today.month).weekday - 1;
+    final shownMissed = missed ?? _missedFrom(today, history);
+
+    final doneCount = shownDays.where((d) => d.mark == DayMark.done).length;
+    final recordedCount = shownDays
+        .where((d) => d.mark == DayMark.done || d.mark == DayMark.missed)
+        .length;
+    final summary = historyAsync.isLoading
+        ? '불러오는 중이에요'
+        : recordedCount == 0
+        ? '아직 쌓인 기록이 없어요'
+        : '$recordedCount일 중 $doneCount일 다 드셨어요';
+
     // 앞 빈 칸까지 합쳐 7개씩 끊는다.
     final cells = <CalendarDay?>[
-      for (int i = 0; i < leadingBlanks; i++) null,
-      ...days,
+      for (int i = 0; i < blanks; i++) null,
+      ...shownDays,
     ];
     final rowCount = (cells.length / 7).ceil();
 
@@ -115,7 +157,7 @@ class MonthCalendarScreen extends StatelessWidget {
       backgroundColor: AppColors.bg,
       body: Column(
         children: [
-          SeniorBackHeader(title: '$month월 달력'),
+          SeniorBackHeader(title: '$shownMonth월 달력'),
           Expanded(
             child: SingleChildScrollView(
               padding: const EdgeInsets.fromLTRB(20, 16, 20, 28),
@@ -132,11 +174,11 @@ class MonthCalendarScreen extends StatelessWidget {
                       children: [
                         LabelValueRow(
                           label: Text(
-                            '$month월',
+                            '$shownMonth월',
                             style: AppText.cardTitle(size: 21),
                           ),
                           value: Text(
-                            '$_pastCount일 중 $_doneCount일 다 드셨어요',
+                            summary,
                             style: AppText.label(
                               size: 17.5,
                               color: AppColors.textTertiary,
@@ -186,9 +228,9 @@ class MonthCalendarScreen extends StatelessWidget {
                       ],
                     ),
                   ),
-                  if (missed.isNotEmpty) ...[
+                  if (shownMissed.isNotEmpty) ...[
                     const SizedBox(height: 12),
-                    _MissedCard(missed: missed),
+                    _MissedCard(missed: shownMissed),
                   ],
                   const SizedBox(height: 16),
                   SeniorButton(
@@ -244,6 +286,11 @@ class _DayCell extends StatelessWidget {
         ink = AppColors.inactive;
         mark = '·';
         spoken = '아직 오지 않은 날';
+      case DayMark.noRecord:
+        background = AppColors.sunken;
+        ink = AppColors.inactive;
+        mark = '-';
+        spoken = '기록 없는 날';
     }
 
     return Semantics(

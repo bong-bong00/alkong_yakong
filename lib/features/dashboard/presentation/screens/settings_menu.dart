@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 
 import '../../../../core/widgets/senior_card.dart';
 import '../../../../core/widgets/senior_header.dart';
+import '../../../profile/presentation/screens/help_screen.dart';
+import '../../../profile/presentation/screens/notices_screen.dart';
+import '../../../profile/presentation/screens/policy_screen.dart';
 
 /// 내 정보 탭의 도움말·약관 목록.
 ///
@@ -10,31 +13,27 @@ import '../../../../core/widgets/senior_header.dart';
 class SettingsMenu extends StatelessWidget {
   const SettingsMenu({super.key});
 
-  void _todo(BuildContext context, String name) {
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text('$name — 아직 준비 중이에요')));
-  }
-
   @override
   Widget build(BuildContext context) {
-    const labels = <String>[
-      '도움이 필요할 때',
-      '알려드릴 소식',
-      '이용약관',
-      '개인정보처리방침',
+    final items = <(String, WidgetBuilder)>[
+      ('도움이 필요할 때', (_) => const HelpScreen()),
+      ('알려드릴 소식', (_) => const NoticesScreen()),
+      ('이용약관', (_) => const PolicyScreen.terms()),
+      ('개인정보처리방침', (_) => const PolicyScreen.privacy()),
     ];
 
     return SeniorCard(
       padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 4),
       child: Column(
         children: [
-          for (int i = 0; i < labels.length; i++) ...[
+          for (int i = 0; i < items.length; i++) ...[
             if (i > 0) const SeniorDivider(),
             SeniorListRow(
-              label: labels[i],
+              label: items[i].$1,
               trailing: const SeniorChevron(),
-              onTap: () => _todo(context, labels[i]),
+              onTap: () => Navigator.of(
+                context,
+              ).push(MaterialPageRoute<void>(builder: items[i].$2)),
             ),
           ],
         ],

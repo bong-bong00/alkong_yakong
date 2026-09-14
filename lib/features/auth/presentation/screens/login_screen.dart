@@ -1,30 +1,34 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../../core/constants/app_colors.dart';
-import '../../../../core/session/auth_session.dart';
+import '../../../../core/network/api_client.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../core/widgets/app_logo.dart';
 import '../../../../core/widgets/senior_button.dart';
 import '../../../onboarding/presentation/screens/first_run_screen.dart';
+import '../../../profile/application/current_user_controller.dart';
+import '../../../profile/application/session_actions.dart';
 import 'signup_screen.dart';
 
 /// 4i — 로그인 · 시작하기.
 ///
 /// 시작 화면에서부터 "가족이 대신 만들어 드리기"를 1급 경로로 올린다.
 /// 어르신이 혼자 가입에서 막히는 것이 첫 이탈 지점이기 때문이다.
-class LoginScreen extends StatefulWidget {
+class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key});
 
   @override
-  State<LoginScreen> createState() => _LoginScreenState();
+  ConsumerState<LoginScreen> createState() => _LoginScreenState();
 }
 
-class _LoginScreenState extends State<LoginScreen> {
+class _LoginScreenState extends ConsumerState<LoginScreen> {
   final _phone = TextEditingController();
   final _password = TextEditingController();
   bool _obscure = true;
+  bool _loggingIn = false;
 
   @override
   void dispose() {
@@ -40,9 +44,23 @@ class _LoginScreenState extends State<LoginScreen> {
       );
       return;
     }
-    // TODO: 백엔드 로그인 API 연동.
-    await AuthSession.setLoggedIn('patient');
-    if (mounted) context.go('/');
+    if (_loggingIn) return;
+    setState(() => _loggingIn = true);
+    try {
+      final user = await ref
+          .read(userRepositoryProvider)
+          .login(phone: _phone.text.trim(), password: _password.text);
+      if (!mounted) return;
+      await startSession(ref, user);
+      if (mounted) context.go('/');
+    } on ApiException catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(error.message)));
+    } finally {
+      if (mounted) setState(() => _loggingIn = false);
+    }
   }
 
   @override
@@ -98,10 +116,10 @@ class _LoginScreenState extends State<LoginScreen> {
               const SizedBox(height: 26),
 
               SeniorButton(
-                label: '시작하기',
+                label: _loggingIn ? '들어가는 중...' : '시작하기',
                 minHeight: 74,
                 fontSize: 25,
-                onPressed: _login,
+                onPressed: _loggingIn ? null : _login,
               ),
               const SizedBox(height: 18),
 

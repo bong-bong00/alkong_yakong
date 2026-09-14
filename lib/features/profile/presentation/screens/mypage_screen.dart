@@ -4,8 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:flutter_tabler_icons/flutter_tabler_icons.dart';
 
 import '../../../../core/constants/app_colors.dart';
-import '../../../../core/mode/app_mode.dart';
-import '../../../../core/providers/user_role.dart';
+import '../../../../core/network/api_client.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../core/widgets/senior_button.dart';
 import '../../../../core/widgets/senior_card.dart';
@@ -13,15 +12,17 @@ import '../../../../core/widgets/senior_feedback.dart';
 import '../../../../core/widgets/senior_header.dart';
 import '../../../dashboard/presentation/screens/profile_edit_screen.dart';
 import '../../../dashboard/presentation/screens/settings_menu.dart';
+import '../../../guardian/application/guardians_provider.dart';
 import '../../../guardian/data/guardian_repository.dart';
 import '../../../guardian/presentation/widgets/add_care_sheet.dart';
 import '../../../medication/application/medication_controller.dart';
+import '../../../reminder/application/alarm_preferences.dart';
 import '../../../reminder/presentation/screens/alarm_settings_screen.dart';
-import '../../../../core/session/auth_session.dart';
-import '../../../biosignal/domain/heart_data.dart';
 import '../../../biosignal/presentation/screens/polar_screen.dart';
 import '../../../dur_analysis/presentation/screens/dur_analysis_screen.dart';
 import '../../../medicines/application/user_medicines_controller.dart';
+import '../../application/current_user_controller.dart';
+import '../../application/session_actions.dart';
 import '../widgets/logout_sheet.dart';
 import 'account_screen.dart';
 
@@ -29,32 +30,23 @@ import 'account_screen.dart';
 ///
 /// 로그아웃·탈퇴 같은 위험 동작은 이 화면에 두지 않는다.
 /// [AccountScreen]으로 분리하고, 안전한 버튼과 물리적으로 떨어뜨렸다.
+///
+/// 이 화면의 글자는 모두 저장된 값에서 온다. 고치고 돌아오면 바로 바뀐다.
 class MyPageScreen extends ConsumerStatefulWidget {
   /// 보호자 화면에서 열렸는지. 문구만 달라지고 색은 같다.
   final bool isGuardian;
 
-  final String userName;
-  final int birthYear;
-
-  const MyPageScreen({
-    super.key,
-    this.isGuardian = false,
-    this.userName = '김복자',
-    this.birthYear = 1958,
-  });
+  const MyPageScreen({super.key, this.isGuardian = false});
 
   @override
   ConsumerState<MyPageScreen> createState() => _MyPageScreenState();
 }
 
 class _MyPageScreenState extends ConsumerState<MyPageScreen> {
-  /// 로그아웃하면 일반 모드로 되돌린다.
-  /// 다음 사람이 쉬운 모드에 갇힌 채로 로그인 화면을 만나지 않도록.
   Future<void> _logout() async {
     final confirmed = await showLogoutSheet(context);
     if (!confirmed || !mounted) return;
-    await ref.read(appModeProvider.notifier).set(AppMode.normal);
-    await AuthSession.logout();
+    await endSession(ref);
     if (mounted) context.go('/login');
   }
 
@@ -68,6 +60,10 @@ class _MyPageScreenState extends ConsumerState<MyPageScreen> {
       phone: draft.phone,
     );
     if (!mounted) return;
+    if (result.isSent) {
+      ref.invalidate(guardiansProvider);
+      ref.read(medicationProvider.notifier).refreshFromServer();
+    }
     // 서버가 받아 준 뒤에만 보냈다고 말한다.
     showSeniorSnackbar(
       context,
@@ -77,12 +73,38 @@ class _MyPageScreenState extends ConsumerState<MyPageScreen> {
     );
   }
 
+  /// 보호자가 먼저 청한 연결에 대답한다. 거절은 요청을 지운다.
+  Future<void> _answerRequest(GuardianContact guardian, bool accept) async {
+    final repository = GuardianRepository();
+    try {
+      if (accept) {
+        await repository.accept(guardian.id);
+      } else {
+        await repository.remove(guardian.id);
+      }
+    } on ApiException catch (error) {
+      if (mounted) showSeniorSnackbar(context, error.message);
+      return;
+    }
+    if (!mounted) return;
+    ref.invalidate(guardiansProvider);
+    ref.read(medicationProvider.notifier).refreshFromServer();
+    showSeniorSnackbar(
+      context,
+      accept
+          ? '${guardian.name} 님이 이제 함께 볼 수 있어요'
+          : '${guardian.name} 님의 요청을 거절했어요',
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final today = ref.watch(medicationProvider);
-    final mode = ref.watch(appModeProvider);
+    final user = ref.watch(currentUserProvider);
+    final profile = user.valueOrNull;
+    final guardians = ref.watch(guardiansProvider);
+    final alarm = ref.watch(alarmPreferencesProvider);
     final medicines = ref.watch(userMedicinesProvider);
-    final age = DateTime.now().year - widget.birthYear;
     final medicineCount = medicines.maybeWhen(
       data: (items) => items.length,
       orElse: () => today.doses
@@ -90,6 +112,9 @@ class _MyPageScreenState extends ConsumerState<MyPageScreen> {
           .toSet()
           .length,
     );
+    final interactionCount = today.interactionCount;
+    final loadFailed = profile == null && user.hasError;
+    final ageLine = profile?.ageLine(DateTime.now()) ?? '';
 
     return Column(
       children: [
@@ -109,7 +134,7 @@ class _MyPageScreenState extends ConsumerState<MyPageScreen> {
                   child: Row(
                     children: [
                       InitialAvatar(
-                        name: widget.userName,
+                        name: profile?.name ?? '',
                         size: 64,
                         background: AppColors.pointTint,
                         foreground: AppColors.point,
@@ -120,63 +145,44 @@ class _MyPageScreenState extends ConsumerState<MyPageScreen> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              widget.userName,
+                              profile?.name ??
+                                  (loadFailed ? '내 정보' : '불러오는 중이에요'),
                               style: AppText.cardTitle(size: 23),
                             ),
-                            Text(
-                              '${widget.birthYear}년생 · $age세',
-                              style: AppText.body(
-                                size: 18,
-                                color: AppColors.textTertiary,
+                            if (loadFailed)
+                              Text(
+                                '내 정보를 불러오지 못했어요',
+                                style: AppText.body(
+                                  size: 18,
+                                  color: AppColors.danger,
+                                ),
+                              )
+                            else if (ageLine.isNotEmpty)
+                              Text(
+                                ageLine,
+                                style: AppText.body(
+                                  size: 18,
+                                  color: AppColors.textTertiary,
+                                ),
                               ),
-                            ),
                           ],
                         ),
                       ),
                       const SizedBox(width: 10),
                       SeniorTextButton(
-                        label: '고치기',
+                        label: loadFailed ? '다시' : '고치기',
                         expand: false,
                         color: AppColors.point,
                         fontSize: 18,
-                        onPressed: () => Navigator.of(context).push(
-                          MaterialPageRoute<void>(
-                            builder: (_) => ProfileEditScreen(
-                              isGuardian: widget.isGuardian,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 12),
-
-                // ── 화면 모드 ──
-                // 토글이 아니라 세그먼트다. 지금 어느 쪽인지가 늘 보인다.
-                SeniorCard(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 20,
-                    vertical: 18,
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      Text('화면 모드', style: AppText.cardTitle(size: 20)),
-                      const SizedBox(height: 6),
-                      Text(
-                        mode.isEasy
-                            ? '다음 할 일 버튼 하나만 따라가면 됩니다'
-                            : '버튼 하나만 따라가는 쉬운 화면으로 바꿀 수 있어요',
-                        style: AppText.caption(size: 17.5),
-                      ),
-                      const SizedBox(height: 14),
-                      SeniorSegmented(
-                        labels: const ['일반', '쉬운 화면'],
-                        index: mode.isEasy ? 1 : 0,
-                        onChanged: (i) => ref
-                            .read(appModeProvider.notifier)
-                            .set(i == 1 ? AppMode.easy : AppMode.normal),
+                        onPressed: loadFailed
+                            ? () => ref.invalidate(currentUserProvider)
+                            : () => Navigator.of(context).push(
+                                MaterialPageRoute<void>(
+                                  builder: (_) => ProfileEditScreen(
+                                    isGuardian: widget.isGuardian,
+                                  ),
+                                ),
+                              ),
                       ),
                     ],
                   ),
@@ -202,9 +208,15 @@ class _MyPageScreenState extends ConsumerState<MyPageScreen> {
                       SeniorListRow(
                         label: '약 함께먹기 주의',
                         icon: TablerIcons.alert_triangle,
-                        iconColor: AppColors.danger,
-                        value: '1건',
-                        valueColor: AppColors.danger,
+                        iconColor: interactionCount > 0
+                            ? AppColors.danger
+                            : AppColors.textTertiary,
+                        value: interactionCount > 0
+                            ? '$interactionCount건'
+                            : '없어요',
+                        valueColor: interactionCount > 0
+                            ? AppColors.danger
+                            : AppColors.textTertiary,
                         trailing: const SeniorChevron(),
                         onTap: () => Navigator.of(context).push(
                           MaterialPageRoute<void>(
@@ -217,16 +229,11 @@ class _MyPageScreenState extends ConsumerState<MyPageScreen> {
                         label: '복약 알림',
                         icon: TablerIcons.bell,
                         // 소리로 알려주기만 한다. 말로 기록하는 기능은 없다.
-                        subtitle: '아침 8시 · 저녁 6시 · 소리로 알려드려요',
+                        subtitle: alarm.summary,
                         trailing: const SeniorChevron(),
                         onTap: () => Navigator.of(context).push(
                           MaterialPageRoute<void>(
-                            builder: (_) => AlarmSettingsScreen(
-                              userName: widget.userName,
-                              guardianTitle:
-                                  '${today.guardianRelation} '
-                                  '${today.guardianName} 님',
-                            ),
+                            builder: (_) => const AlarmSettingsScreen(),
                           ),
                         ),
                       ),
@@ -234,13 +241,12 @@ class _MyPageScreenState extends ConsumerState<MyPageScreen> {
                       SeniorListRow(
                         label: '폴라 베리티 센스',
                         icon: TablerIcons.heart,
-                        // 제품명이 길어 값을 옆에 붙이면 이름이 잘린다.
-                        subtitle: '연결됨 · 심박 센서',
-                        subtitleColor: AppColors.point,
+                        // 여기서는 연결 여부를 모른다. 들어가야 센서를 찾는다.
+                        subtitle: '심박 센서 연결 · 차는 방법',
                         trailing: const SeniorChevron(),
                         onTap: () => Navigator.of(context).push(
                           MaterialPageRoute<void>(
-                            builder: (_) => const PolarScreen(data: HeartData.demo),
+                            builder: (_) => const PolarScreen(),
                           ),
                         ),
                       ),
@@ -249,7 +255,8 @@ class _MyPageScreenState extends ConsumerState<MyPageScreen> {
                 ),
                 const SizedBox(height: 12),
 
-                // ── 함께 보는 가족 ──
+                // ── 함께 보는 가족 ── (어르신만. 보호자는 돌보는 분 탭에서 본다)
+                if (!widget.isGuardian) ...[
                 SeniorCard(
                   padding: const EdgeInsets.symmetric(
                     horizontal: 22,
@@ -264,31 +271,34 @@ class _MyPageScreenState extends ConsumerState<MyPageScreen> {
                         style: AppText.cardTitle(size: 19),
                       ),
                       const SizedBox(height: 14),
-                      Row(
-                        children: [
-                          InitialAvatar(
-                            name: today.guardianName,
-                            size: 48,
-                            background: AppColors.bg,
-                          ),
-                          const SizedBox(width: 14),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  '${today.guardianRelation} '
-                                  '${today.guardianName}',
-                                  style: AppText.cardTitle(),
-                                ),
-                                Text(
-                                  '약 드신 것과 심장 박동을 볼 수 있어요',
-                                  style: AppText.caption(),
-                                ),
-                              ],
-                            ),
+                      ...guardians.when(
+                        loading: () => [
+                          Text('불러오는 중이에요', style: AppText.caption()),
+                        ],
+                        error: (_, _) => [
+                          Text(
+                            '가족 목록을 불러오지 못했어요',
+                            style: AppText.caption(color: AppColors.danger),
                           ),
                         ],
+                        data: (list) => list.isEmpty
+                            ? [
+                                Text(
+                                  '아직 함께 보는 가족이 없어요. '
+                                  '초대하면 약을 놓쳤을 때 알려드려요.',
+                                  style: AppText.body(size: 17.5),
+                                ),
+                              ]
+                            : [
+                                for (int i = 0; i < list.length; i++) ...[
+                                  if (i > 0) const SizedBox(height: 12),
+                                  _GuardianRow(
+                                    guardian: list[i],
+                                    onAnswer: (accept) =>
+                                        _answerRequest(list[i], accept),
+                                  ),
+                                ],
+                              ],
                       ),
                       const SizedBox(height: 14),
                       // 보호자 계정은 따로 있다. 여기서 열리지 않는다는 사실을
@@ -303,14 +313,16 @@ class _MyPageScreenState extends ConsumerState<MyPageScreen> {
                           borderRadius: BorderRadius.circular(16),
                         ),
                         child: Text(
-                          '${today.guardianName} 님은 따로 가입한 보호자 계정으로 봅니다. '
+                          '가족은 따로 가입한 보호자 계정으로 봅니다. '
                           '어르신 화면에서는 보호자 화면이 열리지 않아요.',
                           style: AppText.body(size: 17.5),
                         ),
                       ),
                       const SizedBox(height: 14),
                       SeniorButton(
-                        label: '가족 더 초대하기',
+                        label: guardians.valueOrNull?.isNotEmpty ?? false
+                            ? '가족 더 초대하기'
+                            : '가족 초대하기',
                         kind: SeniorButtonKind.secondary,
                         minHeight: 58,
                         fontSize: 20,
@@ -320,6 +332,7 @@ class _MyPageScreenState extends ConsumerState<MyPageScreen> {
                   ),
                 ),
                 const SizedBox(height: 12),
+                ],
 
                 // ── 도움말 ──
                 const SettingsMenu(),
@@ -357,34 +370,83 @@ class _MyPageScreenState extends ConsumerState<MyPageScreen> {
                     onTap: _logout,
                   ),
                 ),
-
-                if (widget.isGuardian) ...[
-                  const SizedBox(height: 12),
-                  SeniorButton(
-                    label: '어르신 화면으로 바꾸기',
-                    kind: SeniorButtonKind.secondary,
-                    minHeight: 58,
-                    fontSize: 20,
-                    onPressed: () => ref
-                        .read(userRoleProvider.notifier)
-                        .state = UserRole.patient,
-                  ),
-                ] else ...[
-                  const SizedBox(height: 12),
-                  SeniorButton(
-                    label: '보호자 화면으로 바꾸기',
-                    kind: SeniorButtonKind.secondary,
-                    minHeight: 58,
-                    fontSize: 20,
-                    onPressed: () => ref
-                        .read(userRoleProvider.notifier)
-                        .state = UserRole.guardian,
-                  ),
-                ],
+                // 어르신·보호자 화면은 가입한 계정의 역할로 정해진다.
+                // 여기서 바꾸는 버튼은 두지 않는다.
               ],
             ),
           ),
         ),
+      ],
+    );
+  }
+}
+
+class _GuardianRow extends StatelessWidget {
+  final GuardianContact guardian;
+
+  /// 보호자가 먼저 청한 연결에 수락(true)·거절(false)로 대답한다.
+  final ValueChanged<bool> onAnswer;
+
+  const _GuardianRow({required this.guardian, required this.onAnswer});
+
+  @override
+  Widget build(BuildContext context) {
+    final waiting = guardian.awaitsMyAnswer;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          children: [
+            InitialAvatar(
+              name: guardian.name,
+              size: 48,
+              background: AppColors.bg,
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(guardian.label, style: AppText.cardTitle()),
+                  Text(
+                    waiting
+                        ? '함께 보기를 요청했어요'
+                        : guardian.phone ?? '약 드신 것과 심장 박동을 볼 수 있어요',
+                    style: waiting
+                        ? AppText.caption(color: AppColors.point)
+                        : AppText.caption(),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        if (waiting) ...[
+          const SizedBox(height: 10),
+          // 수락하면 이 분이 복약·심장 박동을 보게 된다. 거절이 옆에 같이 있다.
+          Row(
+            children: [
+              Expanded(
+                child: SeniorButton(
+                  label: '수락',
+                  minHeight: 56,
+                  fontSize: 20,
+                  onPressed: () => onAnswer(true),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: SeniorButton(
+                  label: '거절',
+                  kind: SeniorButtonKind.secondary,
+                  minHeight: 56,
+                  fontSize: 20,
+                  onPressed: () => onAnswer(false),
+                ),
+              ),
+            ],
+          ),
+        ],
       ],
     );
   }

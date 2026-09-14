@@ -20,8 +20,11 @@ class HeartPair {
   int? get drop =>
       isComplete ? before! - after! : null;
 
-  /// 80회 이상이면 빠른 것으로 본다.
-  static bool isFast(int bpm) => bpm >= 80;
+  /// 이 값 이상이면 빠른 것으로 본다. 서버 biosignal_service.FAST_BPM 과 같다.
+  /// 화면 문구("기준 80회보다 빠릅니다")도 이 값을 읽어 판정과 어긋나지 않게 한다.
+  static const int fastBpm = 80;
+
+  static bool isFast(int bpm) => bpm >= fastBpm;
 }
 
 /// 이번 주 한 칸 — 요일 하나의 전·후 쌍.
@@ -48,8 +51,9 @@ class HeartMonthDay {
 
 /// 심박수 화면 전체가 쓰는 데이터 묶음.
 ///
-/// TODO: `/api/v1/users/{id}/biosignal/...` 응답으로 채운다.
-/// 지금은 핸드오프의 데모 데이터를 그대로 둔다.
+/// `/api/v1/users/{id}/biosignal/heart-summary` 응답을 `HeartRepository`가
+/// 이 모양으로 옮긴다. 화면은 **읽어 온 값만** 그린다 — 못 읽었으면
+/// 불러오는 중·못 불러옴·기록 없음을 그대로 말한다.
 @immutable
 class HeartData {
   /// 오늘 잰 것.
@@ -106,6 +110,17 @@ class HeartData {
   bool get allDropped =>
       week.every((d) => (d.pair.drop ?? 0) > 0);
 
+  /// 오늘·이번 주·이번 달 중 한 번이라도 잰 값이 있는지.
+  ///
+  /// 서버는 기록이 없어도 빈 칸 7개·날짜 칸 N개를 채워 보낸다.
+  /// 칸이 있다고 기록이 있는 것은 아니므로 값으로 판단한다.
+  bool get hasReadings {
+    bool has(HeartPair p) => p.before != null || p.after != null;
+    return has(today) ||
+        week.any((d) => has(d.pair)) ||
+        month.any((d) => has(d.pair));
+  }
+
   HeartData copyWith({
     bool? sensorConnected,
     bool? notifyGuardian,
@@ -125,58 +140,6 @@ class HeartData {
     sensorBattery: sensorBattery ?? this.sensorBattery,
     sensorLastReadAt: sensorLastReadAt,
     notifyGuardian: notifyGuardian ?? this.notifyGuardian,
-  );
-
-  /// 핸드오프 05-CONTENT-RULES §4의 데모 데이터.
-  static const HeartData demo = HeartData(
-    today: HeartPair(before: 78, after: 72),
-    todaySlotLabel: '저녁 약',
-    beforeAt: '오후 5시 52분',
-    afterAt: '오후 6시 40분',
-    week: [
-      HeartDay('월', HeartPair(before: 80, after: 74)),
-      HeartDay('화', HeartPair(before: 78, after: 71)),
-      HeartDay('수', HeartPair(before: 82, after: 76)),
-      HeartDay('목', HeartPair(before: 77, after: 70)),
-      HeartDay('금', HeartPair(before: 84, after: 79)),
-      HeartDay('토', HeartPair(before: 76, after: 70)),
-      HeartDay('일', HeartPair(before: 78, after: 72)),
-    ],
-    month: [
-      HeartMonthDay(1, HeartPair(before: 79, after: 73)),
-      HeartMonthDay(2, HeartPair(before: 77, after: 71)),
-      HeartMonthDay(3, HeartPair(before: 81, after: 75)),
-      HeartMonthDay(4, HeartPair(before: 78, after: 72)),
-      HeartMonthDay(5, HeartPair(before: 76, after: 70)),
-      HeartMonthDay(6, HeartPair(before: 80, after: 74)),
-      HeartMonthDay(7, HeartPair(before: 79, after: 73)),
-      HeartMonthDay(8, HeartPair(before: 77, after: 72)),
-      HeartMonthDay(9, HeartPair()),
-      HeartMonthDay(10, HeartPair(before: 78, after: 71)),
-      HeartMonthDay(11, HeartPair(before: 82, after: 76)),
-      HeartMonthDay(12, HeartPair(before: 96, after: 84)),
-      HeartMonthDay(13, HeartPair(before: 80, after: 74)),
-      HeartMonthDay(14, HeartPair(before: 77, after: 70)),
-      HeartMonthDay(15, HeartPair(before: 79, after: 73)),
-      HeartMonthDay(16, HeartPair(before: 78, after: 72)),
-      HeartMonthDay(17, HeartPair(before: 81, after: 75)),
-      HeartMonthDay(18, HeartPair(before: 76, after: 71)),
-      HeartMonthDay(19, HeartPair(before: 80, after: 74)),
-      HeartMonthDay(20, HeartPair(before: 78, after: 73)),
-      HeartMonthDay(21, HeartPair(before: 78, after: 72)),
-    ],
-    streakDays: 9,
-    bestStreakDays: 14,
-    anomaly: HeartAnomaly(
-      day: 12,
-      slotLabel: '저녁',
-      before: 96,
-      after: 84,
-    ),
-    sensorConnected: true,
-    sensorBattery: 82,
-    sensorLastReadAt: '오후 6시 40분',
-    notifyGuardian: true,
   );
 }
 

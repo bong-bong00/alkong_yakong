@@ -17,6 +17,7 @@ import '../../medicines/presentation/screens/my_medicines_screen.dart';
 import '../../medicines/presentation/screens/drug_detail_screen.dart';
 import '../../medicines/presentation/screens/pharmacist_chat_screen.dart';
 import '../../prescription/presentation/screens/prescription_screen.dart';
+import '../../profile/application/current_user_controller.dart';
 import '../../profile/presentation/screens/mypage_screen.dart';
 import '../domain/easy_flow.dart';
 import 'widgets/easy_sheets.dart';
@@ -102,7 +103,10 @@ class _EasyFlowShellState extends ConsumerState<EasyFlowShell> {
   }
 
   Future<void> _openMenu() async {
-    final result = await showEasyMenuSheet(context, userName: '복자');
+    final result = await showEasyMenuSheet(
+      context,
+      userName: ref.read(currentUserNameProvider),
+    );
     if (!mounted || result == null) return;
     if (result.leaveEasyMode) {
       await ref.read(appModeProvider.notifier).set(AppMode.normal);

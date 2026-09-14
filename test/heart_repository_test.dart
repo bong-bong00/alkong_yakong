@@ -51,6 +51,40 @@ void main() {
     expect(data.month[1].isMissing, isTrue);
     expect(data.streakDays, 9);
     expect(data.anomaly!.day, 12);
+    // 어르신 화면은 24시간 표기를 쓰지 않는다.
+    expect(data.beforeAt, '오후 5시 45분');
+    expect(data.afterAt, '오후 6시 20분');
+    // 서버 label("9월 12일")을 때 이름으로 쓰면 날짜가 두 번 붙는다.
+    expect(data.anomaly!.slotLabel, '');
+    // 센서 상태는 기록에서 지어내지 않는다.
+    expect(data.sensorBattery, isNull);
+    expect(data.sensorLastReadAt, '');
+  });
+
+  test('오늘 때 이름을 서버가 안 주면 "저녁 약"을 지어내지 않는다', () async {
+    final data = await repositoryReturning({
+      'today': {'before': null, 'after': null},
+      'week': <dynamic>[],
+      'month': <dynamic>[],
+    }).fetch();
+    expect(data!.todaySlotLabel, '');
+    expect(data.hasReadings, isFalse);
+  });
+
+  test('다른 사람 id를 넘기면 그 사람 기록을 부른다', () async {
+    Uri? called;
+    final client = MockClient((request) async {
+      called = request.url;
+      return http.Response(
+        jsonEncode({'today': {}, 'week': [], 'month': []}),
+        200,
+        headers: {'content-type': 'application/json; charset=utf-8'},
+      );
+    });
+    await HeartRepository(
+      apiClient: ApiClient(client: client),
+    ).fetch(userId: 'patient-1');
+    expect(called?.path, '/api/v1/users/patient-1/biosignal/heart-summary');
   });
 
   test('못 잰 쪽은 비운 채로 둔다 — 숫자를 지어내지 않는다', () async {

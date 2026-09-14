@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import '../../../medication/application/medication_controller.dart';
+import 'package:flutter_tabler_icons/flutter_tabler_icons.dart';
 
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
@@ -11,14 +13,22 @@ import '../../domain/heart_data.dart';
 ///
 /// **주 단위로 묶어 보여준다.** 30일 × 2회를 막대 60개로 그리지 않는다.
 /// 대신 "며칠째 정상인가"와 "이상했던 날 하나"를 앞세운다.
+///
+/// [data]는 심박수 관리 화면이 서버에서 읽어 넘겨준 것만 받는다.
+/// 잰 날이 하나도 없으면 "0일째 정상"을 그리지 않고 기록이 없다고 말한다.
 class MonthlyHeartScreen extends StatefulWidget {
   final HeartData data;
   final String guardianTitle;
 
+  /// 날짜에 붙일 "몇 월". 서버는 이번 달 날짜만 보내므로 기본은 오늘이다.
+  /// 테스트에서 날짜를 고정할 때만 넘긴다.
+  final DateTime? now;
+
   const MonthlyHeartScreen({
     super.key,
     required this.data,
-    this.guardianTitle = '딸 지안 님',
+    this.guardianTitle = '',
+    this.now,
   });
 
   @override
@@ -29,9 +39,13 @@ class _MonthlyHeartScreenState extends State<MonthlyHeartScreen> {
   /// 눌러서 펼친 날짜. 없으면 안내 문장을 보여준다.
   HeartMonthDay? _picked;
 
+  late final int _month = (widget.now ?? DateTime.now()).month;
+
   @override
   Widget build(BuildContext context) {
     final data = widget.data;
+    final measured = data.month.any((d) => !d.isMissing);
+    final guardianTitle = resolveGuardianTitle(context, widget.guardianTitle);
     return Scaffold(
       backgroundColor: AppColors.bg,
       body: Column(
@@ -69,27 +83,72 @@ class _MonthlyHeartScreenState extends State<MonthlyHeartScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  _StreakCard(data: data),
-                  if (data.anomaly != null) ...[
-                    const SizedBox(height: 12),
-                    _AnomalyCard(
-                      anomaly: data.anomaly!,
-                      guardianTitle: widget.guardianTitle,
+                  if (!measured)
+                    _EmptyMonthCard(month: _month)
+                  else ...[
+                    // 정상인 날이 이어지지 않았으면 "0일째"를 크게 쓰지 않는다.
+                    if (data.streakDays > 0) ...[
+                      _StreakCard(data: data),
+                      const SizedBox(height: 12),
+                    ],
+                    if (data.anomaly != null) ...[
+                      _AnomalyCard(
+                        anomaly: data.anomaly!,
+                        month: _month,
+                        guardianTitle: guardianTitle,
+                      ),
+                      const SizedBox(height: 12),
+                    ],
+                    _DayGrid(
+                      days: data.month,
+                      month: _month,
+                      picked: _picked,
+                      onPick: (d) => setState(
+                        () => _picked = _picked?.day == d.day ? null : d,
+                      ),
                     ),
                   ],
                   const SizedBox(height: 12),
-                  _DayGrid(
-                    days: data.month,
-                    picked: _picked,
-                    onPick: (d) => setState(
-                      () => _picked = _picked?.day == d.day ? null : d,
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  _SharedNote(guardianTitle: widget.guardianTitle),
+                  _SharedNote(guardianTitle: guardianTitle),
                 ],
               ),
             ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// 이번 달에 잰 날이 하나도 없을 때.
+class _EmptyMonthCard extends StatelessWidget {
+  final int month;
+  const _EmptyMonthCard({required this.month});
+
+  @override
+  Widget build(BuildContext context) {
+    return SeniorCard(
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+      child: Column(
+        children: [
+          const ExcludeSemantics(
+            child: Icon(
+              TablerIcons.calendar_off,
+              size: 40,
+              color: AppColors.textTertiary,
+            ),
+          ),
+          const SizedBox(height: 12),
+          Text(
+            '$month월에는 아직 잰 기록이 없어요',
+            textAlign: TextAlign.center,
+            style: AppText.cardTitle(size: 21),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            '약 먹기 전·후로 재면 날짜별로 여기에 모여요.',
+            textAlign: TextAlign.center,
+            style: AppText.body(size: 18, color: AppColors.textSecondary),
           ),
         ],
       ),
@@ -114,7 +173,7 @@ class _StreakCard extends StatelessWidget {
           ),
           const SizedBox(height: 6),
           Semantics(
-            label: '심박수가 ${data.streakDays}일째 계속 정상이에요',
+            label: '잰 날 기준으로 심박수가 ${data.streakDays}일째 계속 정상이에요',
             child: ExcludeSemantics(
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.center,
@@ -140,10 +199,11 @@ class _StreakCard extends StatelessWidget {
             style: AppText.cardTitle(size: 21),
           ),
           const SizedBox(height: 16),
-          _StreakBars(streak: data.streakDays),
+          _RecentBars(days: data.month),
           const SizedBox(height: 12),
           Text(
             '가장 길었던 기록은 ${data.bestStreakDays}일이에요',
+            textAlign: TextAlign.center,
             style: AppText.caption(size: 17.5),
           ),
         ],
@@ -152,25 +212,35 @@ class _StreakCard extends StatelessWidget {
   }
 }
 
-/// 최근 열흘. 첫 칸이 이상했던 날, 나머지가 정상인 날.
-class _StreakBars extends StatelessWidget {
-  final int streak;
-  const _StreakBars({required this.streak});
+/// 최근에 **잰** 날 열흘까지. 빨랐던 날은 붉게, 정상인 날은 파랗게.
+///
+/// 연속 일수로 칸 색을 거꾸로 지어내지 않는다 — 못 잰 날까지
+/// "이상했던 날"로 칠하게 되기 때문이다. 실제 날짜별 값으로만 칠한다.
+class _RecentBars extends StatelessWidget {
+  final List<HeartMonthDay> days;
+  const _RecentBars({required this.days});
+
+  static const int _max = 10;
 
   @override
   Widget build(BuildContext context) {
-    const total = 10;
+    final measured = days.where((d) => !d.isMissing).toList();
+    final recent = measured.length > _max
+        ? measured.sublist(measured.length - _max)
+        : measured;
     return ExcludeSemantics(
       child: Row(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          for (int i = 0; i < total; i++) ...[
+          for (int i = 0; i < recent.length; i++) ...[
             if (i > 0) const SizedBox(width: 6),
             Container(
               width: 16,
               height: 34,
               decoration: BoxDecoration(
-                color: i < total - streak ? AppColors.danger : AppColors.point,
+                color: HeartPair.isFast(recent[i].pair.after!)
+                    ? AppColors.danger
+                    : AppColors.point,
                 borderRadius: BorderRadius.circular(8),
               ),
             ),
@@ -184,12 +254,18 @@ class _StreakBars extends StatelessWidget {
 /// 한 번 빠르게 뛴 날.
 class _AnomalyCard extends StatelessWidget {
   final HeartAnomaly anomaly;
+  final int month;
   final String guardianTitle;
 
-  const _AnomalyCard({required this.anomaly, required this.guardianTitle});
+  const _AnomalyCard({
+    required this.anomaly,
+    required this.month,
+    required this.guardianTitle,
+  });
 
   @override
   Widget build(BuildContext context) {
+    final slot = anomaly.slotLabel.trim();
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
       decoration: const BoxDecoration(
@@ -202,24 +278,25 @@ class _AnomalyCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('한 번 빠른 날이 있었어요', style: AppText.cardTitle(size: 19.5)),
+          Text('빠르게 뛴 날이 있었어요', style: AppText.cardTitle(size: 19.5)),
           const SizedBox(height: 8),
           Text.rich(
             TextSpan(
               style: AppText.body(size: 18),
               children: [
                 TextSpan(
-                  text: '8월 ${anomaly.day}일 ${anomaly.slotLabel}, 약 먹기 전 ',
+                  text: '$month월 ${anomaly.day}일'
+                      '${slot.isEmpty ? '' : ' $slot'}, 약 먹은 뒤 ',
                 ),
                 TextSpan(
-                  text: '${anomaly.before}회',
+                  text: '${anomaly.after}회',
                   style: AppText.body(
                     size: 18,
                     color: AppColors.danger,
                     weight: FontWeight.w900,
                   ),
                 ),
-                TextSpan(text: '였어요. 그날 $guardianTitle에게도 알려드렸습니다.'),
+                TextSpan(text: '였어요. (먹기 전 ${anomaly.before}회)'),
               ],
             ),
           ),
@@ -232,11 +309,13 @@ class _AnomalyCard extends StatelessWidget {
 /// 날짜별 격자. 먹은 뒤 수치만 보여주고, 누르면 전·후를 함께 편다.
 class _DayGrid extends StatelessWidget {
   final List<HeartMonthDay> days;
+  final int month;
   final HeartMonthDay? picked;
   final ValueChanged<HeartMonthDay> onPick;
 
   const _DayGrid({
     required this.days,
+    required this.month,
     required this.picked,
     required this.onPick,
   });
@@ -279,6 +358,7 @@ class _DayGrid extends StatelessWidget {
                       child: row * 5 + col < days.length
                           ? _DayCell(
                               day: days[row * 5 + col],
+                              month: month,
                               selected:
                                   picked?.day == days[row * 5 + col].day,
                               onTap: () => onPick(days[row * 5 + col]),
@@ -297,7 +377,7 @@ class _DayGrid extends StatelessWidget {
               style: AppText.caption(size: 17.5),
             )
           else
-            _PickedDetail(day: picked!),
+            _PickedDetail(day: picked!, month: month),
         ],
       ),
     );
@@ -306,11 +386,13 @@ class _DayGrid extends StatelessWidget {
 
 class _DayCell extends StatelessWidget {
   final HeartMonthDay day;
+  final int month;
   final bool selected;
   final VoidCallback onTap;
 
   const _DayCell({
     required this.day,
+    required this.month,
     required this.selected,
     required this.onTap,
   });
@@ -336,8 +418,8 @@ class _DayCell extends StatelessWidget {
       button: true,
       selected: selected,
       label: missing
-          ? '8월 ${day.day}일 재지 못했어요'
-          : '8월 ${day.day}일 먹은 후 $after회',
+          ? '$month월 ${day.day}일 재지 못했어요'
+          : '$month월 ${day.day}일 먹은 후 $after회',
       child: GestureDetector(
         onTap: missing ? null : onTap,
         child: ExcludeSemantics(
@@ -378,7 +460,8 @@ class _DayCell extends StatelessWidget {
 
 class _PickedDetail extends StatelessWidget {
   final HeartMonthDay day;
-  const _PickedDetail({required this.day});
+  final int month;
+  const _PickedDetail({required this.day, required this.month});
 
   @override
   Widget build(BuildContext context) {
@@ -388,17 +471,26 @@ class _PickedDetail extends StatelessWidget {
         color: AppColors.sunken,
         borderRadius: BorderRadius.circular(18),
       ),
-      child: Row(
+      // 글자 배율이 커지면 한 줄에 다 안 들어가므로 줄바꿈을 허락한다.
+      child: Wrap(
+        alignment: WrapAlignment.spaceBetween,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        spacing: 12,
+        runSpacing: 6,
         children: [
-          Text('8월 ${day.day}일', style: AppText.cardTitle(size: 19)),
-          const Spacer(),
-          Text('전 ${day.pair.before ?? '–'}', style: AppText.label(size: 18)),
-          const SizedBox(width: 10),
-          const Text('→'),
-          const SizedBox(width: 10),
-          Text(
-            '후 ${day.pair.after ?? '–'}',
-            style: AppText.label(size: 18, color: AppColors.point),
+          Text('$month월 ${day.day}일', style: AppText.cardTitle(size: 19)),
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text('전 ${day.pair.before ?? '–'}', style: AppText.label(size: 18)),
+              const SizedBox(width: 10),
+              const Text('→'),
+              const SizedBox(width: 10),
+              Text(
+                '후 ${day.pair.after ?? '–'}',
+                style: AppText.label(size: 18, color: AppColors.point),
+              ),
+            ],
           ),
         ],
       ),

@@ -1,32 +1,35 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_tabler_icons/flutter_tabler_icons.dart';
 import 'package:go_router/go_router.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../domain/exclusive_choice.dart';
-import '../../../../core/network/api_client.dart';
-import '../../../../core/session/mvp_session.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../core/widgets/senior_button.dart';
 import '../../../../core/widgets/senior_feedback.dart';
 import '../../../../core/widgets/senior_header.dart';
+import '../../../guardian/application/guardians_provider.dart';
+import '../../../guardian/data/guardian_repository.dart';
+import '../../../profile/application/current_user_controller.dart';
+import '../../../profile/application/session_actions.dart';
+import '../../../profile/domain/user_profile.dart';
 
 /// 단계형 회원가입 (위저드).
 /// 위치: lib/features/auth/presentation/screens/signup_screen.dart
-class SignupScreen extends StatefulWidget {
+class SignupScreen extends ConsumerStatefulWidget {
   const SignupScreen({super.key});
 
   @override
-  State<SignupScreen> createState() => _SignupScreenState();
+  ConsumerState<SignupScreen> createState() => _SignupScreenState();
 }
 
-class _SignupScreenState extends State<SignupScreen> {
+class _SignupScreenState extends ConsumerState<SignupScreen> {
   int _step = 0;
   /// 틀린 곳 한 군데. **버튼 바로 위**에 둔다 —
   /// 위로 스크롤해서 찾아야 하는 오류는 없는 것과 같다.
   String? _error;
   bool _isSubmitting = false;
-  final ApiClient _apiClient = ApiClient();
 
   /// 처음에는 아무것도 고르지 않은 상태다. 기본값이 있으면
   /// 고르지 않고 지나쳐도 환자로 가입된다.
@@ -258,16 +261,62 @@ class _SignupScreenState extends State<SignupScreen> {
     return trimmed.isEmpty ? null : trimmed;
   }
 
-  String? _birthDateForApi() {
-    final birth = _birth;
-    if (birth == null) return null;
-    final month = birth.month.toString().padLeft(2, '0');
-    final day = birth.day.toString().padLeft(2, '0');
-    return '${birth.year}-$month-$day';
+  /// 가입 화면에서 받은 것을 빠짐없이 서버로 보낸다.
+  /// 건강 질문은 약을 드시는 분에게만 묻는다.
+  Map<String, dynamic> _signupBody() {
+    final body = <String, dynamic>{
+      'name': _name.text.trim(),
+      'role': _role,
+      'phone': _optionalTrimmed(_phone.text),
+      'password': _pw.text,
+    };
+    if (_role != 'patient') return body;
+    return body
+      ..addAll({
+        'birth_date': UserProfile.formatDate(_birth),
+        'gender': _gender,
+        'height_cm': double.tryParse(_height.text.trim()),
+        'weight_kg': double.tryParse(_weight.text.trim()),
+        'blood_type': _blood,
+        'pregnancy_status': _gender == 'F' ? _pregnancy : null,
+        'smoking': _smoking,
+        'drinking': _drinking,
+        'allergies': _allergyYes == true
+            ? _picked(_allergens, _allergyOther, skip: '잘 모르겠어요')
+            : <String>[],
+        'diseases': _picked(_diseases, _diseaseOther, skip: '없어요'),
+        'past_history': _pastYes,
+        'family_history': _familyYes,
+      });
+  }
+
+  /// "기타"는 적어 준 글자로 바꾸고, 약·병 이름이 아닌 보기는 뺀다.
+  List<String> _picked(
+    Set<String> chosen,
+    TextEditingController other, {
+    required String skip,
+  }) => [
+    for (final item in chosen)
+      if (item == '기타') other.text.trim() else if (item != skip) item,
+  ].where((item) => item.isNotEmpty).toList();
+
+  /// 가입 단계에서 적어 준 보호자를 등록한다. 가입은 이미 끝났으니
+  /// 실패해도 막지 않고, 내 정보에서 다시 초대하면 된다고만 알린다.
+  Future<void> _saveGuardianContact() async {
+    final name = _guardianName.text.trim();
+    if (_role != 'patient' || _guardianLater || name.isEmpty) return;
+    final result = await GuardianRepository().invite(
+      name: name,
+      relation: _guardianRelation ?? '그 외',
+      phone: _guardianPhone.text.trim(),
+    );
+    ref.invalidate(guardiansProvider);
+    if (!result.isSent && mounted) {
+      showSeniorSnackbar(context, '보호자 연락처는 저장하지 못했어요. 내 정보에서 다시 초대해 주세요.');
+    }
   }
 
   Future<void> _submit() async {
-    // TODO: 백엔드 회원가입 API 연동.
     if (_isSubmitting) return;
     setState(() {
       _error = null;
@@ -275,27 +324,12 @@ class _SignupScreenState extends State<SignupScreen> {
     });
 
     try {
-      final birthDate = _birthDateForApi();
-      final phone = _optionalTrimmed(_phone.text);
-      final body = <String, dynamic>{
-        'name': _name.text.trim(),
-        'role': _role,
-      };
-      if (birthDate != null) body['birth_date'] = birthDate;
-      if (_gender != null) body['gender'] = _gender;
-      if (phone != null) body['phone'] = phone;
-
-      final response = await _apiClient
-          .post('/api/v1/users', body: body)
-          .timeout(const Duration(seconds: 10));
-      final userId = response is Map<String, dynamic>
-          ? response['id']?.toString()
-          : null;
-      if (userId == null || userId.isEmpty) {
-        throw const ApiException('회원가입 응답에 사용자 ID가 없습니다.');
-      }
-
-      MvpSession.userId = userId;
+      final user = await ref
+          .read(userRepositoryProvider)
+          .signUp(_signupBody());
+      if (!mounted) return;
+      await startSession(ref, user);
+      await _saveGuardianContact();
       if (!mounted) return;
       await _showSignupComplete();
       if (!mounted) return;

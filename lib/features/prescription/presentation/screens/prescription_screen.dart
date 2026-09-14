@@ -62,7 +62,7 @@ class PrescriptionScreen extends ConsumerStatefulWidget {
     super.key,
     this.onCompleted,
     this.onGoHome,
-    this.guardianTitle = '딸 지안 님',
+    this.guardianTitle = '',
   });
 
   @override
@@ -275,7 +275,7 @@ class _PrescriptionScreenState extends ConsumerState<PrescriptionScreen> {
     switch (_step) {
       case PrescriptionStep.pickMethod:
         return AddMedicineScreen(
-          guardianTitle: widget.guardianTitle,
+          guardianTitle: resolveGuardianTitle(context, widget.guardianTitle),
           onGoHome: widget.onGoHome ?? () => Navigator.of(context).maybePop(),
           onPick: (method) {
             switch (method) {

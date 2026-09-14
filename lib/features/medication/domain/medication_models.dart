@@ -201,12 +201,20 @@ class TodayMedication {
   final List<DoseEntry> doses;
 
   /// 함께 보는 가족. 이름만 쓰고 관계는 앞에 붙인다 — "딸 지안".
+  /// 등록된 가족이 없으면 서버는 "보호자"·"가족"을 준다.
   final String guardianRelation;
   final String guardianName;
 
-  final int heartRate;
-  final bool heartRateNormal;
-  final int daysLeft;
+  /// 가장 최근에 잰 심박수. 잰 적이 없으면 null — 예시 숫자로 채우지 않는다.
+  final int? heartRate;
+  final bool? heartRateNormal;
+
+  /// 가장 먼저 끝나는 처방이 며칠 남았는지. 끝나는 날을 모르면 null.
+  final int? daysLeft;
+
+  /// 그 처방을 받은 날과 총 일수. 약 떨어짐 안내에 쓴다.
+  final DateTime? courseStartedOn;
+  final int? courseTotalDays;
   final String? interactionAlert;
   final List<InteractionPriorityCard> interactionCards;
 
@@ -214,15 +222,38 @@ class TodayMedication {
     required this.doses,
     required this.guardianRelation,
     required this.guardianName,
-    required this.heartRate,
-    required this.heartRateNormal,
-    this.daysLeft = 3,
+    this.heartRate,
+    this.heartRateNormal,
+    this.daysLeft,
+    this.courseStartedOn,
+    this.courseTotalDays,
     this.interactionAlert,
     this.interactionCards = const [],
   });
 
-  /// "딸 지안 님".
-  String get guardianTitle => '$guardianRelation $guardianName 님';
+  /// 아직 아무것도 읽지 못했을 때.
+  static const empty = TodayMedication(
+    doses: [],
+    guardianRelation: '보호자',
+    guardianName: '가족',
+  );
+
+  bool get hasGuardian {
+    final name = guardianName.trim();
+    return name.isNotEmpty &&
+        !(name == '가족' && guardianRelation.trim() == '보호자');
+  }
+
+  /// "딸 지안 님". 등록된 가족이 없으면 "가족".
+  String get guardianTitle => hasGuardian
+      ? '${guardianRelation.trim()} ${guardianName.trim()} 님'.trim()
+      : '가족';
+
+  /// 함께먹기 주의 건수. 카드가 없고 문장만 있으면 한 건으로 센다.
+  int get interactionCount {
+    if (interactionCards.isNotEmpty) return interactionCards.length;
+    return (interactionAlert ?? '').trim().isEmpty ? 0 : 1;
+  }
 
   int get takenCount => doses.where((d) => d.taken).length;
 
@@ -251,9 +282,12 @@ class TodayMedication {
     return '${done.join('·')} 다 드셨어요';
   }
 
-  /// "약 3일치 남았어요"
-  String get daysLeftPhrase =>
-      daysLeft <= 0 ? '오늘이 마지막이에요' : '이 처방 $daysLeft일치 남았어요';
+  /// "약 3일치 남았어요". 남은 날을 모르면 빈 문자열.
+  String get daysLeftPhrase {
+    final left = daysLeft;
+    if (left == null) return '';
+    return left <= 0 ? '오늘이 마지막이에요' : '이 처방 $left일치 남았어요';
+  }
 
   TodayMedication copyWith({
     List<DoseEntry>? doses,
@@ -268,6 +302,8 @@ class TodayMedication {
         heartRate: heartRate,
         heartRateNormal: heartRateNormal,
         daysLeft: daysLeft ?? this.daysLeft,
+        courseStartedOn: courseStartedOn,
+        courseTotalDays: courseTotalDays,
         interactionAlert: interactionAlert ?? this.interactionAlert,
         interactionCards: interactionCards ?? this.interactionCards,
       );
