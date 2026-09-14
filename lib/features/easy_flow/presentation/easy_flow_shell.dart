@@ -109,6 +109,10 @@ class _EasyFlowShellState extends ConsumerState<EasyFlowShell> {
       await ref.read(appModeProvider.notifier).set(AppMode.normal);
       return;
     }
+    if (result.screen == EasyScreen.chat) {
+      context.push('/drug-explain');
+      return;
+    }
     if (result.screen != null) _goTo(result.screen!);
   }
 

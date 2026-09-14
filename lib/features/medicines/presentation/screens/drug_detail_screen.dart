@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_tabler_icons/flutter_tabler_icons.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
@@ -7,7 +8,6 @@ import '../../../../core/widgets/senior_button.dart';
 import '../../../../core/widgets/senior_card.dart';
 import '../../../../core/widgets/senior_header.dart';
 import '../../domain/drug_info.dart';
-import 'pharmacist_chat_screen.dart';
 
 /// 21 · 약 설명.
 ///
@@ -59,11 +59,7 @@ class DrugDetailScreen extends StatelessWidget {
                     label: '이 약, AI 약사 상담',
                     minHeight: 66,
                     fontSize: 22,
-                    onPressed: () => Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (_) => const PharmacistChatScreen(),
-                      ),
-                    ),
+                    onPressed: () => context.push('/drug-explain'),
                   ),
                   const SizedBox(height: 12),
                   SeniorButton(
