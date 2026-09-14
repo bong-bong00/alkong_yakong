@@ -3,7 +3,6 @@ import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../../core/constants/app_colors.dart';
-import '../../../../core/network/api_client.dart';
 import '../../../../core/session/auth_session.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../core/widgets/app_logo.dart';
@@ -16,9 +15,7 @@ import 'signup_screen.dart';
 /// 시작 화면에서부터 "가족이 대신 만들어 드리기"를 1급 경로로 올린다.
 /// 어르신이 혼자 가입에서 막히는 것이 첫 이탈 지점이기 때문이다.
 class LoginScreen extends StatefulWidget {
-  final ApiClient? apiClient;
-
-  const LoginScreen({super.key, this.apiClient});
+  const LoginScreen({super.key});
 
   @override
   State<LoginScreen> createState() => _LoginScreenState();
@@ -27,14 +24,7 @@ class LoginScreen extends StatefulWidget {
 class _LoginScreenState extends State<LoginScreen> {
   final _phone = TextEditingController();
   final _password = TextEditingController();
-  late final ApiClient _apiClient;
   bool _obscure = true;
-
-  @override
-  void initState() {
-    super.initState();
-    _apiClient = widget.apiClient ?? ApiClient();
-  }
 
   @override
   void dispose() {
@@ -50,17 +40,7 @@ class _LoginScreenState extends State<LoginScreen> {
       );
       return;
     }
-    final hasValidUser = await AuthSession.hasValidBackendUser(_apiClient);
-    if (!mounted) return;
-    if (!hasValidUser) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('사용자 정보를 확인할 수 없습니다. 다시 회원가입하거나 확인해주세요.'),
-        ),
-      );
-      return;
-    }
-    // 비밀번호 인증이 아니라 이 기기에 저장된 backend 사용자 존재 여부만 확인한다.
+    // TODO: 백엔드 로그인 API 연동.
     await AuthSession.setLoggedIn('patient');
     if (mounted) context.go('/');
   }
