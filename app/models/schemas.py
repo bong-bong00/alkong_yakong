@@ -29,6 +29,8 @@ class OCRMedicineItem(BaseModel):
     ingredient: Optional[str] = None
     dosage: Optional[str] = None
     unit: Optional[str] = None
+    dose_amount: Optional[str] = None
+    dose_unit: Optional[str] = None
     frequency_per_day: Optional[int] = None
     times_per_take: Optional[int] = None
     duration_days: Optional[int] = None
@@ -59,6 +61,8 @@ class PrescriptionConfirmItem(BaseModel):
     administration_route: Optional[str] = None
     dosage: Optional[str] = None
     unit: Optional[str] = None
+    dose_amount: Optional[str] = None
+    dose_unit: Optional[str] = None
     frequency_per_day: Optional[int] = None
     times_per_take: Optional[int] = None
     duration_days: Optional[int] = None

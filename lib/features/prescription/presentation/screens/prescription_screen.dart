@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -210,6 +211,8 @@ class _PrescriptionScreenState extends ConsumerState<PrescriptionScreen> {
             'administration_route': item['administration_route'],
             'dosage': item['dosage'],
             'unit': item['unit'],
+            'dose_amount': item['dose_amount'],
+            'dose_unit': item['dose_unit'],
             'frequency_per_day': item['frequency_per_day'],
             'times_per_take': item['times_per_take'],
             'duration_days': item['duration_days'],
@@ -254,8 +257,9 @@ class _PrescriptionScreenState extends ConsumerState<PrescriptionScreen> {
 
     MvpSession.latestOcrItems = editedItems;
     MvpSession.latestOcrRegisteredAt = DateTime.now();
-    await ref.read(medicationProvider.notifier).refreshFromServer();
-    await ref.read(userMedicinesProvider.notifier).refresh();
+    // 등록 성공 뒤 화면 이동을 목록 재조회가 막지 않게 백그라운드로 갱신한다.
+    unawaited(ref.read(medicationProvider.notifier).refreshFromServer());
+    unawaited(ref.read(userMedicinesProvider.notifier).refresh());
 
     if (!mounted) return;
     final onCompleted = widget.onCompleted;
@@ -611,45 +615,25 @@ class _ConfirmScreenState extends State<_ConfirmScreen> {
   bool _registering = false;
   final Set<int> _expandedItems = <int>{};
 
-  static String _dosage(Map<String, dynamic> item) {
-    final amount = _takeAmountLabel(item);
-    final timesPerTake = item['times_per_take'];
-    final perDay = item['frequency_per_day'];
-    final days = item['duration_days'];
-    final administrationTimes = item['administration_times'];
-    final parts = <String>[];
-    final action = _doseAction(item);
-    if (amount.isNotEmpty) {
-      parts.add('한 번에 $action 양 $amount');
-    } else if (timesPerTake is num && timesPerTake > 0) {
-      parts.add('1회 사용량 확인 필요');
-    }
-    if (perDay is num) {
-      parts.add('하루 ${perDay.toInt()}번');
-    }
-    if (administrationTimes is List && administrationTimes.isNotEmpty) {
-      parts.add(administrationTimes.map((value) => '$value').join(', '));
-    }
-    if (days is num) parts.add('${days.toInt()}일');
-    return parts.join(' · ');
+  static String _frequencyLabel(Map<String, dynamic> item) {
+    final value = item['frequency_per_day'];
+    return value is num && value > 0 ? '${value.toInt()}회' : '확인 필요';
   }
 
-  static String _doseAction(Map<String, dynamic> item) {
-    final form = item['dosage_form']?.toString() ?? '';
-    final route = item['administration_route']?.toString() ?? '';
-    final value = '$form $route';
-    if (value.contains('점안')) return '눈에 넣는';
-    if (value.contains('연고') || value.contains('크림') || value.contains('외용')) {
-      return '바르는';
-    }
-    if (value.contains('패치') || value.contains('패취')) return '붙이는';
-    if (value.contains('흡입')) return '들이마시는';
-    return '먹는';
+  static String _durationLabel(Map<String, dynamic> item) {
+    final value = item['duration_days'];
+    return value is num && value > 0 ? '${value.toInt()}일' : '확인 필요';
   }
 
   static String _takeAmountLabel(Map<String, dynamic> item) {
-    final raw = item['dosage']?.toString().trim() ?? '';
-    final unit = item['unit']?.toString().trim() ?? '';
+    final canonicalAmount = item['dose_amount']?.toString().trim() ?? '';
+    final canonicalUnit = item['dose_unit']?.toString().trim() ?? '';
+    final raw = canonicalAmount.isNotEmpty
+        ? canonicalAmount
+        : item['dosage']?.toString().trim() ?? '';
+    final unit = canonicalUnit.isNotEmpty
+        ? canonicalUnit
+        : item['unit']?.toString().trim() ?? '';
     if (RegExp(
       r'(mg|ml|g|%|밀리그램|밀리그람)(?:\s*$|[),/])',
       caseSensitive: false,
@@ -662,7 +646,7 @@ class _ConfirmScreenState extends State<_ConfirmScreen> {
       caseSensitive: false,
     ).firstMatch(compact);
     if (half != null) {
-      final normalized = half.group(1) == '정' ? '알' : half.group(1)!;
+      final normalized = half.group(1) == '알' ? '정' : half.group(1)!;
       return '0.5$normalized';
     }
     final fraction = RegExp(
@@ -686,7 +670,7 @@ class _ConfirmScreenState extends State<_ConfirmScreen> {
     final number =
         match?.group(1) ?? (double.tryParse(compact) != null ? compact : null);
     final rawUnit = match?.group(2) ?? unit;
-    if (number == null || rawUnit.isEmpty) return '';
+    if (number == null) return '';
     final parsed = double.tryParse(number);
     final amount = parsed == null
         ? number
@@ -697,7 +681,7 @@ class _ConfirmScreenState extends State<_ConfirmScreen> {
               .replaceFirst(RegExp(r'0+$'), '')
               .replaceFirst(RegExp(r'\.$'), '');
     final normalizedUnit = switch (rawUnit.toUpperCase()) {
-      'T' || 'TAB' || '정' || '알' => '알',
+      'T' || 'TAB' || '정' || '알' => '정',
       'C' || 'CAP' || '캡슐' => '캡슐',
       'PKG' || '포' => '포',
       'EA' || '개' => '개',
@@ -705,7 +689,9 @@ class _ConfirmScreenState extends State<_ConfirmScreen> {
       '방울' => '방울',
       _ => '',
     };
-    return normalizedUnit.isEmpty ? '' : '$amount$normalizedUnit';
+    return normalizedUnit.isEmpty
+        ? '$amount · 단위 확인 필요'
+        : '$amount$normalizedUnit';
   }
 
   static String _shortDrugName(String name) {
@@ -748,16 +734,16 @@ class _ConfirmScreenState extends State<_ConfirmScreen> {
     return confidence is num && confidence < 0.7;
   }
 
-  static List<Map<String, String>> _interactionConflicts(Map<String, dynamic> item) {
+  static List<Map<String, String>> _interactionConflicts(
+    Map<String, dynamic> item,
+  ) {
     final raw = item['interaction_conflicts'];
     if (raw is! List) return const [];
     return [
       for (final row in raw)
         if (row is Map)
           {
-            'other_name': _shortDrugName(
-              row['other_name']?.toString() ?? '',
-            ),
+            'other_name': _shortDrugName(row['other_name']?.toString() ?? ''),
             'reason': row['reason']?.toString() ?? '',
           },
     ].where((row) => row['other_name']!.isNotEmpty).toList();
@@ -765,26 +751,38 @@ class _ConfirmScreenState extends State<_ConfirmScreen> {
 
   Future<void> _editItem(int index) async {
     final item = _editedItems[index];
-    final existingAmount = item['dosage']?.toString().trim() ?? '';
+    final canonicalAmount = item['dose_amount']?.toString().trim() ?? '';
+    final existingDosage = item['dosage']?.toString().trim() ?? '';
     final timesPerTake = item['times_per_take'];
+    final amountMatch = RegExp(
+      r'^(\d+(?:\.\d+)?)\s*(알|정|캡슐|포|개|mL|ml|방울|T|TAB|C|CAP|PKG|EA)?$',
+      caseSensitive: false,
+    ).firstMatch(existingDosage);
     final amountController = TextEditingController(
-      text: existingAmount.isNotEmpty
-          ? existingAmount
+      text: canonicalAmount.isNotEmpty
+          ? canonicalAmount
+          : amountMatch?.group(1) != null
+          ? amountMatch!.group(1)!
           : (timesPerTake is num && timesPerTake > 0
-                ? '${timesPerTake.toInt()}알'
+                ? timesPerTake.toString()
                 : ''),
+    );
+    String? doseUnit = _editableDoseUnit(
+      item['dose_unit']?.toString() ??
+          item['unit']?.toString() ??
+          amountMatch?.group(2) ??
+          '',
     );
     final duration = item['duration_days'];
     final durationController = TextEditingController(
       text: duration is num && duration > 0 ? duration.toInt().toString() : '',
     );
     final rawFrequency = item['frequency_per_day'];
-    int? frequency =
-        rawFrequency is num &&
-            rawFrequency.toInt() >= 1 &&
-            rawFrequency.toInt() <= 3
-        ? rawFrequency.toInt()
-        : null;
+    final frequencyController = TextEditingController(
+      text: rawFrequency is num && rawFrequency > 0
+          ? rawFrequency.toInt().toString()
+          : '',
+    );
 
     await showModalBottomSheet<void>(
       context: context,
@@ -815,28 +813,46 @@ class _ConfirmScreenState extends State<_ConfirmScreen> {
                 const SizedBox(height: 18),
                 TextField(
                   controller: amountController,
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
                   textInputAction: TextInputAction.next,
                   style: AppText.body(size: 20),
                   decoration: const InputDecoration(
-                    labelText: '한 번에 사용하는 양',
-                    hintText: '예: 1알 또는 0.5정',
+                    labelText: '1회 투약량',
+                    hintText: '예: 0.5',
                     border: OutlineInputBorder(),
                   ),
                 ),
                 const SizedBox(height: 14),
-                DropdownButtonFormField<int>(
-                  initialValue: frequency,
+                DropdownButtonFormField<String>(
+                  initialValue: doseUnit,
                   style: AppText.body(size: 20, color: AppColors.textPrimary),
                   decoration: const InputDecoration(
-                    labelText: '하루 복용 횟수',
+                    labelText: '투약 단위',
                     border: OutlineInputBorder(),
                   ),
                   items: const [
-                    DropdownMenuItem(value: 1, child: Text('하루 1번')),
-                    DropdownMenuItem(value: 2, child: Text('하루 2번')),
-                    DropdownMenuItem(value: 3, child: Text('하루 3번')),
+                    DropdownMenuItem(value: '정', child: Text('정')),
+                    DropdownMenuItem(value: '캡슐', child: Text('캡슐')),
+                    DropdownMenuItem(value: '포', child: Text('포')),
+                    DropdownMenuItem(value: 'mL', child: Text('mL')),
+                    DropdownMenuItem(value: '방울', child: Text('방울')),
+                    DropdownMenuItem(value: '개', child: Text('개')),
                   ],
-                  onChanged: (value) => setSheetState(() => frequency = value),
+                  onChanged: (value) => setSheetState(() => doseUnit = value),
+                ),
+                const SizedBox(height: 14),
+                TextField(
+                  controller: frequencyController,
+                  keyboardType: TextInputType.number,
+                  style: AppText.body(size: 20),
+                  decoration: const InputDecoration(
+                    labelText: '1일 투여횟수',
+                    hintText: '예: 3',
+                    suffixText: '회',
+                    border: OutlineInputBorder(),
+                  ),
                 ),
                 const SizedBox(height: 14),
                 TextField(
@@ -844,7 +860,7 @@ class _ConfirmScreenState extends State<_ConfirmScreen> {
                   keyboardType: TextInputType.number,
                   style: AppText.body(size: 20),
                   decoration: const InputDecoration(
-                    labelText: '복용 일수',
+                    labelText: '투약일수',
                     hintText: '예: 7',
                     suffixText: '일',
                     border: OutlineInputBorder(),
@@ -856,15 +872,28 @@ class _ConfirmScreenState extends State<_ConfirmScreen> {
                   minHeight: 66,
                   onPressed: () {
                     final amount = amountController.text.trim();
+                    final frequency = int.tryParse(
+                      frequencyController.text.trim(),
+                    );
                     final days = int.tryParse(durationController.text.trim());
+                    final normalizedDosage = amount.isEmpty
+                        ? null
+                        : '$amount${doseUnit ?? ''}';
                     setState(() {
                       _editedItems[index] = {
                         ...item,
-                        if (amount.isNotEmpty) 'dosage': amount,
-                        if (amount.isNotEmpty) 'times_per_take': null,
-                        if (frequency != null) 'frequency_per_day': frequency,
-                        if (days != null && days >= 1 && days <= 365)
-                          'duration_days': days,
+                        'dose_amount': amount.isEmpty ? null : amount,
+                        'dose_unit': doseUnit,
+                        'dosage': normalizedDosage,
+                        'unit': doseUnit,
+                        'times_per_take': null,
+                        'frequency_per_day': frequency != null && frequency > 0
+                            ? frequency
+                            : null,
+                        'duration_days':
+                            days != null && days >= 1 && days <= 365
+                            ? days
+                            : null,
                       };
                     });
                     Navigator.of(sheetContext).pop();
@@ -877,7 +906,20 @@ class _ConfirmScreenState extends State<_ConfirmScreen> {
       ),
     );
     amountController.dispose();
+    frequencyController.dispose();
     durationController.dispose();
+  }
+
+  static String? _editableDoseUnit(String raw) {
+    return switch (raw.trim().toUpperCase()) {
+      'T' || 'TAB' || '정' || '알' => '정',
+      'C' || 'CAP' || '캡슐' => '캡슐',
+      'PKG' || '포' => '포',
+      'ML' || '밀리리터' => 'mL',
+      '방울' => '방울',
+      'EA' || '개' => '개',
+      _ => null,
+    };
   }
 
   Future<void> _fixMedicineName(int index) async {
@@ -1031,8 +1073,11 @@ class _ConfirmScreenState extends State<_ConfirmScreen> {
     if (_registering) return;
     if (!await _confirmPartialRegistration()) return;
     setState(() => _registering = true);
-    await widget.onRegister(_editedItems);
-    if (mounted) setState(() => _registering = false);
+    try {
+      await widget.onRegister(_editedItems);
+    } finally {
+      if (mounted) setState(() => _registering = false);
+    }
   }
 
   @override
@@ -1102,7 +1147,9 @@ class _ConfirmScreenState extends State<_ConfirmScreen> {
                               item['drug_name']?.toString() ??
                               '',
                           medicineCode: item['medicine_code']?.toString() ?? '',
-                          dosage: _dosage(item),
+                          doseAmount: _takeAmountLabel(item),
+                          frequencyPerDay: _frequencyLabel(item),
+                          durationDays: _durationLabel(item),
                           purposeLabel: item['purpose_label']?.toString(),
                           explanation: _seniorExplanation(item),
                           keyCaution: item['key_caution']?.toString(),
@@ -1175,9 +1222,7 @@ class _ConfirmScreenState extends State<_ConfirmScreen> {
                 children: [
                   if (_editedItems.isNotEmpty) ...[
                     SeniorButton(
-                      label: _registering
-                          ? '등록하고 있어요'
-                          : '이대로 등록하기',
+                      label: _registering ? '등록하고 있어요' : '이대로 등록하기',
                       minHeight: 70,
                       onPressed: _registering ? null : _tryRegister,
                     ),
@@ -1208,7 +1253,9 @@ class _DrugCard extends StatelessWidget {
   final String rawOcrName;
   final String officialName;
   final String medicineCode;
-  final String dosage;
+  final String doseAmount;
+  final String frequencyPerDay;
+  final String durationDays;
   final String? purposeLabel;
   final String? explanation;
   final String? keyCaution;
@@ -1228,7 +1275,9 @@ class _DrugCard extends StatelessWidget {
     required this.rawOcrName,
     required this.officialName,
     required this.medicineCode,
-    required this.dosage,
+    required this.doseAmount,
+    required this.frequencyPerDay,
+    required this.durationDays,
     required this.purposeLabel,
     required this.explanation,
     required this.keyCaution,
@@ -1271,10 +1320,7 @@ class _DrugCard extends StatelessWidget {
           if (ingredient.trim().isNotEmpty) ...[
             const SizedBox(height: 5),
             Text(
-              '주성분: ${[
-                compactIngredientSummary(ingredient),
-                ingredientStrength,
-              ].where((value) => value.trim().isNotEmpty).join(' · ')}',
+              '주성분: ${[compactIngredientSummary(ingredient), ingredientStrength].where((value) => value.trim().isNotEmpty).join(' · ')}',
               style: AppText.caption(size: 17, color: AppColors.textSecondary),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
@@ -1289,13 +1335,25 @@ class _DrugCard extends StatelessWidget {
               overflow: expanded ? null : TextOverflow.ellipsis,
             ),
           ],
-          if (dosage.isNotEmpty) ...[
-            const SizedBox(height: 8),
-            Text(
-              dosage,
-              style: AppText.body(size: 18, color: AppColors.textSecondary),
-            ),
-          ],
+          const SizedBox(height: 12),
+          _DoseInfoRow(
+            label: '1회 투약량',
+            value: doseAmount.isEmpty ? '확인 필요' : doseAmount,
+            needsConfirmation:
+                doseAmount.isEmpty || doseAmount.contains('확인 필요'),
+          ),
+          const SizedBox(height: 7),
+          _DoseInfoRow(
+            label: '1일 투여횟수',
+            value: frequencyPerDay,
+            needsConfirmation: frequencyPerDay == '확인 필요',
+          ),
+          const SizedBox(height: 7),
+          _DoseInfoRow(
+            label: '투약일수',
+            value: durationDays,
+            needsConfirmation: durationDays == '확인 필요',
+          ),
           const SizedBox(height: 10),
           Wrap(
             spacing: 10,
@@ -1435,14 +1493,54 @@ class _DrugCard extends StatelessWidget {
   static String _confidenceSummary(Map<String, int> values) {
     const labels = {
       'drug_name': '약 이름',
-      'dose_amount': '1회량',
-      'frequency_per_day': '하루 횟수',
-      'duration_days': '복용 일수',
+      'dose_amount': '1회 투약량',
+      'frequency_per_day': '1일 투여횟수',
+      'duration_days': '투약일수',
     };
     return values.entries
         .where((entry) => labels.containsKey(entry.key))
         .map((entry) => '${labels[entry.key]} ${entry.value}%')
         .join(' · ');
+  }
+}
+
+class _DoseInfoRow extends StatelessWidget {
+  final String label;
+  final String value;
+  final bool needsConfirmation;
+
+  const _DoseInfoRow({
+    required this.label,
+    required this.value,
+    this.needsConfirmation = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SizedBox(
+          width: 128,
+          child: Text(
+            label,
+            style: AppText.label(size: 17, color: AppColors.textSecondary),
+          ),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(
+            value,
+            style: AppText.label(
+              size: 18,
+              color: needsConfirmation
+                  ? AppColors.danger
+                  : AppColors.textPrimary,
+            ),
+          ),
+        ),
+      ],
+    );
   }
 }
 

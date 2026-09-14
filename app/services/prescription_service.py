@@ -167,6 +167,8 @@ def _structured_items(structured: dict) -> list[OCRMedicineItem]:
                 ocr_drug_name_raw=item.get("ocr_drug_name_raw"),
                 dosage=item.get("dosage"),
                 unit=item.get("unit"),
+                dose_amount=item.get("dose_amount"),
+                dose_unit=item.get("dose_unit"),
                 frequency_per_day=item.get("frequency_per_day"),
                 times_per_take=item.get("times_per_take"),
                 duration_days=item.get("duration_days"),
@@ -531,9 +533,69 @@ def _format_take_number(value: str) -> str:
     return f"{number:.3f}".rstrip("0").rstrip(".")
 
 
+def _unit_from_dosage_form(dosage_form: str | None) -> str | None:
+    """제형만으로 단위를 확정할 수 있는 고형제에 한해 단위를 보완한다."""
+    form = str(dosage_form or "").strip()
+    if "캡슐" in form:
+        return "캡슐"
+    if "정" in form:
+        return "정"
+    return None
+
+
+def _preview_take_fields(
+    item: OCRMedicineItem,
+    *,
+    dosage_form: str | None,
+) -> tuple[str | None, str | None, bool]:
+    """OCR의 1회량을 제품 함량과 분리해 확인 화면용 필드로 만든다."""
+    raw = persistable_take_dosage(item.dose_amount or item.dosage)
+    if not raw:
+        if item.times_per_take is None or item.times_per_take <= 0:
+            return None, None, False
+        raw = str(item.times_per_take)
+
+    compact = re.sub(r"\s+", "", raw)
+    embedded = re.fullmatch(
+        r"(?P<amount>\d+(?:\.\d+)?)(?P<unit>알|정|캡슐|포|개|mL|ml|방울|T|TAB|C|CAP|PKG|EA)?",
+        compact,
+        re.IGNORECASE,
+    )
+    if not embedded:
+        return None, None, False
+
+    amount = _format_take_number(embedded.group("amount"))
+    raw_unit = str(embedded.group("unit") or item.dose_unit or item.unit or "").strip()
+    unit = {
+        "T": "정",
+        "TAB": "정",
+        "정": "정",
+        "알": "정",
+        "C": "캡슐",
+        "CAP": "캡슐",
+        "캡슐": "캡슐",
+        "PKG": "포",
+        "포": "포",
+        "EA": "개",
+        "개": "개",
+        "ML": "mL",
+        "밀리리터": "mL",
+        "방울": "방울",
+    }.get(raw_unit.upper())
+    inferred = False
+    if not unit:
+        unit = _unit_from_dosage_form(dosage_form)
+        inferred = unit is not None
+    return amount, unit, inferred
+
+
 def _normalized_confirm_take_amount(item: PrescriptionConfirmItem) -> str | None:
-    raw = persistable_take_dosage(item.dosage)
-    unit_from_field = _TAKE_UNIT_LABELS.get(str(item.unit or "").strip().upper())
+    raw = persistable_take_dosage(item.dose_amount or item.dosage)
+    unit_from_field = _TAKE_UNIT_LABELS.get(
+        str(item.dose_unit or item.unit or "").strip().upper()
+    )
+    if not unit_from_field:
+        unit_from_field = _unit_from_dosage_form(item.dosage_form)
 
     if raw:
         compact = re.sub(r"\s+", "", raw)
@@ -567,6 +629,9 @@ def _normalized_confirm_take_amount(item: PrescriptionConfirmItem) -> str | None
             return f"{amount}{unit}" if unit else None
         if re.fullmatch(r"\d+(?:\.\d+)?", compact) and unit_from_field:
             return f"{_format_take_number(compact)}{unit_from_field}"
+        # 단위가 불명확하더라도 처방전에서 읽은 숫자 자체는 버리지 않는다.
+        if re.fullmatch(r"\d+(?:\.\d+)?", compact):
+            return _format_take_number(compact)
         return None
 
     if item.times_per_take is not None and item.times_per_take > 0 and unit_from_field:
@@ -738,6 +803,11 @@ def create_prescription_from_ocr(request: PrescriptionOCRRequest) -> dict:
             guidance = sync_medicine_guidance(cursor, med_dict)
             official_spoken = guidance["short_explanation"]
             ingredient = med_dict.get("ingredient") or ""
+            dosage_form = med_dict.get("dosage_form") or infer_dosage_form(official_name)
+            dose_amount, dose_unit, dose_unit_inferred = _preview_take_fields(
+                item,
+                dosage_form=dosage_form,
+            )
             field_confidences = _ocr_field_confidences(
                 item,
                 raw_name=ocr_raw,
@@ -765,14 +835,16 @@ def create_prescription_from_ocr(request: PrescriptionOCRRequest) -> dict:
                         med_dict.get("ingredient_strength")
                         or ingredient_strength_from(ingredient, official_name)
                     ),
-                    "dosage_form": (
-                        med_dict.get("dosage_form") or infer_dosage_form(official_name)
-                    ),
+                    "dosage_form": dosage_form,
                     "administration_route": med_dict.get("administration_route") or "",
                     "ocr_drug_name_raw": ocr_raw if ocr_raw != official_name else None,
                     "match_status": match_status,
                     "dosage": persistable_take_dosage(item.dosage),
                     "unit": item.unit,
+                    "dose_amount": dose_amount,
+                    "dose_unit": dose_unit,
+                    "dose_unit_inferred": dose_unit_inferred,
+                    "dose_needs_unit_confirmation": bool(dose_amount and not dose_unit),
                     "frequency_per_day": item.frequency_per_day,
                     "times_per_take": item.times_per_take,
                     "duration_days": item.duration_days,
@@ -1026,7 +1098,7 @@ def confirm_prescription(request: PrescriptionConfirmRequest) -> dict:
                     item.dosage_form,
                     item.administration_route,
                     take_dosage,
-                    item.unit,
+                    item.dose_unit or item.unit,
                     item.frequency_per_day,
                     item.times_per_take,
                     item.duration_days,

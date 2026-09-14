@@ -40,12 +40,28 @@ def test_confirm_accepts_user_checked_dosing_fields():
     assert _validated_confirm_dosage(_item(), "테스트정") == "1알"
 
 
-@pytest.mark.parametrize("dosage", ["200밀리그램", "0.25%", "0.50"])
-def test_confirm_keeps_strength_or_unitless_amount_from_blocking_register(dosage):
+@pytest.mark.parametrize("dosage", ["200밀리그램", "0.25%"])
+def test_confirm_keeps_product_strength_from_becoming_take_amount(dosage):
     assert (
         _validated_confirm_dosage(_item(dosage=dosage, unit=None), "테스트정")
         is None
     )
+
+
+def test_table_dose_is_separated_labeled_and_preserved_for_tablet():
+    preview = OCRMedicineItem(drug_name="아디팜정", dosage="0.50")
+    assert prescription_service._preview_take_fields(
+        preview,
+        dosage_form="정제",
+    ) == ("0.5", "정", True)
+
+    confirmed = _item(
+        dosage="0.50",
+        dose_amount="0.5",
+        dose_unit="정",
+        dosage_form="정제",
+    )
+    assert _validated_confirm_dosage(confirmed, "아디팜정") == "0.5알"
 
 
 def test_confirm_normalizes_numeric_amount_with_verified_unit():
