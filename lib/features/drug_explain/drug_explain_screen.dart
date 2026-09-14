@@ -493,10 +493,6 @@ class _OtherMedicineDialogState extends State<_OtherMedicineDialog> {
     _debounce?.cancel();
     final sequence = ++_requestSequence;
     final query = value.trim();
-    final composing = _controller.value.composing;
-    if (composing.isValid && !composing.isCollapsed) {
-      return;
-    }
     if (query.length < 2) {
       setState(() {
         _candidates = const [];
