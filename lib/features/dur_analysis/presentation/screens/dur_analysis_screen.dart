@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_tabler_icons/flutter_tabler_icons.dart';
@@ -31,7 +33,9 @@ enum DrugRisk {
 /// "DUR 분석"이라는 말을 쓰지 않는다. 어떤 약이 어떤 약과 부딪히는지,
 /// 그래서 누구에게 물어봐야 하는지만 말한다.
 class DurAnalysisScreen extends ConsumerStatefulWidget {
-  const DurAnalysisScreen({super.key});
+  final VoidCallback? onGoHome;
+
+  const DurAnalysisScreen({super.key, this.onGoHome});
 
   @override
   ConsumerState<DurAnalysisScreen> createState() => _DurAnalysisScreenState();
@@ -77,14 +81,15 @@ class _DurAnalysisScreenState extends ConsumerState<DurAnalysisScreen> {
 
   Future<void> _loadNames() async {
     final today = ref.read(medicationProvider);
-    final fromToday =
-        '${today.guardianRelation} ${today.guardianName} 님'.trim();
+    final fromToday = '${today.guardianRelation} ${today.guardianName} 님'
+        .trim();
     final userId = Uri.encodeComponent(MvpSession.userId);
     var userName = _userName;
     var guardianTitle = fromToday.isEmpty ? _guardianTitle : fromToday;
     try {
       final user = await _apiClient.get('/api/v1/users/$userId');
-      if (user is Map && (user['name']?.toString().trim().isNotEmpty ?? false)) {
+      if (user is Map &&
+          (user['name']?.toString().trim().isNotEmpty ?? false)) {
         userName = user['name'].toString().trim();
       }
     } catch (_) {}
@@ -177,6 +182,8 @@ class _DurAnalysisScreenState extends ConsumerState<DurAnalysisScreen> {
                       : '지금 등록된 약끼리, 특별한 함께먹기 주의는 없어요.'));
         _loading = false;
       });
+      // 새 DUR 결과가 저장된 뒤 홈 주의 카드와 OCR 등록약을 다시 불러온다.
+      unawaited(ref.read(medicationProvider.notifier).refreshFromServer());
     } catch (_) {
       if (!mounted) return;
       setState(() {
@@ -572,6 +579,15 @@ class _DurAnalysisScreenState extends ConsumerState<DurAnalysisScreen> {
               ],
             ),
           ),
+          if (_hasRisk || _assessmentStatus == 'RISK_FOUND') ...[
+            const SizedBox(height: 16),
+            SeniorButton(
+              label: '확인했어요',
+              minHeight: 64,
+              fontSize: 22,
+              onPressed: _confirmAndGoHome,
+            ),
+          ],
           const SizedBox(height: 16),
 
           SeniorButton(
@@ -588,6 +604,21 @@ class _DurAnalysisScreenState extends ConsumerState<DurAnalysisScreen> {
 
   void _callGuardian() {
     showSeniorSnackbar(context, '$_guardianTitle에게 알려드렸어요');
+  }
+
+  Future<void> _confirmAndGoHome() async {
+    final go = await showSeniorYesNoDialog(
+      context: context,
+      title: '이제 홈으로 갈까요?',
+      message: '같이 드실 때 조심할 약을 보셨어요.',
+    );
+    if (!mounted || !go) return;
+    final onGoHome = widget.onGoHome;
+    if (onGoHome != null) {
+      onGoHome();
+      return;
+    }
+    context.go('/');
   }
 }
 

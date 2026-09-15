@@ -49,6 +49,31 @@ def _confirmed_clock(value: object) -> str | None:
     return _EXPLICIT_TIME_LABELS.get(re.sub(r"\s+", "", text).upper())
 
 
+def _match_medicine_codes(match: dict[str, Any], side: str) -> set[str]:
+    raw = match.get(f"medicine_codes_{side}") or []
+    if isinstance(raw, str):
+        raw = [raw]
+    if not isinstance(raw, list):
+        return set()
+    return {str(code).strip() for code in raw if str(code).strip()}
+
+
+def _is_current_ocr_interaction(
+    match: dict[str, Any],
+    *,
+    active_codes: set[str],
+    active_ocr_codes: set[str],
+) -> bool:
+    """현재 활성 조합이며 OCR 등록약이 포함된 DUR 결과만 홈에 표시한다."""
+    codes_a = _match_medicine_codes(match, "a")
+    codes_b = _match_medicine_codes(match, "b")
+    if not codes_a or not (codes_a & active_codes):
+        return False
+    if codes_b and not (codes_b & active_codes):
+        return False
+    return bool((codes_a | codes_b) & active_ocr_codes)
+
+
 def get_today_medicines(user_id: str, target_date: str | None = None) -> dict[str, Any]:
     uid = (user_id or "").strip()
     if not uid:
@@ -100,6 +125,20 @@ def get_today_medicines(user_id: str, target_date: str | None = None) -> dict[st
             """,
             (uid,),
         ).fetchone()
+        active_origin_rows = conn.execute(
+            """
+            SELECT medicine_code, prescription_item_id
+            FROM user_medicines
+            WHERE user_id = ? AND COALESCE(is_active, 1) = 1
+            """,
+            (uid,),
+        ).fetchall()
+        active_codes = {str(row["medicine_code"]) for row in active_origin_rows}
+        active_ocr_codes = {
+            str(row["medicine_code"])
+            for row in active_origin_rows
+            if row["prescription_item_id"] is not None
+        }
         latest_risk = conn.execute(
             """
             SELECT risk_level, description, total_matches, matches_json
@@ -112,20 +151,30 @@ def get_today_medicines(user_id: str, target_date: str | None = None) -> dict[st
         ).fetchone()
         interaction_alert = None
         interaction_cards: list[dict] = []
-        if latest_risk:
+        if latest_risk and active_ocr_codes:
             try:
                 stored_matches = json.loads(latest_risk["matches_json"] or "[]")
             except (TypeError, json.JSONDecodeError):
                 stored_matches = []
             if not isinstance(stored_matches, list):
                 stored_matches = []
+            stored_matches = [
+                match
+                for match in stored_matches
+                if isinstance(match, dict)
+                and _is_current_ocr_interaction(
+                    match,
+                    active_codes=active_codes,
+                    active_ocr_codes=active_ocr_codes,
+                )
+            ]
             from app.services.dur_service import interaction_priority_cards
 
             if stored_matches:
                 interaction_cards = interaction_priority_cards(stored_matches, conn)
             if (
                 str(latest_risk["risk_level"] or "").upper() in {"HIGH", "MEDIUM"}
-                and int(latest_risk["total_matches"] or 0) > 0
+                and bool(stored_matches)
             ):
                 if interaction_cards:
                     first = interaction_cards[0]

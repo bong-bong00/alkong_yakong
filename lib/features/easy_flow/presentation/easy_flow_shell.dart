@@ -158,7 +158,7 @@ class _EasyFlowShellState extends ConsumerState<EasyFlowShell> {
           onGoHome: () => _goTo(EasyScreen.today),
         );
       case EasyScreen.interaction:
-        return const DurAnalysisScreen();
+        return DurAnalysisScreen(onGoHome: () => _goTo(EasyScreen.today));
       case EasyScreen.chat:
         return const PharmacistChatScreen();
       case EasyScreen.measure:

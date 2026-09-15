@@ -959,6 +959,89 @@ def create_prescription_from_ocr(request: PrescriptionOCRRequest) -> dict:
         conn.close()
 
 
+def _reactivate_duplicate_prescription(cursor, *, user_id: str, prescription_id: str) -> list[dict]:
+    """같은 OCR 처방을 다시 확인하면 기존 약을 오늘 기준으로 다시 활성화한다."""
+    rows = cursor.execute(
+        """
+        SELECT um.id AS user_medicine_id, um.medicine_code,
+               pi.id AS prescription_item_id, pi.ocr_drug_name,
+               pi.dosage, pi.unit, pi.frequency_per_day,
+               pi.times_per_take, pi.duration_days, pi.administration_times,
+               pi.easy_explanation, pi.warning_note, pi.match_status
+        FROM prescription_items pi
+        JOIN user_medicines um ON um.prescription_item_id = pi.id
+        WHERE pi.prescription_id = ? AND um.user_id = ?
+        ORDER BY pi.id
+        """,
+        (prescription_id, user_id),
+    ).fetchall()
+    today = date.today().isoformat()
+    restored: list[dict] = []
+    for row in rows:
+        user_medicine_id = row["user_medicine_id"]
+        medicine_code = row["medicine_code"]
+        schedule_dates = _schedule_dates(today, None, row["duration_days"])
+        end_date = schedule_dates[-1].isoformat() if schedule_dates else None
+        cursor.execute(
+            """
+            UPDATE user_medicines
+            SET is_active = 0, status = 'PAST'
+            WHERE user_id = ? AND medicine_code = ? AND id <> ?
+            """,
+            (user_id, medicine_code, user_medicine_id),
+        )
+        cursor.execute(
+            "DELETE FROM medication_schedules WHERE user_id = ? AND user_medicine_id = ?",
+            (user_id, user_medicine_id),
+        )
+        cursor.execute(
+            """
+            UPDATE user_medicines
+            SET is_active = 1, status = 'ACTIVE', start_date = ?, end_date = ?,
+                last_prescribed_at = ?
+            WHERE id = ?
+            """,
+            (today, end_date, today, user_medicine_id),
+        )
+        try:
+            administration_times = json.loads(row["administration_times"] or "[]")
+        except (TypeError, json.JSONDecodeError):
+            administration_times = []
+        ocr_item = OCRMedicineItem(
+            drug_name=row["ocr_drug_name"],
+            medicine_code=medicine_code,
+            dosage=row["dosage"],
+            unit=row["unit"],
+            frequency_per_day=row["frequency_per_day"],
+            times_per_take=row["times_per_take"],
+            duration_days=row["duration_days"],
+            administration_times=administration_times,
+            easy_explanation=row["easy_explanation"],
+            warning_note=row["warning_note"],
+        )
+        schedules = _create_medication_schedules(
+            cursor,
+            user_id=user_id,
+            user_medicine_id=user_medicine_id,
+            prescribed_date=today,
+            expire_date=None,
+            item=ocr_item,
+        )
+        restored.append(
+            {
+                "id": row["prescription_item_id"],
+                "user_medicine_id": user_medicine_id,
+                "medicine_code": medicine_code,
+                "drug_name": row["ocr_drug_name"],
+                "match_status": row["match_status"],
+                "frequency_per_day": row["frequency_per_day"],
+                "duration_days": row["duration_days"],
+                "schedules": schedules,
+            }
+        )
+    return restored
+
+
 def confirm_prescription(request: PrescriptionConfirmRequest) -> dict:
     """확인 화면에서 「이대로 등록하기」 할 때 실제 복용약·스케줄을 넣는다."""
     if not request.items:
@@ -983,6 +1066,8 @@ def confirm_prescription(request: PrescriptionConfirmRequest) -> dict:
                     "medicine_code": item.medicine_code,
                     "dosage": item.dosage,
                     "unit": item.unit,
+                    "dose_amount": item.dose_amount,
+                    "dose_unit": item.dose_unit,
                     "frequency_per_day": item.frequency_per_day,
                     "duration_days": item.duration_days,
                     "administration_times": list(item.administration_times or []),
@@ -1008,12 +1093,18 @@ def confirm_prescription(request: PrescriptionConfirmRequest) -> dict:
             (request.user_id, registration_fingerprint),
         ).fetchone()
         if duplicate:
+            restored_items = _reactivate_duplicate_prescription(
+                cursor,
+                user_id=request.user_id,
+                prescription_id=duplicate["id"],
+            )
+            conn.commit()
             return {
                 "prescription_id": duplicate["id"],
                 "user_id": request.user_id,
                 "registered": True,
                 "duplicate": True,
-                "items": [],
+                "items": restored_items,
             }
 
         prescription_id = str(uuid.uuid4())
@@ -1066,16 +1157,13 @@ def confirm_prescription(request: PrescriptionConfirmRequest) -> dict:
             official_name = str(exists["product_name"] or item.drug_name).strip()
             take_dosage = _validated_confirm_dosage(item, official_name)
             dose_amount, dose_unit = split_take_amount(take_dosage)
-            schedule_dates = _schedule_dates(
-                request.prescribed_date,
-                request.expire_date,
-                item.duration_days,
-            )
+            registration_date = date.today().isoformat()
+            schedule_dates = _schedule_dates(registration_date, None, item.duration_days)
             if schedule_dates:
                 medicine_start_date = schedule_dates[0].isoformat()
                 medicine_end_date = schedule_dates[-1].isoformat()
             else:
-                medicine_start_date = date.today().isoformat()
+                medicine_start_date = registration_date
                 medicine_end_date = None
 
             cursor.execute(
@@ -1109,6 +1197,25 @@ def confirm_prescription(request: PrescriptionConfirmRequest) -> dict:
                 ),
             )
             item_id = cursor.lastrowid
+            previous_rows = cursor.execute(
+                """
+                SELECT id FROM user_medicines
+                WHERE user_id = ? AND medicine_code = ?
+                  AND COALESCE(is_active, 1) = 1
+                """,
+                (request.user_id, code),
+            ).fetchall()
+            previous_ids = [row["id"] for row in previous_rows]
+            if previous_ids:
+                placeholders = ",".join("?" for _ in previous_ids)
+                cursor.execute(
+                    f"DELETE FROM medication_schedules WHERE user_medicine_id IN ({placeholders})",
+                    previous_ids,
+                )
+                cursor.execute(
+                    f"UPDATE user_medicines SET is_active = 0, status = 'PAST' WHERE id IN ({placeholders})",
+                    previous_ids,
+                )
             cursor.execute(
                 """
                 INSERT INTO user_medicines (
@@ -1129,7 +1236,7 @@ def confirm_prescription(request: PrescriptionConfirmRequest) -> dict:
                     dose_unit,
                     item.frequency_per_day,
                     json.dumps(item.administration_times, ensure_ascii=False),
-                    request.prescribed_date or medicine_start_date,
+                    registration_date,
                 ),
             )
             user_medicine_id = cursor.lastrowid
@@ -1149,8 +1256,8 @@ def confirm_prescription(request: PrescriptionConfirmRequest) -> dict:
                 cursor,
                 user_id=request.user_id,
                 user_medicine_id=user_medicine_id,
-                prescribed_date=request.prescribed_date,
-                expire_date=request.expire_date,
+                prescribed_date=registration_date,
+                expire_date=None,
                 item=ocr_item,
             )
             created_items.append(
