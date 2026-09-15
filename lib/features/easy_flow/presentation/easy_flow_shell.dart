@@ -36,6 +36,7 @@ class EasyFlowShell extends ConsumerStatefulWidget {
 
 class _EasyFlowShellState extends ConsumerState<EasyFlowShell> {
   EasyScreen _screen = EasyScreen.today;
+  Map<String, dynamic>? _durResult;
 
   /// 지나온 화면. "이전"에서 하나씩 꺼낸다.
   final List<EasyScreen> _history = <EasyScreen>[];
@@ -154,11 +155,17 @@ class _EasyFlowShellState extends ConsumerState<EasyFlowShell> {
       case EasyScreen.prescription:
         // 등록이 끝나면 손대지 않아도 함께먹기 주의로 넘어간다.
         return PrescriptionScreen(
-          onCompleted: () => _goTo(EasyScreen.interaction),
+          onCompleted: (result) {
+            _durResult = result;
+            _goTo(EasyScreen.interaction);
+          },
           onGoHome: () => _goTo(EasyScreen.today),
         );
       case EasyScreen.interaction:
-        return DurAnalysisScreen(onGoHome: () => _goTo(EasyScreen.today));
+        return DurAnalysisScreen(
+          initialResult: _durResult,
+          onGoHome: () => _goTo(EasyScreen.today),
+        );
       case EasyScreen.chat:
         return const PharmacistChatScreen();
       case EasyScreen.measure:

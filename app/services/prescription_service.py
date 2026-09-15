@@ -388,15 +388,41 @@ def _parse_date(value: str | None, fallback: date) -> date:
         return fallback
 
 
+def _schedule_frequency(value) -> int | None:
+    """읽은 1일 횟수만 쓴다. 없으면 1로 채우지 않는다."""
+    try:
+        number = int(value)
+    except (TypeError, ValueError):
+        return None
+    if number < 1:
+        return None
+    return number
+
+
+def _clock_times_for_item(item: OCRMedicineItem) -> list[str]:
+    confirmed = _confirmed_clock_times(item.administration_times)
+    if confirmed:
+        return confirmed
+    frequency = _schedule_frequency(item.frequency_per_day)
+    defaults = DEFAULT_SCHEDULE_TIMES.get(frequency) if frequency is not None else None
+    if not defaults:
+        return []
+    return [clock for clock, _slot in defaults]
+
+
 def _schedule_dates(
     prescribed_date: str | None,
     expire_date: str | None,
     duration_days: int | None,
 ) -> list[date]:
-    if duration_days is None or duration_days < 1:
+    try:
+        days = int(duration_days) if duration_days is not None else None
+    except (TypeError, ValueError):
+        days = None
+    if days is None or days < 1:
         return []
     start_date = _parse_date(prescribed_date, date.today())
-    duration_end = start_date + timedelta(days=duration_days - 1)
+    duration_end = start_date + timedelta(days=days - 1)
     if expire_date:
         # 처방 유효일이 더 멀어도 OCR에서 확인한 복용 일수보다 늘리지 않는다.
         end_date = min(_parse_date(expire_date, duration_end), duration_end)
@@ -419,11 +445,7 @@ def _create_medication_schedules(
     expire_date: str | None,
     item: OCRMedicineItem,
 ) -> list[dict]:
-    confirmed_times = _confirmed_clock_times(item.administration_times)
-    if not confirmed_times:
-        defaults = DEFAULT_SCHEDULE_TIMES.get(item.frequency_per_day)
-        if defaults:
-            confirmed_times = [clock for clock, _slot in defaults]
+    confirmed_times = _clock_times_for_item(item)
     if not confirmed_times:
         return []
     created_schedules = []
@@ -459,6 +481,16 @@ def _create_medication_schedules(
                         "status": "PENDING",
                     }
                 )
+
+    if created_schedules and not _confirmed_clock_times(item.administration_times):
+        cursor.execute(
+            """
+            UPDATE user_medicines
+            SET administration_times = ?
+            WHERE id = ?
+            """,
+            (json.dumps(confirmed_times, ensure_ascii=False), user_medicine_id),
+        )
 
     return created_schedules
 
@@ -1042,6 +1074,85 @@ def _reactivate_duplicate_prescription(cursor, *, user_id: str, prescription_id:
     return restored
 
 
+def _analyze_registered_medicines_locally(user_id: str) -> dict:
+    """등록 응답을 막는 외부 동기화 없이 현재 로컬 DUR 기준만 검사한다."""
+    try:
+        from app.models.schemas import DurAnalyzeRequest
+        from app.services.dur_service import analyze_dur
+
+        return analyze_dur(
+            DurAnalyzeRequest(user_id=user_id, medicine_codes=[]),
+            refresh=False,
+        )
+    except Exception:
+        # DUR 확인 실패가 이미 저장된 처방과 복용 일정을 되돌리면 안 된다.
+        return {
+            "risk_result_id": None,
+            "analysis_id": None,
+            "user_id": user_id,
+            "risk_level": "UNKNOWN",
+            "assessment_status": "INCOMPLETE",
+            "analysis_complete": False,
+            "has_risk": False,
+            "total_matches": 0,
+            "total_count": 0,
+            "representative_type": None,
+            "message": "약은 등록됐지만 함께먹기 검사를 마치지 못했어요.",
+            "by_type": {},
+            "ingredients": [],
+            "medicine_names": [],
+            "matches": [],
+            "incomplete": True,
+            "incomplete_reasons": ["함께먹기 검사 결과를 불러오지 못했어요."],
+            "incomplete_types": ["병용금기", "연령금기", "임부금기", "효능군중복"],
+            "skipped_medicine_names": [],
+            "taboo_row_count": 0,
+            "dur_sync_status": "local_failed",
+            "dur_sync_fetched": 0,
+            "dur_sync_upserted": 0,
+        }
+
+
+def _registration_result(
+    *,
+    prescription_id: str,
+    user_id: str,
+    items: list[dict],
+    duplicate: bool = False,
+) -> dict:
+    dur_result = _analyze_registered_medicines_locally(user_id)
+    # 최신 식약처 조회는 등록 응답과 분리해 별도 스레드에서 수행한다.
+    from app.services.dur_sync_service import start_background_user_dur_refresh
+
+    refresh_started = start_background_user_dur_refresh(user_id)
+    return {
+        "prescription_id": prescription_id,
+        "user_id": user_id,
+        "registered": True,
+        "duplicate": duplicate,
+        "items": items,
+        "medicine_codes": list(
+            dict.fromkeys(
+                str(item.get("medicine_code") or "").strip()
+                for item in items
+                if str(item.get("medicine_code") or "").strip()
+            )
+        ),
+        "schedule_count": sum(len(item.get("schedules") or []) for item in items),
+        "dur_result": dur_result,
+        "dur_refresh_started": refresh_started,
+    }
+
+
+def _can_register_confirm_item(item: PrescriptionConfirmItem) -> bool:
+    code = (item.medicine_code or "").strip()
+    if not code or code.upper().startswith("OCR-"):
+        return False
+    if (item.match_status or "").upper() == "UNMATCHED":
+        return False
+    return True
+
+
 def confirm_prescription(request: PrescriptionConfirmRequest) -> dict:
     """확인 화면에서 「이대로 등록하기」 할 때 실제 복용약·스케줄을 넣는다."""
     if not request.items:
@@ -1056,6 +1167,27 @@ def confirm_prescription(request: PrescriptionConfirmRequest) -> dict:
         ).fetchone()
         if not user:
             raise HTTPException(status_code=404, detail="사용자가 없습니다.")
+
+        register_items: list[tuple[PrescriptionConfirmItem, dict]] = []
+        for item in request.items:
+            if not _can_register_confirm_item(item):
+                continue
+            code = (item.medicine_code or "").strip()
+            exists = cursor.execute(
+                """
+                SELECT medicine_code, product_name FROM medicines
+                WHERE medicine_code = ? AND medicine_code NOT LIKE 'OCR-%'
+                """,
+                (code,),
+            ).fetchone()
+            if not exists:
+                continue
+            register_items.append((item, dict(exists)))
+        if not register_items:
+            raise HTTPException(
+                status_code=422,
+                detail="공식 목록에서 확인된 약만 등록할 수 있습니다.",
+            )
 
         fingerprint_payload = {
             "user_id": request.user_id,
@@ -1073,7 +1205,7 @@ def confirm_prescription(request: PrescriptionConfirmRequest) -> dict:
                     "administration_times": list(item.administration_times or []),
                     "ocr_drug_name_raw": item.ocr_drug_name_raw,
                 }
-                for item in request.items
+                for item, _exists in register_items
             ],
         }
         registration_fingerprint = hashlib.sha256(
@@ -1099,13 +1231,12 @@ def confirm_prescription(request: PrescriptionConfirmRequest) -> dict:
                 prescription_id=duplicate["id"],
             )
             conn.commit()
-            return {
-                "prescription_id": duplicate["id"],
-                "user_id": request.user_id,
-                "registered": True,
-                "duplicate": True,
-                "items": restored_items,
-            }
+            return _registration_result(
+                prescription_id=duplicate["id"],
+                user_id=request.user_id,
+                items=restored_items,
+                duplicate=True,
+            )
 
         prescription_id = str(uuid.uuid4())
         cursor.execute(
@@ -1130,29 +1261,8 @@ def confirm_prescription(request: PrescriptionConfirmRequest) -> dict:
         )
 
         created_items = []
-        for item in request.items:
+        for item, exists in register_items:
             code = (item.medicine_code or "").strip()
-            if not code:
-                raise HTTPException(status_code=422, detail="medicine_code가 없습니다.")
-            if code.upper().startswith("OCR-") or (
-                item.match_status or ""
-            ).upper() == "UNMATCHED":
-                raise HTTPException(
-                    status_code=422,
-                    detail="공식 목록에서 확인된 약만 등록할 수 있습니다.",
-                )
-            exists = cursor.execute(
-                """
-                SELECT medicine_code, product_name FROM medicines
-                WHERE medicine_code = ? AND medicine_code NOT LIKE 'OCR-%'
-                """,
-                (code,),
-            ).fetchone()
-            if not exists:
-                raise HTTPException(
-                    status_code=422,
-                    detail=f"알 수 없는 약 코드입니다: {code}",
-                )
             _prepare_detail_without_blocking(cursor, code)
             official_name = str(exists["product_name"] or item.drug_name).strip()
             take_dosage = _validated_confirm_dosage(item, official_name)
@@ -1274,19 +1384,11 @@ def confirm_prescription(request: PrescriptionConfirmRequest) -> dict:
             )
 
         conn.commit()
-        try:
-            from app.models.schemas import DurAnalyzeRequest
-            from app.services.dur_service import analyze_dur
-
-            analyze_dur(DurAnalyzeRequest(user_id=request.user_id, medicine_codes=[]))
-        except Exception:
-            pass
-        return {
-            "prescription_id": prescription_id,
-            "user_id": request.user_id,
-            "registered": True,
-            "items": created_items,
-        }
+        return _registration_result(
+            prescription_id=prescription_id,
+            user_id=request.user_id,
+            items=created_items,
+        )
     except HTTPException:
         conn.rollback()
         raise

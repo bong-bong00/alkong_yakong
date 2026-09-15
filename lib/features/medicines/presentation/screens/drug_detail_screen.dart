@@ -109,7 +109,7 @@ class _DetailBody extends StatelessWidget {
       ...medicine.keyCautions.where(
         (c) => c.trim().isNotEmpty && c != medicine.keyCaution,
       ),
-    ].take(3).toList();
+    ].where((text) => _isPersonCaution(text)).take(3).toList();
 
     return SingleChildScrollView(
       padding: const EdgeInsets.fromLTRB(20, 16, 20, 28),
@@ -288,55 +288,51 @@ class _DetailBody extends StatelessWidget {
               ),
             ),
           ],
-          const SizedBox(height: 12),
-          SeniorCard(
-            padding: const EdgeInsets.all(22),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                IconTitle(
-                  icon: medicine.interactionStatus == 'risk_found'
-                      ? TablerIcons.alert_triangle
-                      : TablerIcons.pills,
-                  color: medicine.interactionStatus == 'risk_found'
-                      ? AppColors.danger
-                      : AppColors.point,
-                  text: _interactionTitle(medicine.interactionStatus),
-                  style: AppText.cardTitle(
-                    color: medicine.interactionStatus == 'risk_found'
-                        ? AppColors.danger
-                        : AppColors.textPrimary,
+          if (medicine.interactionStatus == 'risk_found' &&
+              (medicine.interactionSummary ?? '').trim().isNotEmpty) ...[
+            const SizedBox(height: 12),
+            SeniorCard(
+              padding: const EdgeInsets.all(22),
+              borderColor: AppColors.danger,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  IconTitle(
+                    icon: TablerIcons.alert_triangle,
+                    color: AppColors.danger,
+                    text: '함께먹기 주의가 있어요',
+                    style: AppText.cardTitle(color: AppColors.danger),
                   ),
-                ),
-                const SizedBox(height: 10),
-                Text(
-                  medicine.interactionSummary ?? '아직 함께먹기 검사를 하지 않았어요.',
-                  style: AppText.body(size: 18),
-                ),
-                if (medicine.interactionStatus == 'risk_found') ...[
-                  if (medicine.interactionConflictNames.isNotEmpty) ...[
-                    const SizedBox(height: 8),
+                  const SizedBox(height: 10),
+                  if (medicine.interactionPairLabel.trim().isNotEmpty) ...[
                     Text(
-                      '관련 약: ${medicine.interactionConflictNames.join(' · ')}',
+                      medicine.interactionPairLabel,
+                      style: AppText.body(size: 18),
+                    ),
+                    const SizedBox(height: 8),
+                  ],
+                  Text(
+                    medicine.interactionSummary!,
+                    style: AppText.body(size: 18),
+                  ),
+                  if (medicine.interactionRiskFactor.trim().isNotEmpty) ...[
+                    const SizedBox(height: 10),
+                    Text(
+                      '성분 위험요소: ${medicine.interactionRiskFactor}',
                       style: AppText.label(size: 17),
                     ),
                   ],
-                  if (medicine.interactionRiskLevel.trim().isNotEmpty) ...[
-                    const SizedBox(height: 6),
+                  if (!medicine.interactionSummary!.contains('확인해')) ...[
+                    const SizedBox(height: 8),
                     Text(
-                      '위험 수준: ${_riskLevelLabel(medicine.interactionRiskLevel)}',
+                      '약국이나 병원에 한 번 확인해 주세요.',
                       style: AppText.label(size: 17, color: AppColors.danger),
                     ),
                   ],
-                  const SizedBox(height: 8),
-                  Text(
-                    '함께 복용하기 전에 의사나 약사에게 확인해 주세요.',
-                    style: AppText.label(size: 17, color: AppColors.danger),
-                  ),
                 ],
-              ],
+              ),
             ),
-          ),
+          ],
           const SizedBox(height: 12),
           SeniorCard(
             padding: const EdgeInsets.all(22),
@@ -397,7 +393,7 @@ class _DetailBody extends StatelessWidget {
                     Align(
                       alignment: Alignment.centerLeft,
                       child: Text(
-                        medicine.officialUsage,
+                        formatOfficialUsage(medicine.officialUsage),
                         style: AppText.body(size: 17),
                       ),
                     ),
@@ -437,12 +433,7 @@ class _DetailBody extends StatelessWidget {
                   Text('정보 출처', style: AppText.label(size: 17)),
                   const SizedBox(height: 6),
                   Text(
-                    medicine.detailSourceName,
-                    style: AppText.caption(color: AppColors.textSecondary),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    _sourceStatusLabel(medicine),
+                    '식약처 의약품 허가정보',
                     style: AppText.caption(color: AppColors.textSecondary),
                   ),
                 ],
@@ -464,13 +455,13 @@ class _DetailBody extends StatelessWidget {
     );
   }
 
-  static String _interactionTitle(String status) {
-    return switch (status) {
-      'risk_found' => '함께먹기 주의가 있어요',
-      'none' => '확인된 상호작용이 없어요',
-      'check_needed' => '함께먹기 확인이 필요해요',
-      _ => '함께먹기 검사 전이에요',
-    };
+  static bool _isPersonCaution(String text) {
+    final value = text.trim();
+    if (value.isEmpty) return false;
+    if (value.contains('사용상의주의')) return false;
+    if (value.contains('투여하지 말')) return false;
+    if (value.contains('신중히 투여')) return false;
+    return true;
   }
 
   static String _detailStatusMessage(String status) {
@@ -479,27 +470,6 @@ class _DetailBody extends StatelessWidget {
       'OUTDATED' => '기존 안전 정보는 볼 수 있어요. 최신 공식 정보로 갱신 중이에요.',
       'NEEDS_REVIEW' => '공식 정보에서 안전하게 정리한 기본 설명을 보여드려요.',
       _ => '현재 확인할 수 있는 제품 기본 정보를 보여드려요.',
-    };
-  }
-
-  static String _sourceStatusLabel(UserMedicine medicine) {
-    final source = medicine.detailSourceVerified ? '공식 출처 확인' : '출처 확인 필요';
-    return switch (medicine.detailStatus.toUpperCase()) {
-      'READY' => '$source · 쉬운 설명 검토 완료 · 내용 버전 ${medicine.detailContentVersion}',
-      'OFFICIAL_ONLY' => '$source · 공식 정보만 제공 · 내용 버전 ${medicine.detailContentVersion}',
-      'OUTDATED' => '$source · 최신 정보 갱신 중 · 내용 버전 ${medicine.detailContentVersion}',
-      'NEEDS_REVIEW' => '$source · 쉬운 설명 검토 필요 · 내용 버전 ${medicine.detailContentVersion}',
-      'FAILED' => '$source · 상세 설명 불러오기 실패',
-      _ => '$source · 현재 확인된 기본 정보',
-    };
-  }
-
-  static String _riskLevelLabel(String level) {
-    return switch (level.toUpperCase()) {
-      'HIGH' => '높음',
-      'MEDIUM' => '주의',
-      'LOW' => '낮음',
-      _ => '확인 필요',
     };
   }
 }

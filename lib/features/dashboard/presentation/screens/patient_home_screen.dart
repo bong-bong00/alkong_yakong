@@ -408,27 +408,22 @@ class _InteractionPriorityCard extends StatelessWidget {
             '${card.nameA} ↔ ${card.nameB}',
             style: AppText.body(size: 18),
           ),
-          const SizedBox(height: 4),
-          Text(card.reason, style: AppText.body(size: 17)),
-          if ((card.cautionA ?? '').trim().isNotEmpty) ...[
-            const SizedBox(height: 10),
-            Text(
-              '${card.nameA}: ${card.cautionA}',
-              style: AppText.label(size: 17, color: AppColors.danger),
-            ),
-          ],
-          if ((card.cautionB ?? '').trim().isNotEmpty) ...[
-            const SizedBox(height: 6),
-            Text(
-              '${card.nameB}: ${card.cautionB}',
-              style: AppText.label(size: 17, color: AppColors.danger),
-            ),
-          ],
           const SizedBox(height: 8),
-          Text(
-            '의사나 약사에게 확인해 주세요.',
-            style: AppText.label(size: 17, color: AppColors.danger),
-          ),
+          Text(card.reason, style: AppText.body(size: 17)),
+          if (card.riskFactor.trim().isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Text(
+              '성분 위험요소: ${card.riskFactor}',
+              style: AppText.label(size: 17),
+            ),
+          ],
+          if (!card.reason.contains('확인해')) ...[
+            const SizedBox(height: 8),
+            Text(
+              '약국이나 병원에 한 번 확인해 주세요.',
+              style: AppText.label(size: 17, color: AppColors.danger),
+            ),
+          ],
           if (onOpenDrug != null) ...[
             const SizedBox(height: 10),
             Wrap(

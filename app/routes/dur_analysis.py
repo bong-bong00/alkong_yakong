@@ -20,7 +20,9 @@ router = APIRouter(prefix="/api/v1", tags=["DUR Analysis"])
     response_model_exclude_unset=True,
 )
 def analyze(request: DurAnalyzeRequest):
-    return analyze_dur(request)
+    # 화면 요청은 로컬 자료로 즉시 판정한다. 외부 자료 갱신은 별도 동기화
+    # 작업에서만 수행해 사용자의 화면 이동을 막지 않는다.
+    return analyze_dur(request, refresh=False)
 
 
 @router.get(

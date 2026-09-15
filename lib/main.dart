@@ -55,13 +55,17 @@ final _router = GoRouter(
     ),
     GoRoute(
       path: '/medicines/:code',
-      builder: (context, state) => DrugDetailScreen(
-        medicineCode: state.pathParameters['code'] ?? '',
-      ),
+      builder: (context, state) =>
+          DrugDetailScreen(medicineCode: state.pathParameters['code'] ?? ''),
     ),
     GoRoute(
       path: '/dur-analysis',
-      builder: (context, state) => const DurAnalysisScreen(),
+      builder: (context, state) {
+        final extra = state.extra;
+        return DurAnalysisScreen(
+          initialResult: extra is Map ? Map<String, dynamic>.from(extra) : null,
+        );
+      },
     ),
     GoRoute(
       path: '/biosignal',
@@ -129,9 +133,7 @@ class LockScreenAlertRoute extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final today = ref.watch(medicationProvider);
     if (today.doses.isEmpty) {
-      return const Scaffold(
-        body: Center(child: Text('등록된 약이 없어요')),
-      );
+      return const Scaffold(body: Center(child: Text('등록된 약이 없어요')));
     }
     final dose = today.nextDose ?? today.doses.last;
 

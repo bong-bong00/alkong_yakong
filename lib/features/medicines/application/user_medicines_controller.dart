@@ -81,6 +81,10 @@ class UserMedicinesController extends AsyncNotifier<List<UserMedicine>> {
       data['interaction_conflict_names'] =
           safety['interaction_conflict_names'] ??
           data['interaction_conflict_names'];
+      data['interaction_risk_factor'] =
+          safety['interaction_risk_factor'] ?? data['interaction_risk_factor'];
+      data['interaction_pair_label'] =
+          safety['interaction_pair_label'] ?? data['interaction_pair_label'];
     }
     final source = response['source'];
     if (source is Map) {

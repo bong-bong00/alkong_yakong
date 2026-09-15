@@ -74,7 +74,8 @@ def test_home_item_separates_purpose_explanation_and_key_caution():
         }
     )
     assert item["purpose_label"] == "가려움 완화 · 불안·긴장 완화"
-    assert item["short_explanation"].endswith("있어요.")
+    assert item["short_explanation"] == "가려울 때 먹는 약이에요"
+    assert "목적으로 처방" not in item["short_explanation"]
     assert "운전" in item["key_caution"]
     assert len(item["easy_purposes"]) == 2
     assert all(isinstance(value, str) for value in item["easy_purposes"])
@@ -168,7 +169,8 @@ def test_adipam_card_uses_permission_name_and_itch_copy():
     assert item["display_name"] == "아디팜정(히드록시진염산염)"
     assert item["product_name"] == "아디팜정(히드록시진염산염)"
     assert item["purpose_label"] == "가려움 완화 · 불안·긴장 완화"
-    assert "가려움" in item["short_explanation"]
+    assert "가려울 때" in item["short_explanation"]
+    assert "목적으로 처방" not in (item["short_explanation"] or "")
     assert item["amount"] == ""
     assert "처방받은 약이에요" not in (item["short_explanation"] or "")
 

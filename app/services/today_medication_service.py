@@ -22,6 +22,7 @@ from app.services.medicine_display import (
 )
 from app.services.ocr.parser import take_amount_for_display
 from app.services.pharmacist.easy_category import (
+    derive_easy_spoken_from_medicine,
     display_product_name,
     infer_use_route,
     load_medicine_guidance,
@@ -270,6 +271,10 @@ def _medicine_item(row, *, guidance_cursor=None) -> dict[str, Any]:
         else medicine_guidance_from_medicine(data)
     )
     spoken = omit_placeholder_spoken(guidance["short_explanation"])
+    if "목적으로 처방" in spoken or "목적으로 사용" in spoken:
+        easier = omit_placeholder_spoken(derive_easy_spoken_from_medicine(data))
+        if easier:
+            spoken = easier
     dosage = take_amount_for_display(
         data.get("dosage"),
         times_per_take=data.get("times_per_take"),

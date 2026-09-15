@@ -113,10 +113,17 @@ class DurMatchResponse(ApiResponse):
     ingredient_a: str | None = None
     ingredient_b: str | None = None
     reason: str | None = None
+    official_reason: str | None = None
+    why_easy: str | None = None
+    source_label: str | None = None
+    easy_line_a: str | None = None
+    easy_line_b: str | None = None
     source: str | None = None
     external_id: str | None = None
     medicine_names_a: list[str] = Field(default_factory=list)
     medicine_names_b: list[str] = Field(default_factory=list)
+    medicine_codes_a: list[str] = Field(default_factory=list)
+    medicine_codes_b: list[str] = Field(default_factory=list)
 
 
 class DurAnalyzeResponse(ApiResponse):
@@ -161,6 +168,22 @@ class DurLatestResponse(ApiResponse):
     created_at: str
     matches: list[DurMatchResponse]
     representative_type: str | None = None
+    assessment_status: str
+    analysis_complete: bool
+    has_risk: bool
+    total_count: int
+    message: str
+    by_type: dict[str, dict[str, Any]]
+    ingredients: list[str]
+    medicine_names: list[str]
+    incomplete: bool
+    incomplete_reasons: list[str]
+    incomplete_types: list[str]
+    skipped_medicine_names: list[str]
+    taboo_row_count: int
+    dur_sync_status: str
+    dur_sync_fetched: int
+    dur_sync_upserted: int
 
 
 class DurSyncStatsResponse(ApiResponse):

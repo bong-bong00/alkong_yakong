@@ -591,10 +591,10 @@ def _merge_duplicate_drugs(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
             slot_n = len(rows)
             freq = base.get("frequency_per_day")
             try:
-                freq_n = int(freq) if freq is not None else 1
+                freq_n = int(freq) if freq is not None else slot_n
             except (TypeError, ValueError):
-                freq_n = 1
-            base["frequency_per_day"] = max(slot_n, freq_n if freq_n < 10 else 1)
+                freq_n = slot_n
+            base["frequency_per_day"] = max(slot_n, freq_n if freq_n < 10 else slot_n)
         days_vals = []
         for row in rows:
             if row.get("duration_days") is not None:
@@ -1176,6 +1176,15 @@ def _name_in_source(name: str, compact_source: str, raw_text: str = "") -> bool:
     return False
 
 
+def _source_without_column_headers(raw_text: str) -> str:
+    """표 머리글 '1회 투약량'·'1일 투여횟수'가 횟수 1·일수 1로 오인되지 않게 뺀다."""
+    text = raw_text or ""
+    text = re.sub(r"1회\s*투약량", " ", text)
+    text = re.sub(r"1일\s*투여횟수", " ", text)
+    text = re.sub(r"투약\s*일수", " ", text)
+    return text
+
+
 def _number_in_source(key: str, value: Any, raw_text: str) -> bool:
     if value is None or value == "":
         return False
@@ -1185,13 +1194,14 @@ def _number_in_source(key: str, value: Any, raw_text: str) -> bool:
         number = str(value).strip()
     if not number:
         return False
+    evidence = _source_without_column_headers(raw_text)
     if key == "duration_days":
-        if f"{number}일" in raw_text:
+        if f"{number}일" in evidence:
             return True
         # 복약안내 표: "... | 0.50 | 3 | 7"
         return _table_int_present(number, raw_text, role="duration")
     if key == "frequency_per_day":
-        if f"{number}회" in raw_text or f"{number}번" in raw_text:
+        if f"{number}회" in evidence or f"{number}번" in evidence:
             return True
         return _table_int_present(number, raw_text, role="frequency")
     if key == "times_per_take":

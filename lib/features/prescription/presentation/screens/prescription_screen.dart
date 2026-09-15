@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -54,7 +53,7 @@ class PrescriptionScreen extends ConsumerStatefulWidget {
   final String guardianTitle;
 
   /// 등록이 끝났을 때 부를 콜백.
-  final VoidCallback? onCompleted;
+  final ValueChanged<Map<String, dynamic>?>? onCompleted;
 
   /// 가족에게 부탁한 뒤 오늘 화면으로 돌아갈 때.
   final VoidCallback? onGoHome;
@@ -110,6 +109,15 @@ class _PrescriptionScreenState extends ConsumerState<PrescriptionScreen> {
     }
     final status = item['match_status']?.toString().toUpperCase() ?? '';
     return status != 'UNMATCHED';
+  }
+
+  static bool _hasPairConflict(Map<String, dynamic>? durResult) {
+    const pairTypes = {'병용금기', '중복성분', '효능군중복'};
+    final matches = durResult?['matches'];
+    if (matches is! List) return false;
+    return matches.any(
+      (item) => item is Map && pairTypes.contains(item['type']?.toString()),
+    );
   }
 
   Future<void> _pick(ImageSource source) async {
@@ -199,7 +207,7 @@ class _PrescriptionScreenState extends ConsumerState<PrescriptionScreen> {
         ? 'mvp-user'
         : MvpSession.userId.trim();
     final confirmItems = editedItems
-        .where((item) => (item['medicine_code']?.toString() ?? '').isNotEmpty)
+        .where(_isOfficialMatchedItem)
         .map(
           (item) => <String, dynamic>{
             'medicine_code': item['medicine_code'],
@@ -235,8 +243,9 @@ class _PrescriptionScreenState extends ConsumerState<PrescriptionScreen> {
       return;
     }
 
+    Map<String, dynamic>? durResult;
     try {
-      await _apiClient.post(
+      final response = await _apiClient.post(
         '/api/v1/prescriptions/confirm',
         body: {
           'user_id': userId,
@@ -247,6 +256,9 @@ class _PrescriptionScreenState extends ConsumerState<PrescriptionScreen> {
           'ocr_text': _result?['ocr_text'],
         },
       );
+      if (response is Map && response['dur_result'] is Map) {
+        durResult = Map<String, dynamic>.from(response['dur_result'] as Map);
+      }
     } catch (error) {
       debugPrint('처방 확정 등록 실패: $error');
       if (!mounted) return;
@@ -258,11 +270,26 @@ class _PrescriptionScreenState extends ConsumerState<PrescriptionScreen> {
 
     MvpSession.latestOcrItems = editedItems;
     MvpSession.latestOcrRegisteredAt = DateTime.now();
-    // 등록 성공 뒤 화면 이동을 목록 재조회가 막지 않게 백그라운드로 갱신한다.
-    unawaited(ref.read(medicationProvider.notifier).refreshFromServer());
-    unawaited(ref.read(userMedicinesProvider.notifier).refresh());
-
+    var refreshFailed = false;
+    try {
+      await Future.wait<void>([
+        ref.read(medicationProvider.notifier).refreshFromServer(),
+        ref.read(userMedicinesProvider.notifier).refresh(),
+      ]);
+    } catch (_) {
+      refreshFailed = true;
+    }
+    if (ref.read(userMedicinesProvider).hasError) {
+      refreshFailed = true;
+    }
     if (!mounted) return;
+    if (refreshFailed) {
+      showSeniorSnackbar(
+        context,
+        '약은 등록됐어요. 목록은 잠시 후 홈에서 다시 불러 주세요.',
+      );
+    }
+
     void goHome() {
       final onGoHome = widget.onGoHome;
       if (onGoHome != null) {
@@ -272,7 +299,7 @@ class _PrescriptionScreenState extends ConsumerState<PrescriptionScreen> {
       context.go('/');
     }
 
-    if (!_hasInteractionConflicts(editedItems)) {
+    if (!_hasPairConflict(durResult)) {
       final go = await showSeniorYesNoDialog(
         context: context,
         title: '약이 등록됐어요',
@@ -285,18 +312,10 @@ class _PrescriptionScreenState extends ConsumerState<PrescriptionScreen> {
 
     final onCompleted = widget.onCompleted;
     if (onCompleted != null) {
-      onCompleted();
+      onCompleted(durResult);
       return;
     }
-    context.push('/dur-analysis');
-  }
-
-  bool _hasInteractionConflicts(List<Map<String, dynamic>> items) {
-    for (final item in items) {
-      final raw = item['interaction_conflicts'];
-      if (raw is List && raw.isNotEmpty) return true;
-    }
-    return false;
+    context.push('/dur-analysis', extra: durResult);
   }
 
   @override
@@ -325,7 +344,7 @@ class _PrescriptionScreenState extends ConsumerState<PrescriptionScreen> {
           onSaved: () {
             final onCompleted = widget.onCompleted;
             if (onCompleted != null) {
-              onCompleted();
+              onCompleted(null);
               return;
             }
             context.push('/dur-analysis');

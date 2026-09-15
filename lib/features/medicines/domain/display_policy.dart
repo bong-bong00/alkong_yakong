@@ -136,7 +136,41 @@ String? cardSpokenOf(String? text) {
   var value = (text ?? '').trim();
   value = _spokenAliases[value] ?? value;
   if (value.isEmpty || value == _placeholderSpoken) return null;
+  if (value.contains('목적으로 처방') || value.contains('목적으로 사용')) {
+    return null;
+  }
   return value;
+}
+
+final _usageNumbered = RegExp(r'(?<!\d)(\d+\.\s+)(?=[가-힣○•])');
+final _usagePersonLabel = RegExp(r'(?<=\S)\s+(성인|소아|고령자)\s*[:：]');
+final _usageBullet = RegExp(r'\s*[○•]\s*');
+final _usageSentenceEnd = RegExp(r'(한다\.|이다\.)\s+');
+
+/// 허가 용법 원문은 그대로 두고, 항·문장 앞에서만 줄을 나눈다.
+String formatOfficialUsage(String? raw) {
+  var text = (raw ?? '').replaceAll('\r\n', '\n').replaceAll('\r', '\n');
+  text = text.replaceAll(RegExp(r'[ \t]+'), ' ');
+  text = text.replaceAll(RegExp(r' *\n *'), '\n');
+  text = text.replaceAll(_usageBullet, '\n\n○ ');
+  text = text.replaceAllMapped(
+    _usageNumbered,
+    (match) => '\n\n${match[1]}',
+  );
+  text = text.replaceAllMapped(
+    _usagePersonLabel,
+    (match) => '\n\n${match[1]} : ',
+  );
+  text = text.replaceAllMapped(
+    _usageSentenceEnd,
+    (match) => '${match[1]}\n\n',
+  );
+  text = text.replaceAll(RegExp(r' : +'), ' : ');
+  text = text.replaceAllMapped(
+    RegExp(r'\s+(고령자)\s+(이 약은)'),
+    (match) => '\n\n${match[1]} ${match[2]}',
+  );
+  return text.replaceAll(RegExp(r'\n{3,}'), '\n\n').trim();
 }
 
 /// 긴 복합제 성분은 카드에서 첫 성분과 나머지 개수만 보여 준다.

@@ -17,6 +17,8 @@ class UserMedicine {
   final String interactionStatus;
   final String? interactionSummary;
   final String interactionRiskLevel;
+  final String interactionRiskFactor;
+  final String interactionPairLabel;
   final List<String> interactionConflictNames;
   final String amount;
   final String? purposeLabel;
@@ -58,6 +60,8 @@ class UserMedicine {
     this.interactionStatus = 'not_checked',
     this.interactionSummary,
     this.interactionRiskLevel = '',
+    this.interactionRiskFactor = '',
+    this.interactionPairLabel = '',
     this.interactionConflictNames = const [],
     required this.amount,
     this.purposeLabel,
@@ -115,6 +119,8 @@ class UserMedicine {
           json['interaction_status']?.toString() ?? 'not_checked',
       interactionSummary: json['interaction_summary']?.toString(),
       interactionRiskLevel: json['interaction_risk_level']?.toString() ?? '',
+      interactionRiskFactor: json['interaction_risk_factor']?.toString() ?? '',
+      interactionPairLabel: json['interaction_pair_label']?.toString() ?? '',
       interactionConflictNames: _stringList(json['interaction_conflict_names']),
       amount: json['amount']?.toString() ?? '',
       purposeLabel: card.purposeLabel,
