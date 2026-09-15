@@ -8,7 +8,17 @@ import '../theme/app_typography.dart';
 ///
 /// **보호자에게 연락한 결과는 이것으로만 알린다.** 어르신 화면에는 전화 걸기
 /// 버튼을 두지 않고, 앱이 대신 보낸 뒤 여기서 "보냈어요"라고 말해 준다.
-void showSeniorSnackbar(BuildContext context, String message) {
+///
+/// 입력이 틀렸거나 요청이 실패한 것도 [error]로 여기서 알린다. 화면 안에
+/// 오류 박스를 끼워 넣으면 버튼 위에 붙어 버튼을 밀어낸다.
+///
+/// 화면 아래에 고정된 버튼이 있으면 그 높이를 [bottom]으로 넘겨 가리지 않게 한다.
+void showSeniorSnackbar(
+  BuildContext context,
+  String message, {
+  bool error = false,
+  double bottom = 0,
+}) {
   final messenger = ScaffoldMessenger.of(context);
   messenger.hideCurrentSnackBar();
   messenger.showSnackBar(
@@ -16,7 +26,7 @@ void showSeniorSnackbar(BuildContext context, String message) {
       backgroundColor: AppColors.snackbarBg,
       elevation: 0,
       behavior: SnackBarBehavior.floating,
-      margin: const EdgeInsets.fromLTRB(16, 0, 16, 26),
+      margin: EdgeInsets.fromLTRB(16, 0, 16, 26 + bottom),
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 17),
       duration: const Duration(seconds: 4),
       shape: RoundedRectangleBorder(
@@ -24,11 +34,13 @@ void showSeniorSnackbar(BuildContext context, String message) {
       ),
       content: Row(
         children: [
-          const ExcludeSemantics(
+          ExcludeSemantics(
             child: Icon(
-              TablerIcons.circle_check_filled,
+              error
+                  ? TablerIcons.alert_circle_filled
+                  : TablerIcons.circle_check_filled,
               size: 24,
-              color: AppColors.snackbarCheck,
+              color: error ? AppColors.dangerBorder : AppColors.snackbarCheck,
             ),
           ),
           const SizedBox(width: 13),

@@ -70,6 +70,7 @@ class _MyPageScreenState extends ConsumerState<MyPageScreen> {
       result.isSent
           ? '${draft.name} 님에게 초대를 보냈어요'
           : result.error ?? '초대를 보내지 못했어요',
+      error: !result.isSent,
     );
   }
 
@@ -83,7 +84,7 @@ class _MyPageScreenState extends ConsumerState<MyPageScreen> {
         await repository.remove(guardian.id);
       }
     } on ApiException catch (error) {
-      if (mounted) showSeniorSnackbar(context, error.message);
+      if (mounted) showSeniorSnackbar(context, error.message, error: true);
       return;
     }
     if (!mounted) return;

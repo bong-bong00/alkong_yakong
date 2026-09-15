@@ -5,6 +5,7 @@ import 'package:flutter_tabler_icons/flutter_tabler_icons.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../core/widgets/senior_card.dart';
+import '../../../../core/widgets/senior_feedback.dart';
 import '../../../../core/widgets/senior_header.dart';
 import '../../../medication/application/medication_controller.dart';
 import '../../../medication/domain/medication_models.dart';
@@ -103,13 +104,11 @@ class AlarmSettingsScreen extends ConsumerWidget {
                                 .requestPermissions(exactAlarm: true);
                             if (!allowed) {
                               if (!context.mounted) return;
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(
-                                  content: Text(
-                                    '전화기 설정에서 알림을 허용해 주세요. '
-                                    '그래야 약 시간에 소리가 나요.',
-                                  ),
-                                ),
+                              showSeniorSnackbar(
+                                context,
+                                '전화기 설정에서 알림을 허용해 주세요. '
+                                '그래야 약 시간에 소리가 나요.',
+                                error: true,
                               );
                               return;
                             }

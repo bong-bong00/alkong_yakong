@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/network/api_client.dart';
+import '../../../../core/widgets/senior_feedback.dart';
 import '../../../auth/presentation/screens/login_screen.dart';
 import '../../../guardian/application/guardians_provider.dart';
 import '../../../guardian/data/guardian_repository.dart';
@@ -124,11 +125,8 @@ class _ProfileEditScreenState extends ConsumerState<ProfileEditScreen> {
     return name.isEmpty ? '님' : name.substring(0, 1);
   }
 
-  void _toast(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message), behavior: SnackBarBehavior.floating),
-    );
-  }
+  void _toast(String message, {bool error = false}) =>
+      showSeniorSnackbar(context, message, error: error);
 
   Future<void> _save() async {
     final original = _original;
@@ -136,7 +134,7 @@ class _ProfileEditScreenState extends ConsumerState<ProfileEditScreen> {
 
     final name = _name.text.trim();
     if (name.isEmpty) {
-      _toast('이름을 입력해주세요');
+      _toast('이름을 입력해주세요', error: true);
       return;
     }
     final heightText = _height.text.trim();
@@ -144,11 +142,11 @@ class _ProfileEditScreenState extends ConsumerState<ProfileEditScreen> {
     final height = double.tryParse(heightText);
     final weight = double.tryParse(weightText);
     if (!_isGuardian && heightText.isNotEmpty && height == null) {
-      _toast('키는 숫자로만 적어주세요');
+      _toast('키는 숫자로만 적어주세요', error: true);
       return;
     }
     if (!_isGuardian && weightText.isNotEmpty && weight == null) {
-      _toast('몸무게는 숫자로만 적어주세요');
+      _toast('몸무게는 숫자로만 적어주세요', error: true);
       return;
     }
 
@@ -182,7 +180,7 @@ class _ProfileEditScreenState extends ConsumerState<ProfileEditScreen> {
       _toast('저장했어요');
       Navigator.of(context).maybePop();
     } on ApiException catch (error) {
-      if (mounted) _toast(error.message);
+      if (mounted) _toast(error.message, error: true);
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -192,7 +190,7 @@ class _ProfileEditScreenState extends ConsumerState<ProfileEditScreen> {
     try {
       await GuardianRepository().remove(patient.linkId);
     } on ApiException catch (error) {
-      if (mounted) _toast(error.message);
+      if (mounted) _toast(error.message, error: true);
       return;
     }
     ref.invalidate(careOverviewProvider);
