@@ -293,8 +293,6 @@ class _MeasureCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final noValue = done && value == null;
-    final warn = done && (noValue || !normal);
     return SeniorCard(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 22),
       child: Column(

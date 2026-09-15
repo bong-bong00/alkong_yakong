@@ -32,6 +32,7 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
   /// 위로 스크롤해서 찾아야 하는 오류는 없는 것과 같다.
   String? _error;
   bool _isSubmitting = false;
+  final ApiClient _apiClient = ApiClient();
 
   /// 처음에는 아무것도 고르지 않은 상태다. 기본값이 있으면
   /// 고르지 않고 지나쳐도 환자로 가입된다.
@@ -326,19 +327,12 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
     });
 
     try {
-      final birthDate = _birthDateForApi();
-      final phone = _optionalTrimmed(_phone.text);
-      final body = <String, dynamic>{
-        'name': _name.text.trim(),
-        'role': _role,
-      };
-      if (birthDate != null) body['birth_date'] = birthDate;
-      if (_gender != null) body['gender'] = _gender;
-      if (phone != null) body['phone'] = phone;
+      final body = _signupBody();
 
-      final response = await _apiClient
-          .post('/api/v1/users', body: body)
-          .timeout(const Duration(seconds: 10));
+      final response = await _apiClient.post(
+        '/api/v1/users',
+        body: body,
+      );
       final userId = response is Map<String, dynamic>
           ? response['id']?.toString()
           : null;

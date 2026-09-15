@@ -375,8 +375,6 @@ class _TodayCard extends StatelessWidget {
     final today = data.today;
     final measuredToday = today.before != null || today.after != null;
     final drop = today.drop;
-    final after = today.after;
-    final fast = after != null && HeartPair.isFast(after);
     final measuredLine = _measuredLine();
 
     return SeniorCard(
@@ -452,7 +450,7 @@ class _TodayCard extends StatelessWidget {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
               decoration: BoxDecoration(
-                color: fast ? AppColors.dangerBgSoft : AppColors.sunken,
+                color: AppColors.sunken,
                 borderRadius: BorderRadius.circular(16),
               ),
               child: Row(
@@ -463,7 +461,7 @@ class _TodayCard extends StatelessWidget {
                           ? TablerIcons.trending_down
                           : TablerIcons.trending_up,
                       size: 24,
-                      color: fast ? AppColors.danger : AppColors.point,
+                      color: AppColors.point,
                     ),
                   ),
                   const SizedBox(width: 10),
@@ -476,7 +474,7 @@ class _TodayCard extends StatelessWidget {
                           : '먹기 전과 같은 수치예요',
                       style: AppText.label(
                         size: 18.5,
-                        color: fast ? AppColors.danger : AppColors.textPrimary,
+                        color: AppColors.textPrimary,
                       ),
                     ),
                   ),

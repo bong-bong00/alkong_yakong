@@ -238,9 +238,7 @@ class _RecentBars extends StatelessWidget {
               width: 16,
               height: 34,
               decoration: BoxDecoration(
-                color: HeartPair.isFast(recent[i].pair.after!)
-                    ? AppColors.danger
-                    : AppColors.point,
+                color: AppColors.point,
                 borderRadius: BorderRadius.circular(8),
               ),
             ),

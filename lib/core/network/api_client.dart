@@ -74,11 +74,28 @@ class ApiClient {
   }
 
   dynamic _decodeResponse(http.Response response) {
+    final isSuccess = response.statusCode >= 200 && response.statusCode < 300;
+    final contentType = response.headers['content-type']?.toLowerCase() ?? '';
+    final isJsonContentType =
+        contentType.contains('application/json') ||
+        contentType.contains('+json');
     dynamic data;
     if (response.body.isNotEmpty) {
+      if (!isSuccess && !isJsonContentType) {
+        throw ApiException(
+          'API 요청에 실패했습니다. (HTTP ${response.statusCode})',
+          statusCode: response.statusCode,
+        );
+      }
       try {
         data = jsonDecode(utf8.decode(response.bodyBytes));
       } on FormatException {
+        if (!isSuccess) {
+          throw ApiException(
+            'API 요청에 실패했습니다. (HTTP ${response.statusCode})',
+            statusCode: response.statusCode,
+          );
+        }
         throw ApiException(
           '서버 응답이 올바른 JSON 형식이 아닙니다.',
           statusCode: response.statusCode,
@@ -86,12 +103,12 @@ class ApiClient {
       }
     }
 
-    if (response.statusCode >= 200 && response.statusCode < 300) {
+    if (isSuccess) {
       return data;
     }
 
     final detail = data is Map<String, dynamic> ? data['detail'] : null;
-    var message = 'API 요청에 실패했습니다. (${response.statusCode})';
+    var message = 'API 요청에 실패했습니다. (HTTP ${response.statusCode})';
     if (detail is Map) {
       message =
           detail['message']?.toString() ??
