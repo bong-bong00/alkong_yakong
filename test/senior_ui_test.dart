@@ -24,6 +24,67 @@ import 'package:alkong_yakong/core/widgets/senior_bottom_nav.dart';
 import 'package:alkong_yakong/core/mode/app_mode.dart';
 import 'package:alkong_yakong/features/medication/presentation/screens/dose_done_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:alkong_yakong/features/biosignal/data/heart_repository.dart';
+import 'package:alkong_yakong/features/biosignal/presentation/screens/heart_screen.dart';
+
+/// 서버 대신 정해 둔 기록을 돌려준다. null이면 "못 읽음"이다.
+class _FakeHeartRepository extends HeartRepository {
+  _FakeHeartRepository(this.result);
+  HeartData? result;
+  String? lastUserId;
+
+  @override
+  Future<HeartData?> fetch({String? userId}) async {
+    lastUserId = userId;
+    return result;
+  }
+}
+
+/// 붙어 있다고만 말하고 배터리·측정값은 아직 안 준 센서.
+class _StreamingSensor extends HeartSensor {
+  @override
+  HeartSensorStatus get status => HeartSensorStatus.streaming;
+}
+
+/// 테스트에서만 쓰는 채워진 기록. 앱 코드에는 이런 값을 두지 않는다.
+const _heartSample = HeartData(
+  today: HeartPair(before: 78, after: 72),
+  todaySlotLabel: '저녁 약',
+  beforeAt: '오후 5시 52분',
+  afterAt: '오후 6시 40분',
+  week: [
+    HeartDay('월', HeartPair(before: 80, after: 74)),
+    HeartDay('화', HeartPair()),
+  ],
+  month: [
+    HeartMonthDay(1, HeartPair(before: 79, after: 73)),
+    HeartMonthDay(2, HeartPair()),
+  ],
+  streakDays: 1,
+  bestStreakDays: 1,
+  anomaly: null,
+  sensorConnected: false,
+  sensorBattery: null,
+  sensorLastReadAt: '',
+  notifyGuardian: true,
+);
+
+/// 읽기는 됐지만 잰 값이 하나도 없는 기록.
+const _heartEmpty = HeartData(
+  today: HeartPair(),
+  todaySlotLabel: '',
+  beforeAt: '',
+  afterAt: '',
+  week: [HeartDay('월', HeartPair())],
+  month: [HeartMonthDay(1, HeartPair())],
+  streakDays: 0,
+  bestStreakDays: 0,
+  anomaly: null,
+  sensorConnected: false,
+  sensorBattery: null,
+  sensorLastReadAt: '',
+  notifyGuardian: true,
+);
 
 /// 시니어 리디자인의 QA 기준을 코드로 굳힌 테스트.
 ///
@@ -113,9 +174,7 @@ void main() {
     addTearDown(tester.view.reset);
 
     var done = 0;
-    await tester.pumpWidget(
-      wrap(PatientHomeScreen(onDone: () => done++)),
-    );
+    await tester.pumpWidget(wrap(PatientHomeScreen(onDone: () => done++)));
     await tester.pump();
 
     await tester.tap(find.text('먹었어요'));
@@ -133,9 +192,7 @@ void main() {
     addTearDown(tester.view.reset);
 
     var done = 0;
-    await tester.pumpWidget(
-      wrap(PatientHomeScreen(onDone: () => done++)),
-    );
+    await tester.pumpWidget(wrap(PatientHomeScreen(onDone: () => done++)));
     await tester.pump();
 
     await tester.tap(find.text('먹었어요'));
@@ -155,9 +212,7 @@ void main() {
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.reset);
 
-    await tester.pumpWidget(
-      wrap(const DoseDoneScreen(slot: DoseSlot.morning)),
-    );
+    await tester.pumpWidget(wrap(const DoseDoneScreen(slot: DoseSlot.morning)));
     await tester.pump();
 
     expect(find.textContaining('잘하셨어요'), findsOneWidget);
@@ -313,7 +368,6 @@ void _forbiddenFeatureTests() {
     final voiceDir = Directory('lib/features/voice');
     expect(voiceDir.existsSync(), isFalse, reason: '음성 기능은 제거 대상이다');
 
-
     // 낡은 심박 화면은 배선을 HeartSensor로 옮긴 뒤 지웠다.
     // 배선이 남아 있는지는 test_heartbeat_wiring.py 가 지킨다.
     expect(
@@ -337,8 +391,11 @@ void _forbiddenFeatureTests() {
       if (file.path.endsWith(guardianOnly)) continue;
       final text = file.readAsStringSync();
       for (final banned in ["label: '약국에 전화하기'", "전화를 겁니다"]) {
-        expect(text.contains(banned), isFalse,
-            reason: '${file.path}에 "$banned"가 남아 있다');
+        expect(
+          text.contains(banned),
+          isFalse,
+          reason: '${file.path}에 "$banned"가 남아 있다',
+        );
       }
     }
   });
@@ -351,12 +408,11 @@ void _forbiddenFeatureTests() {
   });
 }
 
-
 /// 회원가입 — 한 화면에 하나만 묻고, 배타 선택을 지킨다.
 void _signupTests() {
   Widget wrap(Widget child) => ProviderScope(
-        child: MaterialApp(theme: AppTheme.build(), home: child),
-      );
+    child: MaterialApp(theme: AppTheme.build(), home: child),
+  );
 
   /// 걸음 수는 역할과 성별에 따라 달라진다(임신 단계는 여성에게만 뜬다).
   /// 그러니 총 개수를 박지 않고 "지금 몇 번째인지 늘 보인다"만 지킨다.
@@ -369,10 +425,11 @@ void _signupTests() {
     expect(find.text('어떤 분이신가요?'), findsOneWidget);
   });
 
-  testWidgets('역할을 고르지 않으면 버튼 위에 이유가 뜬다 (02)', (tester) async {
+  testWidgets('역할을 고르지 않으면 스낵바로 이유를 알린다 (02)', (tester) async {
     await tester.pumpWidget(wrap(const SignupScreen()));
     await tester.tap(find.text('다음'));
     await tester.pump();
+    expect(find.byType(SnackBar), findsOneWidget);
     expect(find.text('어떤 분인지 골라주세요'), findsOneWidget);
     // 오류가 떠도 화면은 그대로다 — 다음으로 넘어가지 않는다.
     expect(find.text('어떤 분이신가요?'), findsOneWidget);
@@ -497,9 +554,12 @@ void _calendarTests() {
     final source = File(
       'lib/features/dashboard/presentation/screens/month_calendar_screen.dart',
     ).readAsStringSync();
-    // 칸이 가질 수 있는 상태는 네 가지뿐이다.
-    expect(source.contains('enum DayMark { done, missed, today, future }'),
-        isTrue);
+    // 칸이 가질 수 있는 상태는 정해져 있다. 기록이 없는 날은 다 드신 날로
+    // 채우지 않고 따로 둔다.
+    expect(
+      source.contains('enum DayMark { done, missed, today, future, noRecord }'),
+      isTrue,
+    );
     // 빠뜨린 날은 색으로 끝내지 않고 글로 다시 적는다.
     expect(source.contains('_MissedCard'), isTrue);
   });
@@ -516,12 +576,11 @@ void _calendarTests() {
   });
 }
 
-
 /// 센서 배선 — 화면은 상태만 읽고, 잇는 일은 [HeartSensor]가 한다.
 void _sensorTests() {
   Widget wrap(Widget child) => ProviderScope(
-        child: MaterialApp(theme: AppTheme.build(), home: child),
-      );
+    child: MaterialApp(theme: AppTheme.build(), home: child),
+  );
 
   testWidgets('밖에서 센서를 넣어 주면 화면이 따로 붙지 않는다 (27)', (tester) async {
     // 넣어 준 센서는 start()를 부르지 않았으므로 idle 그대로다.
@@ -529,7 +588,7 @@ void _sensorTests() {
     addTearDown(sensor.dispose);
 
     await tester.pumpWidget(
-      wrap(MeasureScreen(sensor: sensor, result: 72)),
+      wrap(MeasureScreen(sensor: sensor)),
     );
 
     expect(sensor.status, HeartSensorStatus.idle);
@@ -557,30 +616,80 @@ void _sensorTests() {
     expect(sensor.batteryLow, isFalse);
   });
 
-  testWidgets('배터리를 모르면 빈 막대에 0%를 그리지 않는다 (25)', (tester) async {
-    await tester.pumpWidget(
-      wrap(
-        PolarScreen(
-          data: HeartData.demo.copyWith(sensorConnected: true),
-          sensor: HeartSensor(),
-        ),
-      ),
-    );
-    await tester.pumpAndSettle();
-    // 데모 값 82%가 그대로 보인다 — 센서가 값을 주기 전이므로.
-    expect(find.text('82%'), findsOneWidget);
+  testWidgets('배터리를 모르면 숫자를 지어내지 않는다 (25)', (tester) async {
+    // 붙어는 있지만 배터리·측정값은 아직 안 알려준 센서.
+    final sensor = _StreamingSensor();
+    addTearDown(sensor.dispose);
+
+    await tester.pumpWidget(wrap(PolarScreen(sensor: sensor)));
+    await tester.pump();
+
+    expect(find.text('폴라 센서가 연결됐어요'), findsOneWidget);
+    // 예전 데모의 82%도, "다 닳았다"로 읽히는 0%도 그리지 않는다.
+    expect(find.textContaining('%'), findsNothing);
+    expect(find.text('아직 기기가 알려주지 않았어요'), findsOneWidget);
+    expect(find.text('아직 없어요'), findsOneWidget);
   });
 
-  test('정상 범위를 벗어나면 정상이라고 말하지 않는다', () {
+  testWidgets('센서를 넘겨받지 않으면 연결됐다고 하지 않는다 (25)', (tester) async {
+    await tester.pumpWidget(wrap(const PolarScreen()));
+    await tester.pump();
+    expect(find.text('폴라 센서가 연결되지 않았어요'), findsOneWidget);
+    expect(find.textContaining('%'), findsNothing);
+  });
+
+  testWidgets('기록을 못 읽으면 예시 대신 다시 불러오기를 보여준다 (24)', (tester) async {
+    final repository = _FakeHeartRepository(null);
+    await tester.pumpWidget(wrap(HeartScreen(repository: repository)));
+
+    // 읽는 중에는 숫자 자리를 비워 둔다.
+    expect(find.text('심박수 기록을 불러오고 있어요'), findsOneWidget);
+    await tester.pump();
+
+    expect(find.text('심박수 기록을 불러오지 못했어요'), findsOneWidget);
+    expect(find.text('다시 불러오기'), findsOneWidget);
+    // 예전 데모 값(78 → 72, 9일째)이 새어 나오지 않는다.
+    expect(find.text('78'), findsNothing);
+    expect(find.text('72'), findsNothing);
+    expect(find.text('아래는 예시 화면이에요'), findsNothing);
+
+    repository.result = _heartSample;
+    await tester.tap(find.text('다시 불러오기'));
+    await tester.pump();
+    await tester.pump();
+    expect(find.text('오늘 잰 것'), findsOneWidget);
+    expect(find.text('78'), findsOneWidget);
+    expect(find.text('72'), findsOneWidget);
+  });
+
+  testWidgets('잰 기록이 없으면 없다고 말한다 (24)', (tester) async {
+    await tester.pumpWidget(
+      wrap(HeartScreen(repository: _FakeHeartRepository(_heartEmpty))),
+    );
+    await tester.pump();
+    expect(find.text('아직 잰 기록이 없어요'), findsOneWidget);
+    expect(find.text('오늘 잰 것'), findsNothing);
+  });
+
+  testWidgets('보호자가 어르신 id로 열면 그 기록을 읽고 재기 버튼은 없다 (24)', (
+    tester,
+  ) async {
+    final repository = _FakeHeartRepository(_heartSample);
+    await tester.pumpWidget(
+      wrap(HeartScreen(userId: 'patient-1', repository: repository)),
+    );
+    await tester.pump();
+    expect(repository.lastUserId, 'patient-1');
+    expect(find.text('지금 재기'), findsNothing);
+  });
+
+  test('측정 전에는 최저·최고 값을 지어내지 않는다', () {
     final sensor = HeartSensor();
     addTearDown(sensor.dispose);
-    // 아직 한 번도 못 쟀으면 이상하다고 말하지 않는다.
-    expect(sensor.normal, isTrue);
     expect(sensor.lowest, isNull);
     expect(sensor.highest, isNull);
   });
 }
-
 
 /// 넘기기 전에 되돌려야 할 것들.
 void _shippingTests() {

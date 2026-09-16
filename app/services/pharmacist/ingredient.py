@@ -43,7 +43,11 @@ def clean_ingredient_text(value: Any) -> str:
     text = re.sub(r"\b[A-Za-z]\d{5,}\b", " ", text)
     text = re.sub(r"\s+", " ", text).strip(" ,;/|")
     # "시메티딘| 시메티딘"처럼 같은 성분이 반복되면 하나만 남긴다.
-    parts = [part.strip() for part in re.split(r"[|,/·]", text) if part.strip()]
+    parts = [
+        part.strip()
+        for part in re.split(r"[|,;/·]| 및 ", text)
+        if part.strip()
+    ]
     if len(parts) > 1:
         text = "|".join(dict.fromkeys(parts))
     if text in _PLACEHOLDERS:
@@ -88,8 +92,8 @@ def ingredient_keys(value: str | None) -> tuple[str, ...]:
                     seen.add(stripped)
                     keys.append(stripped)
 
-    _add(cleaned)
-    for part in re.split(r"[,/·]| 및 ", cleaned):
+    parts = [part for part in re.split(r"[|,;/·]| 및 ", cleaned) if part.strip()]
+    for part in parts:
         _add(part)
     return tuple(keys)
 
@@ -99,6 +103,18 @@ def primary_ingredient_key(value: str | None) -> str:
     if not keys:
         return ""
     return min(keys, key=len)
+
+
+def primary_ingredient_keys(value: str | None) -> tuple[str, ...]:
+    cleaned = clean_ingredient_text(value)
+    if not cleaned:
+        return ()
+    result: list[str] = []
+    for part in (part.strip() for part in cleaned.split("|")):
+        key = primary_ingredient_key(part)
+        if key and key not in result:
+            result.append(key)
+    return tuple(result)
 
 
 def is_usable_ingredient(ingredient: Any, product_name: Any = None) -> bool:

@@ -16,6 +16,16 @@ TABLE_DEFINITIONS = {
             role TEXT NOT NULL DEFAULT 'PATIENT',
             is_pregnant INTEGER NOT NULL DEFAULT 0,
             pregnancy_status TEXT,
+            password_hash TEXT,
+            height_cm REAL,
+            weight_kg REAL,
+            blood_type TEXT,
+            smoking TEXT,
+            drinking TEXT,
+            allergies TEXT NOT NULL DEFAULT '[]',
+            diseases TEXT NOT NULL DEFAULT '[]',
+            past_history INTEGER,
+            family_history INTEGER,
             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
             updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
         )
@@ -29,6 +39,10 @@ TABLE_DEFINITIONS = {
             phone TEXT,
             fcm_token TEXT,
             notification_enabled INTEGER NOT NULL DEFAULT 1,
+            guardian_user_id TEXT,
+            patient_relation TEXT,
+            status TEXT NOT NULL DEFAULT 'ACCEPTED',
+            requested_by TEXT NOT NULL DEFAULT 'PATIENT',
             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
         )
@@ -544,9 +558,25 @@ ADDITIVE_COLUMNS = {
         "role_group": "TEXT",
         "group_explanation": "TEXT",
     },
+    "guardians": {
+        "guardian_user_id": "TEXT",
+        "patient_relation": "TEXT",
+        "status": "TEXT NOT NULL DEFAULT 'ACCEPTED'",
+        "requested_by": "TEXT NOT NULL DEFAULT 'PATIENT'",
+    },
     "users": {
         "is_pregnant": "INTEGER NOT NULL DEFAULT 0",
         "pregnancy_status": "TEXT",
+        "password_hash": "TEXT",
+        "height_cm": "REAL",
+        "weight_kg": "REAL",
+        "blood_type": "TEXT",
+        "smoking": "TEXT",
+        "drinking": "TEXT",
+        "allergies": "TEXT NOT NULL DEFAULT '[]'",
+        "diseases": "TEXT NOT NULL DEFAULT '[]'",
+        "past_history": "INTEGER",
+        "family_history": "INTEGER",
     },
 }
 

@@ -3,22 +3,24 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_tabler_icons/flutter_tabler_icons.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
-import '../../../../core/session/mvp_session.dart';
 import '../../../../core/widgets/senior_bottom_nav.dart';
 import '../../../../core/widgets/senior_button.dart';
 import '../../../../core/widgets/senior_card.dart';
+import '../../../../core/widgets/senior_feedback.dart';
 import '../../../../core/widgets/senior_header.dart';
 import '../../../biosignal/presentation/screens/heart_screen.dart';
+import '../../../guardian/application/guardians_provider.dart';
 import '../../../guardian/data/alert_repository.dart';
 import '../../../guardian/presentation/screens/care_family_screen.dart';
 import '../../../profile/presentation/screens/mypage_screen.dart';
 import 'medication_record_screen.dart';
 import 'patient_data.dart';
 
-/// 보호자 쉘 — 탭은 **현황 · 알림 · 내 정보** 셋뿐이다.
+/// 보호자 쉘 — 탭은 **돌보는 분 · 현황 · 알림 · 내 정보** 넷이다.
 ///
 /// 보호자 전용 남색 액센트는 폐기했다. 환자와 같은 파란 규칙을 쓰고,
 /// 역할 구분은 탭 라벨과 상단 "보호자 화면" 라벨로만 한다.
@@ -31,7 +33,9 @@ class GuardianHomeScreen extends ConsumerStatefulWidget {
 
 class _GuardianHomeScreenState extends ConsumerState<GuardianHomeScreen> {
   int _index = 0;
-  int _patientIndex = 0;
+
+  /// 지금 보고 있는 어르신. 목록이 새로 와도 같은 분을 계속 본다.
+  String? _patientId;
 
   static const List<SeniorNavItem> _tabs = [
     SeniorNavItem(icon: TablerIcons.users, label: '돌보는 분'),
@@ -40,32 +44,45 @@ class _GuardianHomeScreenState extends ConsumerState<GuardianHomeScreen> {
     SeniorNavItem(icon: TablerIcons.user, label: '내 정보'),
   ];
 
-  PatientData get _patient => DemoPatients.all[_patientIndex];
-
   /// 돌보는 분 목록에서 한 분을 고르면 현황 탭으로 넘어간다.
-  void _openPatient(int index) {
+  void _openPatient(CarePatient patient) {
     setState(() {
-      _patientIndex = index;
+      _patientId = patient.patientId;
       _index = 1;
     });
   }
 
   @override
   Widget build(BuildContext context) {
+    final patients =
+        ref.watch(careOverviewProvider).valueOrNull?.patients ??
+        const <CarePatient>[];
+    final selected =
+        patients.where((p) => p.patientId == _patientId).firstOrNull ??
+        patients.firstOrNull;
+    void backToFamily() => setState(() => _index = 0);
+
     return Scaffold(
       backgroundColor: AppColors.bg,
       body: IndexedStack(
         index: _index,
         children: [
           CareFamilyScreen(onOpenPatient: _openPatient),
-          GuardianStatusTab(
-            patient: _patient,
-            position: _patientIndex + 1,
-            total: DemoPatients.all.length,
-            onBackToFamily: () => setState(() => _index = 0),
-            onOpenAlerts: () => setState(() => _index = 2),
-          ),
-          GuardianAlertsTab(patient: _patient),
+          selected == null
+              ? _NoPatientTab(onBackToFamily: backToFamily)
+              : GuardianStatusTab(
+                  patient: selected,
+                  position: patients.indexOf(selected) + 1,
+                  total: patients.length,
+                  onBackToFamily: backToFamily,
+                  onOpenAlerts: () => setState(() => _index = 2),
+                ),
+          selected == null
+              ? _NoPatientTab(onBackToFamily: backToFamily)
+              : GuardianAlertsTab(
+                  key: ValueKey(selected.patientId),
+                  patient: selected,
+                ),
           const MyPageScreen(isGuardian: true),
         ],
       ),
@@ -78,14 +95,82 @@ class _GuardianHomeScreenState extends ConsumerState<GuardianHomeScreen> {
   }
 }
 
+/// 아직 볼 어르신이 없을 때. 목록으로 돌아가는 길만 내민다.
+class _NoPatientTab extends StatelessWidget {
+  final VoidCallback onBackToFamily;
+
+  const _NoPatientTab({required this.onBackToFamily});
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        const SeniorTitleHeader(title: '보호자 화면'),
+        Expanded(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(20, 16, 20, 28),
+            child: SeniorCard(
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text(
+                    '아직 연결된 어르신이 없어요',
+                    style: AppText.cardTitle(size: 21),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    '어르신이 수락하면 여기에서 복약과 심장 박동을 볼 수 있어요.',
+                    style: AppText.body(size: 18),
+                  ),
+                  const SizedBox(height: 14),
+                  SeniorButton(
+                    label: '돌보는 분 목록으로',
+                    kind: SeniorButtonKind.secondary,
+                    minHeight: 58,
+                    fontSize: 20,
+                    onPressed: onBackToFamily,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// 어르신 번호로 전화 앱을 연다. 번호가 없거나 못 열면 그렇다고 말한다.
+Future<void> _callPatient(BuildContext context, CarePatient patient) async {
+  final digits = (patient.phone ?? '').replaceAll(RegExp(r'[^0-9]'), '');
+  if (digits.isEmpty) {
+    showSeniorSnackbar(
+      context,
+      '${patient.name} 님 전화번호가 등록돼 있지 않아요',
+      error: true,
+    );
+    return;
+  }
+  var opened = false;
+  try {
+    opened = await launchUrl(Uri(scheme: 'tel', path: digits));
+  } catch (_) {
+    opened = false;
+  }
+  if (!opened && context.mounted) {
+    showSeniorSnackbar(context, '전화 앱을 열지 못했어요', error: true);
+  }
+}
+
 // ════════════════════════════════════════════════════════════════
 //  4j — 부모님 현황
 // ════════════════════════════════════════════════════════════════
 
-/// 보호자가 할 수 있는 일: 조회 · 처방전 등록 대행 · 전화 · 알림 확인.
+/// 보호자가 할 수 있는 일: 조회 · 전화 · 알림 확인.
 /// **대신 복약 체크는 할 수 없다** — 오기록을 막기 위해서다.
-class GuardianStatusTab extends StatelessWidget {
-  final PatientData patient;
+class GuardianStatusTab extends ConsumerWidget {
+  final CarePatient patient;
 
   /// 목록에서 몇 번째 분인지. "3명 중 1번째"로 읽힌다.
   final int position;
@@ -103,10 +188,20 @@ class GuardianStatusTab extends StatelessWidget {
     required this.onOpenAlerts,
   });
 
-  bool get _needsAttention => patient.takenCount < patient.totalCount;
+  String get _doseNote {
+    if (patient.totalCount == 0) return '등록된 약 없음';
+    return patient.needsAttention
+        ? '${patient.nextDoseLabel} 남음'
+        : '다 드셨어요';
+  }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final guardianTitle = patient.relation.isEmpty
+        ? '${patient.name} 님'
+        : '${patient.relation} ${patient.name} 님';
+    final weekRate = patient.weekRate;
+
     return Column(
       children: [
         SeniorHeader(
@@ -124,7 +219,7 @@ class GuardianStatusTab extends StatelessWidget {
                       style: AppText.label(size: 17),
                     ),
                     Text(
-                      '${patient.relation} · ${patient.name}',
+                      patient.title,
                       style: AppText.screenTitle(size: 26),
                     ),
                   ],
@@ -134,250 +229,278 @@ class GuardianStatusTab extends StatelessWidget {
           ),
         ),
         Expanded(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(20, 16, 20, 28),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                // ── 오늘 복약 ──
-                SeniorCard(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 20,
-                    vertical: 17,
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      IconTitle(
-                        icon: TablerIcons.pill,
-                        text: '오늘 복약',
-                        style: AppText.label(
-                          size: 19,
-                          weight: FontWeight.w700,
+          child: RefreshIndicator(
+            onRefresh: () => ref.refresh(careOverviewProvider.future),
+            child: SingleChildScrollView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              padding: const EdgeInsets.fromLTRB(20, 16, 20, 28),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  // ── 오늘 복약 ──
+                  SeniorCard(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 20,
+                      vertical: 17,
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        IconTitle(
+                          icon: TablerIcons.pill,
+                          text: '오늘 복약',
+                          style: AppText.label(
+                            size: 19,
+                            weight: FontWeight.w700,
+                          ),
                         ),
-                      ),
-                      const SizedBox(height: 6),
-                      Wrap(
-                        spacing: 12,
-                        crossAxisAlignment: WrapCrossAlignment.center,
-                        children: [
-                          Text(
-                            '${patient.takenCount} / ${patient.totalCount}',
-                            style: AppText.hero(size: 44),
-                          ),
-                          Text(
-                            _needsAttention ? '저녁 약 남음' : '다 드셨어요',
-                            style: AppText.label(
-                              size: 19,
-                              color: AppColors.point,
+                        const SizedBox(height: 6),
+                        Wrap(
+                          spacing: 12,
+                          crossAxisAlignment: WrapCrossAlignment.center,
+                          children: [
+                            Text(
+                              '${patient.takenCount} / ${patient.totalCount}',
+                              style: AppText.hero(size: 44),
                             ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 14),
-                      Row(
-                        children: [
-                          for (int i = 0; i < patient.totalCount; i++) ...[
-                            if (i > 0) const SizedBox(width: 10),
-                            Expanded(
-                              child: _SlotChip(
-                                label: const ['아침', '점심', '저녁'][i],
-                                done: i < patient.takenCount,
+                            Text(
+                              _doseNote,
+                              style: AppText.label(
+                                size: 19,
+                                color: AppColors.point,
                               ),
                             ),
                           ],
+                        ),
+                        if (patient.slots.isNotEmpty) ...[
+                          const SizedBox(height: 14),
+                          Row(
+                            children: [
+                              for (int i = 0; i < patient.slots.length; i++) ...[
+                                if (i > 0) const SizedBox(width: 10),
+                                Expanded(
+                                  child: _SlotChip(
+                                    label: patient.slots[i].label,
+                                    done: patient.slots[i].taken,
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ),
                         ],
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 12),
-
-                // ── 지표 분할 ──
-                SeniorCard(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 20,
-                    vertical: 18,
-                  ),
-                  onTap: () => Navigator.of(context).push(
-                    MaterialPageRoute<void>(
-                      builder: (_) => HeartScreen(
-                        guardianTitle: '${patient.relation} ${patient.name} 님',
-                      ),
-                    ),
-                  ),
-                  child: IntrinsicHeight(
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: _Metric(
-                            label: '심장 박동',
-                            value: '${patient.currentHr}',
-                            note: patient.hrNormal ? '정상' : '확인 필요',
-                          ),
-                        ),
-                        Container(
-                          width: 1,
-                          height: 52,
-                          color: AppColors.divider,
-                        ),
-                        const Expanded(
-                          child: _Metric(
-                            label: '이번 주',
-                            value: '94%',
-                            note: '잘 지키고 계세요',
-                          ),
-                        ),
                       ],
                     ),
                   ),
-                ),
-                const SizedBox(height: 12),
+                  const SizedBox(height: 12),
 
-                // ── 확인 필요 ──
-                if (_needsAttention) ...[
+                  // ── 지표 분할 ──
                   SeniorCard(
                     padding: const EdgeInsets.symmetric(
                       horizontal: 20,
                       vertical: 18,
                     ),
-                    borderColor: AppColors.dangerBorder,
-                    borderWidth: 2,
+                    onTap: () => Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) => HeartScreen(
+                          userId: patient.patientId,
+                          guardianTitle: guardianTitle,
+                        ),
+                      ),
+                    ),
+                    child: IntrinsicHeight(
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: _Metric(
+                              label: '심장 박동',
+                              value: patient.heartRate?.toString() ?? '-',
+                              note: patient.heartRate == null
+                                  ? '잰 기록 없음'
+                                  : patient.heartRateNormal == false
+                                  ? '확인 필요'
+                                  : '정상',
+                            ),
+                          ),
+                          Container(
+                            width: 1,
+                            height: 52,
+                            color: AppColors.divider,
+                          ),
+                          Expanded(
+                            child: _Metric(
+                              label: '최근 7일',
+                              value: weekRate == null ? '-' : '$weekRate%',
+                              note: weekRate == null
+                                  ? '기록 없음'
+                                  : weekRate >= 90
+                                  ? '잘 지키고 계세요'
+                                  : '조금 더 챙겨 주세요',
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+
+                  // ── 확인 필요 ──
+                  if (patient.needsAttention) ...[
+                    SeniorCard(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 20,
+                        vertical: 18,
+                      ),
+                      borderColor: AppColors.dangerBorder,
+                      borderWidth: 2,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Row(
+                            children: [
+                              const Icon(
+                                TablerIcons.alert_triangle_filled,
+                                size: 21,
+                                color: AppColors.danger,
+                              ),
+                              const SizedBox(width: 9),
+                              Expanded(
+                                child: Text(
+                                  '확인이 필요해요',
+                                  style: AppText.cardTitle(
+                                    size: 18,
+                                    color: AppColors.danger,
+                                    weight: FontWeight.w900,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            '${patient.nextDoseLabel}\n아직 기록이 오지 않았어요',
+                            style: AppText.cardTitle(size: 21),
+                          ),
+                          const SizedBox(height: 14),
+                          SeniorButton(
+                            label: '전화 드리기',
+                            minHeight: 62,
+                            fontSize: 21,
+                            onPressed: () => _callPatient(context, patient),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                  ],
+
+                  // ── 오늘 있었던 일 ──
+                  SeniorCard(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 20,
+                      vertical: 18,
+                    ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        Row(
-                          children: [
-                            const Icon(
-                              TablerIcons.alert_triangle_filled,
-                              size: 21,
-                              color: AppColors.danger,
-                            ),
-                            const SizedBox(width: 9),
-                            Expanded(
-                              child: Text(
-                                '확인이 필요해요',
-                                style: AppText.cardTitle(
-                                  size: 18,
-                                  color: AppColors.danger,
-                                  weight: FontWeight.w900,
-                                ),
-                              ),
-                            ),
+                        IconTitle(
+                          icon: TablerIcons.clock,
+                          text: '오늘 있었던 일',
+                          style: AppText.cardTitle(size: 19),
+                        ),
+                        const SizedBox(height: 12),
+                        if (patient.activities.isEmpty)
+                          Text(
+                            '오늘은 아직 들어온 기록이 없어요',
+                            style: AppText.body(size: 18),
+                          ),
+                        for (int i = 0; i < patient.activities.length; i++) ...[
+                          if (i > 0) ...[
+                            const SizedBox(height: 12),
+                            const SeniorDivider(),
+                            const SizedBox(height: 12),
                           ],
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          '${patient.nextDose}\n아직 기록이 오지 않았어요',
-                          style: AppText.cardTitle(size: 21),
-                        ),
-                        const SizedBox(height: 14),
-                        SeniorButton(
-                          label: '전화 드리기',
-                          minHeight: 62,
-                          fontSize: 21,
-                          onPressed: () =>
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(
-                                  content: Text('${patient.name} 님에게 전화를 겁니다'),
+                          Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  patient.activities[i].text,
+                                  style: AppText.body(
+                                    size: 18.5,
+                                    color: AppColors.textBody,
+                                  ),
                                 ),
                               ),
-                        ),
+                              const SizedBox(width: 10),
+                              Text(
+                                patient.activities[i].time,
+                                style: AppText.label(
+                                  size: 17,
+                                  color: AppColors.textTertiary,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
                       ],
                     ),
                   ),
                   const SizedBox(height: 12),
-                ],
 
-                // ── 최근 있었던 일 ──
-                SeniorCard(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 20,
-                    vertical: 18,
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      IconTitle(
-                        icon: TablerIcons.clock,
-                        text: '오늘 있었던 일',
-                        style: AppText.cardTitle(size: 19),
-                      ),
-                      const SizedBox(height: 12),
-                      for (int i = 0; i < patient.activities.length; i++) ...[
-                        if (i > 0) ...[
-                          const SizedBox(height: 12),
-                          const SeniorDivider(),
-                          const SizedBox(height: 12),
-                        ],
-                        Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Expanded(
-                              child: Text(
-                                patient.activities[i].text,
-                                style: AppText.body(
-                                  size: 18.5,
-                                  color: AppColors.textBody,
+                  // ── 복약 기록 · 알림 ──
+                  SeniorCard(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 20,
+                      vertical: 4,
+                    ),
+                    child: Column(
+                      children: [
+                        SeniorListRow(
+                          label: '복약 기록 보기',
+                          icon: TablerIcons.file_text,
+                          trailing: const SeniorChevron(),
+                          onTap: () => Navigator.of(context).push(
+                            MaterialPageRoute<void>(
+                              builder: (_) => Scaffold(
+                                backgroundColor: AppColors.bg,
+                                body: MedicationRecordScreen(
+                                  patientName: patient.name,
+                                  patientUserId: patient.patientId,
+                                  showBack: true,
                                 ),
                               ),
                             ),
-                            const SizedBox(width: 10),
-                            Text(
-                              patient.activities[i].time,
-                              style: AppText.label(
-                                size: 17,
-                                color: AppColors.textTertiary,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 12),
-
-                // ── 약 목록 · 처방전 ──
-                SeniorCard(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 20,
-                    vertical: 4,
-                  ),
-                  child: Column(
-                    children: [
-                      SeniorListRow(
-                        label: '약 목록 · 처방전',
-                        icon: TablerIcons.file_text,
-                        trailing: const SeniorChevron(),
-                        onTap: () => Navigator.of(context).push(
-                          MaterialPageRoute<void>(
-                            builder: (_) => MedicationRecordScreen(
-                              patientName: patient.name,
-                              showBack: true,
-                              records: patient.records,
-                            ),
                           ),
                         ),
-                      ),
-                      const SeniorDivider(),
-                      SeniorListRow(
-                        label: '지난 알림 보기',
-                        icon: TablerIcons.bell,
-                        trailing: const SeniorChevron(),
-                        onTap: onOpenAlerts,
-                      ),
-                    ],
+                        const SeniorDivider(),
+                        SeniorListRow(
+                          label: '지난 알림 보기',
+                          icon: TablerIcons.bell,
+                          trailing: const SeniorChevron(),
+                          onTap: onOpenAlerts,
+                        ),
+                        if ((patient.phone ?? '').isNotEmpty) ...[
+                          const SeniorDivider(),
+                          SeniorListRow(
+                            label: '전화 드리기',
+                            icon: TablerIcons.phone,
+                            value: patient.phone,
+                            trailing: const SeniorChevron(),
+                            onTap: () => _callPatient(context, patient),
+                          ),
+                        ],
+                      ],
+                    ),
                   ),
-                ),
-                const SizedBox(height: 16),
-                Text(
-                  '보호자는 대신 복약 체크를 할 수 없어요.\n'
-                  '어르신이 직접 누르신 기록만 남습니다.',
-                  textAlign: TextAlign.center,
-                  style: AppText.caption(size: 17),
-                ),
-              ],
+                  const SizedBox(height: 16),
+                  Text(
+                    '보호자는 대신 복약 체크를 할 수 없어요.\n'
+                    '어르신이 직접 누르신 기록만 남습니다.',
+                    textAlign: TextAlign.center,
+                    style: AppText.caption(size: 17),
+                  ),
+                ],
+              ),
             ),
           ),
         ),
@@ -451,7 +574,7 @@ class _Metric extends StatelessWidget {
 /// "확인했어요"는 알림을 읽음 처리할 뿐 **삭제하지 않는다**.
 /// 어르신 쪽 재알림 사다리도 계속 진행된다.
 class GuardianAlertsTab extends StatefulWidget {
-  final PatientData patient;
+  final CarePatient patient;
 
   /// 알림을 읽어 올 곳. 없으면 이 탭이 하나 만들어 쓴다.
   final AlertRepository? repository;
@@ -473,6 +596,7 @@ class _GuardianAlertsTabState extends State<GuardianAlertsTab> {
       widget.repository ?? AlertRepository();
 
   List<AlertItem>? _loaded;
+  bool _failed = false;
 
   @override
   void initState() {
@@ -481,43 +605,88 @@ class _GuardianAlertsTabState extends State<GuardianAlertsTab> {
   }
 
   Future<void> _load() async {
-    final loaded = await _repository.fetch(MvpSession.userId);
-    if (!mounted || loaded == null) return;
-    // 읽어온 것이 있으면 그것만 보여준다. 데모와 섞지 않는다.
-    setState(() => _loaded = loaded);
+    setState(() => _failed = false);
+    final loaded = await _repository.fetch(widget.patient.patientId);
+    if (!mounted) return;
+    // 못 읽으면 못 읽었다고 말한다. 예시 알림으로 갈아끼우지 않는다.
+    setState(() {
+      _loaded = loaded;
+      _failed = loaded == null;
+    });
   }
 
   @override
   Widget build(BuildContext context) {
-    final alerts = _loaded ?? widget.patient.alerts;
+    final alerts = _loaded;
     return Column(
       children: [
-        const SeniorTitleHeader(title: '알림'),
+        SeniorTitleHeader(title: '${widget.patient.name} 님 알림'),
         Expanded(
-          child: ListView.separated(
-            padding: const EdgeInsets.fromLTRB(20, 16, 20, 28),
-            itemCount: alerts.length + 1,
-            separatorBuilder: (_, _) => const SizedBox(height: 12),
-            itemBuilder: (context, index) {
-              if (index == alerts.length) {
-                return Padding(
-                  padding: const EdgeInsets.only(top: 4),
-                  child: Text(
-                    '"확인했어요"는 읽음 처리만 합니다.\n'
-                    '어르신 쪽 재알림은 계속 진행돼요.',
-                    textAlign: TextAlign.center,
-                    style: AppText.caption(size: 17),
+          child: alerts == null
+              ? Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 16, 20, 28),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      SeniorCard(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 20,
+                          vertical: 18,
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            Text(
+                              _failed ? '알림을 불러오지 못했어요' : '불러오는 중이에요',
+                              style: AppText.body(size: 18),
+                            ),
+                            if (_failed) ...[
+                              const SizedBox(height: 12),
+                              SeniorButton(
+                                label: '다시 불러오기',
+                                kind: SeniorButtonKind.secondary,
+                                minHeight: 58,
+                                fontSize: 20,
+                                onPressed: _load,
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                    ],
                   ),
-                );
-              }
-              return _AlertCard(
-                alert: alerts[index],
-                patientName: widget.patient.name,
-                acknowledged: _acknowledged.contains(index),
-                onAcknowledge: () => setState(() => _acknowledged.add(index)),
-              );
-            },
-          ),
+                )
+              : RefreshIndicator(
+                  onRefresh: _load,
+                  child: ListView.separated(
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    padding: const EdgeInsets.fromLTRB(20, 16, 20, 28),
+                    itemCount: alerts.length + 1,
+                    separatorBuilder: (_, _) => const SizedBox(height: 12),
+                    itemBuilder: (context, index) {
+                      if (index == alerts.length) {
+                        return Padding(
+                          padding: const EdgeInsets.only(top: 4),
+                          child: Text(
+                            alerts.isEmpty
+                                ? '아직 온 알림이 없어요.'
+                                : '"확인했어요"는 읽음 처리만 합니다.\n'
+                                      '어르신 쪽 재알림은 계속 진행돼요.',
+                            textAlign: TextAlign.center,
+                            style: AppText.caption(size: 17),
+                          ),
+                        );
+                      }
+                      return _AlertCard(
+                        alert: alerts[index],
+                        patient: widget.patient,
+                        acknowledged: _acknowledged.contains(index),
+                        onAcknowledge: () =>
+                            setState(() => _acknowledged.add(index)),
+                      );
+                    },
+                  ),
+                ),
         ),
       ],
     );
@@ -526,13 +695,13 @@ class _GuardianAlertsTabState extends State<GuardianAlertsTab> {
 
 class _AlertCard extends StatelessWidget {
   final AlertItem alert;
-  final String patientName;
+  final CarePatient patient;
   final bool acknowledged;
   final VoidCallback onAcknowledge;
 
   const _AlertCard({
     required this.alert,
-    required this.patientName,
+    required this.patient,
     required this.acknowledged,
     required this.onAcknowledge,
   });
@@ -625,9 +794,7 @@ class _AlertCard extends StatelessWidget {
                     label: '전화 드리기',
                     minHeight: 56,
                     fontSize: 19,
-                    onPressed: () => ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text('$patientName 님에게 전화를 겁니다')),
-                    ),
+                    onPressed: () => _callPatient(context, patient),
                   ),
                 ),
                 const SizedBox(width: 10),

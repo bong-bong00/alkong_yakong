@@ -36,6 +36,13 @@ ENDPOINTS = {
     "효능군중복": "getEfcyDplctInfoList02",
 }
 
+DUR_INGREDIENT_QUERY_PARAM = {
+    "병용금기": "ingrKorName",
+    "연령금기": "ingrName",
+    "임부금기": "ingrName",
+    "효능군중복": "ingrName",
+}
+
 
 def diagnose_dur_api_key(
     risk_type: str = "병용금기",
@@ -320,7 +327,12 @@ def _bootstrap_dur_sync() -> None:
         logger.warning("식약처 DUR 백그라운드 동기화 실패", exc_info=True)
 
 
-def refresh_dur_for_ingredients(names: list[str]) -> dict[str, Any]:
+def refresh_dur_for_ingredients(
+    names: list[str],
+    *,
+    risk_types: set[str] | None = None,
+    force_refresh: bool = False,
+) -> dict[str, Any]:
     """검사에 필요한 성분만 식약처에서 받아 dur_taboo 에 넣는다."""
     queries = _ingredient_query_terms(names)
     if not queries:
@@ -338,17 +350,28 @@ def refresh_dur_for_ingredients(names: list[str]) -> dict[str, Any]:
             conn = get_connection()
             try:
                 cursor = conn.cursor()
-                for query in queries:
-                    for risk_type in ENDPOINTS:
-                        if _has_taboo_for_ingredient(
-                            cursor, query, risk_type=risk_type
-                        ):
-                            continue
+                pending = (
+                    queries
+                    if force_refresh
+                    else [
+                        query
+                        for query in queries
+                        if not _has_taboo_for_ingredient(cursor, query)
+                    ]
+                )
+                requested_types = [
+                    risk_type
+                    for risk_type in ENDPOINTS
+                    if risk_types is None or risk_type in risk_types
+                ]
+                for query_variant_index, query in enumerate(pending):
+                    for risk_type in requested_types:
                         stats = _sync_ingredient_type(
                             cursor,
                             risk_type,
                             query=query,
                             api_key=DUR_API_KEY,
+                            query_variant_index=query_variant_index,
                         )
                         fetched += stats["fetched"]
                         upserted += stats["upserted"]
@@ -383,14 +406,16 @@ def refresh_dur_for_ingredients(names: list[str]) -> dict[str, Any]:
 def _ingredient_query_terms(names: list[str]) -> list[str]:
     from app.services.pharmacist.ingredient import (
         clean_ingredient_text,
-        primary_ingredient_key,
+        ingredient_keys,
     )
 
     terms: list[str] = []
     seen: set[str] = set()
     for name in names:
         cleaned = clean_ingredient_text(name)
-        for candidate in (cleaned, primary_ingredient_key(name)):
+        cleaned_parts = [part.strip() for part in cleaned.split("|") if part.strip()]
+        candidates = cleaned_parts or [cleaned]
+        for candidate in (*candidates, *ingredient_keys(name)):
             text = str(candidate or "").strip()
             if len(text) < 2 or text in seen:
                 continue
@@ -442,9 +467,23 @@ def _sync_ingredient_type(
     *,
     query: str,
     api_key: str,
+    query_variant_index: int | None = None,
 ) -> dict[str, Any]:
+    from app.services.pharmacist.ingredient import normalize_ingredient
+
     stats = {"fetched": 0, "upserted": 0, "error": None}
-    for param_key in _INGR_QUERY_KEYS:
+    ingredient_mention_pass_count = 0
+    ingr_name_present_count = 0
+    ingr_name_normalized_match_count = 0
+    ingr_eng_name_present_count = 0
+    ingr_code_present_count = 0
+    whole_item_mention_match_count = 0
+    deleted_item_count = 0
+    normalize_success_count = 0
+    normalize_rejected_missing_ingredient_count = 0
+    normalize_rejected_other_count = 0
+    pre_normalize_exit = False
+    for param_key in (DUR_INGREDIENT_QUERY_PARAM[risk_type],):
         page = 1
         used_filter = False
         while page <= _MAX_INGREDIENT_PAGES:
@@ -460,17 +499,69 @@ def _sync_ingredient_type(
                 stats["error"] = error.detail
                 break
             stats["fetched"] += len(items)
-            matched = [item for item in items if _item_mentions_ingredient(item, query)]
+            normalized_query = normalize_ingredient(query)
+            item_matches = [
+                (item, _item_mentions_ingredient(item, query)) for item in items
+            ]
+            for item, whole_item_match in item_matches:
+                ingr_name = _first(
+                    item,
+                    "INGR_KOR_NAME" if risk_type == "병용금기" else "INGR_NAME",
+                )
+                ingr_eng_name = _first(item, "INGR_ENG_NAME")
+                ingr_code = _first(item, "INGR_CODE")
+                if ingr_name:
+                    ingr_name_present_count += 1
+                    if normalized_query and normalized_query in normalize_ingredient(
+                        ingr_name
+                    ):
+                        ingr_name_normalized_match_count += 1
+                if ingr_eng_name:
+                    ingr_eng_name_present_count += 1
+                if ingr_code:
+                    ingr_code_present_count += 1
+                if whole_item_match:
+                    whole_item_mention_match_count += 1
+            matched = [item for item, is_match in item_matches if is_match]
+            ingredient_mention_pass_count += len(matched)
             if items and not matched:
+                pre_normalize_exit = True
+                _log_dur_raw_mismatch(
+                    risk_type,
+                    query_parameter=param_key,
+                    normalized_query=normalized_query,
+                    items=items,
+                )
                 break
             used_filter = True
             for item in matched:
                 if _is_api_deleted(item):
+                    deleted_item_count += 1
                     _delete_taboo(cursor, risk_type, item)
                     continue
                 normalized = _normalize_item(risk_type, item)
                 if not normalized:
+                    missing_required_ingredient = not _first(
+                        item,
+                        "INGR_KOR_NAME",
+                        "INGR_NAME",
+                        "INGR_ENG_NAME",
+                    )
+                    if risk_type == "병용금기":
+                        missing_required_ingredient = (
+                            missing_required_ingredient
+                            or not _first(
+                                item,
+                                "MIXTURE_INGR_KOR_NAME",
+                                "MIXTURE_INGR_ENG_NAME",
+                            )
+                        )
+                    if missing_required_ingredient:
+                        normalize_rejected_missing_ingredient_count += 1
+                    else:
+                        normalize_rejected_other_count += 1
                     continue
+                normalize_success_count += 1
                 action = _upsert_taboo(cursor, normalized)
                 if action in {"inserted", "updated"}:
                     stats["upserted"] += 1
@@ -480,7 +571,107 @@ def _sync_ingredient_type(
         if used_filter:
             stats["error"] = None
             break
+    logger.warning(
+        "DUR sync diagnostic risk_type=%s query_variant_index=%s fetched_count=%d "
+        "ingr_name_present_count=%d ingr_name_normalized_match_count=%d "
+        "ingr_eng_name_present_count=%d ingr_code_present_count=%d "
+        "whole_item_mention_match_count=%d "
+        "ingredient_mention_pass_count=%d deleted_item_count=%d "
+        "normalize_success_count=%d "
+        "normalize_rejected_missing_ingredient_count=%d "
+        "normalize_rejected_other_count=%d upserted_count=%d "
+        "pre_normalize_exit=%s error_present=%s",
+        risk_type,
+        query_variant_index,
+        stats["fetched"],
+        ingr_name_present_count,
+        ingr_name_normalized_match_count,
+        ingr_eng_name_present_count,
+        ingr_code_present_count,
+        whole_item_mention_match_count,
+        ingredient_mention_pass_count,
+        deleted_item_count,
+        normalize_success_count,
+        normalize_rejected_missing_ingredient_count,
+        normalize_rejected_other_count,
+        stats["upserted"],
+        pre_normalize_exit,
+        bool(stats["error"]),
+    )
     return stats
+
+
+def _log_dur_raw_mismatch(
+    risk_type: str,
+    *,
+    query_parameter: str,
+    normalized_query: str,
+    items: list[dict[str, Any]],
+) -> None:
+    raw_key_sample = [sorted(str(key) for key in item.keys()) for item in items[:3]]
+    common_fields = {
+        "ingr_name_present_count": sum(bool(_first(item, "INGR_NAME")) for item in items),
+        "ingr_eng_present_count": sum(
+            bool(_first(item, "INGR_ENG_NAME")) for item in items
+        ),
+        "ingr_code_present_count": sum(bool(_first(item, "INGR_CODE")) for item in items),
+    }
+    if risk_type == "병용금기":
+        field_presence = {
+            "primary_kor_present_count": sum(
+                bool(_first(item, "INGR_KOR_NAME")) for item in items
+            ),
+            "primary_eng_present_count": common_fields["ingr_eng_present_count"],
+            "primary_code_present_count": common_fields["ingr_code_present_count"],
+            "mixture_kor_present_count": sum(
+                bool(_first(item, "MIXTURE_INGR_KOR_NAME")) for item in items
+            ),
+            "mixture_eng_present_count": sum(
+                bool(_first(item, "MIXTURE_INGR_ENG_NAME")) for item in items
+            ),
+            "mixture_code_present_count": sum(
+                bool(_first(item, "MIXTURE_INGR_CODE")) for item in items
+            ),
+        }
+    else:
+        field_presence = dict(common_fields)
+        if risk_type == "연령금기":
+            field_presence["age_base_present_count"] = sum(
+                bool(_first(item, "AGE_BASE")) for item in items
+            )
+        elif risk_type == "임부금기":
+            field_presence["grade_present_count"] = sum(
+                bool(_first(item, "GRADE")) for item in items
+            )
+        elif risk_type == "효능군중복":
+            field_presence.update(
+                {
+                    "effect_code_present_count": sum(
+                        bool(_first(item, "EFFECT_CODE")) for item in items
+                    ),
+                    "sers_name_present_count": sum(
+                        bool(_first(item, "SERS_NAME")) for item in items
+                    ),
+                    "class_name_present_count": sum(
+                        bool(_first(item, "CLASS_NAME")) for item in items
+                    ),
+                }
+            )
+    logger.warning(
+        "DUR raw mismatch diagnostic risk_type=%s operation=%s "
+        "query_parameter=%s normalized_query_present=%s "
+        "normalized_query_length=%d fetched_count=%d raw_key_sample=%s "
+        "field_presence=%s pre_normalize_exit=true "
+        "normalize_skipped_reason=no_ingredient_mention_match",
+        risk_type,
+        ENDPOINTS[risk_type],
+        query_parameter,
+        bool(normalized_query),
+        len(normalized_query),
+        len(items),
+        raw_key_sample,
+        field_presence,
+    )
 
 
 def _item_mentions_ingredient(item: dict[str, Any], query: str) -> bool:

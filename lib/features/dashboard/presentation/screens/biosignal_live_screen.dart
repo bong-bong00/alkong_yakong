@@ -20,13 +20,13 @@ import '../../../biosignal/data/polar_service.dart';
 class BiosignalLiveScreen extends StatefulWidget {
   final Color accent;
   final String? patientName; // 보호자가 볼 때 환자 이름. 환자 본인은 null.
-  final int baseHr; // 환자별 평상시 심박
 
+  // 예전의 `baseHr = 76`(환자별 평상시 심박)은 어디에도 쓰이지 않는 가짜
+  // 기본값이라 지웠다. 평소 심박은 화면의 "평소 심박 측정"으로만 잰다.
   const BiosignalLiveScreen({
     super.key,
     this.accent = kGuardian,
     this.patientName,
-    this.baseHr = 76,
   });
 
   @override

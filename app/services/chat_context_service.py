@@ -3,11 +3,16 @@ from collections import Counter
 from typing import Any
 
 from app.database import get_connection
+from app.services.pharmacist.ingredient import (
+    is_usable_ingredient,
+    normalize_ingredient,
+)
 
 
 OFFICIAL_FIELDS_BY_INTENT = {
     "overview": ("product_name", "ingredient", "manufacturer", "efficacy"),
     "efficacy": ("product_name", "ingredient", "efficacy"),
+    "dosage": ("product_name", "usage"),
     "usage": ("product_name", "usage"),
     "precautions": ("product_name", "cautions"),
     "side_effects": ("product_name", "side_effects"),
@@ -30,6 +35,18 @@ DUR_TYPES_BY_INTENT = {
 }
 
 SAFETY_INTENTS = frozenset(DUR_TYPES_BY_INTENT)
+EXPLICIT_QUESTION_INTENTS = frozenset(
+    {
+        "efficacy",
+        "dosage",
+        "precautions",
+        "side_effects",
+        "combination",
+        "age",
+        "pregnancy",
+        "duplicate",
+    }
+)
 
 
 def general_conversation_reply(message: str) -> str | None:
@@ -80,6 +97,15 @@ def classify_question(message: str) -> set[str]:
     return intents
 
 
+def resolve_question_intents(
+    message: str,
+    explicit_intent: str | None = None,
+) -> set[str]:
+    if explicit_intent in EXPLICIT_QUESTION_INTENTS:
+        return {explicit_intent}
+    return classify_question(message)
+
+
 def is_safety_question(intents: set[str]) -> bool:
     return bool(intents & SAFETY_INTENTS)
 
@@ -122,14 +148,25 @@ def load_latest_dur_context(user_id: str, intents: set[str]) -> dict[str, Any]:
 
         current_rows = conn.execute(
             """
-            SELECT m.ingredient FROM user_medicines um
-            JOIN medicines m ON m.medicine_code = um.medicine_code
-            WHERE um.user_id = ? AND um.is_active = 1
-            ORDER BY um.id
+            SELECT m.*
+            FROM medicines m
+            WHERE m.medicine_code IN (
+                SELECT DISTINCT um.medicine_code
+                FROM user_medicines um
+                WHERE um.user_id = ? AND um.is_active = 1
+            )
+            ORDER BY m.medicine_code
             """,
             (user_id,),
         ).fetchall()
-        current = [item["ingredient"] for item in current_rows if item["ingredient"]]
+        current = [
+            item["ingredient"]
+            for item in current_rows
+            if is_usable_ingredient(
+                item["ingredient"],
+                item["product_name"] if "product_name" in item.keys() else None,
+            )
+        ]
         analyzed = _json_list(row["analyzed_ingredients"])
         if _ingredient_signature(current) != _ingredient_signature(analyzed):
             return {"status": "stale", "items": []}
@@ -160,9 +197,9 @@ def _json_list(value: Any) -> list[Any]:
 
 def _ingredient_signature(values: list[Any]) -> Counter:
     return Counter(
-        "".join(str(value or "").lower().split())
+        normalized
         for value in values
-        if value
+        if (normalized := normalize_ingredient(str(value or "")))
     )
 
 
@@ -210,6 +247,14 @@ def _enrich_dur_match(conn, match: dict[str, Any]) -> dict[str, Any]:
     return {key: value for key, value in context.items() if value not in (None, "")}
 
 
+def enrich_dur_matches(matches: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    conn = get_connection()
+    try:
+        return [_enrich_dur_match(conn, match) for match in matches]
+    finally:
+        conn.close()
+
+
 def build_grounded_chat_prompt(
     *,
     message: str,
@@ -220,7 +265,7 @@ def build_grounded_chat_prompt(
     official_text = (
         json.dumps(official_contexts, ensure_ascii=False, indent=2)
         if official_contexts
-        else "현재 질문에 사용할 수 있는 e약은요 공식정보가 없습니다."
+        else "현재 질문에 사용할 수 있는 식약처 공식정보가 없습니다."
     )
     dur_text = (
         json.dumps(dur_result["items"], ensure_ascii=False, indent=2)
@@ -231,9 +276,12 @@ def build_grounded_chat_prompt(
 당신은 어르신을 위한 알콩약콩 의약품 설명 도우미입니다.
 
 반드시 지킬 규칙:
-- 아래에 제공된 식약처 공식정보를 최우선 근거로 사용하세요.
+- 아래에 제공된 식약처 공식정보를 최우선 근거로 사용하세요. e약은요 정보가 있으면 우선하고, 없을 때는 정확한 품목으로 검증된 의약품 허가정보만 사용하세요.
 - DUR 위험 여부를 새로 추론하거나 판정하지 마세요.
 - 병용금기, 연령금기, 임부금기, 효능군중복 여부는 서버가 전달한 DUR 분석 결과만 설명하세요.
+- 연령금기와 임부금기는 official_criteria를 약 자체의 공식 기준으로 먼저 설명하세요.
+- user_applicability는 사용자 프로필 기준 참고 정보입니다. unknown이면 개인 적용 여부를 판단하지 말고, not_applicable이어도 약 자체의 공식 기준을 생략하지 마세요.
+- user_applicability가 applicable이어도 복용 금지나 위험을 새로 단정하지 말고, 공식 기준과 관련될 수 있으므로 의료진 또는 약사에게 확인하도록 안내하세요.
 - 서버 DUR 결과가 없다는 사실을 안전하다는 뜻으로 해석하지 마세요.
 - 공식 근거가 없는 안전성 질문에는 "현재 확인된 식약처 정보만으로는 확인하기 어렵습니다."라고 한계를 밝히세요.
 - 공식정보에 없는 내용을 사실처럼 만들지 마세요.
@@ -247,7 +295,7 @@ def build_grounded_chat_prompt(
 [질문 의도]
 {', '.join(sorted(intents))}
 
-[식약처 e약은요 공식정보]
+[식약처 공식 의약품 정보]
 {official_text}
 
 [DUR 분석 결과 상태]

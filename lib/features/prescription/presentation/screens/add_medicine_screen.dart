@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../medication/application/medication_controller.dart';
 import 'package:flutter_tabler_icons/flutter_tabler_icons.dart';
 
 import '../../../../core/constants/app_colors.dart';
@@ -27,7 +28,7 @@ class AddMedicineScreen extends StatefulWidget {
   const AddMedicineScreen({
     super.key,
     required this.onPick,
-    this.guardianTitle = '딸 지안 님',
+    this.guardianTitle = '',
     this.onGoHome,
     this.familyAsked = false,
   });
@@ -108,14 +109,14 @@ class _AddMedicineScreenState extends State<AddMedicineScreen> {
                   const SizedBox(height: 12),
                   if (_asked)
                     _AskedCard(
-                      guardianTitle: widget.guardianTitle,
+                      guardianTitle: resolveGuardianTitle(context, widget.guardianTitle),
                       onGoHome: widget.onGoHome,
                     )
                   else
                     SeniorChoiceCard(
                       icon: TablerIcons.users,
                       title: '가족에게 부탁하기',
-                      description: '${widget.guardianTitle}이 대신 넣어 줘요',
+                      description: '${resolveGuardianTitle(context, widget.guardianTitle)}이 대신 넣어 줘요',
                       onPressed: () {
                         setState(() => _asked = true);
                         widget.onPick(AddMedicineMethod.family);

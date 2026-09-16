@@ -1,4 +1,4 @@
-from typing import List, Optional
+from typing import List, Literal, Optional
 
 from pydantic import BaseModel, Field
 
@@ -9,8 +9,43 @@ class UserCreate(BaseModel):
     gender: Optional[str] = None
     phone: Optional[str] = None
     role: str = "PATIENT"
+    password: Optional[str] = None
     is_pregnant: Optional[bool] = None
     pregnancy_status: Optional[str] = None
+    height_cm: Optional[float] = None
+    weight_kg: Optional[float] = None
+    blood_type: Optional[str] = None
+    smoking: Optional[str] = None
+    drinking: Optional[str] = None
+    allergies: List[str] = Field(default_factory=list)
+    diseases: List[str] = Field(default_factory=list)
+    past_history: Optional[bool] = None
+    family_history: Optional[bool] = None
+
+
+class UserUpdate(BaseModel):
+    """보낸 칸만 고친다. 값을 지우려면 null을 보낸다."""
+
+    name: Optional[str] = None
+    birth_date: Optional[str] = None
+    gender: Optional[str] = None
+    phone: Optional[str] = None
+    is_pregnant: Optional[bool] = None
+    pregnancy_status: Optional[str] = None
+    height_cm: Optional[float] = None
+    weight_kg: Optional[float] = None
+    blood_type: Optional[str] = None
+    smoking: Optional[str] = None
+    drinking: Optional[str] = None
+    allergies: Optional[List[str]] = None
+    diseases: Optional[List[str]] = None
+    past_history: Optional[bool] = None
+    family_history: Optional[bool] = None
+
+
+class UserLogin(BaseModel):
+    phone: str
+    password: str
 
 
 class GuardianCreate(BaseModel):
@@ -20,6 +55,18 @@ class GuardianCreate(BaseModel):
     phone: Optional[str] = None
     fcm_token: Optional[str] = None
     notification_enabled: bool = True
+
+
+class GuardianLinkRequest(BaseModel):
+    """보호자가 어르신 전화번호로 함께 보기를 요청한다."""
+
+    guardian_user_id: str
+    patient_phone: str
+    patient_relation: Optional[str] = None
+
+
+class GuardianStatusUpdate(BaseModel):
+    status: str
 
 
 class OCRMedicineItem(BaseModel):
@@ -126,9 +173,27 @@ class HeartRateCreate(BaseModel):
     source: str = "POLAR"
 
 
+class SelectedMedicine(BaseModel):
+    medicine_code: str
+    product_name: str
+
+
 class DrugExplainChatRequest(BaseModel):
     user_id: str
     message: str
+    selected_medicine: Optional[SelectedMedicine] = None
+    intent: Optional[
+        Literal[
+            "efficacy",
+            "dosage",
+            "precautions",
+            "side_effects",
+            "combination",
+            "age",
+            "pregnancy",
+            "duplicate",
+        ]
+    ] = None
 
 
 class ScheduleDayToggleRequest(BaseModel):

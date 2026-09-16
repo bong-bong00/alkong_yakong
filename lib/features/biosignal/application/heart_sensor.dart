@@ -27,13 +27,11 @@ class HeartSensor extends ChangeNotifier {
     PolarService? polar,
     ApiClient? apiClient,
     BiosignalDatasetCollector? datasetCollector,
-  })  : _polar = polar ?? PolarService(),
-        _apiClient = apiClient ?? ApiClient(),
-        _datasetCollector = datasetCollector ?? BiosignalDatasetCollector();
-
-  /// 정상으로 보는 범위. 이 밖이면 화면이 확인을 권한다.
-  static const int normalLow = 50;
-  static const int normalHigh = 110;
+  }) : _polar = polar ?? PolarService(),
+       _apiClient = apiClient ?? ApiClient(),
+       _datasetCollector = datasetCollector ?? BiosignalDatasetCollector() {
+    _subscribeToPolarStreams();
+  }
 
   /// 최근 값 몇 개까지 들고 있을지. 가장 낮게·가장 높게를 여기서 낸다.
   static const int _sampleWindow = 60;
@@ -43,12 +41,18 @@ class HeartSensor extends ChangeNotifier {
   final BiosignalDatasetCollector _datasetCollector;
   final List<StreamSubscription<dynamic>> _subscriptions = [];
   final List<int> _samples = <int>[];
+  final List<int> _baselineSamples = <int>[];
 
   HeartSensorStatus _status = HeartSensorStatus.idle;
   int? _bpm;
   int? _battery;
   String? _deviceId;
   DateTime? _lastReadAt;
+  double? _baselineBpm;
+  double? _currentAverageBpm;
+  Timer? _baselineTimer;
+  bool _isBaselineMeasuring = false;
+  bool _connecting = false;
   bool _disposed = false;
 
   HeartSensorStatus get status => _status;
@@ -66,14 +70,10 @@ class HeartSensor extends ChangeNotifier {
   /// 잰 값들. 새 화면의 "가장 낮게 / 가장 높게"가 이걸 쓴다.
   List<int> get samples => List.unmodifiable(_samples);
 
-  int? get lowest => _samples.isEmpty ? null : _samples.reduce((a, b) => a < b ? a : b);
-  int? get highest => _samples.isEmpty ? null : _samples.reduce((a, b) => a > b ? a : b);
-
-  /// 아직 한 번도 못 잰 동안은 "이상하다"고 말하지 않는다.
-  bool get normal {
-    final bpm = _bpm;
-    return bpm == null || (bpm >= normalLow && bpm <= normalHigh);
-  }
+  int? get lowest =>
+      _samples.isEmpty ? null : _samples.reduce((a, b) => a < b ? a : b);
+  int? get highest =>
+      _samples.isEmpty ? null : _samples.reduce((a, b) => a > b ? a : b);
 
   void _set(HeartSensorStatus status) {
     if (_disposed) return;
@@ -83,15 +83,31 @@ class HeartSensor extends ChangeNotifier {
 
   /// 센서를 찾아 붙고 심박 스트림을 연다.
   Future<void> start() async {
-    if (_disposed) return;
+    if (_disposed || _connecting) return;
+    _connecting = true;
     _set(HeartSensorStatus.connecting);
 
     try {
-      await [
+      final permissionStatuses = await [
         Permission.bluetoothScan,
         Permission.bluetoothConnect,
         Permission.locationWhenInUse,
       ].request();
+      if (permissionStatuses.values.any((status) => !status.isGranted)) {
+        _set(HeartSensorStatus.failed);
+        return;
+      }
+
+      _stopMeasurement(clearBaseline: true);
+      await _polar.stopStreaming();
+      final previousDeviceId = _deviceId;
+      if (previousDeviceId != null) {
+        try {
+          await _polar.disconnectFromDevice(previousDeviceId);
+        } catch (_) {
+          // 이미 끊긴 기기여도 새 검색은 계속한다.
+        }
+      }
 
       final deviceId = await _polar.findDeviceId(
         targetName: 'Polar Verity Sense',
@@ -103,47 +119,102 @@ class HeartSensor extends ChangeNotifier {
       if (_disposed) return;
       _deviceId = deviceId;
       _set(HeartSensorStatus.streaming);
-
-      _subscriptions.add(
-        _polar.currentBpmStream.listen((bpm) {
-          if (_disposed || bpm == null) return;
-          // 데이터셋은 운영 기록과 따로 모은다.
-          _datasetCollector.addPolarBpm(
-            bpm,
-            deviceId: _deviceId ?? PolarService.defaultDeviceId,
-          );
-          _bpm = bpm;
-          _lastReadAt = DateTime.now();
-          _samples.add(bpm);
-          if (_samples.length > _sampleWindow) _samples.removeAt(0);
-          notifyListeners();
-        }),
-      );
-      _subscriptions.add(
-        _polar.averageBpmStream.listen((average) {
-          if (average != null) unawaited(_sendAverageBpm(average));
-        }),
-      );
-      _subscriptions.add(
-        _polar.batteryLevelStream.listen((level) {
-          if (_disposed) return;
-          _battery = level;
-          notifyListeners();
-        }),
-      );
-      _subscriptions.add(
-        _polar.deviceDisconnectedStream.listen((_) {
-          _set(HeartSensorStatus.disconnected);
-        }),
-      );
-      _subscriptions.add(
-        _polar.errorStream.listen((_) {
-          _set(HeartSensorStatus.failed);
-        }),
-      );
     } catch (_) {
       _set(HeartSensorStatus.failed);
+    } finally {
+      _connecting = false;
     }
+  }
+
+  void _subscribeToPolarStreams() {
+    _subscriptions.add(
+      _polar.currentBpmStream.listen((bpm) {
+        if (_disposed || bpm == null || bpm <= 0) return;
+        // 데이터셋은 운영 기록과 따로 모은다.
+        _datasetCollector.addPolarBpm(
+          bpm,
+          deviceId: _deviceId ?? PolarService.defaultDeviceId,
+        );
+        _bpm = bpm;
+        _lastReadAt = DateTime.now();
+        _samples.add(bpm);
+        if (_samples.length > _sampleWindow) _samples.removeAt(0);
+        if (_isBaselineMeasuring) _baselineSamples.add(bpm);
+        if (_baselineBpm == null && !_isBaselineMeasuring) {
+          _startBaselineMeasurement(bpm);
+        }
+        notifyListeners();
+      }),
+    );
+    _subscriptions.add(
+      _polar.averageBpmStream.listen((average) {
+        if (_disposed || average == null || _baselineBpm == null) return;
+        _currentAverageBpm = average;
+        final changePercent = heartRateChangePercent(
+          baseline: _baselineBpm,
+          currentAverage: _currentAverageBpm,
+        );
+        debugPrint(
+          '[POLAR_SENSOR] 30s change calculated: '
+          '${changePercent?.toStringAsFixed(1) ?? 'unavailable'}%',
+        );
+        unawaited(_sendAverageBpm(average));
+      }),
+    );
+    _subscriptions.add(
+      _polar.batteryLevelStream.listen((level) {
+        if (_disposed) return;
+        _battery = level;
+        notifyListeners();
+      }),
+    );
+    _subscriptions.add(
+      _polar.deviceDisconnectedStream.listen((_) {
+        _stopMeasurement(clearBaseline: true);
+        _set(HeartSensorStatus.disconnected);
+      }),
+    );
+    _subscriptions.add(
+      _polar.errorStream.listen((_) {
+        _stopMeasurement(clearBaseline: true);
+        _set(HeartSensorStatus.failed);
+      }),
+    );
+  }
+
+  void _startBaselineMeasurement(int firstBpm) {
+    _polar.stopAverageMonitoring();
+    _baselineTimer?.cancel();
+    _baselineSamples
+      ..clear()
+      ..add(firstBpm);
+    _baselineBpm = null;
+    _currentAverageBpm = null;
+    _isBaselineMeasuring = true;
+    _baselineTimer = Timer(const Duration(seconds: 15), _completeBaseline);
+  }
+
+  void _completeBaseline() {
+    if (_disposed) return;
+    final baseline = averageValidHeartRates(_baselineSamples);
+    _baselineSamples.clear();
+    _baselineBpm = baseline;
+    _isBaselineMeasuring = false;
+    _baselineTimer = null;
+    if (baseline != null && baseline > 0) {
+      // baseline 표본과 섞이지 않는 새로운 30초 창을 시작한다.
+      _polar.startAverageMonitoring();
+    }
+  }
+
+  void _stopMeasurement({required bool clearBaseline}) {
+    _baselineTimer?.cancel();
+    _baselineTimer = null;
+    _isBaselineMeasuring = false;
+    _baselineSamples.clear();
+    _currentAverageBpm = null;
+    if (clearBaseline) _baselineBpm = null;
+    _polar.stopAverageMonitoring();
   }
 
   /// 30초 평균만 서버로 올린다. 매 초 값을 올리면 기록이 잡음이 된다.
@@ -174,10 +245,7 @@ class HeartSensor extends ChangeNotifier {
   /// [dispose]와 다르다. 어르신이 "연결 끊기"를 누른 뒤 다시 "기기 찾기"를
   /// 누를 수 있어야 하므로, 여기서 스트림 컨트롤러까지 닫지는 않는다.
   Future<void> stop() async {
-    for (final subscription in _subscriptions) {
-      await subscription.cancel();
-    }
-    _subscriptions.clear();
+    _stopMeasurement(clearBaseline: true);
     await _polar.stopStreaming();
     final deviceId = _deviceId;
     if (deviceId != null) {
@@ -193,6 +261,7 @@ class HeartSensor extends ChangeNotifier {
   @override
   void dispose() {
     _disposed = true;
+    _baselineTimer?.cancel();
     for (final subscription in _subscriptions) {
       subscription.cancel();
     }

@@ -42,7 +42,7 @@ class HeartPairingTest(unittest.TestCase):
         self.assertEqual(pair["after"], 74)
 
 
-class HeartStreakTest(unittest.TestCase):
+class HeartMeasurementStreakTest(unittest.TestCase):
     def test_unmeasured_days_do_not_break_the_streak(self):
         """센서를 안 찬 날이 "이상한 날"이 되면 안 된다."""
         month = [
@@ -52,14 +52,14 @@ class HeartStreakTest(unittest.TestCase):
         ]
         self.assertEqual(_streak(month), 2)
 
-    def test_a_fast_day_breaks_the_streak(self):
+    def test_bpm_value_does_not_create_a_medical_threshold(self):
         month = [
             {"day": 1, "after": 70},
             {"day": 2, "after": 96},
             {"day": 3, "after": 72},
         ]
-        self.assertEqual(_streak(month), 1)
-        self.assertEqual(_best_streak(month), 1)
+        self.assertEqual(_streak(month), 3)
+        self.assertEqual(_best_streak(month), 3)
 
     def test_best_streak_spans_the_whole_month(self):
         month = [
@@ -68,7 +68,7 @@ class HeartStreakTest(unittest.TestCase):
             {"day": 3, "after": 99},
             {"day": 4, "after": 72},
         ]
-        self.assertEqual(_best_streak(month), 2)
+        self.assertEqual(_best_streak(month), 4)
 
 
 if __name__ == "__main__":

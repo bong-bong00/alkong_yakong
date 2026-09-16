@@ -10,7 +10,11 @@ import '../../../../core/widgets/senior_bottom_nav.dart';
 import '../../../biosignal/presentation/screens/measure_screen.dart';
 import '../../../medication/domain/medication_models.dart';
 import '../../../medication/presentation/screens/dose_done_screen.dart';
-import '../../../medicines/presentation/screens/pharmacist_chat_screen.dart';
+import '../../../medicines/domain/drug_info.dart';
+import '../../../medicines/presentation/screens/drug_detail_screen.dart';
+import '../../../medicines/presentation/screens/my_medicines_screen.dart';
+import '../../../reminder/presentation/screens/alarm_settings_screen.dart';
+import '../../../prescription/presentation/screens/prescription_screen.dart';
 import '../../../profile/presentation/screens/mypage_screen.dart';
 import 'medication_record_screen.dart';
 import 'patient_home_screen.dart';
@@ -56,13 +60,17 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               ? PatientHomeScreen(
                   onOpenRecord: () => setState(() => _index = 1),
                   onOpenHeartbeat: () => context.push('/biosignal'),
-                  onOpenPrescription: () => context.push('/prescription'),
-                  onOpenChat: () => Navigator.of(context).push(
+                  onOpenPrescription: () => Navigator.of(context).push(
                     MaterialPageRoute(
-                      builder: (_) => const PharmacistChatScreen(),
+                      builder: (_) => const PrescriptionScreen(),
                     ),
                   ),
-                  onOpenMedicines: () => context.push('/my-medicines'),
+                  onOpenChat: () => context.push('/drug-explain'),
+                  onOpenMedicines: () => Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => const MyMedicinesScreen(),
+                    ),
+                  ),
                   onOpenDrug: (medicine) {
                     final code = (medicine.medicineCode ?? medicine.key ?? '')
                         .trim();

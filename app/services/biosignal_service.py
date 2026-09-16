@@ -35,81 +35,14 @@ def save_heart_rate(request: HeartRateCreate) -> dict:
             "SELECT * FROM baseline_heart_rate WHERE user_id = ?",
             (request.user_id,),
         ).fetchone()
-        if not baseline:
-            min_bpm = max(40, request.bpm - 20)
-            max_bpm = request.bpm + 20
-            cursor.execute(
-                """
-                INSERT INTO baseline_heart_rate (
-                    user_id, resting_bpm, min_normal_bpm, max_normal_bpm
-                ) VALUES (?, ?, ?, ?)
-                """,
-                (request.user_id, request.bpm, min_bpm, max_bpm),
-            )
-            baseline = cursor.execute(
-                "SELECT * FROM baseline_heart_rate WHERE user_id = ?",
-                (request.user_id,),
-            ).fetchone()
-
-        event = None
-        if request.bpm < baseline["min_normal_bpm"] or request.bpm > baseline["max_normal_bpm"]:
-            event_type = "LOW_HEART_RATE" if request.bpm < baseline["min_normal_bpm"] else "HIGH_HEART_RATE"
-            difference = abs(request.bpm - baseline["resting_bpm"])
-            severity = "HIGH" if difference >= 40 else "WARNING"
-            cursor.execute(
-                """
-                INSERT INTO abnormal_events (
-                    user_id, heart_rate_log_id, event_type, bpm,
-                    baseline_bpm, severity, occurred_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    request.user_id,
-                    log_id,
-                    event_type,
-                    request.bpm,
-                    baseline["resting_bpm"],
-                    severity,
-                    measured_at,
-                ),
-            )
-            event_id = cursor.lastrowid
-            event = {
-                "id": event_id,
-                "event_type": event_type,
-                "severity": severity,
-            }
-            guardians = cursor.execute(
-                """
-                SELECT id FROM guardians
-                WHERE user_id = ? AND notification_enabled = 1
-                """,
-                (request.user_id,),
-            ).fetchall()
-            for guardian in guardians:
-                cursor.execute(
-                    """
-                    INSERT INTO notifications (
-                        user_id, guardian_id, abnormal_event_id,
-                        notification_type, title, message
-                    ) VALUES (?, ?, ?, 'ABNORMAL_HEART_RATE', ?, ?)
-                    """,
-                    (
-                        request.user_id,
-                        guardian["id"],
-                        event_id,
-                        "심박 이상 감지",
-                        f"사용자의 심박수가 {request.bpm} BPM으로 측정되었습니다.",
-                    ),
-                )
 
         conn.commit()
         return {
             "heart_rate_log_id": log_id,
             "bpm": request.bpm,
             "measured_at": measured_at,
-            "baseline": dict(baseline),
-            "abnormal_event": event,
+            "baseline": dict(baseline) if baseline else None,
+            "abnormal_event": None,
         }
     except Exception:
         conn.rollback()
@@ -142,9 +75,6 @@ def get_abnormal_events(user_id: str) -> list[dict]:
 
 # 복약 시각에서 이만큼 안쪽의 측정만 그 복약의 전·후로 본다.
 _PAIR_WINDOW_MINUTES = 90
-
-# 이 값 이상이면 빠른 것으로 본다. Flutter 의 HeartPair.isFast 와 같은 값이다.
-FAST_BPM = 80
 
 _WEEKDAY_LABELS = ["월", "화", "수", "목", "금", "토", "일"]
 
@@ -294,23 +224,15 @@ def get_heart_summary(user_id: str, today: datetime | None = None) -> dict:
     }
 
 
-def _is_normal(entry: dict) -> bool:
-    after = entry.get("after")
-    return after is not None and after < FAST_BPM
-
-
 def _streak(month: list[dict]) -> int:
-    """오늘부터 거슬러 올라가며 잰 값이 정상인 날을 센다.
+    """오늘부터 거슬러 올라가며 실제로 측정한 날을 센다.
 
-    못 잰 날은 끊지 않고 건너뛴다 — 센서를 안 찬 날이 "이상한 날"이 되면
-    안 된다.
+    BPM 숫자에 고정 정상 범위를 적용하지 않는다.
     """
     count = 0
     for entry in reversed(month):
         if entry.get("after") is None:
             continue
-        if not _is_normal(entry):
-            break
         count += 1
     return count
 
@@ -321,24 +243,11 @@ def _best_streak(month: list[dict]) -> int:
     for entry in month:
         if entry.get("after") is None:
             continue
-        if _is_normal(entry):
-            current += 1
-            best = max(best, current)
-        else:
-            current = 0
+        current += 1
+        best = max(best, current)
     return best
 
 
 def _anomaly(month: list[dict], now: datetime) -> dict | None:
-    """가장 최근에 빨랐던 날 하나. 없으면 None."""
-    for entry in reversed(month):
-        if entry.get("after") is None:
-            continue
-        if not _is_normal(entry):
-            return {
-                "day": entry["day"],
-                "label": f"{now.month}월 {entry['day']}일",
-                "before": entry.get("before"),
-                "after": entry.get("after"),
-            }
+    """고정 BPM 기준으로 이상일을 자동 판정하지 않는다."""
     return None

@@ -26,58 +26,55 @@ class _DrugExplainScreenState extends State<DrugExplainScreen> {
   bool _isLoadingMedicines = false;
   String? _selectedKeyword;
   String? _selectedMedicine;
+  _DrugSearchCandidate? _selectedOfficialMedicine;
+  final Map<String, _DrugSearchCandidate> _officialMedicinesByName = {};
   String? _medicineLoadError;
   final List<String> _medicines = [];
   final List<Map<String, dynamic>> _messages = [];
 
   static const List<Map<String, String>> _keywordPrompts = [
-    {'label': '#약효·효능', 'prompt': '{medicine}의 약효와 효능을 공식 의약품 정보 기준으로 알려주세요.'},
-    {'label': '#복용방법', 'prompt': '{medicine}의 복용방법을 공식 의약품 정보 기준으로 알려주세요.'},
-    {'label': '#주의사항', 'prompt': '{medicine} 복용 시 주의사항을 알려주세요.'},
-    {'label': '#부작용', 'prompt': '{medicine}의 공식 부작용을 알려주세요.'},
+    {
+      'label': '#약효·효능',
+      'prompt': '{medicine}의 약효와 효능을 공식 의약품 정보 기준으로 알려주세요.',
+      'intent': 'efficacy',
+    },
+    {
+      'label': '#복용방법',
+      'prompt': '{medicine}의 복용방법을 공식 의약품 정보 기준으로 알려주세요.',
+      'intent': 'dosage',
+    },
+    {
+      'label': '#주의사항',
+      'prompt': '{medicine} 복용 시 주의사항을 알려주세요.',
+      'intent': 'precautions',
+    },
+    {
+      'label': '#부작용',
+      'prompt': '{medicine}의 공식 부작용을 알려주세요.',
+      'intent': 'side_effects',
+    },
     {
       'label': '#같이 먹는 약',
       'prompt': '{medicine}과 현재 먹는 약들을 같이 복용해도 되는지 기존 DUR 병용금기 분석 결과를 설명해주세요.',
+      'intent': 'combination',
     },
     {
       'label': '#나이별 주의',
       'prompt': '{medicine}의 나이별 주의사항을 기존 DUR 연령금기 분석 결과로 설명해주세요.',
+      'intent': 'age',
     },
     {
       'label': '#임신 중 주의',
       'prompt': '{medicine}의 임신 중 복용 주의사항을 기존 DUR 임부금기 분석 결과로 설명해주세요.',
+      'intent': 'pregnancy',
     },
     {
       'label': '#비슷한 약 중복',
       'prompt':
           '{medicine}과 현재 먹는 약에 비슷한 효능의 약이 중복되는지 기존 DUR 효능군중복 분석 결과로 설명해주세요.',
+      'intent': 'duplicate',
     },
   ];
-
-  static const String _demoTylenolSummaryReply =
-      '식약처에 따르면 타이레놀정은 통증을 줄이고 열을 낮추는 데 사용하는 대표적인 해열진통제입니다.\n\n'
-      '주성분은 아세트아미노펜이며, 두통, 치통, 근육통, 감기 몸살, 발열 같은 증상 완화에 사용됩니다.\n\n'
-      '비교적 위에 부담이 적은 편이지만, 정해진 용량을 초과하면 간 손상 위험이 있어 주의가 필요합니다.';
-
-  static const String _demoTylenolEffectsReply =
-      '식약처에 따르면 타이레놀정의 주요 효능은 통증 완화와 해열 작용입니다.\n\n'
-      '효능:\n'
-      '• 두통 완화\n'
-      '• 발열 감소\n'
-      '• 치통 완화\n'
-      '• 생리통 완화\n'
-      '• 근육통 완화\n'
-      '• 감기 증상 완화\n\n'
-      '부작용:\n'
-      '• 메스꺼움\n'
-      '• 구토\n'
-      '• 피부 발진\n'
-      '• 알레르기 반응\n'
-      '• 간 기능 이상 (과다 복용 시 위험)\n\n'
-      '주의사항:\n'
-      '술과 함께 복용하면 간 손상 위험이 증가할 수 있습니다.\n'
-      '하루 최대 복용량을 초과하지 않는 것이 중요합니다.\n'
-      '다른 감기약과 함께 복용할 경우 중복 성분 여부를 확인해야 합니다.';
 
   @override
   void initState() {
@@ -104,7 +101,8 @@ class _DrugExplainScreenState extends State<DrugExplainScreen> {
 
     final label = keyword['label'];
     final prompt = keyword['prompt'];
-    if (label == null || prompt == null) return;
+    final intent = keyword['intent'];
+    if (label == null || prompt == null || intent == null) return;
 
     final medicine = _selectedMedicine;
     if (medicine == null || medicine.isEmpty) {
@@ -119,20 +117,40 @@ class _DrugExplainScreenState extends State<DrugExplainScreen> {
 
     setState(() => _selectedKeyword = label);
     final completedPrompt = prompt.replaceAll('{medicine}', medicine);
-    await _sendMessage(message: completedPrompt);
+    await _sendMessage(message: completedPrompt, intent: intent);
   }
 
   Future<void> _loadMedicines() async {
     final names = <String>[];
+    final officialMedicines = <String, _DrugSearchCandidate>{};
+    final ambiguousNames = <String>{};
 
     void addName(dynamic value) {
       final name = value?.toString().trim() ?? '';
       if (name.isNotEmpty && !names.contains(name)) names.add(name);
     }
 
+    void addMedicine(dynamic nameValue, dynamic codeValue) {
+      final name = nameValue?.toString().trim() ?? '';
+      final code = codeValue?.toString().trim() ?? '';
+      addName(name);
+      if (name.isEmpty || code.isEmpty || ambiguousNames.contains(name)) return;
+      final existing = officialMedicines[name];
+      if (existing != null && existing.itemSeq != code) {
+        officialMedicines.remove(name);
+        ambiguousNames.add(name);
+        return;
+      }
+      officialMedicines[name] = _DrugSearchCandidate(
+        itemName: name,
+        itemSeq: code,
+      );
+    }
+
     for (final item in MvpSession.latestOcrItems) {
-      addName(
+      addMedicine(
         item['medicine_name'] ?? item['drug_name'] ?? item['ocr_drug_name'],
+        item['medicine_code'] ?? item['item_seq'] ?? item['itemSeq'],
       );
     }
 
@@ -143,6 +161,9 @@ class _DrugExplainScreenState extends State<DrugExplainScreen> {
         _medicines
           ..clear()
           ..addAll(names);
+        _officialMedicinesByName
+          ..clear()
+          ..addAll(officialMedicines);
         _medicineLoadError = names.isEmpty ? '로그인 후 내 약을 불러올 수 있어요.' : null;
       });
       return;
@@ -159,6 +180,20 @@ class _DrugExplainScreenState extends State<DrugExplainScreen> {
       final dashboard = Map<String, dynamic>.from(response as Map);
       final prescription = dashboard['latest_prescription'];
       if (prescription is Map) {
+        final prescriptionItems = prescription['items'];
+        if (prescriptionItems is List) {
+          for (final item in prescriptionItems) {
+            if (item is Map) {
+              addMedicine(
+                item['medicine_name'] ??
+                    item['product_name'] ??
+                    item['drug_name'] ??
+                    item['ocr_drug_name'],
+                item['medicine_code'] ?? item['item_seq'] ?? item['itemSeq'],
+              );
+            }
+          }
+        }
         final medicineNames = prescription['medicine_names'];
         if (medicineNames is List) {
           for (final name in medicineNames) {
@@ -170,10 +205,13 @@ class _DrugExplainScreenState extends State<DrugExplainScreen> {
       if (todayMedications is List) {
         for (final medication in todayMedications) {
           if (medication is Map) {
-            addName(
+            addMedicine(
               medication['product_name'] ??
                   medication['drug_name'] ??
                   medication['medicine_name'],
+              medication['medicine_code'] ??
+                  medication['item_seq'] ??
+                  medication['itemSeq'],
             );
           }
         }
@@ -183,7 +221,14 @@ class _DrugExplainScreenState extends State<DrugExplainScreen> {
         _medicines
           ..clear()
           ..addAll(names);
-        _selectedMedicine ??= names.length == 1 ? names.first : null;
+        _officialMedicinesByName
+          ..clear()
+          ..addAll(officialMedicines);
+        if (_selectedMedicine == null && names.length == 1) {
+          _selectedMedicine = names.first;
+        }
+        _selectedOfficialMedicine ??=
+            _officialMedicinesByName[_selectedMedicine];
         _medicineLoadError = names.isEmpty ? '등록된 처방/복용약이 없습니다.' : null;
       });
     } on ApiException catch (error) {
@@ -192,6 +237,9 @@ class _DrugExplainScreenState extends State<DrugExplainScreen> {
         _medicines
           ..clear()
           ..addAll(names);
+        _officialMedicinesByName
+          ..clear()
+          ..addAll(officialMedicines);
         _medicineLoadError = names.isEmpty ? _apiError(error) : null;
       });
     } catch (_) {
@@ -200,6 +248,9 @@ class _DrugExplainScreenState extends State<DrugExplainScreen> {
         _medicines
           ..clear()
           ..addAll(names);
+        _officialMedicinesByName
+          ..clear()
+          ..addAll(officialMedicines);
         _medicineLoadError = names.isEmpty ? '내 약을 불러오지 못했습니다.' : null;
       });
     } finally {
@@ -208,14 +259,18 @@ class _DrugExplainScreenState extends State<DrugExplainScreen> {
   }
 
   Future<void> _enterOtherMedicine() async {
-    final medicine = await showDialog<String>(
+    final medicine = await showDialog<_DrugSearchCandidate>(
       context: context,
       builder: (_) => _OtherMedicineDialog(apiClient: _apiClient),
     );
     if (!mounted || medicine == null) return;
     setState(() {
-      if (!_medicines.contains(medicine)) _medicines.add(medicine);
-      _selectedMedicine = medicine;
+      if (!_medicines.contains(medicine.itemName)) {
+        _medicines.add(medicine.itemName);
+      }
+      _officialMedicinesByName[medicine.itemName] = medicine;
+      _selectedMedicine = medicine.itemName;
+      _selectedOfficialMedicine = medicine;
       _selectedKeyword = null;
     });
   }
@@ -232,7 +287,7 @@ class _DrugExplainScreenState extends State<DrugExplainScreen> {
     });
   }
 
-  Future<void> _sendMessage({String? message}) async {
+  Future<void> _sendMessage({String? message, String? intent}) async {
     if (_isLoading) return;
 
     final text = (message ?? _chatController.text).trim();
@@ -249,16 +304,25 @@ class _DrugExplainScreenState extends State<DrugExplainScreen> {
     try {
       // TODO: 실제 AI 챗봇 API 엔드포인트로 변경 필요
       // 현재는 기존 약물 설명 API 구조를 임시로 챗봇 응답처럼 활용하도록 구성
+      final body = <String, dynamic>{
+        'user_id': MvpSession.userId,
+        'message': text,
+      };
+      if (intent != null) body['intent'] = intent;
+      final selectedOfficial = _selectedOfficialMedicine;
+      if (selectedOfficial?.itemSeq != null) {
+        body['selected_medicine'] = {
+          'medicine_code': selectedOfficial!.itemSeq,
+          'product_name': selectedOfficial.itemName,
+        };
+      }
       final response = await _apiClient.post(
         '/api/v1/drug-explain/chat', // 가상의 챗봇 엔드포인트
-        body: {'user_id': MvpSession.userId, 'message': text},
+        body: body,
       );
 
       final data = Map<String, dynamic>.from(response as Map);
-      final reply = _safeDemoReply(
-        text,
-        data['reply']?.toString() ?? '응답을 받아오지 못했습니다.',
-      );
+      final reply = data['reply']?.toString() ?? '응답을 받아오지 못했습니다.';
 
       if (!mounted) return;
       setState(() {
@@ -285,17 +349,6 @@ class _DrugExplainScreenState extends State<DrugExplainScreen> {
     }
   }
 
-  String _safeDemoReply(String question, String reply) {
-    if (!reply.contains('너무 바빠') && !reply.contains('AI 약사가 설정')) {
-      return reply;
-    }
-    final normalized = question.replaceAll(' ', '').toLowerCase();
-    if (normalized.contains('효능') || normalized.contains('부작용')) {
-      return _demoTylenolEffectsReply;
-    }
-    return _demoTylenolSummaryReply;
-  }
-
   Widget _buildKeywordBar() {
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
@@ -310,9 +363,7 @@ class _DrugExplainScreenState extends State<DrugExplainScreen> {
               child: ChoiceChip(
                 label: Text(label),
                 selected: selected,
-                onSelected: _isLoading
-                    ? null
-                    : (_) => _selectKeyword(keyword),
+                onSelected: _isLoading ? null : (_) => _selectKeyword(keyword),
                 labelStyle: TextStyle(
                   color: selected ? Colors.white : kText,
                   fontSize: 15,
@@ -320,16 +371,11 @@ class _DrugExplainScreenState extends State<DrugExplainScreen> {
                 ),
                 backgroundColor: Colors.white,
                 selectedColor: kPrimary,
-                side: BorderSide(
-                  color: selected ? kPrimary : kPrimaryLight,
-                ),
+                side: BorderSide(color: selected ? kPrimary : kPrimaryLight),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(18),
                 ),
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 8,
-                  vertical: 8,
-                ),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
               ),
             );
           }).toList(),
@@ -366,9 +412,14 @@ class _DrugExplainScreenState extends State<DrugExplainScreen> {
                       errorMessage: _medicineLoadError,
                       onSelected: (medicine) {
                         setState(() {
-                          _selectedMedicine = _selectedMedicine == medicine
-                              ? null
-                              : medicine;
+                          if (_selectedMedicine == medicine) {
+                            _selectedMedicine = null;
+                            _selectedOfficialMedicine = null;
+                          } else {
+                            _selectedMedicine = medicine;
+                            _selectedOfficialMedicine =
+                                _officialMedicinesByName[medicine];
+                          }
                           _selectedKeyword = null;
                         });
                       },
@@ -482,6 +533,8 @@ class _OtherMedicineDialogState extends State<_OtherMedicineDialog> {
   List<_DrugSearchCandidate> _candidates = const [];
   bool _isSearching = false;
   String? _errorMessage;
+  String? _inFlightQuery;
+  String? _lastCompletedQuery;
   int _requestSequence = 0;
 
   @override
@@ -504,8 +557,11 @@ class _OtherMedicineDialogState extends State<_OtherMedicineDialog> {
       });
       return;
     }
+    if (query == _inFlightQuery || query == _lastCompletedQuery) {
+      return;
+    }
     _debounce = Timer(
-      const Duration(milliseconds: 400),
+      const Duration(milliseconds: 550),
       () => _search(query, sequence),
     );
   }
@@ -514,10 +570,13 @@ class _OtherMedicineDialogState extends State<_OtherMedicineDialog> {
     _debounce?.cancel();
     final query = value.trim();
     if (query.length < 2) return;
+    if (query == _inFlightQuery || query == _lastCompletedQuery) return;
     _search(query, ++_requestSequence);
   }
 
   Future<void> _search(String query, int sequence) async {
+    if (query == _inFlightQuery) return;
+    _inFlightQuery = query;
     setState(() {
       _isSearching = true;
       _errorMessage = null;
@@ -544,7 +603,10 @@ class _OtherMedicineDialogState extends State<_OtherMedicineDialog> {
                 .where((item) => item.itemName.isNotEmpty)
                 .toList()
           : <_DrugSearchCandidate>[];
-      setState(() => _candidates = candidates);
+      setState(() {
+        _candidates = candidates;
+        _lastCompletedQuery = query;
+      });
     } on ApiException catch (error) {
       if (!mounted || sequence != _requestSequence) return;
       setState(() {
@@ -560,6 +622,9 @@ class _OtherMedicineDialogState extends State<_OtherMedicineDialog> {
         _errorMessage = '의약품 정보를 불러오지 못했습니다. 다시 시도해주세요.';
       });
     } finally {
+      if (_inFlightQuery == query) {
+        _inFlightQuery = null;
+      }
       if (mounted && sequence == _requestSequence) {
         setState(() => _isSearching = false);
       }
@@ -567,7 +632,7 @@ class _OtherMedicineDialogState extends State<_OtherMedicineDialog> {
   }
 
   void _select(_DrugSearchCandidate candidate) {
-    Navigator.of(context).pop(candidate.itemName);
+    Navigator.of(context).pop(candidate);
   }
 
   @override

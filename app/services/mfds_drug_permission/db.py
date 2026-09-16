@@ -5,6 +5,7 @@ from __future__ import annotations
 import html
 import re
 import sqlite3
+import xml.etree.ElementTree as ET
 from pathlib import Path
 from typing import Any
 
@@ -181,6 +182,28 @@ def xml_doc_to_text(value: Any) -> str:
         return " ".join(parts)
     leftover = _piece(re.sub(r"<[^>]+>", " ", text))
     return leftover
+
+
+def xml_doc_section_to_text(value: Any, titles: tuple[str, ...]) -> str:
+    """Return text only from explicitly titled sections of an MFDS XML document."""
+    raw = str(value or "").strip()
+    if not raw or raw == "None":
+        return ""
+    try:
+        root = ET.fromstring(raw)
+    except ET.ParseError:
+        return ""
+
+    wanted = tuple(title.casefold() for title in titles)
+    sections: list[str] = []
+    for element in root.iter():
+        title = str(element.attrib.get("title") or "").casefold()
+        if not any(keyword in title for keyword in wanted):
+            continue
+        text = " ".join(" ".join(element.itertext()).split())
+        if text and text not in sections:
+            sections.append(text)
+    return " ".join(sections)
 
 
 def backfill_plain_texts(conn: sqlite3.Connection | None = None) -> int:
@@ -450,6 +473,22 @@ def find_permission_product(name: str) -> dict[str, Any] | None:
         conn.close()
 
 
+def find_permission_product_by_item_seq(item_seq: str) -> dict[str, Any] | None:
+    """품목기준코드로 로컬 허가정보를 정확히 조회한다."""
+    code = str(item_seq or "").strip()
+    if not code or not Path(DB_PATH).is_file():
+        return None
+    conn = get_permission_connection()
+    try:
+        row = conn.execute(
+            "SELECT * FROM products WHERE item_seq = ?",
+            (code,),
+        ).fetchone()
+        return dict(row) if row is not None else None
+    finally:
+        conn.close()
+
+
 def product_to_medicine(row: dict[str, Any]) -> dict[str, Any]:
     from app.services.pharmacist.ingredient import clean_ingredient_text
     from app.services.pharmacist.efficacy_display import display_efficacy_text
@@ -461,16 +500,24 @@ def product_to_medicine(row: dict[str, Any]) -> dict[str, Any]:
         or row.get("ingr_name")
         or row.get("material_name")
     ) or None
+    efficacy = row.get("efficacy_text") or xml_doc_to_text(row.get("ee_doc_data"))
+    usage = row.get("usage_text") or xml_doc_to_text(row.get("ud_doc_data"))
+    cautions = row.get("caution_text") or xml_doc_to_text(row.get("nb_doc_data"))
+    side_effects = xml_doc_section_to_text(
+        row.get("nb_doc_data"),
+        ("이상반응", "부작용"),
+    )
     return {
         "medicine_code": row.get("item_seq"),
         "product_name": row.get("item_name"),
         "medicine_name": row.get("item_name"),
         "ingredient": ingredient,
         "manufacturer": row.get("entp_name"),
-        "efficacy": display_efficacy_text(row.get("efficacy_text")),
-        "usage": row.get("usage_text"),
-        "cautions": display_efficacy_text(row.get("caution_text")),
-        "precautions": display_efficacy_text(row.get("caution_text")),
+        "efficacy": efficacy or None,
+        "usage": usage or None,
+        "cautions": cautions or None,
+        "precautions": cautions or None,
+        "side_effects": side_effects or None,
         "storage": row.get("storage_method"),
         "image_url": row.get("big_prdt_img_url"),
         "source": "식약처 의약품 제품 허가정보",

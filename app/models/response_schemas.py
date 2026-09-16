@@ -26,6 +26,17 @@ class UserCreateResponse(ApiResponse):
     gender: str | None = None
     phone: str | None = None
     role: str
+    is_pregnant: bool = False
+    pregnancy_status: str | None = None
+    height_cm: float | None = None
+    weight_kg: float | None = None
+    blood_type: str | None = None
+    smoking: str | None = None
+    drinking: str | None = None
+    allergies: list[str] = Field(default_factory=list)
+    diseases: list[str] = Field(default_factory=list)
+    past_history: bool | None = None
+    family_history: bool | None = None
 
 
 class UserResponse(UserCreateResponse):
@@ -126,6 +137,11 @@ class DurMatchResponse(ApiResponse):
     medicine_codes_b: list[str] = Field(default_factory=list)
 
 
+class DurTypeGroupResponse(ApiResponse):
+    count: int
+    items: list[DurMatchResponse]
+
+
 class DurAnalyzeResponse(ApiResponse):
     risk_result_id: int | None
     analysis_id: str | None
@@ -184,6 +200,7 @@ class DurLatestResponse(ApiResponse):
     dur_sync_status: str
     dur_sync_fetched: int
     dur_sync_upserted: int
+    data_status: str | None = None
 
 
 class DurSyncStatsResponse(ApiResponse):
@@ -277,7 +294,7 @@ class HeartRateResponse(ApiResponse):
     heart_rate_log_id: int
     bpm: int
     measured_at: str
-    baseline: BaselineResponse
+    baseline: BaselineResponse | None = None
     abnormal_event: AbnormalEventSummaryResponse | None = None
 
 

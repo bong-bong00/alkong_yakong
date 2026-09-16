@@ -18,6 +18,7 @@ class ApiException implements Exception {
 class ApiClient {
   final http.Client _client;
   static bool _didLogEnvironment = false;
+  static const Duration _defaultTimeout = Duration(seconds: 45);
 
   ApiClient({http.Client? client}) : _client = client ?? http.Client() {
     if (kDebugMode && !_didLogEnvironment) {
@@ -29,28 +30,36 @@ class ApiClient {
     }
   }
 
-  Future<dynamic> get(String path) async {
-    try {
-      final response = await _client
-          .get(_uri(path), headers: _headers)
-          .timeout(const Duration(seconds: 45));
-      return _decodeResponse(response);
-    } on ApiException {
-      rethrow;
-    } catch (error) {
-      throw ApiException('서버에 연결할 수 없습니다: $error');
-    }
-  }
+  Future<dynamic> get(String path) =>
+      _send(() => _client.get(_uri(path), headers: _headers));
 
   Future<dynamic> post(
     String path, {
     required Map<String, dynamic> body,
-    Duration timeout = const Duration(seconds: 45),
+    Duration timeout = _defaultTimeout,
+  }) => _send(
+    () => _client.post(_uri(path), headers: _headers, body: jsonEncode(body)),
+    timeout: timeout,
+  );
+
+  Future<dynamic> patch(String path, {required Map<String, dynamic> body}) =>
+      _send(
+        () => _client.patch(
+          _uri(path),
+          headers: _headers,
+          body: jsonEncode(body),
+        ),
+      );
+
+  Future<dynamic> delete(String path) =>
+      _send(() => _client.delete(_uri(path), headers: _headers));
+
+  Future<dynamic> _send(
+    Future<http.Response> Function() request, {
+    Duration timeout = _defaultTimeout,
   }) async {
     try {
-      final response = await _client
-          .post(_uri(path), headers: _headers, body: jsonEncode(body))
-          .timeout(timeout);
+      final response = await request().timeout(timeout);
       return _decodeResponse(response);
     } on ApiException {
       rethrow;
@@ -65,11 +74,28 @@ class ApiClient {
   }
 
   dynamic _decodeResponse(http.Response response) {
+    final isSuccess = response.statusCode >= 200 && response.statusCode < 300;
+    final contentType = response.headers['content-type']?.toLowerCase() ?? '';
+    final isJsonContentType =
+        contentType.contains('application/json') ||
+        contentType.contains('+json');
     dynamic data;
     if (response.body.isNotEmpty) {
+      if (!isSuccess && !isJsonContentType) {
+        throw ApiException(
+          'API 요청에 실패했습니다. (HTTP ${response.statusCode})',
+          statusCode: response.statusCode,
+        );
+      }
       try {
         data = jsonDecode(utf8.decode(response.bodyBytes));
       } on FormatException {
+        if (!isSuccess) {
+          throw ApiException(
+            'API 요청에 실패했습니다. (HTTP ${response.statusCode})',
+            statusCode: response.statusCode,
+          );
+        }
         throw ApiException(
           '서버 응답이 올바른 JSON 형식이 아닙니다.',
           statusCode: response.statusCode,
@@ -77,12 +103,12 @@ class ApiClient {
       }
     }
 
-    if (response.statusCode >= 200 && response.statusCode < 300) {
+    if (isSuccess) {
       return data;
     }
 
     final detail = data is Map<String, dynamic> ? data['detail'] : null;
-    var message = 'API 요청에 실패했습니다. (${response.statusCode})';
+    var message = 'API 요청에 실패했습니다. (HTTP ${response.statusCode})';
     if (detail is Map) {
       message =
           detail['message']?.toString() ??

@@ -1,5 +1,8 @@
 import logging
 import re
+import threading
+import time
+from copy import deepcopy
 from html import unescape
 from typing import Any
 
@@ -7,11 +10,19 @@ import requests
 from fastapi import HTTPException
 
 from app.core.config import E_DRUG_API_KEY, E_DRUG_BASE_URL
+from app.services.mfds_drug_permission import client as permission_client
 
 
 logger = logging.getLogger(__name__)
 TIMEOUT_SECONDS = 10
 DRUG_CANDIDATE_LIMIT = 8
+DRUG_SEARCH_TIMEOUT_SECONDS = 5.0
+DRUG_SEARCH_TOTAL_BUDGET_SECONDS = 10.0
+DRUG_SEARCH_CACHE_TTL_SECONDS = 45.0
+DRUG_SEARCH_CACHE_MAX_ENTRIES = 128
+
+_drug_search_cache: dict[str, tuple[float, dict[str, Any]]] = {}
+_drug_search_cache_lock = threading.Lock()
 
 
 def fetch_e_drug_info(
@@ -232,50 +243,157 @@ def search_drug_candidates(
     cleaned_query = query.strip()
     if len(cleaned_query) < 2:
         raise HTTPException(status_code=422, detail="검색어는 2글자 이상이어야 합니다.")
-    if not E_DRUG_API_KEY:
-        raise HTTPException(
-            status_code=503,
-            detail="E_DRUG_API_KEY가 설정되지 않았습니다.",
-        )
-
-    try:
-        raw_items = _request_drug_items(
-            cleaned_query,
-            page_no=1,
-            num_of_rows=max(limit * 2, 10),
-        )
-    except requests.Timeout as error:
-        raise HTTPException(status_code=504, detail="식약처 API 타임아웃") from error
-    except requests.RequestException as error:
-        raise HTTPException(
-            status_code=502,
-            detail="식약처 API 호출에 실패했습니다.",
-        ) from error
-    except (ValueError, TypeError, KeyError) as error:
-        raise HTTPException(
-            status_code=502,
-            detail="식약처 API 응답 형식이 올바르지 않습니다.",
-        ) from error
-
     compact_query = _compact_drug_name(cleaned_query)
+    cached = _get_cached_drug_search(compact_query)
+    if cached is not None:
+        return cached
+
+    started_at = time.monotonic()
+    e_drug_candidates: list[tuple[int, int, int, str, dict[str, Any]]] = []
+    permission_candidates: list[tuple[int, int, int, str, dict[str, Any]]] = []
+    errors: list[Exception] = []
+    source_succeeded = False
+    result_is_cacheable = False
+
+    if E_DRUG_API_KEY:
+        try:
+            raw_items = _request_drug_items(
+                cleaned_query,
+                page_no=1,
+                num_of_rows=max(limit * 2, 10),
+                timeout=DRUG_SEARCH_TIMEOUT_SECONDS,
+            )
+            e_drug_candidates = _build_drug_candidates(
+                raw_items,
+                compact_query=compact_query,
+                item_name_field="itemName",
+                manufacturer_field="entpName",
+                item_seq_field="itemSeq",
+                dedupe_by_name_within_source=True,
+            )
+            source_succeeded = True
+            result_is_cacheable = bool(e_drug_candidates)
+        except (requests.RequestException, ValueError, TypeError, KeyError) as error:
+            errors.append(error)
+    else:
+        errors.append(RuntimeError("E_DRUG_API_KEY is not configured"))
+
+    if not e_drug_candidates:
+        try:
+            remaining_budget = max(
+                0.1,
+                DRUG_SEARCH_TOTAL_BUDGET_SECONDS
+                - (time.monotonic() - started_at),
+            )
+            permission_items = permission_client.search_permission_products(
+                cleaned_query,
+                limit=max(limit * 2, 10),
+                timeout=min(DRUG_SEARCH_TIMEOUT_SECONDS, remaining_budget),
+            )
+            permission_candidates = _build_drug_candidates(
+                permission_items,
+                compact_query=compact_query,
+                item_name_field="ITEM_NAME",
+                manufacturer_field="ENTP_NAME",
+                item_seq_field="ITEM_SEQ",
+                dedupe_by_name_within_source=False,
+            )
+            source_succeeded = True
+            result_is_cacheable = True
+        except (requests.RequestException, RuntimeError, ValueError, TypeError, KeyError) as error:
+            errors.append(error)
+
+    if not source_succeeded:
+        _raise_drug_search_error(errors)
+
+    e_drug_candidates.sort(key=lambda candidate: candidate[:4])
+    permission_candidates.sort(key=lambda candidate: candidate[:4])
+    items = [candidate[4] for candidate in e_drug_candidates[:limit]]
+    seen_item_sequences = {
+        item_seq
+        for item in items
+        if (item_seq := item.get("item_seq"))
+    }
+    for candidate in permission_candidates:
+        normalized = candidate[4]
+        item_seq = normalized.get("item_seq")
+        if item_seq and item_seq in seen_item_sequences:
+            continue
+        if item_seq:
+            seen_item_sequences.add(item_seq)
+        items.append(normalized)
+        if len(items) >= limit:
+            break
+
+    result = {"query": cleaned_query, "count": len(items), "items": items}
+    if result_is_cacheable:
+        _cache_drug_search(compact_query, result)
+    return result
+
+
+def _get_cached_drug_search(cache_key: str) -> dict[str, Any] | None:
+    now = time.monotonic()
+    with _drug_search_cache_lock:
+        cached = _drug_search_cache.get(cache_key)
+        if cached is None:
+            return None
+        cached_at, result = cached
+        if now - cached_at >= DRUG_SEARCH_CACHE_TTL_SECONDS:
+            _drug_search_cache.pop(cache_key, None)
+            return None
+        return deepcopy(result)
+
+
+def _cache_drug_search(cache_key: str, result: dict[str, Any]) -> None:
+    now = time.monotonic()
+    with _drug_search_cache_lock:
+        expired_keys = [
+            key
+            for key, (cached_at, _) in _drug_search_cache.items()
+            if now - cached_at >= DRUG_SEARCH_CACHE_TTL_SECONDS
+        ]
+        for key in expired_keys:
+            _drug_search_cache.pop(key, None)
+        if len(_drug_search_cache) >= DRUG_SEARCH_CACHE_MAX_ENTRIES:
+            oldest_key = min(
+                _drug_search_cache,
+                key=lambda key: _drug_search_cache[key][0],
+            )
+            _drug_search_cache.pop(oldest_key, None)
+        _drug_search_cache[cache_key] = (now, deepcopy(result))
+
+
+def _build_drug_candidates(
+    raw_items: list[dict[str, Any]],
+    *,
+    compact_query: str,
+    item_name_field: str,
+    manufacturer_field: str,
+    item_seq_field: str,
+    dedupe_by_name_within_source: bool,
+) -> list[tuple[int, int, int, str, dict[str, Any]]]:
     candidates: list[tuple[int, int, int, str, dict[str, Any]]] = []
     seen: set[tuple[str, str]] = set()
     for item in raw_items:
-        item_name = _clean_text(item.get("itemName"))
+        item_name = _clean_text(item.get(item_name_field))
         if not item_name:
             continue
         compact_name = _compact_drug_name(item_name)
         position = compact_name.find(compact_query)
         if position < 0:
             continue
-        item_seq = _clean_text(item.get("itemSeq"))
-        dedupe_key = (item_seq or "", compact_name)
+        item_seq = _clean_text(item.get(item_seq_field))
+        dedupe_key = (
+            (item_seq or "", compact_name)
+            if dedupe_by_name_within_source
+            else (item_seq or "", "" if item_seq else compact_name)
+        )
         if dedupe_key in seen:
             continue
         seen.add(dedupe_key)
         candidate = {
             "item_name": item_name,
-            "manufacturer": _clean_text(item.get("entpName")),
+            "manufacturer": _clean_text(item.get(manufacturer_field)),
             "item_seq": item_seq,
         }
         candidates.append(
@@ -287,10 +405,22 @@ def search_drug_candidates(
                 candidate,
             )
         )
+    return candidates
 
-    candidates.sort(key=lambda candidate: candidate[:4])
-    items = [candidate[4] for candidate in candidates[:limit]]
-    return {"query": cleaned_query, "count": len(items), "items": items}
+
+def _raise_drug_search_error(errors: list[Exception]) -> None:
+    if any(isinstance(error, requests.Timeout) for error in errors):
+        raise HTTPException(status_code=504, detail="식약처 API 타임아웃")
+    if any(isinstance(error, requests.RequestException) for error in errors):
+        raise HTTPException(status_code=502, detail="식약처 API 호출에 실패했습니다.")
+    if any(
+        isinstance(error, (ValueError, TypeError, KeyError)) for error in errors
+    ):
+        raise HTTPException(
+            status_code=502,
+            detail="식약처 API 응답 형식이 올바르지 않습니다.",
+        )
+    raise HTTPException(status_code=503, detail="식약처 API Key가 설정되지 않았습니다.")
 
 
 def _request_drug_items(
@@ -298,6 +428,7 @@ def _request_drug_items(
     *,
     page_no: int,
     num_of_rows: int,
+    timeout: float = TIMEOUT_SECONDS,
 ) -> list[dict[str, Any]]:
     params = {
         "serviceKey": E_DRUG_API_KEY,
@@ -309,7 +440,7 @@ def _request_drug_items(
     response = requests.get(
         E_DRUG_BASE_URL,
         params=params,
-        timeout=TIMEOUT_SECONDS,
+        timeout=timeout,
     )
     payload = _load_e_drug_payload(response, operation="search")
     _log_e_drug_response(response, payload, operation="search")

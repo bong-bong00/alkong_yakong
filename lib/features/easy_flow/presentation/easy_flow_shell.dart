@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../core/constants/app_colors.dart';
 import '../../../core/mode/app_mode.dart';
@@ -18,6 +19,7 @@ import '../../medicines/presentation/screens/drug_detail_screen.dart';
 import '../../medicines/presentation/screens/pharmacist_chat_screen.dart';
 import '../../prescription/presentation/screens/prescription_screen.dart';
 import '../../prescription/presentation/screens/schedule_days_screen.dart';
+import '../../profile/application/current_user_controller.dart';
 import '../../profile/presentation/screens/mypage_screen.dart';
 import '../domain/easy_flow.dart';
 import 'widgets/easy_sheets.dart';
@@ -104,10 +106,17 @@ class _EasyFlowShellState extends ConsumerState<EasyFlowShell> {
   }
 
   Future<void> _openMenu() async {
-    final result = await showEasyMenuSheet(context, userName: '복자');
+    final result = await showEasyMenuSheet(
+      context,
+      userName: ref.read(currentUserNameProvider),
+    );
     if (!mounted || result == null) return;
     if (result.leaveEasyMode) {
       await ref.read(appModeProvider.notifier).set(AppMode.normal);
+      return;
+    }
+    if (result.screen == EasyScreen.chat) {
+      context.push('/drug-explain');
       return;
     }
     if (result.screen != null) _goTo(result.screen!);
@@ -123,7 +132,7 @@ class _EasyFlowShellState extends ConsumerState<EasyFlowShell> {
           onOpenRecord: () => _goTo(EasyScreen.record),
           onOpenHeartbeat: () => _goTo(EasyScreen.heart),
           onOpenMedicines: () => _goTo(EasyScreen.medicines),
-          onOpenChat: () => _goTo(EasyScreen.chat),
+          onOpenChat: () => context.push('/drug-explain'),
           onOpenPrescription: () => _goTo(EasyScreen.prescription),
           onOpenDrug: (medicine) {
             final code = medicine.medicineCode?.trim() ?? '';
@@ -173,9 +182,7 @@ class _EasyFlowShellState extends ConsumerState<EasyFlowShell> {
           onGoHome: () => _goTo(EasyScreen.today),
         );
       case EasyScreen.scheduleDays:
-        return ScheduleDaysScreen(
-          onConfirmed: () => _goTo(EasyScreen.today),
-        );
+        return ScheduleDaysScreen(onConfirmed: () => _goTo(EasyScreen.today));
       case EasyScreen.chat:
         return const PharmacistChatScreen();
       case EasyScreen.measure:

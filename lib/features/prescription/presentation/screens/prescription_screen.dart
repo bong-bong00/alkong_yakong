@@ -66,7 +66,7 @@ class PrescriptionScreen extends ConsumerStatefulWidget {
     this.onCompleted,
     this.onGoHome,
     this.onOpenScheduleDays,
-    this.guardianTitle = '딸 지안 님',
+    this.guardianTitle = '',
   });
 
   @override
@@ -241,9 +241,7 @@ class _PrescriptionScreenState extends ConsumerState<PrescriptionScreen> {
 
     if (confirmItems.isEmpty) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('등록할 약을 찾지 못했어요. 다시 찍어 주세요.')),
-      );
+      showSeniorSnackbar(context, '등록할 약을 찾지 못했어요. 다시 찍어 주세요.', error: true);
       return;
     }
 
@@ -272,9 +270,7 @@ class _PrescriptionScreenState extends ConsumerState<PrescriptionScreen> {
     } catch (error) {
       debugPrint('처방 확정 등록 실패: $error');
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('약 등록에 실패했어요. 잠시 후 다시 시도해 주세요.')),
-      );
+      showSeniorSnackbar(context, '약 등록에 실패했어요. 잠시 후 다시 시도해 주세요.', error: true);
       return;
     }
 
@@ -294,10 +290,7 @@ class _PrescriptionScreenState extends ConsumerState<PrescriptionScreen> {
     }
     if (!mounted) return;
     if (refreshFailed) {
-      showSeniorSnackbar(
-        context,
-        '약은 등록됐어요. 목록은 잠시 후 홈에서 다시 불러 주세요.',
-      );
+      showSeniorSnackbar(context, '약은 등록됐어요. 목록은 잠시 후 홈에서 다시 불러 주세요.');
     }
 
     void openScheduleDays() {
@@ -319,10 +312,10 @@ class _PrescriptionScreenState extends ConsumerState<PrescriptionScreen> {
       onCompleted(durResult);
       return;
     }
-    context.push('/dur-analysis', extra: {
-      ...?durResult,
-      'open_schedule_days': true,
-    });
+    context.push(
+      '/dur-analysis',
+      extra: {...?durResult, 'open_schedule_days': true},
+    );
   }
 
   @override
@@ -330,7 +323,7 @@ class _PrescriptionScreenState extends ConsumerState<PrescriptionScreen> {
     switch (_step) {
       case PrescriptionStep.pickMethod:
         return AddMedicineScreen(
-          guardianTitle: widget.guardianTitle,
+          guardianTitle: resolveGuardianTitle(context, widget.guardianTitle),
           onGoHome: widget.onGoHome ?? () => Navigator.of(context).maybePop(),
           onPick: (method) {
             switch (method) {
@@ -1004,9 +997,7 @@ class _ConfirmScreenState extends State<_ConfirmScreen> {
                 .toList()
           : <Map<String, dynamic>>[];
       if (hits.isEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('공식 의약품 목록에서 해당 이름을 찾지 못했어요.')),
-        );
+        showSeniorSnackbar(context, '공식 의약품 목록에서 해당 이름을 찾지 못했어요.', error: true);
         return;
       }
       final picked = await _pickOfficialMedicine(hits);
@@ -1034,8 +1025,10 @@ class _ConfirmScreenState extends State<_ConfirmScreen> {
       });
     } catch (_) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('공식 약을 찾지 못했어요. 잠시 후 다시 시도해 주세요.')),
+      showSeniorSnackbar(
+        context,
+        '공식 약을 찾지 못했어요. 잠시 후 다시 시도해 주세요.',
+        error: true,
       );
     }
   }

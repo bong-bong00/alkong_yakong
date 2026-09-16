@@ -3,6 +3,7 @@ from app.services.pharmacist.ingredient import (
     ingredient_keys,
     is_usable_ingredient,
     primary_ingredient_key,
+    primary_ingredient_keys,
 )
 
 
@@ -23,3 +24,17 @@ def test_esamlodipine_does_not_collapse_to_amlodipine():
     keys = ingredient_keys("에스암로디핀")
     assert "에스암로디핀" in keys
     assert "암로디핀" not in keys
+
+
+def test_compound_ingredient_separators_and_deduplication():
+    assert ingredient_keys("성분A") == ("성분a",)
+    assert ingredient_keys("성분A|성분B|성분C") == ("성분a", "성분b", "성분c")
+    assert ingredient_keys("성분A, 성분B, 성분C") == ("성분a", "성분b", "성분c")
+    assert ingredient_keys("성분A/성분B;성분C 및 성분D") == (
+        "성분a",
+        "성분b",
+        "성분c",
+        "성분d",
+    )
+    assert ingredient_keys("성분A|성분A,성분B") == ("성분a", "성분b")
+    assert primary_ingredient_keys("성분A|성분B|성분A") == ("성분a", "성분b")

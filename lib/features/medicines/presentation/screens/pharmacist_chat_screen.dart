@@ -1,30 +1,39 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_tabler_icons/flutter_tabler_icons.dart';
 
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../core/widgets/senior_header.dart';
+import '../../../profile/application/current_user_controller.dart';
 import '../../domain/drug_info.dart';
 
 /// 22 / 23 · AI 약사 상담.
 ///
 /// 답변 아래에는 **항상** 면책 문장이 붙는다.
 /// 약을 바꾸거나 끊는 결정은 앱이 하지 않는다.
-class PharmacistChatScreen extends StatefulWidget {
-  final String userName;
+class PharmacistChatScreen extends ConsumerStatefulWidget {
+  /// 인사말에 쓸 이름. 없으면 로그인한 사람의 이름을 쓴다.
+  final String? userName;
 
-  const PharmacistChatScreen({super.key, this.userName = '복자'});
+  const PharmacistChatScreen({super.key, this.userName});
 
   @override
-  State<PharmacistChatScreen> createState() => _PharmacistChatScreenState();
+  ConsumerState<PharmacistChatScreen> createState() =>
+      _PharmacistChatScreenState();
 }
 
-class _PharmacistChatScreenState extends State<PharmacistChatScreen> {
+class _PharmacistChatScreenState extends ConsumerState<PharmacistChatScreen> {
   final TextEditingController _input = TextEditingController();
   final ScrollController _scroll = ScrollController();
-  late final List<_Message> _messages = [
-    _Message.bot('${widget.userName} 님, 안녕하세요. 약에 대해 궁금한 걸 편하게 물어보세요.'),
-  ];
+  late final List<_Message> _messages = [_Message.bot(_greeting())];
+
+  String _greeting() {
+    final String signedIn = ref.read(currentUserNameProvider);
+    final name = (widget.userName ?? signedIn).trim();
+    const ask = '약에 대해 궁금한 걸 편하게 물어보세요.';
+    return name.isEmpty ? '안녕하세요. $ask' : '$name 님, 안녕하세요. $ask';
+  }
 
   @override
   void dispose() {

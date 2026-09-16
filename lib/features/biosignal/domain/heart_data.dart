@@ -17,11 +17,7 @@ class HeartPair {
   bool get isComplete => before != null && after != null;
 
   /// 먹은 뒤 몇 회 낮아졌는지. 올라갔으면 음수.
-  int? get drop =>
-      isComplete ? before! - after! : null;
-
-  /// 80회 이상이면 빠른 것으로 본다.
-  static bool isFast(int bpm) => bpm >= 80;
+  int? get drop => isComplete ? before! - after! : null;
 }
 
 /// 이번 주 한 칸 — 요일 하나의 전·후 쌍.
@@ -48,8 +44,9 @@ class HeartMonthDay {
 
 /// 심박수 화면 전체가 쓰는 데이터 묶음.
 ///
-/// TODO: `/api/v1/users/{id}/biosignal/...` 응답으로 채운다.
-/// 지금은 핸드오프의 데모 데이터를 그대로 둔다.
+/// `/api/v1/users/{id}/biosignal/heart-summary` 응답을 `HeartRepository`가
+/// 이 모양으로 옮긴다. 화면은 **읽어 온 값만** 그린다 — 못 읽었으면
+/// 불러오는 중·못 불러옴·기록 없음을 그대로 말한다.
 @immutable
 class HeartData {
   /// 오늘 잰 것.
@@ -103,8 +100,18 @@ class HeartData {
   });
 
   /// 이번 주 모든 날이 약을 드신 뒤 낮아졌는지.
-  bool get allDropped =>
-      week.every((d) => (d.pair.drop ?? 0) > 0);
+  bool get allDropped => week.every((d) => (d.pair.drop ?? 0) > 0);
+
+  /// 오늘·이번 주·이번 달 중 한 번이라도 잰 값이 있는지.
+  ///
+  /// 서버는 기록이 없어도 빈 칸 7개·날짜 칸 N개를 채워 보낸다.
+  /// 칸이 있다고 기록이 있는 것은 아니므로 값으로 판단한다.
+  bool get hasReadings {
+    bool has(HeartPair p) => p.before != null || p.after != null;
+    return has(today) ||
+        week.any((d) => has(d.pair)) ||
+        month.any((d) => has(d.pair));
+  }
 
   HeartData copyWith({
     bool? sensorConnected,
@@ -167,12 +174,7 @@ class HeartData {
     ],
     streakDays: 9,
     bestStreakDays: 14,
-    anomaly: HeartAnomaly(
-      day: 12,
-      slotLabel: '저녁',
-      before: 96,
-      after: 84,
-    ),
+    anomaly: HeartAnomaly(day: 12, slotLabel: '저녁', before: 96, after: 84),
     sensorConnected: true,
     sensorBattery: 82,
     sensorLastReadAt: '오후 6시 40분',

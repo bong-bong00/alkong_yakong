@@ -1,4 +1,5 @@
 import json
+import logging
 import uuid
 from collections import defaultdict
 from datetime import date
@@ -18,8 +19,11 @@ from app.services.pharmacist.ingredient import (
     ingredient_keys,
     is_usable_ingredient,
     normalize_ingredient,
-    primary_ingredient_key,
+    primary_ingredient_keys,
 )
+
+
+logger = logging.getLogger(__name__)
 
 
 HIGH_TYPES = {"병용금기", "중복성분", "효능군중복"}
@@ -157,8 +161,8 @@ def analyze_dur(
             keys = ingredient_keys(medicine["ingredient"])
             if not keys:
                 continue
-            primary = primary_ingredient_key(medicine["ingredient"])
-            primary_grouped[primary].append(medicine)
+            for primary in primary_ingredient_keys(medicine["ingredient"]):
+                primary_grouped[primary].append(medicine)
             for key in keys:
                 lookup_grouped[key].append(medicine)
 
@@ -195,6 +199,7 @@ def analyze_dur(
 
         matches = _deduplicate_matches(matches)
         matches = enrich_matches(matches, medicines)
+        matches = [_without_internal_match_fields(match) for match in matches]
         risk_level = _risk_level(matches)
         by_type = _group_by_type(matches)
         has_risk = len(matches) > 0
@@ -316,6 +321,259 @@ def analyze_dur(
         conn.close()
 
 
+def analyze_dur_consultation(
+    *,
+    user_id: str,
+    selected_medicine: dict,
+    risk_types: set[str],
+) -> dict:
+    """Run an official DUR check without persisting user medication or results."""
+    conn = get_connection()
+    try:
+        cursor = conn.cursor()
+        user = cursor.execute(
+            "SELECT id, birth_date, gender, is_pregnant FROM users WHERE id = ?",
+            (user_id,),
+        ).fetchone()
+        if not user:
+            user = {
+                "id": user_id,
+                "birth_date": None,
+                "gender": None,
+                "is_pregnant": None,
+            }
+
+        medicine_code = str(selected_medicine.get("medicine_code") or "").strip()
+        product_name = str(selected_medicine.get("product_name") or "").strip()
+        ingredient = selected_medicine.get("ingredient")
+        consultation_medicine = {
+            "medicine_code": medicine_code,
+            "product_name": product_name,
+            "ingredient": ingredient,
+        }
+        ingredient_usable = _is_usable_ingredient(consultation_medicine)
+        ingredient_key_count = len(ingredient_keys(ingredient))
+        if not medicine_code or not product_name or not ingredient_usable:
+            logger.warning(
+                "DUR consultation diagnostic risk_types=%s selected=%s "
+                "ingredient_usable=%s ingredient_key_count=%d "
+                "active_medicine_count=not_loaded sync_status=not_started "
+                "status=missing reason=official_medicine_unavailable match_count=0",
+                sorted(risk_types),
+                bool(medicine_code and product_name),
+                ingredient_usable,
+                ingredient_key_count,
+            )
+            return {
+                "status": "missing",
+                "items": [],
+                "scope": "consultation",
+                "reason": "official_medicine_unavailable",
+            }
+
+        pairwise_types = {"병용금기", "효능군중복", "중복성분"}
+        medicines = []
+        active_medicine_count = 0
+        if risk_types & pairwise_types:
+            medicines.extend(
+                dict(row)
+                for row in _load_medicines(
+                    cursor,
+                    DurAnalyzeRequest(user_id=user_id, medicine_codes=[]),
+                )
+            )
+            active_medicine_count = len(medicines)
+        medicines.append(consultation_medicine)
+        medicines = list(
+            {
+                medicine["medicine_code"]: medicine
+                for medicine in medicines
+                if medicine.get("medicine_code")
+            }.values()
+        )
+
+        age = _age_from_birth_date(user["birth_date"])
+        try:
+            pregnancy_value = user["is_pregnant"]
+            is_pregnant = (
+                bool(pregnancy_value) if pregnancy_value is not None else None
+            )
+        except (KeyError, IndexError, TypeError):
+            is_pregnant = None
+
+        ingredients = [
+            medicine["ingredient"]
+            for medicine in medicines
+            if _is_usable_ingredient(medicine)
+        ]
+        from app.services.dur_sync_service import refresh_dur_for_ingredients
+
+        official_risk_types = risk_types & {
+            "병용금기",
+            "연령금기",
+            "임부금기",
+            "효능군중복",
+        }
+        sync_result = (
+            refresh_dur_for_ingredients(
+                ingredients,
+                risk_types=official_risk_types,
+                force_refresh=True,
+            )
+            if official_risk_types
+            else {"status": "ok", "fetched": 0, "upserted": 0}
+        )
+        taboo_rows = [
+            row
+            for row in cursor.execute("SELECT * FROM dur_taboo").fetchall()
+            if not _is_deleted_taboo(row)
+        ]
+        if official_risk_types and sync_result.get("status") != "ok":
+            logger.warning(
+                "DUR consultation diagnostic risk_types=%s selected=true "
+                "ingredient_usable=true ingredient_key_count=%d "
+                "active_medicine_count=%d sync_status=%s "
+                "status=missing reason=dur_data_unavailable match_count=0",
+                sorted(risk_types),
+                ingredient_key_count,
+                active_medicine_count,
+                sync_result.get("status"),
+            )
+            return {
+                "status": "missing",
+                "items": [],
+                "scope": "consultation",
+                "reason": "dur_data_unavailable",
+            }
+
+        lookup_grouped = defaultdict(list)
+        primary_grouped = defaultdict(list)
+        selected_lookup_grouped = defaultdict(list)
+        for medicine in medicines:
+            if not _is_usable_ingredient(medicine):
+                continue
+            keys = ingredient_keys(medicine["ingredient"])
+            if not keys:
+                continue
+            for primary in primary_ingredient_keys(medicine["ingredient"]):
+                primary_grouped[primary].append(medicine)
+            for key in keys:
+                lookup_grouped[key].append(medicine)
+        for key in ingredient_keys(consultation_medicine["ingredient"]):
+            selected_lookup_grouped[key].append(consultation_medicine)
+
+        taboo_selected_ingredient_count = sum(
+            1
+            for row in taboo_rows
+            if _risk_type(row["taboo_type"]) in risk_types
+            and (
+                _grouped_hit(selected_lookup_grouped, row["ingredient_a"])
+                or _grouped_hit(selected_lookup_grouped, row["ingredient_b"])
+            )
+        )
+        duplicate_matches = _duplicate_matches(primary_grouped)
+        official_matches = _taboo_matches(
+            taboo_rows,
+            lookup_grouped,
+            age=age,
+            is_pregnant=is_pregnant,
+            include_official_criteria=True,
+        )
+        efficacy_duplicate_matches = _efficacy_duplicate_matches(
+            taboo_rows,
+            lookup_grouped,
+        )
+        candidate_matches = [
+            *duplicate_matches,
+            *official_matches,
+            *efficacy_duplicate_matches,
+        ]
+        if not official_matches:
+            candidate_matches.extend(_legacy_matches(taboo_rows, lookup_grouped))
+        deduplicated_matches = _deduplicate_matches(candidate_matches)
+        requested_type_matches = [
+            match
+            for match in deduplicated_matches
+            if match.get("type") in risk_types
+        ]
+        relevant_matches = [
+            match
+            for match in requested_type_matches
+            if _match_involves_consultation_medicine(
+                match,
+                consultation_medicine,
+            )
+        ]
+        matches = [
+            _without_internal_match_fields(match)
+            for match in relevant_matches
+        ]
+        logger.warning(
+            "DUR consultation diagnostic risk_types=%s selected=true "
+            "ingredient_usable=true ingredient_key_count=%d "
+            "active_medicine_count=%d sync_status=%s "
+            "sync_fetched_count=%d sync_upserted_count=%d "
+            "taboo_selected_ingredient_count=%d "
+            "duplicate_candidate_count=%d official_candidate_count=%d "
+            "efficacy_duplicate_candidate_count=%d "
+            "requested_type_filtered_count=%d "
+            "consultation_relevance_before_count=%d "
+            "consultation_relevance_after_count=%d "
+            "status=current reason=None final_match_count=%d match_count=%d",
+            sorted(risk_types),
+            ingredient_key_count,
+            active_medicine_count,
+            sync_result.get("status"),
+            int(sync_result.get("fetched") or 0),
+            int(sync_result.get("upserted") or 0),
+            taboo_selected_ingredient_count,
+            len(duplicate_matches),
+            len(official_matches),
+            len(efficacy_duplicate_matches),
+            len(requested_type_matches),
+            len(requested_type_matches),
+            len(relevant_matches),
+            len(matches),
+            len(matches),
+        )
+        return {
+            "status": "current",
+            "items": matches,
+            "scope": "consultation",
+            "reason": None,
+        }
+    finally:
+        conn.close()
+
+
+def _match_involves_consultation_medicine(
+    match: dict,
+    medicine: dict,
+) -> bool:
+    medicine_code = str(medicine.get("medicine_code") or "")
+    related_codes = {str(code) for code in match.get("_medicine_codes") or []}
+    if related_codes:
+        return medicine_code in related_codes
+
+    product_name = str(medicine.get("product_name") or "")
+    names = [
+        str(name)
+        for key in ("medicine_names_a", "medicine_names_b")
+        for name in (match.get(key) or [])
+    ]
+    if product_name and product_name in names:
+        return True
+    consultation_keys = set(ingredient_keys(medicine.get("ingredient")))
+    match_keys = set(match.get("_ingredient_keys") or [])
+    if consultation_keys and match_keys:
+        return bool(consultation_keys & match_keys)
+    return bool(product_name and product_name in str(match.get("reason") or ""))
+
+
+def _without_internal_match_fields(match: dict) -> dict:
+    return {key: value for key, value in match.items() if not key.startswith("_")}
+
+
 def _load_medicines(cursor, request: DurAnalyzeRequest):
     if request.medicine_codes:
         # 요청 코드도 중복 제거 (같은 약 여러 번 넣어도 한 번만)
@@ -366,6 +624,8 @@ def _duplicate_matches(grouped) -> list[dict]:
                 "ingredient_b": ingredient,
                 "medicine_names_a": names,
                 "medicine_names_b": names,
+                "_medicine_codes": sorted(codes),
+                "_ingredient_keys": [key],
                 "medicine_codes_a": codes,
                 "medicine_codes_b": codes,
                 "reason": (
@@ -469,6 +729,14 @@ def _efficacy_duplicate_matches(rows, grouped) -> list[dict]:
                 "reason": reason,
                 "source": taboo_rows[0]["source"] or "식약처 DUR",
                 "external_id": taboo_rows[0]["external_id"],
+                "_medicine_codes": [med["medicine_code"] for med in hit_meds],
+                "_ingredient_keys": sorted(
+                    {
+                        key
+                        for med in hit_meds
+                        for key in ingredient_keys(med["ingredient"])
+                    }
+                ),
             }
         )
     return matches
@@ -480,6 +748,7 @@ def _taboo_matches(
     *,
     age: int | None,
     is_pregnant: bool | None,
+    include_official_criteria: bool = False,
 ) -> list[dict]:
     matches = []
     for row in rows:
@@ -505,9 +774,15 @@ def _taboo_matches(
                 continue
         if risk_type == "연령금기":
             min_age, max_age = _age_bounds_for_row(row)
-            if age is None or not _age_is_restricted(age, min_age, max_age):
+            if not include_official_criteria and (
+                age is None or not _age_is_restricted(age, min_age, max_age)
+            ):
                 continue
-        if risk_type == "임부금기" and is_pregnant is not True:
+        if (
+            risk_type == "임부금기"
+            and not include_official_criteria
+            and is_pregnant is not True
+        ):
             continue
         # 사용자 약 이름을 이유에 붙여 화면에서 이해하기 쉽게
         rows_a = _grouped_rows(grouped, row["ingredient_a"])
@@ -521,21 +796,72 @@ def _taboo_matches(
             reason = f"{', '.join(products_a)}" + (
                 f" ↔ {', '.join(products_b)}" if products_b else ""
             ) + f" — {official}"
-        matches.append(
-            {
-                "type": risk_type,
-                "ingredient_a": row["ingredient_a"],
-                "ingredient_b": row["ingredient_b"],
-                "medicine_names_a": products_a,
-                "medicine_names_b": products_b,
-                "medicine_codes_a": [r["medicine_code"] for r in rows_a],
-                "medicine_codes_b": [r["medicine_code"] for r in rows_b],
-                "reason": reason,
-                "official_reason": official,
-                "source": row["source"] or "식약처 DUR",
-                "external_id": row["external_id"],
+        codes_a = [r["medicine_code"] for r in rows_a]
+        codes_b = [r["medicine_code"] for r in rows_b]
+        medicine_codes = set(codes_a + codes_b)
+        match = {
+            "type": risk_type,
+            "ingredient_a": row["ingredient_a"],
+            "ingredient_b": row["ingredient_b"],
+            "medicine_names_a": products_a,
+            "medicine_names_b": products_b,
+            "medicine_codes_a": codes_a,
+            "medicine_codes_b": codes_b,
+            "reason": reason,
+            "official_reason": official,
+            "source": row["source"] or "식약처 DUR",
+            "external_id": row["external_id"],
+            "_medicine_codes": sorted(medicine_codes),
+            "_ingredient_keys": sorted(
+                set(ingredient_keys(row["ingredient_a"]))
+                | set(ingredient_keys(row["ingredient_b"]))
+            ),
+        }
+        if include_official_criteria and risk_type in {"연령금기", "임부금기"}:
+            criteria_min_age, criteria_max_age = _age_bounds_for_row(row)
+            match["official_criteria"] = {
+                "description": row["description"],
+                "min_age": criteria_min_age,
+                "max_age": criteria_max_age,
+                "pregnancy_grade": row["pregnancy_grade"],
             }
-        )
+            if risk_type == "연령금기":
+                min_age, max_age = criteria_min_age, criteria_max_age
+                if age is None or (min_age is None and max_age is None):
+                    applicability = "unknown"
+                    applicability_message = (
+                        "사용자 생년월일 또는 공식 연령 범위를 확인할 수 없어 "
+                        "개인 적용 여부는 판단하지 않았습니다."
+                    )
+                elif _age_is_restricted(age, min_age, max_age):
+                    applicability = "applicable"
+                    applicability_message = (
+                        "등록된 생년월일 기준으로 공식 연령 조건에 해당합니다."
+                    )
+                else:
+                    applicability = "not_applicable"
+                    applicability_message = (
+                        "등록된 생년월일 기준으로 공식 연령 조건에 해당하지 않습니다."
+                    )
+            elif is_pregnant is None:
+                applicability = "unknown"
+                applicability_message = (
+                    "사용자 임신 정보가 없어 개인 적용 여부는 판단하지 않았습니다."
+                )
+            elif is_pregnant:
+                applicability = "applicable"
+                applicability_message = (
+                    "등록된 사용자 정보상 임신 상태이므로 이 공식 기준과 관련될 수 있습니다."
+                )
+            else:
+                applicability = "not_applicable"
+                applicability_message = (
+                    "등록된 사용자 정보상 임신 상태는 아니지만, "
+                    "이 내용은 약 자체의 공식 임부금기 기준입니다."
+                )
+            match["user_applicability"] = applicability
+            match["user_applicability_message"] = applicability_message
+        matches.append(match)
     return matches
 
 
@@ -714,9 +1040,31 @@ def get_latest_dur(user_id: str) -> dict:
         if not latest:
             raise HTTPException(status_code=404, detail="DUR 분석 결과가 없습니다.")
         result = dict(latest)
-        result["analyzed_ingredients"] = _json_value(
+        row_id = result.get("id")
+        required_invalid = (
+            not isinstance(row_id, int)
+            or isinstance(row_id, bool)
+            or not isinstance(result.get("user_id"), str)
+            or not result.get("user_id", "").strip()
+            or not isinstance(result.get("risk_level"), str)
+            or not result.get("risk_level", "").strip()
+            or not isinstance(result.get("created_at"), str)
+            or not result.get("created_at", "").strip()
+        )
+        if required_invalid:
+            logger.warning(
+                "DUR latest required_field_invalid row_id=%s created_at_null=%s",
+                row_id,
+                result.get("created_at") is None,
+            )
+            raise HTTPException(
+                status_code=503,
+                detail="저장된 DUR 분석 결과를 해석할 수 없습니다. DUR 분석을 다시 실행해주세요.",
+            )
+
+        ingredients, ingredients_meta = _normalized_json_list(
             result.get("analyzed_ingredients"),
-            [],
+            item_kind="ingredient",
         )
         active_medicines = _load_medicines(
             conn.cursor(),
@@ -729,7 +1077,7 @@ def get_latest_dur(user_id: str) -> dict:
         ]
         analyzed_keys = sorted(
             key
-            for value in result["analyzed_ingredients"]
+            for value in ingredients
             if (key := _normalize(value))
         )
         active_keys = sorted(
@@ -740,35 +1088,82 @@ def get_latest_dur(user_id: str) -> dict:
                 status_code=404,
                 detail="현재 등록된 약 조합의 DUR 분석 결과가 없습니다.",
             )
-        matches = enrich_matches(
-            _json_value(result.get("matches_json"), []),
-            active_medicines,
+        matches, matches_meta = _normalized_json_list(
+            result.get("matches_json"),
+            item_kind="match",
         )
+        matches = enrich_matches(matches, active_medicines)
+        total_matches_value = result.get("total_matches")
+        total_matches_invalid = (
+            not isinstance(total_matches_value, int)
+            or isinstance(total_matches_value, bool)
+            or total_matches_value < 0
+        )
+        malformed = (
+            ingredients_meta["malformed"]
+            or matches_meta["malformed"]
+            or total_matches_invalid
+        )
+
+        result["analyzed_ingredients"] = ingredients
         result["matches"] = matches
-        result["total_matches"] = result.get("total_matches") or len(matches)
-        result["total_count"] = result["total_matches"]
-        result["has_risk"] = bool(matches)
-        result["by_type"] = _group_by_type(matches)
-        result["message"] = result.get("description") or (
-            f"함께 먹을 때 주의가 {len(matches)}건 있어요."
-            if matches
-            else "지금 등록된 약끼리, 특별한 함께먹기 주의는 없어요."
+        result["total_matches"] = (
+            len(matches)
+            if total_matches_invalid
+            else (total_matches_value or len(matches))
         )
+        result["total_count"] = result["total_matches"]
+        result["by_type"] = _group_by_type(matches)
         result["representative_type"] = (
             result.get("risk_type")
             or (matches[0]["type"] if matches else None)
         )
-        result["assessment_status"] = result.get("assessment_status") or (
-            "RISK_FOUND"
-            if matches
-            else "INCOMPLETE"
-            if str(result.get("risk_level") or "").upper() == "UNKNOWN"
-            else "SAFE"
-        )
-        result["incomplete_reasons"] = _json_value(
-            result.get("incomplete_reasons_json"),
-            [],
-        )
+        if malformed:
+            reasons = []
+            if ingredients_meta["malformed"]:
+                reasons.append("analyzed_ingredients")
+            if matches_meta["malformed"]:
+                reasons.append("matches_json")
+            if total_matches_invalid:
+                reasons.append("total_matches")
+            logger.warning(
+                "DUR latest malformed row_id=%s ingredients_type=%s matches_type=%s "
+                "invalid_ingredients=%s invalid_matches=%s invalid_total_matches=%s",
+                row_id,
+                ingredients_meta["decoded_type"],
+                matches_meta["decoded_type"],
+                ingredients_meta["invalid_count"],
+                matches_meta["invalid_count"],
+                total_matches_invalid,
+            )
+            result["matches_json"] = None
+            result["data_status"] = "malformed"
+            result["incomplete"] = True
+            result["incomplete_reasons"] = reasons
+            result["has_risk"] = bool(matches)
+            result["message"] = (
+                "저장된 DUR 분석 데이터를 완전히 해석할 수 없어 위험 여부를 "
+                "확인할 수 없습니다. DUR 분석을 다시 실행해주세요."
+            )
+            result["assessment_status"] = "INCOMPLETE"
+        else:
+            result["has_risk"] = bool(matches)
+            result["message"] = result.get("description") or (
+                f"함께 먹을 때 주의가 {len(matches)}건 있어요."
+                if matches
+                else "지금 등록된 약끼리, 특별한 함께먹기 주의는 없어요."
+            )
+            result["assessment_status"] = result.get("assessment_status") or (
+                "RISK_FOUND"
+                if matches
+                else "INCOMPLETE"
+                if str(result.get("risk_level") or "").upper() == "UNKNOWN"
+                else "SAFE"
+            )
+            result["incomplete_reasons"] = _json_value(
+                result.get("incomplete_reasons_json"),
+                [],
+            )
         result["analysis_complete"] = result["assessment_status"] != "INCOMPLETE"
         result["incomplete"] = result["assessment_status"] == "INCOMPLETE"
         result["incomplete_types"] = (
@@ -803,6 +1198,38 @@ def _json_value(value: str | None, fallback):
         return fallback
 
 
+def _normalized_json_list(value, *, item_kind: str) -> tuple[list, dict]:
+    """Decode legacy JSON lists while retaining an explicit malformed signal."""
+    try:
+        decoded = json.loads(value) if isinstance(value, str) else value
+    except (json.JSONDecodeError, TypeError):
+        return [], {"malformed": True, "decoded_type": "decode_error", "invalid_count": 0}
+
+    decoded_type = type(decoded).__name__
+    if not isinstance(decoded, list):
+        return [], {"malformed": True, "decoded_type": decoded_type, "invalid_count": 0}
+
+    normalized = []
+    invalid_count = 0
+    for item in decoded:
+        if item_kind == "ingredient":
+            valid = isinstance(item, str) and bool(item.strip())
+        else:
+            valid = (
+                isinstance(item, dict)
+                and isinstance(item.get("type"), str)
+                and bool(item["type"].strip())
+            )
+        if valid:
+            normalized.append(item)
+        else:
+            invalid_count += 1
+
+    return normalized, {
+        "malformed": invalid_count > 0,
+        "decoded_type": decoded_type,
+        "invalid_count": invalid_count,
+    }
 CARD_CONFLICT_TYPES = {"병용금기", "중복성분", "효능군중복"}
 
 

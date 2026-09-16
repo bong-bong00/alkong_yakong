@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import '../../../medication/application/medication_controller.dart';
 import 'package:flutter_tabler_icons/flutter_tabler_icons.dart';
 
 import '../../../../core/constants/app_colors.dart';
@@ -12,28 +13,24 @@ import '../../../../core/widgets/recovery_view.dart';
 import '../../../../core/widgets/senior_header.dart';
 import '../../../medication/domain/medication_models.dart';
 import '../../application/heart_sensor.dart';
-import '../../domain/heart_data.dart';
-import 'hr_alert_screen.dart';
 import 'saved_screen.dart';
 
 /// 27 / 28 · 심박수 재는 중 → 측정이 끝났어요.
 ///
-/// 1분 동안 재고, 값은 폴라 센서에서 온다. 진행 막대는 흐르지 않고
+/// 1분 동안 재고, 값은 **폴라 센서에서만** 온다. 진행 막대는 흐르지 않고
 /// 1초에 한 칸씩 찬다 — 한 칸씩 차는 쪽이 "지금 되고 있다"를 분명히 말한다.
+///
+/// 1분이 지나도 센서가 값을 한 번도 주지 않았으면 결과를 지어내지 않는다.
+/// "값을 받지 못했어요"라고 말하고 다시 재는 길을 둔다.
 class MeasureScreen extends StatefulWidget {
   final String guardianTitle;
-
-  /// 센서 없이 화면만 볼 때 쓸 값. 테스트와 미리보기 전용이다.
-  /// 실제 기기에서는 [sensor]가 준 값이 이긴다.
-  final int result;
 
   /// 밖에서 넣어 주는 센서. 없으면 이 화면이 하나 만들어 쓴다.
   final HeartSensor? sensor;
 
   const MeasureScreen({
     super.key,
-    this.guardianTitle = '딸 지안 님',
-    this.result = 72,
+    this.guardianTitle = '',
     this.sensor,
   });
 
@@ -57,8 +54,8 @@ class _MeasureScreenState extends State<MeasureScreen> {
 
   bool get _done => _elapsed >= _totalSeconds;
 
-  /// 화면에 띄울 값. 센서가 아직 아무것도 못 줬으면 넘겨받은 값을 쓴다.
-  int get _value => _sensor.bpm ?? widget.result;
+  /// 화면에 띄울 값. 센서가 아직 아무것도 못 줬으면 null — 숫자를 채우지 않는다.
+  int? get _value => _sensor.bpm;
 
   bool get _live => _sensor.status == HeartSensorStatus.streaming;
 
@@ -72,11 +69,23 @@ class _MeasureScreenState extends State<MeasureScreen> {
     super.initState();
     _sensor.addListener(_onSensor);
     if (_ownsSensor) unawaited(_sensor.start());
+    _startTimer();
+  }
+
+  void _startTimer() {
+    _timer?.cancel();
     _timer = Timer.periodic(_tick, (timer) {
       if (!mounted) return;
       setState(() => _elapsed++);
       if (_elapsed >= _totalSeconds) timer.cancel();
     });
+  }
+
+  /// 처음부터 다시 잰다. 센서가 붙어 있지 않으면 다시 붙인다.
+  void _restart() {
+    setState(() => _elapsed = 0);
+    if (!_live) unawaited(_sensor.start());
+    _startTimer();
   }
 
   void _onSensor() {
@@ -113,26 +122,23 @@ class _MeasureScreenState extends State<MeasureScreen> {
       onAction: () => unawaited(_sensor.start()),
       stillWorksTitle: '약 알림은 그대로 와요',
       stillWorksBody: '센서가 끊겨도 복약 알림에는 영향이 없어요.',
-      helperText: '그래도 안 되면\n${widget.guardianTitle}에게 도움 청하기',
+      helperText: '그래도 안 되면\n${resolveGuardianTitle(context, widget.guardianTitle)}에게 도움 청하기',
       // 어르신 화면에서 밖으로 전화를 걸지 않는다.
-      onCallHelper: () => showSeniorSnackbar(
-        context,
-        '${widget.guardianTitle}에게 연락이 갔어요',
-      ),
+      onCallHelper: () =>
+          showSeniorSnackbar(context, '${widget.guardianTitle}에게 연락이 갔어요'),
       footnote: _sensor.lastReadAt == null
           ? null
           : '마지막으로 잰 시각 · 오늘 '
-              '${DoseSlot.absoluteTime(_sensor.lastReadAt!)}',
+                '${DoseSlot.absoluteTime(_sensor.lastReadAt!)}',
     );
   }
 
   @override
   Widget build(BuildContext context) {
     final value = _value;
-    final fast = HeartPair.isFast(value);
 
     // 한 번도 못 잰 채로 센서가 안 붙었으면 재는 시늉을 하지 않는다.
-    if (_lost && _sensor.bpm == null) {
+    if (_lost && value == null) {
       return Scaffold(
         backgroundColor: AppColors.bg,
         body: Column(
@@ -159,9 +165,8 @@ class _MeasureScreenState extends State<MeasureScreen> {
                     progress: _progress,
                     // 재는 동안에도 센서가 주는 값을 그대로 보여 준다.
                     // 다 될 때까지 "–"만 보이면 되고 있는지 알 수 없다.
-                    value: _done || _sensor.bpm != null ? value : null,
+                    value: value,
                     done: _done,
-                    normal: _sensor.normal,
                   ),
                   const SizedBox(height: 12),
                   if (!_done) ...[
@@ -200,8 +205,8 @@ class _MeasureScreenState extends State<MeasureScreen> {
                           _lost
                               ? '센서가 떨어졌어요'
                               : _live
-                                  ? '폴라 베리티 센스로 재고 있어요'
-                                  : '폴라 베리티 센스를 찾고 있어요',
+                              ? '폴라 베리티 센스로 재고 있어요'
+                              : '폴라 베리티 센스를 찾고 있어요',
                           style: AppText.cardTitle(
                             size: 19,
                             color: _lost
@@ -210,9 +215,7 @@ class _MeasureScreenState extends State<MeasureScreen> {
                           ),
                         ),
                         value: Text(
-                          _lost
-                              ? '센서 단추를 한 번 눌러 주세요'
-                              : '약 $_secondsLeft초 남았어요',
+                          _lost ? '센서 단추를 한 번 눌러 주세요' : '약 $_secondsLeft초 남았어요',
                           style: AppText.caption(size: 17.5),
                         ),
                       ),
@@ -225,12 +228,30 @@ class _MeasureScreenState extends State<MeasureScreen> {
                       fontSize: 21,
                       onPressed: () => Navigator.of(context).maybePop(),
                     ),
+                  ] else if (value == null) ...[
+                    // 1분 동안 센서가 한 번도 값을 주지 않았다.
+                    const _NoValueCard(),
+                    const SizedBox(height: 16),
+                    SeniorButton(
+                      label: '다시 재기',
+                      icon: TablerIcons.refresh,
+                      minHeight: 70,
+                      fontSize: 23,
+                      onPressed: _restart,
+                    ),
+                    const SizedBox(height: 12),
+                    SeniorButton(
+                      label: '그만두기',
+                      kind: SeniorButtonKind.secondary,
+                      minHeight: 66,
+                      fontSize: 21,
+                      onPressed: () => Navigator.of(context).maybePop(),
+                    ),
                   ] else ...[
                     _ResultCard(
                       value: value,
                       lowest: _sensor.lowest,
                       highest: _sensor.highest,
-                      normal: _sensor.normal,
                     ),
                     const SizedBox(height: 16),
                     SeniorButton(
@@ -240,15 +261,10 @@ class _MeasureScreenState extends State<MeasureScreen> {
                       elevated: true,
                       onPressed: () => Navigator.of(context).pushReplacement(
                         MaterialPageRoute(
-                          builder: (_) => fast
-                              ? HrAlertScreen(
-                                  bpm: value,
-                                  guardianTitle: widget.guardianTitle,
-                                )
-                              : SavedScreen(
-                                  bpm: value,
-                                  guardianTitle: widget.guardianTitle,
-                                ),
+                          builder: (_) => SavedScreen(
+                            bpm: value,
+                            guardianTitle: widget.guardianTitle,
+                          ),
                         ),
                       ),
                     ),
@@ -268,13 +284,11 @@ class _MeasureCard extends StatelessWidget {
   final int progress;
   final int? value;
   final bool done;
-  final bool normal;
 
   const _MeasureCard({
     required this.progress,
     required this.value,
     required this.done,
-    required this.normal,
   });
 
   @override
@@ -290,18 +304,12 @@ class _MeasureCard extends StatelessWidget {
             crossAxisAlignment: WrapCrossAlignment.end,
             spacing: 8,
             children: [
-              Text(
-                value?.toString() ?? '–',
-                style: AppText.hero(size: 64),
-              ),
+              Text(value?.toString() ?? '–', style: AppText.hero(size: 64)),
               Padding(
                 padding: const EdgeInsets.only(bottom: 8),
                 child: Text(
                   '회 / 분',
-                  style: AppText.label(
-                    size: 21,
-                    color: AppColors.textTertiary,
-                  ),
+                  style: AppText.label(size: 21, color: AppColors.textTertiary),
                 ),
               ),
             ],
@@ -320,15 +328,36 @@ class _MeasureCard extends StatelessWidget {
           ),
           const SizedBox(height: 14),
           Text(
-            // 정상이 아닐 때 "정상 범위예요"라고 말하지 않는다.
-            done
-                ? (normal ? '다 됐어요 · 정상 범위예요' : '다 됐어요 · 확인이 필요해요')
-                : '재고 있어요 · 움직이지 마세요',
+            done ? '다 됐어요' : '재고 있어요 · 움직이지 마세요',
             textAlign: TextAlign.center,
-            style: AppText.cardTitle(
-              size: 20,
-              color: done && !normal ? AppColors.danger : AppColors.point,
-            ),
+            style: AppText.cardTitle(size: 20, color: AppColors.point),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// 1분이 지나도 값이 하나도 없을 때. 결과 칸 대신 다시 해 볼 방법을 둔다.
+class _NoValueCard extends StatelessWidget {
+  const _NoValueCard();
+
+  @override
+  Widget build(BuildContext context) {
+    return SeniorCard(
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text('이번에는 기록이 남지 않았어요', style: AppText.cardTitle(size: 20)),
+          const SizedBox(height: 14),
+          const NumberedSteps(
+            boxed: false,
+            steps: [
+              '센서가 몸에 잘 붙어 있는지 만져보세요',
+              '센서 가운데 단추를 한 번 누르세요',
+              '전화기를 센서 가까이 두고 다시 재 주세요',
+            ],
           ),
         ],
       ),
@@ -414,13 +443,11 @@ class _ResultCard extends StatelessWidget {
   /// 센서가 실제로 잰 값들에서 나온 최저·최고. 없으면 값 하나로 갈음한다.
   final int? lowest;
   final int? highest;
-  final bool normal;
 
   const _ResultCard({
     required this.value,
     required this.lowest,
     required this.highest,
-    required this.normal,
   });
 
   @override
@@ -444,12 +471,7 @@ class _ResultCard extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 12),
-          Text(
-            normal
-                ? '평소 재신 것과 비슷합니다. 걱정하실 것 없어요.'
-                : '평소보다 빠릅니다. 앉아서 쉬신 뒤 한 번 더 재 보세요.',
-            style: AppText.body(size: 18),
-          ),
+          Text('측정한 심박수 기록입니다.', style: AppText.body(size: 18)),
         ],
       ),
     );

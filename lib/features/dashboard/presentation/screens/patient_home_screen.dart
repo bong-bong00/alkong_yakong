@@ -15,6 +15,7 @@ import '../../../medication/presentation/widgets/dose_flow_sheets.dart';
 import '../../../easy_flow/domain/easy_flow.dart';
 import '../../../easy_flow/presentation/easy_flow_shell.dart';
 import '../../../medication/presentation/widgets/dose_guard_sheets.dart';
+import '../../../profile/application/current_user_controller.dart';
 
 /// 12 / 15 · 오늘 · 홈.
 ///
@@ -81,10 +82,12 @@ class _PatientHomeScreenState extends ConsumerState<PatientHomeScreen> {
     if (!mounted || !controller.shouldAskRefill) return;
     controller.markRefillAsked();
 
+    final today = ref.read(medicationProvider);
+    final startedOn = today.courseStartedOn!;
     final choice = await showRefillSheet(
       context,
-      startedOn: '8월 12일',
-      totalDays: 21,
+      startedOn: '${startedOn.month}월 ${startedOn.day}일',
+      totalDays: today.courseTotalDays!,
     );
     if (!mounted) return;
     switch (choice) {
@@ -161,7 +164,7 @@ class _PatientHomeScreenState extends ConsumerState<PatientHomeScreen> {
     return Column(
       children: [
         _Header(
-          userName: '김복자',
+          userName: ref.watch(currentUserNameProvider),
           date: now,
           easyMode: widget.easyMode,
           onOpenMenu: widget.onOpenMenu,
@@ -259,18 +262,11 @@ class _PatientHomeScreenState extends ConsumerState<PatientHomeScreen> {
                     onTake: () => _take(next.slot),
                     onSnooze: () => _snooze(next.slot),
                     onOpenDrug: widget.onOpenDrug,
-                    onDaysTap: () => ref
-                        .read(medicationProvider.notifier)
-                        .decrementDaysLeft(),
                   )
                 else
                   _AllDoneCard(
                     today: today,
-                    onReTake: () => _take(DoseSlot.dinner),
-                    onOpenDrug: widget.onOpenDrug,
-                    onDaysTap: () => ref
-                        .read(medicationProvider.notifier)
-                        .decrementDaysLeft(),
+                    onReTake: () => _take(today.doses.last.slot),
                   ),
                 const SizedBox(height: 12),
                 _ProgressRow(today: today, onOpenRecord: widget.onOpenRecord),
@@ -459,7 +455,6 @@ class _NextDoseCard extends StatelessWidget {
   final VoidCallback onTake;
   final VoidCallback onSnooze;
   final void Function(Medicine)? onOpenDrug;
-  final VoidCallback onDaysTap;
 
   const _NextDoseCard({
     required this.today,
@@ -467,23 +462,21 @@ class _NextDoseCard extends StatelessWidget {
     required this.onTake,
     required this.onSnooze,
     required this.onOpenDrug,
-    required this.onDaysTap,
   });
 
   @override
   Widget build(BuildContext context) {
     final others = today.doses.where((d) => d.slot != dose.slot).toList();
+    final daysLeft = today.daysLeft;
     return SeniorCard(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          DaysLeftRow(
-            daysLeft: today.daysLeft,
-            phrase: today.daysLeftPhrase,
-            onTap: onDaysTap,
-          ),
-          const SizedBox(height: 12),
+          if (daysLeft != null) ...[
+            DaysLeftRow(daysLeft: daysLeft, phrase: today.daysLeftPhrase),
+            const SizedBox(height: 12),
+          ],
           LabelValueRow(
             label: Text(dose.slot.spokenTime, style: AppText.bigTime(size: 36)),
             value: Text(
@@ -683,18 +676,12 @@ class _OtherDosesBlock extends StatelessWidget {
 class _AllDoneCard extends StatelessWidget {
   final TodayMedication today;
   final VoidCallback onReTake;
-  final void Function(Medicine)? onOpenDrug;
-  final VoidCallback onDaysTap;
 
-  const _AllDoneCard({
-    required this.today,
-    required this.onReTake,
-    required this.onOpenDrug,
-    required this.onDaysTap,
-  });
+  const _AllDoneCard({required this.today, required this.onReTake});
 
   @override
   Widget build(BuildContext context) {
+    final daysLeft = today.daysLeft;
     return SeniorCard(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
       child: Column(
@@ -721,21 +708,22 @@ class _AllDoneCard extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text('오늘 약 다 드셨어요', style: AppText.cardTitle(size: 22)),
-                    Text('다음 약은 내일 아침 8시', style: AppText.caption(size: 17.5)),
+                    Text(
+                      '다음 약은 내일 ${today.doses.first.slot.spokenTime}',
+                      style: AppText.caption(size: 17.5),
+                    ),
                   ],
                 ),
               ),
             ],
           ),
           const SizedBox(height: 12),
-          DaysLeftRow(
-            daysLeft: today.daysLeft,
-            phrase: today.daysLeftPhrase,
-            onTap: onDaysTap,
-          ),
-          const SizedBox(height: 12),
+          if (daysLeft != null) ...[
+            DaysLeftRow(daysLeft: daysLeft, phrase: today.daysLeftPhrase),
+            const SizedBox(height: 12),
+          ],
           SeniorButton(
-            label: '저녁 약 다시 누르기',
+            label: '${today.doses.last.slot.label} 약 다시 누르기',
             kind: SeniorButtonKind.neutral,
             minHeight: 60,
             fontSize: 19,
@@ -785,7 +773,7 @@ class _ProgressRow extends StatelessWidget {
           Expanded(
             child: Text(
               today.allTaken
-                  ? '세 번 다 드셨어요'
+                  ? '오늘 ${today.doses.length}번 다 드셨어요'
                   : '오늘 ${today.doses.length}번 중 ${today.takenCount}번 드셨어요',
               style: AppText.label(size: 18, color: AppColors.textSecondary),
             ),
@@ -803,7 +791,8 @@ class _ProgressRow extends StatelessWidget {
 
 /// 2×2 바로가기.
 class _ShortcutGrid extends StatelessWidget {
-  final int heartRate;
+  /// 잰 적이 없으면 null. 숫자 자리를 비워 둔다.
+  final int? heartRate;
   final VoidCallback? onOpenMedicines;
   final VoidCallback? onOpenHeartbeat;
   final VoidCallback? onOpenChat;
@@ -837,7 +826,7 @@ class _ShortcutGrid extends StatelessWidget {
                 child: _Shortcut(
                   icon: TablerIcons.activity_heartbeat,
                   label: '심박수',
-                  trailing: '$heartRate',
+                  trailing: heartRate == null ? null : '$heartRate',
                   onTap: onOpenHeartbeat,
                 ),
               ),

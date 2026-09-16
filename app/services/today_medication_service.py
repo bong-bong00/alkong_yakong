@@ -10,6 +10,7 @@ from typing import Any
 from fastapi import HTTPException
 
 from app.database import get_connection
+from app.services.heart_reading import latest_heart_reading
 from app.services.medicine_display import (
     card_official_name,
     ingredient_summary,
@@ -140,6 +141,17 @@ def get_today_medicines(user_id: str, target_date: str | None = None) -> dict[st
             for row in active_origin_rows
             if row["prescription_item_id"] is not None
         }
+        course = conn.execute(
+            """
+            SELECT start_date, end_date
+            FROM user_medicines
+            WHERE user_id = ? AND COALESCE(is_active, 1) = 1
+              AND end_date IS NOT NULL AND end_date >= ?
+            ORDER BY end_date LIMIT 1
+            """,
+            (uid, day),
+        ).fetchone()
+        heart = latest_heart_reading(conn, uid)
         latest_risk = conn.execute(
             """
             SELECT risk_level, description, total_matches, matches_json
@@ -204,9 +216,33 @@ def get_today_medicines(user_id: str, target_date: str | None = None) -> dict[st
             "has_server_medicines": bool(doses),
             "interaction_alert": interaction_alert,
             "interaction_cards": interaction_cards,
+            "latest_heart_rate": heart["bpm"] if heart else None,
+            "latest_heart_rate_normal": heart["normal"] if heart else None,
+            **_course_fields(course, day),
         }
     finally:
         conn.close()
+
+
+def _course_fields(course, day: str) -> dict[str, Any]:
+    """가장 먼저 끝나는 처방 기준으로 남은 날을 센다. 끝나는 날을 모르면 비워 둔다."""
+    empty = {"days_left": None, "course_started_on": None, "course_total_days": None}
+    if course is None:
+        return empty
+    try:
+        end = date.fromisoformat(str(course["end_date"])[:10])
+        today = date.fromisoformat(day)
+    except ValueError:
+        return empty
+    try:
+        start = date.fromisoformat(str(course["start_date"] or "")[:10])
+    except ValueError:
+        start = None
+    return {
+        "days_left": (end - today).days,
+        "course_started_on": start.isoformat() if start else None,
+        "course_total_days": (end - start).days + 1 if start else None,
+    }
 
 
 def _ensure_today_schedules(conn, user_id: str, day: str) -> None:

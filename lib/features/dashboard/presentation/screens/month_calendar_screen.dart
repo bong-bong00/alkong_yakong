@@ -11,9 +11,10 @@ import '../../../../core/widgets/senior_header.dart';
 
 /// 한 칸이 가질 수 있는 상태.
 ///
-/// **네 가지뿐이다.** 칸 안에 복용 횟수를 적지 않는다 —
+/// 칸 안에 복용 횟수를 적지 않는다 —
 /// 숫자가 들어가면 한 달치를 한눈에 읽는 일이 다시 계산이 된다.
-enum DayMark { done, missed, today, future }
+/// 약 일정이 없던 날은 [noRecord]다. 다 드신 날로 채우지 않는다.
+enum DayMark { done, missed, today, future, noRecord }
 
 /// 달력 한 칸.
 @immutable
@@ -48,6 +49,9 @@ class MonthCalendarScreen extends ConsumerStatefulWidget {
   final int? leadingBlanks;
   final List<MissedDay>? missed;
 
+  /// 보호자가 볼 어르신 id. null이면 로그인한 본인의 기록이다.
+  final String? patientUserId;
+
   const MonthCalendarScreen({
     super.key,
     this.month,
@@ -55,6 +59,7 @@ class MonthCalendarScreen extends ConsumerStatefulWidget {
     this.days,
     this.leadingBlanks,
     this.missed,
+    this.patientUserId,
   });
 
   @override
@@ -80,7 +85,8 @@ class _MonthCalendarScreenState extends ConsumerState<MonthCalendarScreen> {
     _year = widget.year ?? now.year;
     _month = widget.month ?? now.month;
     _days = widget.days ?? _emptyMonth(_year, _month);
-    _leadingBlanks = widget.leadingBlanks ?? DateTime(_year, _month, 1).weekday - 1;
+    _leadingBlanks =
+        widget.leadingBlanks ?? DateTime(_year, _month, 1).weekday - 1;
     if (_leadingBlanks < 0) _leadingBlanks = 6;
     _missed = widget.missed ?? const [];
     if (widget.days == null) {
@@ -116,7 +122,10 @@ class _MonthCalendarScreenState extends ConsumerState<MonthCalendarScreen> {
 
   Future<void> _load() async {
     try {
-      final userId = Uri.encodeComponent(MvpSession.userId.trim());
+      final rawUserId = widget.patientUserId?.trim().isNotEmpty == true
+          ? widget.patientUserId!.trim()
+          : MvpSession.userId.trim();
+      final userId = Uri.encodeComponent(rawUserId);
       final response = await ApiClient().get(
         '/api/v1/users/$userId/medication-calendar?year=$_year&month=$_month',
       );
@@ -129,7 +138,8 @@ class _MonthCalendarScreenState extends ConsumerState<MonthCalendarScreen> {
       setState(() {
         _month = (response['month'] as num?)?.toInt() ?? _month;
         _year = (response['year'] as num?)?.toInt() ?? _year;
-        _leadingBlanks = (response['leading_blanks'] as num?)?.toInt() ?? _leadingBlanks;
+        _leadingBlanks =
+            (response['leading_blanks'] as num?)?.toInt() ?? _leadingBlanks;
         _hasSchedules = response['has_schedules'] == true;
         _days = daysRaw is List
             ? [
@@ -240,7 +250,8 @@ class _MonthCalendarScreenState extends ConsumerState<MonthCalendarScreen> {
                                 if (row > 0) const SizedBox(height: 6),
                                 IntrinsicHeight(
                                   child: Row(
-                                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.stretch,
                                     children: [
                                       for (int col = 0; col < 7; col++) ...[
                                         if (col > 0) const SizedBox(width: 6),
@@ -319,6 +330,11 @@ class _DayCell extends StatelessWidget {
         ink = AppColors.inactive;
         mark = '·';
         spoken = '아직 오지 않은 날';
+      case DayMark.noRecord:
+        background = AppColors.sunken;
+        ink = AppColors.inactive;
+        mark = '-';
+        spoken = '기록 없는 날';
     }
 
     return Semantics(
@@ -339,15 +355,19 @@ class _DayCell extends StatelessWidget {
             children: [
               Text(
                 '${day.day}',
-                style: AppText.cardTitle(size: 18, color: ink)
-                    .copyWith(height: 1),
+                style: AppText.cardTitle(
+                  size: 18,
+                  color: ink,
+                ).copyWith(height: 1),
               ),
               const SizedBox(height: 2),
               Text(
                 mark,
                 textAlign: TextAlign.center,
-                style: AppText.cardTitle(size: 15, color: ink)
-                    .copyWith(height: 1),
+                style: AppText.cardTitle(
+                  size: 15,
+                  color: ink,
+                ).copyWith(height: 1),
               ),
             ],
           ),
@@ -366,11 +386,7 @@ class _Legend extends StatelessWidget {
       spacing: 14,
       runSpacing: 10,
       children: [
-        _LegendItem(
-          color: AppColors.pointTint,
-          border: null,
-          label: '다 드신 날',
-        ),
+        _LegendItem(color: AppColors.pointTint, border: null, label: '다 드신 날'),
         _LegendItem(
           color: AppColors.dangerBg,
           border: Border.all(color: AppColors.danger, width: 2),
@@ -429,10 +445,7 @@ class _MissedCard extends StatelessWidget {
 
   /// 빠뜨린 때가 겹치면 그 사실을 짚어 준다.
   String get _hint {
-    final slots = missed
-        .map((m) => m.detail.split(' ').first)
-        .toSet()
-        .toList();
+    final slots = missed.map((m) => m.detail.split(' ').first).toSet().toList();
     if (missed.length < 2) {
       return '알림 소리를 더 크게 해 둘까요?';
     }

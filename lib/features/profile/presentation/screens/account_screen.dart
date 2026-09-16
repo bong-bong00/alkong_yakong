@@ -1,23 +1,28 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../../core/constants/app_colors.dart';
-import '../../../../core/session/auth_session.dart';
+import '../../../../core/network/api_client.dart';
+import '../../../../core/session/mvp_session.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../core/widgets/senior_button.dart';
 import '../../../../core/widgets/senior_card.dart';
+import '../../../../core/widgets/senior_feedback.dart';
 import '../../../../core/widgets/senior_header.dart';
+import '../../application/current_user_controller.dart';
+import '../../application/session_actions.dart';
 
 /// 계정 관리 — 로그아웃·탈퇴 전용 하위 화면.
 ///
 /// 위험 동작을 "내 정보"에서 떼어내 여기로 옮겼다.
 /// 안전한 버튼(가족 초대, 약 목록)과 물리적으로 떨어져 있어야
 /// 잘못 누르는 일이 줄어든다.
-class AccountScreen extends StatelessWidget {
+class AccountScreen extends ConsumerWidget {
   const AccountScreen({super.key});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     return Scaffold(
       backgroundColor: AppColors.bg,
       body: Column(
@@ -51,7 +56,7 @@ class AccountScreen extends StatelessWidget {
                           minHeight: 62,
                           fontSize: 21,
                           onPressed: () async {
-                            await AuthSession.logout();
+                            await endSession(ref);
                             if (context.mounted) context.go('/login');
                           },
                         ),
@@ -85,7 +90,7 @@ class AccountScreen extends StatelessWidget {
                           kind: SeniorButtonKind.danger,
                           minHeight: 62,
                           fontSize: 21,
-                          onPressed: () => _confirmWithdraw(context),
+                          onPressed: () => _confirmWithdraw(context, ref),
                         ),
                       ],
                     ),
@@ -99,7 +104,7 @@ class AccountScreen extends StatelessWidget {
     );
   }
 
-  void _confirmWithdraw(BuildContext context) {
+  void _confirmWithdraw(BuildContext context, WidgetRef ref) {
     showDialog<void>(
       context: context,
       builder: (dialogContext) => Dialog(
@@ -132,9 +137,7 @@ class AccountScreen extends StatelessWidget {
                 fontSize: 20,
                 onPressed: () async {
                   Navigator.of(dialogContext).pop();
-                  // TODO: 백엔드 회원 탈퇴 API 연동.
-                  await AuthSession.logout();
-                  if (context.mounted) context.go('/login');
+                  await _withdraw(context, ref);
                 },
               ),
             ],
@@ -142,5 +145,23 @@ class AccountScreen extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  /// 서버에서 지워진 뒤에만 나간다. 못 지웠는데 나가면
+  /// 그만둔 줄 알았던 계정이 그대로 남는다.
+  Future<void> _withdraw(BuildContext context, WidgetRef ref) async {
+    final userId =
+        ref.read(currentUserProvider).valueOrNull?.id ??
+        MvpSession.userId.trim();
+    try {
+      await ref.read(userRepositoryProvider).delete(userId);
+    } on ApiException catch (error) {
+      if (context.mounted) {
+        showSeniorSnackbar(context, error.message, error: true);
+      }
+      return;
+    }
+    await endSession(ref);
+    if (context.mounted) context.go('/login');
   }
 }
