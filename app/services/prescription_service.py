@@ -4,6 +4,7 @@ import hashlib
 import json
 import re
 import uuid
+from calendar import monthrange
 from datetime import date, timedelta
 
 from fastapi import HTTPException
@@ -404,6 +405,25 @@ def _clock_times_for_item(item: OCRMedicineItem) -> list[str]:
     if confirmed:
         return confirmed
     frequency = _schedule_frequency(item.frequency_per_day)
+    defaults = DEFAULT_SCHEDULE_TIMES.get(frequency) if frequency is not None else None
+    if not defaults:
+        return []
+    return [clock for clock, _slot in defaults]
+
+
+def _clock_times_from_user_medicine(row) -> list[str]:
+    """저장된 횟수·시각만 쓴다. 달력에서 시각을 지어 넣지 않는다."""
+    raw_times: list[str] = []
+    try:
+        parsed = json.loads(row["administration_times"] or "[]")
+        if isinstance(parsed, list):
+            raw_times = [str(value) for value in parsed]
+    except (TypeError, json.JSONDecodeError, ValueError):
+        raw_times = []
+    confirmed = _confirmed_clock_times(raw_times)
+    if confirmed:
+        return confirmed
+    frequency = _schedule_frequency(row["frequency_per_day"])
     defaults = DEFAULT_SCHEDULE_TIMES.get(frequency) if frequency is not None else None
     if not defaults:
         return []
@@ -1428,3 +1448,212 @@ def get_user_prescriptions(user_id: str) -> list[dict]:
         return result
     finally:
         conn.close()
+
+
+def _prescription_user_medicines(cursor, user_id: str, prescription_id: str):
+    owned = cursor.execute(
+        "SELECT 1 FROM prescriptions WHERE id = ? AND user_id = ?",
+        (prescription_id, user_id),
+    ).fetchone()
+    if not owned:
+        return None
+    return cursor.execute(
+        """
+        SELECT um.id, um.frequency_per_day, um.administration_times
+        FROM user_medicines um
+        JOIN prescription_items pi ON pi.id = um.prescription_item_id
+        WHERE um.user_id = ?
+          AND pi.prescription_id = ?
+          AND COALESCE(um.is_active, 1) = 1
+        """,
+        (user_id, prescription_id),
+    ).fetchall()
+
+
+def _refresh_user_medicine_span(cursor, user_medicine_id: int) -> None:
+    row = cursor.execute(
+        """
+        SELECT MIN(scheduled_date) AS first_day, MAX(scheduled_date) AS last_day
+        FROM medication_schedules
+        WHERE user_medicine_id = ?
+        """,
+        (user_medicine_id,),
+    ).fetchone()
+    first_day = row["first_day"] if row else None
+    last_day = row["last_day"] if row else None
+    if first_day:
+        cursor.execute(
+            """
+            UPDATE user_medicines
+            SET start_date = ?, end_date = ?
+            WHERE id = ?
+            """,
+            (first_day, last_day, user_medicine_id),
+        )
+        return
+    closed = (date.today() - timedelta(days=1)).isoformat()
+    cursor.execute(
+        "UPDATE user_medicines SET end_date = ? WHERE id = ?",
+        (closed, user_medicine_id),
+    )
+
+
+def get_prescription_schedule_days(
+    user_id: str,
+    prescription_id: str,
+    year: int | None = None,
+    month: int | None = None,
+) -> dict:
+    """이번에 등록한 약의 약 있는 날만 돌려 준다. 먹었어요/빠뜨렸어요는 넣지 않는다."""
+    today = date.today()
+    year = int(year or today.year)
+    month = int(month or today.month)
+    if month < 1 or month > 12:
+        raise HTTPException(status_code=422, detail="달 정보가 올바르지 않아요.")
+    first = date(year, month, 1)
+    last_day = monthrange(year, month)[1]
+
+    conn = get_connection()
+    try:
+        if not conn.execute(
+            "SELECT 1 FROM users WHERE id = ?", (user_id,)
+        ).fetchone():
+            raise HTTPException(status_code=404, detail="사용자가 없습니다.")
+        medicines = _prescription_user_medicines(conn, user_id, prescription_id)
+        if medicines is None:
+            raise HTTPException(status_code=404, detail="처방전을 찾지 못했어요.")
+        um_ids = [row["id"] for row in medicines]
+        on_dates: set[date] = set()
+        if um_ids:
+            placeholders = ",".join("?" for _ in um_ids)
+            rows = conn.execute(
+                f"""
+                SELECT DISTINCT scheduled_date
+                FROM medication_schedules
+                WHERE user_id = ?
+                  AND user_medicine_id IN ({placeholders})
+                """,
+                (user_id, *um_ids),
+            ).fetchall()
+            for row in rows:
+                try:
+                    on_dates.add(date.fromisoformat(str(row["scheduled_date"])))
+                except ValueError:
+                    continue
+        has_times = any(_clock_times_from_user_medicine(row) for row in medicines)
+        days = []
+        for day_n in range(1, last_day + 1):
+            current = date(year, month, day_n)
+            days.append(
+                {
+                    "day": day_n,
+                    "on": current in on_dates,
+                    "is_today": current == today,
+                }
+            )
+        total_on = len(on_dates)
+        headline = (
+            "투약일수를 확인해 주세요"
+            if total_on == 0
+            else f"오늘부터 {total_on}일, 이 약을 드시는 날이에요"
+        )
+        return {
+            "prescription_id": prescription_id,
+            "year": year,
+            "month": month,
+            "leading_blanks": first.weekday(),
+            "headline": headline,
+            "has_times": has_times,
+            "on_count": total_on,
+            "days": days,
+        }
+    finally:
+        conn.close()
+
+
+def toggle_prescription_schedule_day(
+    user_id: str,
+    prescription_id: str,
+    scheduled_date: str,
+) -> dict:
+    """표시된 날을 빼거나, 빈 날에 이 처방의 횟수·시각을 붙인다."""
+    try:
+        target = date.fromisoformat(str(scheduled_date or "").strip())
+    except ValueError:
+        raise HTTPException(status_code=422, detail="날짜가 올바르지 않아요.")
+
+    conn = get_connection()
+    try:
+        if not conn.execute(
+            "SELECT 1 FROM users WHERE id = ?", (user_id,)
+        ).fetchone():
+            raise HTTPException(status_code=404, detail="사용자가 없습니다.")
+        medicines = _prescription_user_medicines(conn, user_id, prescription_id)
+        if medicines is None:
+            raise HTTPException(status_code=404, detail="처방전을 찾지 못했어요.")
+        um_ids = [row["id"] for row in medicines]
+        if not um_ids:
+            raise HTTPException(status_code=422, detail="이 처방에 고칠 약이 없어요.")
+        placeholders = ",".join("?" for _ in um_ids)
+        existing = conn.execute(
+            f"""
+            SELECT 1 FROM medication_schedules
+            WHERE user_id = ?
+              AND user_medicine_id IN ({placeholders})
+              AND scheduled_date = ?
+            LIMIT 1
+            """,
+            (user_id, *um_ids, target.isoformat()),
+        ).fetchone()
+        if existing:
+            conn.execute(
+                f"""
+                DELETE FROM medication_schedules
+                WHERE user_id = ?
+                  AND user_medicine_id IN ({placeholders})
+                  AND scheduled_date = ?
+                """,
+                (user_id, *um_ids, target.isoformat()),
+            )
+        else:
+            added = 0
+            for row in medicines:
+                for scheduled_time in _clock_times_from_user_medicine(row):
+                    inserted = conn.execute(
+                        """
+                        INSERT OR IGNORE INTO medication_schedules (
+                            user_id, user_medicine_id, scheduled_date,
+                            scheduled_time, time_slot, status
+                        ) VALUES (?, ?, ?, ?, ?, 'PENDING')
+                        """,
+                        (
+                            user_id,
+                            row["id"],
+                            target.isoformat(),
+                            scheduled_time,
+                            _time_slot_for_clock(scheduled_time),
+                        ),
+                    )
+                    added += inserted.rowcount
+            if added == 0:
+                raise HTTPException(
+                    status_code=422,
+                    detail="하루 복용 횟수를 확인해 주세요.",
+                )
+        for um_id in um_ids:
+            _refresh_user_medicine_span(conn, um_id)
+        conn.commit()
+    except HTTPException:
+        conn.rollback()
+        raise
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+    return get_prescription_schedule_days(
+        user_id,
+        prescription_id,
+        target.year,
+        target.month,
+    )

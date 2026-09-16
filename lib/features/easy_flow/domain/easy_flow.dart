@@ -2,8 +2,8 @@ import 'package:flutter/foundation.dart';
 
 /// 쉬운 모드가 지나가는 화면.
 ///
-/// **새 화면을 만들지 않는다.** 일반 모드가 쓰는 화면을 그대로 부르고,
-/// 순서와 버튼 라벨만 이 목록이 정한다.
+/// 일반 모드가 쓰는 화면을 그대로 부른다.
+/// 등록 뒤 약 있는 날 달력만 예외로, 두 모드가 같은 확인 화면을 쓴다.
 enum EasyScreen {
   today,
   done,
@@ -12,6 +12,7 @@ enum EasyScreen {
   medicines,
   prescription,
   interaction,
+  scheduleDays,
   myInfo,
   chat,
   measure,
@@ -69,10 +70,10 @@ class EasyDestination {
 
 /// 하단 바를 숨길 화면.
 ///
-/// 측정 중이거나 심박수가 이상한 상황에서는 "다음 한 걸음"이 방해가 된다.
-/// 그 화면들은 자기 흐름을 끝까지 마쳐야 한다.
+/// 측정 중이거나, 등록 뒤 약 있는 날을 확인하는 화면에서는
+/// "다음 한 걸음"이 방해가 된다. 그 화면들은 자기 단추로 마친다.
 bool showsEasyBar(EasyScreen screen) =>
-    screen != EasyScreen.measure;
+    screen != EasyScreen.measure && screen != EasyScreen.scheduleDays;
 
 /// 하단 바가 뜰 때 스크롤 아래에 둘 여백.
 /// 바가 마지막 카드를 가리지 않게 한다.

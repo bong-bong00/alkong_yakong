@@ -134,6 +134,7 @@ def ensure_mvp_demo_medicines() -> str:
                 UPDATE user_medicines
                 SET is_active = 0, status = 'PAST'
                 WHERE user_id = ?
+                  AND prescription_item_id IS NULL
                 """,
                 (MVP_USER_ID,),
             )

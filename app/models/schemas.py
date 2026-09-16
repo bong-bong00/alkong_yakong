@@ -129,3 +129,7 @@ class HeartRateCreate(BaseModel):
 class DrugExplainChatRequest(BaseModel):
     user_id: str
     message: str
+
+
+class ScheduleDayToggleRequest(BaseModel):
+    date: str

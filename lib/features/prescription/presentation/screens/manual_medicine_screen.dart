@@ -107,7 +107,7 @@ class _ManualMedicineScreenState extends ConsumerState<ManualMedicineScreen> {
         ? 'mvp-user'
         : MvpSession.userId.trim();
     try {
-      await _api.post(
+      final response = await _api.post(
         '/api/v1/prescriptions/confirm',
         body: {
           'user_id': userId,
@@ -126,6 +126,12 @@ class _ManualMedicineScreenState extends ConsumerState<ManualMedicineScreen> {
           ],
         },
       );
+      if (response is Map) {
+        final prescriptionId = response['prescription_id']?.toString().trim();
+        if (prescriptionId != null && prescriptionId.isNotEmpty) {
+          MvpSession.latestPrescriptionId = prescriptionId;
+        }
+      }
       await ref.read(medicationProvider.notifier).refreshFromServer();
       await ref.read(userMedicinesProvider.notifier).refresh();
       if (!mounted) return;
@@ -134,7 +140,7 @@ class _ManualMedicineScreenState extends ConsumerState<ManualMedicineScreen> {
         onSaved();
         return;
       }
-      context.push('/dur-analysis');
+      context.push('/schedule-days');
     } catch (_) {
       if (!mounted) return;
       setState(() {

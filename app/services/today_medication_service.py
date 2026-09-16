@@ -214,7 +214,7 @@ def _ensure_today_schedules(conn, user_id: str, day: str) -> None:
     active = conn.execute(
         """
         SELECT um.id AS user_medicine_id, um.administration_times,
-               um.start_date, um.end_date
+               um.start_date, um.end_date, um.prescription_item_id
         FROM user_medicines um
         WHERE um.user_id = ? AND COALESCE(um.is_active, 1) = 1
         """,
@@ -226,6 +226,9 @@ def _ensure_today_schedules(conn, user_id: str, day: str) -> None:
         if row["end_date"] and str(day) > str(row["end_date"]):
             continue
         um_id = row["user_medicine_id"]
+        if row["prescription_item_id"] is not None:
+            # 처방으로 붙인 날은 달력이 정한다. 빠진 오늘을 다시 만들지 않는다.
+            continue
         exists = conn.execute(
             """
             SELECT 1 FROM medication_schedules

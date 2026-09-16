@@ -19,6 +19,7 @@ import 'features/medicines/presentation/screens/my_medicines_screen.dart';
 import 'features/onboarding/presentation/screens/first_run_screen.dart';
 import 'features/prescription/presentation/screens/manual_medicine_screen.dart';
 import 'features/prescription/presentation/screens/prescription_screen.dart';
+import 'features/prescription/presentation/screens/schedule_days_screen.dart';
 import 'features/reminder/presentation/screens/lock_screen_alert.dart';
 
 /// 화면을 둘러보는 동안 로그인을 건너뛴다.
@@ -65,6 +66,18 @@ final _router = GoRouter(
         return DurAnalysisScreen(
           initialResult: extra is Map ? Map<String, dynamic>.from(extra) : null,
         );
+      },
+    ),
+    GoRoute(
+      path: '/schedule-days',
+      builder: (context, state) {
+        final extra = state.extra;
+        final id = extra is String
+            ? extra
+            : extra is Map
+            ? extra['prescription_id']?.toString()
+            : null;
+        return ScheduleDaysScreen(prescriptionId: id);
       },
     ),
     GoRoute(

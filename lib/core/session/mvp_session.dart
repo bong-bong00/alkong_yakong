@@ -8,6 +8,9 @@ abstract final class MvpSession {
   static List<Map<String, dynamic>> latestOcrItems = <Map<String, dynamic>>[];
   static DateTime? latestOcrRegisteredAt;
 
+  /// 방금 등록한 처방전. 약 있는 날 달력이 이 아이디만 본다.
+  static String? latestPrescriptionId;
+
   /// 임부금기 DUR용. 회원가입·프로필에서 갱신.
   static bool? isPregnant;
 }

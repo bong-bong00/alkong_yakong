@@ -58,10 +58,14 @@ class PrescriptionScreen extends ConsumerStatefulWidget {
   /// 가족에게 부탁한 뒤 오늘 화면으로 돌아갈 때.
   final VoidCallback? onGoHome;
 
+  /// 약 있는 날 달력으로 갈 때. 쉬운 모드가 화면을 직접 바꿀 때 쓴다.
+  final VoidCallback? onOpenScheduleDays;
+
   const PrescriptionScreen({
     super.key,
     this.onCompleted,
     this.onGoHome,
+    this.onOpenScheduleDays,
     this.guardianTitle = '딸 지안 님',
   });
 
@@ -256,8 +260,14 @@ class _PrescriptionScreenState extends ConsumerState<PrescriptionScreen> {
           'ocr_text': _result?['ocr_text'],
         },
       );
-      if (response is Map && response['dur_result'] is Map) {
-        durResult = Map<String, dynamic>.from(response['dur_result'] as Map);
+      if (response is Map) {
+        final prescriptionId = response['prescription_id']?.toString().trim();
+        if (prescriptionId != null && prescriptionId.isNotEmpty) {
+          MvpSession.latestPrescriptionId = prescriptionId;
+        }
+        if (response['dur_result'] is Map) {
+          durResult = Map<String, dynamic>.from(response['dur_result'] as Map);
+        }
       }
     } catch (error) {
       debugPrint('처방 확정 등록 실패: $error');
@@ -290,23 +300,17 @@ class _PrescriptionScreenState extends ConsumerState<PrescriptionScreen> {
       );
     }
 
-    void goHome() {
-      final onGoHome = widget.onGoHome;
-      if (onGoHome != null) {
-        onGoHome();
+    void openScheduleDays() {
+      final onOpenScheduleDays = widget.onOpenScheduleDays;
+      if (onOpenScheduleDays != null) {
+        onOpenScheduleDays();
         return;
       }
-      context.go('/');
+      context.push('/schedule-days');
     }
 
     if (!_hasPairConflict(durResult)) {
-      final go = await showSeniorYesNoDialog(
-        context: context,
-        title: '약이 등록됐어요',
-        message: '오늘 홈으로 갈까요?',
-      );
-      if (!mounted) return;
-      if (go) goHome();
+      openScheduleDays();
       return;
     }
 
@@ -315,7 +319,10 @@ class _PrescriptionScreenState extends ConsumerState<PrescriptionScreen> {
       onCompleted(durResult);
       return;
     }
-    context.push('/dur-analysis', extra: durResult);
+    context.push('/dur-analysis', extra: {
+      ...?durResult,
+      'open_schedule_days': true,
+    });
   }
 
   @override
@@ -347,7 +354,12 @@ class _PrescriptionScreenState extends ConsumerState<PrescriptionScreen> {
               onCompleted(null);
               return;
             }
-            context.push('/dur-analysis');
+            final onOpenScheduleDays = widget.onOpenScheduleDays;
+            if (onOpenScheduleDays != null) {
+              onOpenScheduleDays();
+              return;
+            }
+            context.push('/schedule-days');
           },
         );
       case PrescriptionStep.capture:

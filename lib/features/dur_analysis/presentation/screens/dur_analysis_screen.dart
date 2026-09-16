@@ -23,9 +23,15 @@ const _pairTypes = {'병용금기', '중복성분', '효능군중복'};
 /// 약끼리 부딪히는 빨간 카드만 보여 준다. DUR 검사표는 쓰지 않는다.
 class DurAnalysisScreen extends ConsumerStatefulWidget {
   final VoidCallback? onGoHome;
+  final VoidCallback? onOpenScheduleDays;
   final Map<String, dynamic>? initialResult;
 
-  const DurAnalysisScreen({super.key, this.onGoHome, this.initialResult});
+  const DurAnalysisScreen({
+    super.key,
+    this.onGoHome,
+    this.onOpenScheduleDays,
+    this.initialResult,
+  });
 
   @override
   ConsumerState<DurAnalysisScreen> createState() => _DurAnalysisScreenState();
@@ -297,7 +303,7 @@ class _DurAnalysisScreenState extends ConsumerState<DurAnalysisScreen> {
               label: '확인했어요',
               minHeight: 64,
               fontSize: 22,
-              onPressed: _confirmAndGoHome,
+              onPressed: _afterConfirm,
             ),
           ],
           const SizedBox(height: 16),
@@ -317,7 +323,16 @@ class _DurAnalysisScreenState extends ConsumerState<DurAnalysisScreen> {
     showSeniorSnackbar(context, '$_guardianTitle에게 알려드렸어요');
   }
 
-  Future<void> _confirmAndGoHome() async {
+  Future<void> _afterConfirm() async {
+    final onOpenScheduleDays = widget.onOpenScheduleDays;
+    if (onOpenScheduleDays != null) {
+      onOpenScheduleDays();
+      return;
+    }
+    if (widget.initialResult?['open_schedule_days'] == true) {
+      context.push('/schedule-days');
+      return;
+    }
     final go = await showSeniorYesNoDialog(
       context: context,
       title: '이제 홈으로 갈까요?',

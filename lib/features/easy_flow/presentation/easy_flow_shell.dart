@@ -17,6 +17,7 @@ import '../../medicines/presentation/screens/my_medicines_screen.dart';
 import '../../medicines/presentation/screens/drug_detail_screen.dart';
 import '../../medicines/presentation/screens/pharmacist_chat_screen.dart';
 import '../../prescription/presentation/screens/prescription_screen.dart';
+import '../../prescription/presentation/screens/schedule_days_screen.dart';
 import '../../profile/presentation/screens/mypage_screen.dart';
 import '../domain/easy_flow.dart';
 import 'widgets/easy_sheets.dart';
@@ -153,18 +154,27 @@ class _EasyFlowShellState extends ConsumerState<EasyFlowShell> {
       case EasyScreen.medicines:
         return const MyMedicinesScreen();
       case EasyScreen.prescription:
-        // 등록이 끝나면 손대지 않아도 함께먹기 주의로 넘어간다.
         return PrescriptionScreen(
           onCompleted: (result) {
             _durResult = result;
-            _goTo(EasyScreen.interaction);
+            if (_hasPairConflict(result)) {
+              _goTo(EasyScreen.interaction);
+            } else {
+              _goTo(EasyScreen.scheduleDays);
+            }
           },
+          onOpenScheduleDays: () => _goTo(EasyScreen.scheduleDays),
           onGoHome: () => _goTo(EasyScreen.today),
         );
       case EasyScreen.interaction:
         return DurAnalysisScreen(
           initialResult: _durResult,
+          onOpenScheduleDays: () => _goTo(EasyScreen.scheduleDays),
           onGoHome: () => _goTo(EasyScreen.today),
+        );
+      case EasyScreen.scheduleDays:
+        return ScheduleDaysScreen(
+          onConfirmed: () => _goTo(EasyScreen.today),
         );
       case EasyScreen.chat:
         return const PharmacistChatScreen();
@@ -287,4 +297,13 @@ class EasyMenuButton extends StatelessWidget {
       ),
     );
   }
+}
+
+bool _hasPairConflict(Map<String, dynamic>? durResult) {
+  const pairTypes = {'병용금기', '중복성분', '효능군중복'};
+  final matches = durResult?['matches'];
+  if (matches is! List) return false;
+  return matches.any(
+    (item) => item is Map && pairTypes.contains(item['type']?.toString()),
+  );
 }
