@@ -1,21 +1,24 @@
 import hashlib
 import hmac
 import json
+import logging
 import os
 import sqlite3
 import uuid
 
 from fastapi import APIRouter, HTTPException, Query, Response
 
+import app.database as database
 from app.database import get_connection
 from app.models.schemas import UserCreate, UserLogin, UserUpdate
 from app.models.response_schemas import UserCreateResponse, UserResponse
-from app.services.account_lookup import find_account_by_phone
+from app.services.account_lookup import find_account_by_phone, phone_digits
 from app.services.medication_history_service import get_medication_history
 from app.services.user_medicines_service import get_user_medicine, get_user_medicines
 
 
 router = APIRouter(prefix="/api/v1/users", tags=["Users"])
+logger = logging.getLogger(__name__)
 
 _PASSWORD_ITERATIONS = 200_000
 _MIN_PASSWORD_LENGTH = 6
@@ -159,10 +162,40 @@ def create_user(user: UserCreate):
 def login(credentials: UserLogin):
     conn = get_connection()
     try:
+        phone_matches = 0
+        hash_accounts = 0
+        digits = phone_digits(credentials.phone)
+        if digits:
+            try:
+                for candidate in conn.execute(
+                    "SELECT phone, password_hash FROM users"
+                ):
+                    if phone_digits(candidate["phone"]) != digits:
+                        continue
+                    phone_matches += 1
+                    if candidate["password_hash"] is not None:
+                        hash_accounts += 1
+            except sqlite3.Error:
+                logger.warning(
+                    "LOGIN_DIAG account_count_unavailable exception_type=%s",
+                    "SQLiteError",
+                )
+
         row = find_account_by_phone(conn, credentials.phone)
-        if row is None or not _verify_password(
+        password_ok = row is not None and _verify_password(
             credentials.password, row["password_hash"]
-        ):
+        )
+        logger.warning(
+            "LOGIN_DIAG pid=%s db_path=%s phone_matches=%s hash_accounts=%s "
+            "selected=%s password_ok=%s",
+            os.getpid(),
+            database.DB_PATH,
+            phone_matches,
+            hash_accounts,
+            row is not None,
+            password_ok,
+        )
+        if not password_ok:
             raise HTTPException(
                 status_code=401, detail="휴대폰 번호나 비밀번호가 맞지 않아요."
             )

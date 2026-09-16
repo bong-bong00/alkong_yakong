@@ -8,6 +8,7 @@ from typing import Any
 
 from app.core.config import (
     CLOVA_OCR_API_URL,
+    CLOVA_OCR_ENABLED,
     CLOVA_OCR_SECRET_KEY,
 )
 
@@ -77,7 +78,9 @@ def _error_code(error: Exception) -> str:
 
 
 def _clova_ready() -> bool:
-    return bool(CLOVA_OCR_API_URL and CLOVA_OCR_SECRET_KEY)
+    return bool(
+        CLOVA_OCR_ENABLED and CLOVA_OCR_API_URL and CLOVA_OCR_SECRET_KEY
+    )
 
 
 def _mean_confidence(fields: tuple[dict[str, Any], ...]) -> float | None:
