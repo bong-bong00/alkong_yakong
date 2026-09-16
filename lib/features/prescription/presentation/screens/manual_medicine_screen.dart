@@ -127,10 +127,16 @@ class _ManualMedicineScreenState extends ConsumerState<ManualMedicineScreen> {
         },
       );
       if (response is Map) {
-        final prescriptionId = response['prescription_id']?.toString().trim();
-        if (prescriptionId != null && prescriptionId.isNotEmpty) {
-          MvpSession.latestPrescriptionId = prescriptionId;
-        }
+        MvpSession.rememberPrescriptionSchedules(
+          prescriptionId: response['prescription_id']?.toString(),
+          confirmResponse: response,
+          ocrItems: [
+            {
+              'duration_days': _days,
+              'frequency_per_day': _frequency,
+            },
+          ],
+        );
       }
       await ref.read(medicationProvider.notifier).refreshFromServer();
       await ref.read(userMedicinesProvider.notifier).refresh();
@@ -140,7 +146,10 @@ class _ManualMedicineScreenState extends ConsumerState<ManualMedicineScreen> {
         onSaved();
         return;
       }
-      context.push('/schedule-days');
+      context.push(
+        '/schedule-days',
+        extra: MvpSession.latestPrescriptionId,
+      );
     } catch (_) {
       if (!mounted) return;
       setState(() => _saving = false);

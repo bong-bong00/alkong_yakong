@@ -330,7 +330,10 @@ class _DurAnalysisScreenState extends ConsumerState<DurAnalysisScreen> {
       return;
     }
     if (widget.initialResult?['open_schedule_days'] == true) {
-      context.push('/schedule-days');
+      context.push(
+        '/schedule-days',
+        extra: MvpSession.latestPrescriptionId,
+      );
       return;
     }
     final go = await showSeniorYesNoDialog(

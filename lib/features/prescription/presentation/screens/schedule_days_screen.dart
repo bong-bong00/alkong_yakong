@@ -110,7 +110,7 @@ class _ScheduleDaysScreenState extends ConsumerState<ScheduleDaysScreen> {
       if (!mounted) return;
       setState(() {
         _loading = false;
-        _headline = '투약일수를 확인해 주세요';
+        _applyCachedDays();
       });
       return;
     }
@@ -126,8 +126,53 @@ class _ScheduleDaysScreenState extends ConsumerState<ScheduleDaysScreen> {
       _apply(response);
     } catch (_) {
       if (!mounted) return;
-      setState(() => _loading = false);
+      setState(() {
+        _loading = false;
+        _applyCachedDays();
+      });
     }
+  }
+
+  void _applyCachedDays() {
+    final cached = MvpSession.latestScheduleDates;
+    final last = DateTime(_year, _month + 1, 0).day;
+    final today = DateTime.now();
+    _days = [
+      for (int day = 1; day <= last; day++)
+        ScheduleDayCell(
+          day: day,
+          on: cached.contains(
+            '${_year.toString().padLeft(4, '0')}-'
+            '${_month.toString().padLeft(2, '0')}-'
+            '${day.toString().padLeft(2, '0')}',
+          ),
+          isToday: today.year == _year &&
+              today.month == _month &&
+              today.day == day,
+        ),
+    ];
+    final count = cached.length;
+    _headline = count == 0
+        ? '투약일수를 확인해 주세요'
+        : '오늘부터 $count일, 이 약을 드시는 날이에요';
+  }
+
+  void _goHome() {
+    if (widget.days == null) {
+      ref.read(medicationProvider.notifier).refreshFromServer();
+      ref.read(userMedicinesProvider.notifier).refresh();
+    }
+    final onConfirmed = widget.onConfirmed;
+    if (onConfirmed != null) {
+      onConfirmed();
+      return;
+    }
+    final navigator = Navigator.maybeOf(context);
+    if (navigator != null && navigator.canPop()) {
+      navigator.popUntil((route) => route.isFirst);
+    }
+    if (!mounted) return;
+    context.go('/');
   }
 
   void _apply(dynamic response) {
@@ -242,24 +287,6 @@ class _ScheduleDaysScreenState extends ConsumerState<ScheduleDaysScreen> {
       _loading = true;
     });
     await _load();
-  }
-
-  Future<void> _confirm() async {
-    if (widget.days == null) {
-      try {
-        await Future.wait<void>([
-          ref.read(medicationProvider.notifier).refreshFromServer(),
-          ref.read(userMedicinesProvider.notifier).refresh(),
-        ]);
-      } catch (_) {}
-    }
-    if (!mounted) return;
-    final onConfirmed = widget.onConfirmed;
-    if (onConfirmed != null) {
-      onConfirmed();
-      return;
-    }
-    context.go('/');
   }
 
   @override
@@ -391,7 +418,7 @@ class _ScheduleDaysScreenState extends ConsumerState<ScheduleDaysScreen> {
                           label: '이대로 좋아요',
                           minHeight: 68,
                           fontSize: 22,
-                          onPressed: _confirm,
+                          onPressed: _goHome,
                         ),
                       ],
                     ),

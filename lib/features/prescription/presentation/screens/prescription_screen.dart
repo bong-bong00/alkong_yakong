@@ -260,9 +260,11 @@ class _PrescriptionScreenState extends ConsumerState<PrescriptionScreen> {
       );
       if (response is Map) {
         final prescriptionId = response['prescription_id']?.toString().trim();
-        if (prescriptionId != null && prescriptionId.isNotEmpty) {
-          MvpSession.latestPrescriptionId = prescriptionId;
-        }
+        MvpSession.rememberPrescriptionSchedules(
+          prescriptionId: prescriptionId,
+          confirmResponse: response,
+          ocrItems: editedItems,
+        );
         if (response['dur_result'] is Map) {
           durResult = Map<String, dynamic>.from(response['dur_result'] as Map);
         }
@@ -299,7 +301,10 @@ class _PrescriptionScreenState extends ConsumerState<PrescriptionScreen> {
         onOpenScheduleDays();
         return;
       }
-      context.push('/schedule-days');
+      context.push(
+        '/schedule-days',
+        extra: MvpSession.latestPrescriptionId,
+      );
     }
 
     if (!_hasPairConflict(durResult)) {
@@ -352,7 +357,10 @@ class _PrescriptionScreenState extends ConsumerState<PrescriptionScreen> {
               onOpenScheduleDays();
               return;
             }
-            context.push('/schedule-days');
+            context.push(
+              '/schedule-days',
+              extra: MvpSession.latestPrescriptionId,
+            );
           },
         );
       case PrescriptionStep.capture:
