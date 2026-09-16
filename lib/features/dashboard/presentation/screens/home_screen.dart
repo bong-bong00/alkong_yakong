@@ -14,7 +14,6 @@ import '../../../medicines/domain/drug_info.dart';
 import '../../../medicines/presentation/screens/drug_detail_screen.dart';
 import '../../../medicines/presentation/screens/my_medicines_screen.dart';
 import '../../../reminder/presentation/screens/alarm_settings_screen.dart';
-import '../../../prescription/presentation/screens/prescription_screen.dart';
 import '../../../profile/presentation/screens/mypage_screen.dart';
 import 'medication_record_screen.dart';
 import 'patient_home_screen.dart';
@@ -60,11 +59,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               ? PatientHomeScreen(
                   onOpenRecord: () => setState(() => _index = 1),
                   onOpenHeartbeat: () => context.push('/biosignal'),
-                  onOpenPrescription: () => Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (_) => const PrescriptionScreen(),
-                    ),
-                  ),
+                  onOpenPrescription: () => context.push('/prescription'),
                   onOpenChat: () => context.push('/drug-explain'),
                   onOpenMedicines: () => Navigator.of(context).push(
                     MaterialPageRoute(

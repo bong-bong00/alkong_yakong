@@ -18,6 +18,7 @@ import '../../medicines/presentation/screens/my_medicines_screen.dart';
 import '../../medicines/presentation/screens/drug_detail_screen.dart';
 import '../../medicines/presentation/screens/pharmacist_chat_screen.dart';
 import '../../prescription/presentation/screens/prescription_screen.dart';
+import '../../prescription/presentation/screens/schedule_days_screen.dart';
 import '../../profile/application/current_user_controller.dart';
 import '../../profile/presentation/screens/mypage_screen.dart';
 import '../domain/easy_flow.dart';
@@ -38,6 +39,7 @@ class EasyFlowShell extends ConsumerStatefulWidget {
 
 class _EasyFlowShellState extends ConsumerState<EasyFlowShell> {
   EasyScreen _screen = EasyScreen.today;
+  Map<String, dynamic>? _durResult;
 
   /// 지나온 화면. "이전"에서 하나씩 꺼낸다.
   final List<EasyScreen> _history = <EasyScreen>[];
@@ -161,13 +163,26 @@ class _EasyFlowShellState extends ConsumerState<EasyFlowShell> {
       case EasyScreen.medicines:
         return const MyMedicinesScreen();
       case EasyScreen.prescription:
-        // 등록이 끝나면 손대지 않아도 함께먹기 주의로 넘어간다.
         return PrescriptionScreen(
-          onCompleted: () => _goTo(EasyScreen.interaction),
+          onCompleted: (result) {
+            _durResult = result;
+            if (_hasPairConflict(result)) {
+              _goTo(EasyScreen.interaction);
+            } else {
+              _goTo(EasyScreen.scheduleDays);
+            }
+          },
+          onOpenScheduleDays: () => _goTo(EasyScreen.scheduleDays),
           onGoHome: () => _goTo(EasyScreen.today),
         );
       case EasyScreen.interaction:
-        return const DurAnalysisScreen();
+        return DurAnalysisScreen(
+          initialResult: _durResult,
+          onOpenScheduleDays: () => _goTo(EasyScreen.scheduleDays),
+          onGoHome: () => _goTo(EasyScreen.today),
+        );
+      case EasyScreen.scheduleDays:
+        return ScheduleDaysScreen(onConfirmed: () => _goTo(EasyScreen.today));
       case EasyScreen.chat:
         return const PharmacistChatScreen();
       case EasyScreen.measure:
@@ -289,4 +304,13 @@ class EasyMenuButton extends StatelessWidget {
       ),
     );
   }
+}
+
+bool _hasPairConflict(Map<String, dynamic>? durResult) {
+  const pairTypes = {'병용금기', '중복성분', '효능군중복'};
+  final matches = durResult?['matches'];
+  if (matches is! List) return false;
+  return matches.any(
+    (item) => item is Map && pairTypes.contains(item['type']?.toString()),
+  );
 }

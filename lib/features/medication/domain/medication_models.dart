@@ -315,8 +315,7 @@ class InteractionPriorityCard {
   final String? codeA;
   final String? codeB;
   final String reason;
-  final String? cautionA;
-  final String? cautionB;
+  final String riskFactor;
 
   const InteractionPriorityCard({
     required this.nameA,
@@ -324,8 +323,7 @@ class InteractionPriorityCard {
     required this.reason,
     this.codeA,
     this.codeB,
-    this.cautionA,
-    this.cautionB,
+    this.riskFactor = '',
   });
 
   factory InteractionPriorityCard.fromJson(Map<String, dynamic> json) {
@@ -335,8 +333,7 @@ class InteractionPriorityCard {
       codeA: json['code_a']?.toString(),
       codeB: json['code_b']?.toString(),
       reason: json['reason']?.toString() ?? '함께 먹을 때 주의가 필요해요',
-      cautionA: json['caution_a']?.toString(),
-      cautionB: json['caution_b']?.toString(),
+      riskFactor: json['risk_factor']?.toString() ?? '',
     );
   }
 }

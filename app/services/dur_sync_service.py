@@ -24,6 +24,9 @@ TIMEOUT_SECONDS = 20
 MFDS_DUR_SOURCE = "식약처 DUR 성분정보 OpenAPI"
 _SYNC_LOCK = threading.Lock()
 _BOOTSTRAP_STARTED = False
+_USER_REFRESH_LOCK = threading.Lock()
+_USERS_REFRESHING: set[str] = set()
+_INGR_QUERY_KEYS = ("ingrKorName", "INGR_KOR_NAME")
 _MAX_INGREDIENT_PAGES = 5
 
 ENDPOINTS = {
@@ -263,6 +266,46 @@ def start_background_dur_sync() -> None:
     )
     thread.start()
     logger.info("식약처 DUR 기준 백그라운드 동기화를 시작했습니다.")
+
+
+def start_background_user_dur_refresh(user_id: str) -> bool:
+    """등록 응답을 막지 않고 사용자 활성 약의 최신 DUR 자료를 갱신한다."""
+    uid = str(user_id or "").strip()
+    if not uid or not DUR_AUTO_SYNC or not DUR_API_KEY:
+        return False
+    with _USER_REFRESH_LOCK:
+        if uid in _USERS_REFRESHING:
+            return False
+        _USERS_REFRESHING.add(uid)
+    thread = threading.Thread(
+        target=_refresh_user_dur,
+        args=(uid,),
+        name=f"dur-user-refresh-{uid[:12]}",
+        daemon=True,
+    )
+    thread.start()
+    return True
+
+
+def _refresh_user_dur(user_id: str) -> None:
+    try:
+        from app.models.schemas import DurAnalyzeRequest
+        from app.services.dur_service import analyze_dur
+
+        analyze_dur(
+            DurAnalyzeRequest(user_id=user_id, medicine_codes=[]),
+            refresh=True,
+        )
+        logger.info("사용자 DUR 백그라운드 갱신 완료 user_id=%s", user_id)
+    except Exception:
+        logger.warning(
+            "사용자 DUR 백그라운드 갱신 실패 user_id=%s",
+            user_id,
+            exc_info=True,
+        )
+    finally:
+        with _USER_REFRESH_LOCK:
+            _USERS_REFRESHING.discard(user_id)
 
 
 def _bootstrap_dur_sync() -> None:

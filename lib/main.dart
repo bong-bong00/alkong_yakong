@@ -19,6 +19,7 @@ import 'features/medicines/presentation/screens/my_medicines_screen.dart';
 import 'features/onboarding/presentation/screens/first_run_screen.dart';
 import 'features/prescription/presentation/screens/manual_medicine_screen.dart';
 import 'features/prescription/presentation/screens/prescription_screen.dart';
+import 'features/prescription/presentation/screens/schedule_days_screen.dart';
 import 'features/reminder/application/alarm_preferences.dart';
 import 'features/reminder/application/reminder_notifications.dart';
 import 'features/reminder/presentation/screens/lock_screen_alert.dart';
@@ -57,13 +58,29 @@ final _router = GoRouter(
     ),
     GoRoute(
       path: '/medicines/:code',
-      builder: (context, state) => DrugDetailScreen(
-        medicineCode: state.pathParameters['code'] ?? '',
-      ),
+      builder: (context, state) =>
+          DrugDetailScreen(medicineCode: state.pathParameters['code'] ?? ''),
     ),
     GoRoute(
       path: '/dur-analysis',
-      builder: (context, state) => const DurAnalysisScreen(),
+      builder: (context, state) {
+        final extra = state.extra;
+        return DurAnalysisScreen(
+          initialResult: extra is Map ? Map<String, dynamic>.from(extra) : null,
+        );
+      },
+    ),
+    GoRoute(
+      path: '/schedule-days',
+      builder: (context, state) {
+        final extra = state.extra;
+        final id = extra is String
+            ? extra
+            : extra is Map
+            ? extra['prescription_id']?.toString()
+            : null;
+        return ScheduleDaysScreen(prescriptionId: id);
+      },
     ),
     GoRoute(
       path: '/biosignal',
@@ -144,9 +161,7 @@ class LockScreenAlertRoute extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final today = ref.watch(medicationProvider);
     if (today.doses.isEmpty) {
-      return const Scaffold(
-        body: Center(child: Text('등록된 약이 없어요')),
-      );
+      return const Scaffold(body: Center(child: Text('등록된 약이 없어요')));
     }
     final dose = today.nextDose ?? today.doses.last;
 

@@ -2,11 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/constants/app_colors.dart';
+import '../../../../core/network/api_client.dart';
+import '../../../../core/session/mvp_session.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../core/widgets/senior_button.dart';
 import '../../../../core/widgets/senior_card.dart';
 import '../../../../core/widgets/senior_header.dart';
-import '../../application/medication_history_provider.dart';
 
 /// 한 칸이 가질 수 있는 상태.
 ///
@@ -41,15 +42,11 @@ class MissedDay {
 /// 색은 세 가지뿐이다. 다 드신 날·빠뜨린 날·오늘.
 /// 빠뜨린 날은 색만으로 끝내지 않고 아래에 글로 한 번 더 적는다 —
 /// 색을 구분하기 어려운 눈에도 같은 사실이 남아야 한다.
-///
-/// 칸을 넘겨주지 않으면 내 복약 기록으로 이번 달을 그린다.
-class MonthCalendarScreen extends ConsumerWidget {
+class MonthCalendarScreen extends ConsumerStatefulWidget {
   final int? month;
+  final int? year;
   final List<CalendarDay>? days;
-
-  /// 달력 앞의 빈 칸 수. 1일이 무슨 요일인지에 따라 달라진다.
   final int? leadingBlanks;
-
   final List<MissedDay>? missed;
 
   /// 보호자가 볼 어르신 id. null이면 로그인한 본인의 기록이다.
@@ -58,191 +55,238 @@ class MonthCalendarScreen extends ConsumerWidget {
   const MonthCalendarScreen({
     super.key,
     this.month,
+    this.year,
     this.days,
     this.leadingBlanks,
     this.missed,
     this.patientUserId,
   });
 
-  static const List<String> _weekdays = ['월', '화', '수', '목', '금', '토', '일'];
-  static const List<String> _counts = ['한 번', '두 번', '세 번', '네 번'];
+  @override
+  ConsumerState<MonthCalendarScreen> createState() =>
+      _MonthCalendarScreenState();
+}
 
-  static List<CalendarDay> _daysFrom(
-    DateTime today,
-    Map<DateTime, DayAdherence> history,
-  ) {
-    final daysInMonth = DateUtils.getDaysInMonth(today.year, today.month);
-    return [
-      for (int day = 1; day <= daysInMonth; day++)
-        () {
-          final date = DateTime(today.year, today.month, day);
-          if (date == today) return CalendarDay(day, DayMark.today);
-          if (date.isAfter(today)) return CalendarDay(day, DayMark.future);
-          final record = history[date];
-          if (record == null || record.total == 0) {
-            return CalendarDay(day, DayMark.noRecord);
-          }
-          return CalendarDay(
-            day,
-            record.complete ? DayMark.done : DayMark.missed,
-          );
-        }(),
-    ];
+class _MonthCalendarScreenState extends ConsumerState<MonthCalendarScreen> {
+  static const List<String> _weekdays = ['월', '화', '수', '목', '금', '토', '일'];
+
+  late int _month;
+  late int _year;
+  late List<CalendarDay> _days;
+  late int _leadingBlanks;
+  late List<MissedDay> _missed;
+  bool _hasSchedules = false;
+  bool _loading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    final now = DateTime.now();
+    _year = widget.year ?? now.year;
+    _month = widget.month ?? now.month;
+    _days = widget.days ?? _emptyMonth(_year, _month);
+    _leadingBlanks =
+        widget.leadingBlanks ?? DateTime(_year, _month, 1).weekday - 1;
+    if (_leadingBlanks < 0) _leadingBlanks = 6;
+    _missed = widget.missed ?? const [];
+    if (widget.days == null) {
+      _loading = true;
+      _load();
+    }
   }
 
-  static List<MissedDay> _missedFrom(
-    DateTime today,
-    Map<DateTime, DayAdherence> history,
-  ) {
-    final records =
-        history.values
-            .where(
-              (r) =>
-                  r.date.isBefore(today) &&
-                  r.date.month == today.month &&
-                  r.date.year == today.year &&
-                  r.total > 0 &&
-                  !r.complete,
-            )
-            .toList()
-          ..sort((a, b) => b.date.compareTo(a.date));
+  static List<CalendarDay> _emptyMonth(int year, int month) {
+    final last = DateTime(year, month + 1, 0).day;
+    final today = DateTime.now();
     return [
-      for (final r in records)
-        MissedDay(
-          label:
-              '${r.date.month}월 ${r.date.day}일 ${_weekdays[r.date.weekday - 1]}',
-          detail:
-              '${r.missedSlots.join('·')} 약 '
-              '${_counts[(r.total - r.taken - 1).clamp(0, _counts.length - 1)]}',
+      for (int day = 1; day <= last; day++)
+        CalendarDay(
+          day,
+          DateTime(year, month, day).year == today.year &&
+                  DateTime(year, month, day).month == today.month &&
+                  day == today.day
+              ? DayMark.today
+              : DayMark.future,
         ),
     ];
   }
 
+  static DayMark _markOf(String raw) {
+    return switch (raw) {
+      'done' => DayMark.done,
+      'missed' => DayMark.missed,
+      'today' => DayMark.today,
+      _ => DayMark.future,
+    };
+  }
+
+  Future<void> _load() async {
+    try {
+      final rawUserId = widget.patientUserId?.trim().isNotEmpty == true
+          ? widget.patientUserId!.trim()
+          : MvpSession.userId.trim();
+      final userId = Uri.encodeComponent(rawUserId);
+      final response = await ApiClient().get(
+        '/api/v1/users/$userId/medication-calendar?year=$_year&month=$_month',
+      );
+      if (!mounted || response is! Map) {
+        if (mounted) setState(() => _loading = false);
+        return;
+      }
+      final daysRaw = response['days'];
+      final missedRaw = response['missed'];
+      setState(() {
+        _month = (response['month'] as num?)?.toInt() ?? _month;
+        _year = (response['year'] as num?)?.toInt() ?? _year;
+        _leadingBlanks =
+            (response['leading_blanks'] as num?)?.toInt() ?? _leadingBlanks;
+        _hasSchedules = response['has_schedules'] == true;
+        _days = daysRaw is List
+            ? [
+                for (final row in daysRaw)
+                  if (row is Map)
+                    CalendarDay(
+                      (row['day'] as num?)?.toInt() ?? 0,
+                      _markOf(row['mark']?.toString() ?? ''),
+                    ),
+              ].where((item) => item.day > 0).toList()
+            : _days;
+        _missed = missedRaw is List
+            ? [
+                for (final row in missedRaw)
+                  if (row is Map)
+                    MissedDay(
+                      label: row['label']?.toString() ?? '',
+                      detail: row['detail']?.toString() ?? '',
+                    ),
+              ]
+            : _missed;
+        _loading = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _loading = false);
+    }
+  }
+
+  int get _doneCount => _days.where((d) => d.mark == DayMark.done).length;
+
+  int get _scheduledPastCount => _days
+      .where((d) => d.mark == DayMark.done || d.mark == DayMark.missed)
+      .length;
+
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final today = dateOnly(DateTime.now());
-    final useHistory = days == null;
-    final patientId = patientUserId;
-    final AsyncValue<Map<DateTime, DayAdherence>> historyAsync = !useHistory
-        ? const AsyncData(<DateTime, DayAdherence>{})
-        : patientId == null
-        ? ref.watch(medicationHistoryProvider)
-        : ref.watch(patientHistoryProvider(patientId));
-    final history = historyAsync.valueOrNull ?? const {};
-
-    final shownMonth = month ?? today.month;
-    final shownDays = days ?? _daysFrom(today, history);
-    final blanks =
-        leadingBlanks ?? DateTime(today.year, today.month).weekday - 1;
-    final shownMissed = missed ?? _missedFrom(today, history);
-
-    final doneCount = shownDays.where((d) => d.mark == DayMark.done).length;
-    final recordedCount = shownDays
-        .where((d) => d.mark == DayMark.done || d.mark == DayMark.missed)
-        .length;
-    final summary = historyAsync.isLoading
-        ? '불러오는 중이에요'
-        : recordedCount == 0
-        ? '아직 쌓인 기록이 없어요'
-        : '$recordedCount일 중 $doneCount일 다 드셨어요';
-
-    // 앞 빈 칸까지 합쳐 7개씩 끊는다.
+  Widget build(BuildContext context) {
     final cells = <CalendarDay?>[
-      for (int i = 0; i < blanks; i++) null,
-      ...shownDays,
+      for (int i = 0; i < _leadingBlanks; i++) null,
+      ..._days,
     ];
     final rowCount = (cells.length / 7).ceil();
+    final summary = !_hasSchedules && _scheduledPastCount == 0
+        ? '이달 복용 칸이 아직 없어요'
+        : '$_scheduledPastCount일 중 $_doneCount일 다 드셨어요';
 
     return Scaffold(
       backgroundColor: AppColors.bg,
       body: Column(
         children: [
-          SeniorBackHeader(title: '$shownMonth월 달력'),
+          SeniorBackHeader(title: '$_month월 달력'),
           Expanded(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.fromLTRB(20, 16, 20, 28),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  SeniorCard(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 20,
-                      vertical: 18,
+            child: _loading
+                ? const Center(
+                    child: SizedBox(
+                      width: 44,
+                      height: 44,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 4,
+                        color: AppColors.point,
+                      ),
                     ),
+                  )
+                : SingleChildScrollView(
+                    padding: const EdgeInsets.fromLTRB(20, 16, 20, 28),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        LabelValueRow(
-                          label: Text(
-                            '$shownMonth월',
-                            style: AppText.cardTitle(size: 21),
+                        SeniorCard(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 20,
+                            vertical: 18,
                           ),
-                          value: Text(
-                            summary,
-                            style: AppText.label(
-                              size: 17.5,
-                              color: AppColors.textTertiary,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(height: 14),
-                        Row(
-                          children: [
-                            for (final weekday in _weekdays)
-                              Expanded(
-                                child: Text(
-                                  weekday,
-                                  textAlign: TextAlign.center,
-                                  style: AppText.cardTitle(
-                                    size: 16,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              LabelValueRow(
+                                label: Text(
+                                  '$_month월',
+                                  style: AppText.cardTitle(size: 21),
+                                ),
+                                value: Text(
+                                  summary,
+                                  style: AppText.label(
+                                    size: 17.5,
                                     color: AppColors.textTertiary,
                                   ),
                                 ),
                               ),
-                          ],
-                        ),
-                        const SizedBox(height: 8),
-                        for (int row = 0; row < rowCount; row++) ...[
-                          if (row > 0) const SizedBox(height: 6),
-                          // 글자가 커지면 칸도 같이 커져야 한다. 높이를 박지
-                          // 않고 가장 큰 칸에 줄을 맞춘다.
-                          IntrinsicHeight(
-                            child: Row(
-                              crossAxisAlignment: CrossAxisAlignment.stretch,
-                              children: [
-                                for (int col = 0; col < 7; col++) ...[
-                                  if (col > 0) const SizedBox(width: 6),
-                                  Expanded(
-                                    child: row * 7 + col < cells.length &&
-                                            cells[row * 7 + col] != null
-                                        ? _DayCell(cells[row * 7 + col]!)
-                                        : const SizedBox.shrink(),
-                                  ),
+                              const SizedBox(height: 14),
+                              Row(
+                                children: [
+                                  for (final weekday in _weekdays)
+                                    Expanded(
+                                      child: Text(
+                                        weekday,
+                                        textAlign: TextAlign.center,
+                                        style: AppText.cardTitle(
+                                          size: 16,
+                                          color: AppColors.textTertiary,
+                                        ),
+                                      ),
+                                    ),
                                 ],
+                              ),
+                              const SizedBox(height: 8),
+                              for (int row = 0; row < rowCount; row++) ...[
+                                if (row > 0) const SizedBox(height: 6),
+                                IntrinsicHeight(
+                                  child: Row(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.stretch,
+                                    children: [
+                                      for (int col = 0; col < 7; col++) ...[
+                                        if (col > 0) const SizedBox(width: 6),
+                                        Expanded(
+                                          child:
+                                              row * 7 + col < cells.length &&
+                                                  cells[row * 7 + col] != null
+                                              ? _DayCell(cells[row * 7 + col]!)
+                                              : const SizedBox.shrink(),
+                                        ),
+                                      ],
+                                    ],
+                                  ),
+                                ),
                               ],
-                            ),
+                              const SizedBox(height: 16),
+                              const _Legend(),
+                            ],
                           ),
+                        ),
+                        if (_missed.isNotEmpty) ...[
+                          const SizedBox(height: 12),
+                          _MissedCard(missed: _missed),
                         ],
                         const SizedBox(height: 16),
-                        const _Legend(),
+                        SeniorButton(
+                          label: '복약 기록으로 돌아가기',
+                          kind: SeniorButtonKind.secondary,
+                          minHeight: 62,
+                          fontSize: 20,
+                          onPressed: () => Navigator.of(context).maybePop(),
+                        ),
                       ],
                     ),
                   ),
-                  if (shownMissed.isNotEmpty) ...[
-                    const SizedBox(height: 12),
-                    _MissedCard(missed: shownMissed),
-                  ],
-                  const SizedBox(height: 16),
-                  SeniorButton(
-                    label: '복약 기록으로 돌아가기',
-                    kind: SeniorButtonKind.secondary,
-                    minHeight: 62,
-                    fontSize: 20,
-                    onPressed: () => Navigator.of(context).maybePop(),
-                  ),
-                ],
-              ),
-            ),
           ),
         ],
       ),
@@ -311,15 +355,19 @@ class _DayCell extends StatelessWidget {
             children: [
               Text(
                 '${day.day}',
-                style: AppText.cardTitle(size: 18, color: ink)
-                    .copyWith(height: 1),
+                style: AppText.cardTitle(
+                  size: 18,
+                  color: ink,
+                ).copyWith(height: 1),
               ),
               const SizedBox(height: 2),
               Text(
                 mark,
                 textAlign: TextAlign.center,
-                style: AppText.cardTitle(size: 15, color: ink)
-                    .copyWith(height: 1),
+                style: AppText.cardTitle(
+                  size: 15,
+                  color: ink,
+                ).copyWith(height: 1),
               ),
             ],
           ),
@@ -338,11 +386,7 @@ class _Legend extends StatelessWidget {
       spacing: 14,
       runSpacing: 10,
       children: [
-        _LegendItem(
-          color: AppColors.pointTint,
-          border: null,
-          label: '다 드신 날',
-        ),
+        _LegendItem(color: AppColors.pointTint, border: null, label: '다 드신 날'),
         _LegendItem(
           color: AppColors.dangerBg,
           border: Border.all(color: AppColors.danger, width: 2),
@@ -401,10 +445,7 @@ class _MissedCard extends StatelessWidget {
 
   /// 빠뜨린 때가 겹치면 그 사실을 짚어 준다.
   String get _hint {
-    final slots = missed
-        .map((m) => m.detail.split(' ').first)
-        .toSet()
-        .toList();
+    final slots = missed.map((m) => m.detail.split(' ').first).toSet().toList();
     if (missed.length < 2) {
       return '알림 소리를 더 크게 해 둘까요?';
     }

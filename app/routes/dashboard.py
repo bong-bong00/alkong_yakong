@@ -3,7 +3,7 @@ from typing import Optional
 from fastapi import APIRouter, HTTPException, Query
 
 from app.models.response_schemas import DashboardResponse
-from app.services.dashboard_service import get_dashboard
+from app.services.dashboard_service import get_dashboard, get_medication_calendar
 from app.services.pharmacist.retrieve import search_official_medicine_candidates
 from app.services.today_medication_service import get_today_medicines
 
@@ -26,6 +26,16 @@ def user_today_medicines(
 ):
     """오늘 홈에 보여줄 복약 차(아침·점심·저녁). 전체 목록은 GET /users/{id}/medicines."""
     return get_today_medicines(user_id, date)
+
+
+@router.get("/users/{user_id}/medication-calendar")
+def user_medication_calendar(
+    user_id: str,
+    year: Optional[int] = Query(default=None),
+    month: Optional[int] = Query(default=None),
+):
+    """기록 달력. 실제 medication_schedules만 사용한다."""
+    return get_medication_calendar(user_id, year, month)
 
 
 @router.get("/medicines/lookup")

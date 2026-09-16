@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_tabler_icons/flutter_tabler_icons.dart';
@@ -14,24 +16,22 @@ import '../../../../core/widgets/senior_feedback.dart';
 import '../../../../core/widgets/senior_header.dart';
 import '../../../medication/application/medication_controller.dart';
 
-/// 위험도 3단. **등급 숫자나 점수는 노출하지 않는다.**
-enum DrugRisk {
-  /// 위험 — 3px 위험색 테두리 카드.
-  danger,
-
-  /// 주의 — 테두리 + 본문 경고문.
-  caution,
-
-  /// 괜찮아요 — 안전 카드에 포함.
-  safe,
-}
+const _pairTypes = {'병용금기', '중복성분', '효능군중복'};
 
 /// 4f — 약 함께먹기 주의.
 ///
-/// "DUR 분석"이라는 말을 쓰지 않는다. 어떤 약이 어떤 약과 부딪히는지,
-/// 그래서 누구에게 물어봐야 하는지만 말한다.
+/// 약끼리 부딪히는 빨간 카드만 보여 준다. DUR 검사표는 쓰지 않는다.
 class DurAnalysisScreen extends ConsumerStatefulWidget {
-  const DurAnalysisScreen({super.key});
+  final VoidCallback? onGoHome;
+  final VoidCallback? onOpenScheduleDays;
+  final Map<String, dynamic>? initialResult;
+
+  const DurAnalysisScreen({
+    super.key,
+    this.onGoHome,
+    this.onOpenScheduleDays,
+    this.initialResult,
+  });
 
   @override
   ConsumerState<DurAnalysisScreen> createState() => _DurAnalysisScreenState();
@@ -39,55 +39,47 @@ class DurAnalysisScreen extends ConsumerStatefulWidget {
 
 class _DurAnalysisScreenState extends ConsumerState<DurAnalysisScreen> {
   final ApiClient _apiClient = ApiClient();
-  String _userName = '체험환자';
   String _guardianTitle = '보호자 가족 님';
 
   bool _loading = true;
   bool _failed = false;
-  bool _hasRisk = false;
   bool _incomplete = false;
   String _assessmentStatus = 'INCOMPLETE';
-  String _message = '';
   List<Map<String, dynamic>> _matches = const [];
-  Map<String, Map<String, dynamic>> _byType = const {};
-  List<String> _medicineNames = const [];
   Set<String> _incompleteTypes = const {};
-
-  static const _displayTypes = <String>[
-    '병용금기',
-    '연령금기',
-    '임부금기',
-    '효능군중복',
-    '중복성분',
-  ];
-
-  static String _typeLabel(String type) {
-    return switch (type) {
-      '중복성분' => '같은 성분 중복',
-      _ => type,
-    };
-  }
 
   @override
   void initState() {
     super.initState();
     _loadNames();
-    _analyze();
+    final initialResult = widget.initialResult;
+    if (initialResult == null) {
+      _loadLatestOrAnalyze();
+    } else {
+      _applyResponse(initialResult, notify: false);
+    }
+  }
+
+  Future<void> _loadLatestOrAnalyze() async {
+    final userId = Uri.encodeComponent(MvpSession.userId.trim());
+    try {
+      final response = await _apiClient.get('/api/v1/users/$userId/dur/latest');
+      if (!mounted) return;
+      if (response is Map) {
+        _applyResponse(Map<String, dynamic>.from(response));
+        unawaited(ref.read(medicationProvider.notifier).refreshFromServer());
+        return;
+      }
+    } catch (_) {}
+    await _analyze();
   }
 
   Future<void> _loadNames() async {
     final today = ref.read(medicationProvider);
-    final fromToday =
-        '${today.guardianRelation} ${today.guardianName} 님'.trim();
+    final fromToday = '${today.guardianRelation} ${today.guardianName} 님'
+        .trim();
     final userId = Uri.encodeComponent(MvpSession.userId);
-    var userName = _userName;
     var guardianTitle = fromToday.isEmpty ? _guardianTitle : fromToday;
-    try {
-      final user = await _apiClient.get('/api/v1/users/$userId');
-      if (user is Map && (user['name']?.toString().trim().isNotEmpty ?? false)) {
-        userName = user['name'].toString().trim();
-      }
-    } catch (_) {}
     try {
       final guardians = await _apiClient.get('/api/v1/guardians/users/$userId');
       if (guardians is List && guardians.isNotEmpty && guardians.first is Map) {
@@ -100,10 +92,41 @@ class _DurAnalysisScreenState extends ConsumerState<DurAnalysisScreen> {
       }
     } catch (_) {}
     if (!mounted) return;
-    setState(() {
-      _userName = userName;
-      _guardianTitle = guardianTitle;
-    });
+    setState(() => _guardianTitle = guardianTitle);
+  }
+
+  void _applyResponse(Map<String, dynamic> response, {bool notify = true}) {
+    final matches = response['matches'];
+    final parsedMatches = matches is List
+        ? matches
+              .whereType<Map>()
+              .map((m) => Map<String, dynamic>.from(m))
+              .toList()
+        : <Map<String, dynamic>>[];
+    final incompleteTypesRaw = response['incomplete_types'];
+    final incompleteTypes = incompleteTypesRaw is List
+        ? incompleteTypesRaw.map((e) => e.toString()).toSet()
+        : <String>{};
+    final incomplete = response['incomplete'] == true;
+
+    void assign() {
+      _matches = parsedMatches;
+      _incomplete = incomplete;
+      _assessmentStatus =
+          response['assessment_status']?.toString() ??
+          (parsedMatches.isNotEmpty
+              ? 'RISK_FOUND'
+              : (incomplete ? 'INCOMPLETE' : 'SAFE'));
+      _incompleteTypes = incompleteTypes;
+      _loading = false;
+      _failed = false;
+    }
+
+    if (notify) {
+      setState(assign);
+    } else {
+      assign();
+    }
   }
 
   Future<void> _analyze() async {
@@ -131,52 +154,8 @@ class _DurAnalysisScreenState extends ConsumerState<DurAnalysisScreen> {
         });
         return;
       }
-      final matches = response['matches'];
-      final byTypeRaw = response['by_type'];
-      final byType = <String, Map<String, dynamic>>{};
-      if (byTypeRaw is Map) {
-        byTypeRaw.forEach((key, value) {
-          if (value is Map) {
-            byType[key.toString()] = Map<String, dynamic>.from(value);
-          }
-        });
-      }
-      final parsedMatches = matches is List
-          ? matches
-                .whereType<Map>()
-                .map((m) => Map<String, dynamic>.from(m))
-                .toList()
-          : <Map<String, dynamic>>[];
-      final namesRaw = response['medicine_names'];
-      final medicineNames = namesRaw is List
-          ? namesRaw
-                .map((e) => e.toString())
-                .where((e) => e.isNotEmpty)
-                .toList()
-          : <String>[];
-      final incompleteTypesRaw = response['incomplete_types'];
-      final incompleteTypes = incompleteTypesRaw is List
-          ? incompleteTypesRaw.map((e) => e.toString()).toSet()
-          : <String>{};
-      setState(() {
-        _matches = parsedMatches;
-        _byType = byType;
-        _medicineNames = medicineNames;
-        _hasRisk = response['has_risk'] == true || parsedMatches.isNotEmpty;
-        _incomplete = response['incomplete'] == true;
-        _assessmentStatus =
-            response['assessment_status']?.toString() ??
-            (_hasRisk ? 'RISK_FOUND' : (_incomplete ? 'INCOMPLETE' : 'SAFE'));
-        _incompleteTypes = incompleteTypes;
-        _message =
-            response['message']?.toString() ??
-            (_hasRisk
-                ? '함께 먹을 때 주의가 있어요.'
-                : (_incomplete
-                      ? '함께먹기 검사를 끝까지 하지 못했어요.'
-                      : '지금 등록된 약끼리, 특별한 함께먹기 주의는 없어요.'));
-        _loading = false;
-      });
+      _applyResponse(Map<String, dynamic>.from(response));
+      unawaited(ref.read(medicationProvider.notifier).refreshFromServer());
     } catch (_) {
       if (!mounted) return;
       setState(() {
@@ -186,132 +165,25 @@ class _DurAnalysisScreenState extends ConsumerState<DurAnalysisScreen> {
     }
   }
 
-  int _countOf(String type) {
-    final bucket = _byType[type];
-    final count = bucket?['count'];
-    if (count is num) return count.toInt();
-    return _matches.where((m) => (m['type']?.toString() ?? '') == type).length;
-  }
-
-  bool _isTypeIncomplete(String type) {
-    return _incompleteTypes.contains(type);
-  }
-
-  static DrugRisk _riskOf(Map<String, dynamic> match) {
-    final type = (match['type'] ?? match['taboo_type'] ?? '').toString();
-    return switch (type) {
-      '병용금기' || '중복성분' || '효능군중복' => DrugRisk.danger,
-      '연령금기' || '임부금기' || '용량주의' || '투여기간주의' => DrugRisk.caution,
-      _ => DrugRisk.safe,
-    };
-  }
-
-  String _guideMessage(Map<String, dynamic> match, {required bool danger}) {
-    final names = _pairNames(match);
-    final cause = _durCause(match);
-    final closing = danger ? '위험하답니다!' : '조심해야 한답니다!';
-    final clause = cause.isEmpty ? closing : '$cause해서 $closing';
-    final String body;
-    if (names.isEmpty) {
-      body = clause;
-    } else if (names.length == 1) {
-      body = '${names[0]}${_topicJosa(names[0])} $clause';
-    } else {
-      body =
-          '${names[0]}${_andJosa(names[0])}${names[1]}${_topicJosa(names[1])} $clause';
-    }
-    return '$_userName님!\n$body';
-  }
-
-  static List<String> _pairNames(Map<String, dynamic> match) {
-    List<String> namesOf(dynamic raw) {
-      if (raw is List) {
-        return raw
-            .map((e) => _shortDrugName(e.toString()))
-            .where((e) => e.isNotEmpty)
-            .toList();
-      }
-      return const [];
-    }
-
-    final firstNames = namesOf(match['medicine_names_a']);
-    final secondNames = namesOf(match['medicine_names_b']);
-    if (firstNames.isNotEmpty) {
-      final first = firstNames.join(', ');
-      if (secondNames.isEmpty || first == secondNames.join(', ')) {
-        return [first];
-      }
-      return [first, secondNames.join(', ')];
-    }
-    final first = _shortDrugName((match['ingredient_a'] ?? '').toString());
-    final second = _shortDrugName((match['ingredient_b'] ?? '').toString());
-    if (first.isEmpty) return const [];
-    if (second.isEmpty || first == second) return [first];
-    return [first, second];
-  }
-
-  static String _durCause(Map<String, dynamic> match) {
-    var reason = (match['reason'] ?? '').toString().trim();
-    final sep = reason.indexOf(' — ');
-    if (sep >= 0) {
-      reason = reason.substring(sep + 3).trim();
-    }
-    reason = reason.replaceAll(RegExp(r'[.\s]+$'), '');
-    return reason;
-  }
-
-  static String _shortDrugName(String name) {
-    final trimmed = name.trim();
-    final index = trimmed.indexOf('(');
-    if (index > 0) return trimmed.substring(0, index).trim();
-    return trimmed;
-  }
-
-  static String _andJosa(String word) {
-    return _hasBatchim(word) ? '과' : '와';
-  }
-
-  static String _topicJosa(String word) {
-    return _hasBatchim(word) ? '은' : '는';
-  }
-
-  static bool _hasBatchim(String word) {
-    if (word.isEmpty) return true;
-    final code = word.codeUnitAt(word.length - 1);
-    if (code < 0xAC00 || code > 0xD7A3) return true;
-    return (code - 0xAC00) % 28 != 0;
-  }
-
-  /// 등록된 약 이름들 — 위험 목록에 없으면 "괜찮아요"에 들어간다.
-  List<String> get _safeMedicines {
-    final risky = <String>{};
-    for (final match in _matches) {
-      for (final key in ['medicine_names_a', 'medicine_names_b']) {
-        final raw = match[key];
-        if (raw is List) {
-          for (final name in raw) {
-            final text = name.toString();
-            if (text.isNotEmpty) risky.add(text);
-          }
-        }
-      }
-      final reason = match['reason']?.toString() ?? '';
-      for (final name in _medicineNames) {
-        if (name.isNotEmpty && reason.contains(name)) {
-          risky.add(name);
-        }
-      }
-    }
-    final sourceNames = _medicineNames.isNotEmpty
-        ? _medicineNames
-        : [
-            for (final item in MvpSession.latestOcrItems)
-              if (item['drug_name'] != null) item['drug_name'].toString(),
-          ];
+  List<Map<String, dynamic>> get _pairMatches {
     return [
-      for (final name in sourceNames)
-        if (!risky.contains(name)) name,
+      for (final match in _matches)
+        if (_pairTypes.contains((match['type'] ?? '').toString())) match,
     ];
+  }
+
+  String get _footerNote {
+    final hasAge = _matches.any((m) => (m['type'] ?? '') == '연령금기');
+    final hasPregnancy = _matches.any((m) => (m['type'] ?? '') == '임부금기');
+    if (hasAge || hasPregnancy) {
+      return '나이·임신 관련 주의는 따로 확인해 주세요.';
+    }
+    if (_incomplete ||
+        _incompleteTypes.contains('연령금기') ||
+        _incompleteTypes.contains('임부금기')) {
+      return '나이·임신 항목은 이번엔 못 봤어요.';
+    }
+    return '';
   }
 
   @override
@@ -362,7 +234,7 @@ class _DurAnalysisScreenState extends ConsumerState<DurAnalysisScreen> {
           '잠시 뒤 아래 단추를 눌러주세요',
         ],
         actionLabel: '다시 살펴보기',
-        onAction: _analyze,
+        onAction: _loadLatestOrAnalyze,
         stillWorksTitle: '약 알림은 그대로 와요',
         stillWorksBody: '인터넷이 끊겨도 복약 알림에는 영향이 없어요.',
         helperText: '그래도 안 되면\n$_guardianTitle에게 도움 청하기',
@@ -370,9 +242,8 @@ class _DurAnalysisScreenState extends ConsumerState<DurAnalysisScreen> {
       );
     }
 
-    final riskFound = _assessmentStatus == 'RISK_FOUND';
-    final dangers = _matches.where((m) => _riskOf(m) == DrugRisk.danger);
-    final cautions = _matches.where((m) => _riskOf(m) == DrugRisk.caution);
+    final pairs = _pairMatches;
+    final footer = _footerNote;
 
     return SingleChildScrollView(
       padding: const EdgeInsets.fromLTRB(20, 16, 20, 28),
@@ -382,173 +253,27 @@ class _DurAnalysisScreenState extends ConsumerState<DurAnalysisScreen> {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
             decoration: BoxDecoration(
-              color: riskFound
+              color: pairs.isNotEmpty
                   ? AppColors.dangerBorder.withValues(alpha: 0.25)
-                  : (_incomplete
-                        ? const Color(0xFFFFF3E0)
-                        : AppColors.pointTint),
+                  : AppColors.pointTint,
               borderRadius: BorderRadius.circular(20),
             ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  riskFound ? '주의가 있어요' : (_incomplete ? '검사가 덜 됐어요' : '주의 없음'),
-                  style: AppText.cardTitle(
-                    color: riskFound
-                        ? AppColors.danger
-                        : (_incomplete ? AppColors.danger : AppColors.point),
-                  ),
-                ),
-                const SizedBox(height: 6),
-                Text(_message, style: AppText.body()),
-              ],
+            child: Text(
+              pairs.isNotEmpty ? '같이 먹으면 안 되는 약이 있어요' : '지금 같이 보는 약끼리 부딪히는 것은 없어요',
+              style: AppText.cardTitle(
+                color: pairs.isNotEmpty ? AppColors.danger : AppColors.point,
+              ),
             ),
           ),
           const SizedBox(height: 14),
-          for (final type in _displayTypes) ...[
-            SeniorCard(
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      _typeLabel(type),
-                      style: AppText.cardTitle(size: 19),
-                    ),
-                  ),
-                  Text(
-                    _countOf(type) > 0
-                        ? '주의 ${_countOf(type)}건'
-                        : (_isTypeIncomplete(type) ? '확인 못함' : '주의 없음'),
-                    style: AppText.label(
-                      size: 17,
-                      color: _countOf(type) > 0 || _isTypeIncomplete(type)
-                          ? AppColors.danger
-                          : AppColors.textSecondary,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 10),
-          ],
-          if (dangers.isNotEmpty || cautions.isNotEmpty) ...[
-            const SizedBox(height: 6),
-            Text('자세히', style: AppText.cardTitle(size: 18)),
-            const SizedBox(height: 10),
-          ],
-          for (final match in dangers) ...[
-            _RiskCard(
-              risk: DrugRisk.danger,
-              headline: _guideMessage(match, danger: true),
-              onCall: _callGuardian,
-            ),
+          for (final match in pairs) ...[
+            _ConflictCard(match: match),
             const SizedBox(height: 12),
           ],
-          for (final match in cautions) ...[
-            _RiskCard(
-              risk: DrugRisk.caution,
-              headline: _guideMessage(match, danger: false),
-              onCall: _callGuardian,
-            ),
+          if (footer.isNotEmpty) ...[
+            Text(footer, style: AppText.caption()),
             const SizedBox(height: 12),
           ],
-          if (dangers.isEmpty && cautions.isEmpty && !_incomplete) ...[
-            SeniorCard(
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('같이 드셔도 괜찮아요', style: AppText.emphasis()),
-                  const SizedBox(height: 8),
-                  Text(
-                    '등록하신 약끼리 부딪히는 것이 없었어요. '
-                    '지금처럼 드시면 돼요.',
-                    style: AppText.body(),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 12),
-          ],
-
-          if (_incomplete) ...[
-            SeniorCard(
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
-              borderColor: AppColors.dangerBorder,
-              borderWidth: 2,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('확인하지 못한 항목이 있어요', style: AppText.cardTitle(size: 19)),
-                  const SizedBox(height: 8),
-                  Text(
-                    '이 화면만 보고 약을 함께 드셔도 안전하다고 판단하지 마세요. 잠시 뒤 다시 확인하거나 약사에게 물어보세요.',
-                    style: AppText.body(size: 17),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 12),
-          ],
-
-          if (_safeMedicines.isNotEmpty && !_incomplete) ...[
-            SeniorCard(
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  IconTitle(
-                    icon: TablerIcons.circle_check_filled,
-                    color: AppColors.point,
-                    text: '나머지 약은 괜찮아요',
-                    style: AppText.cardTitle(size: 19),
-                  ),
-                  const SizedBox(height: 10),
-                  for (int i = 0; i < _safeMedicines.length; i++) ...[
-                    if (i > 0) ...[
-                      const SizedBox(height: 10),
-                      const SeniorDivider(),
-                      const SizedBox(height: 10),
-                    ],
-                    Row(
-                      children: [
-                        Container(
-                          width: 34,
-                          height: 34,
-                          alignment: Alignment.center,
-                          decoration: const BoxDecoration(
-                            color: AppColors.pointTint,
-                            shape: BoxShape.circle,
-                          ),
-                          child: Text(
-                            '✓',
-                            style: AppText.label(
-                              size: 18,
-                              color: AppColors.point,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Text(
-                            _safeMedicines[i],
-                            style: AppText.label(
-                              size: 19,
-                              color: AppColors.textPrimary,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ],
-              ),
-            ),
-            const SizedBox(height: 12),
-          ],
-
           SeniorCard(
             padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
             onTap: () => context.push('/drug-explain'),
@@ -572,8 +297,16 @@ class _DurAnalysisScreenState extends ConsumerState<DurAnalysisScreen> {
               ],
             ),
           ),
+          if (pairs.isNotEmpty || _assessmentStatus == 'RISK_FOUND') ...[
+            const SizedBox(height: 16),
+            SeniorButton(
+              label: '확인했어요',
+              minHeight: 64,
+              fontSize: 22,
+              onPressed: _afterConfirm,
+            ),
+          ],
           const SizedBox(height: 16),
-
           SeniorButton(
             label: '$_guardianTitle에게 알리기',
             kind: SeniorButtonKind.outline,
@@ -589,52 +322,169 @@ class _DurAnalysisScreenState extends ConsumerState<DurAnalysisScreen> {
   void _callGuardian() {
     showSeniorSnackbar(context, '$_guardianTitle에게 알려드렸어요');
   }
+
+  Future<void> _afterConfirm() async {
+    final onOpenScheduleDays = widget.onOpenScheduleDays;
+    if (onOpenScheduleDays != null) {
+      onOpenScheduleDays();
+      return;
+    }
+    if (widget.initialResult?['open_schedule_days'] == true) {
+      context.push(
+        '/schedule-days',
+        extra: MvpSession.latestPrescriptionId,
+      );
+      return;
+    }
+    final go = await showSeniorYesNoDialog(
+      context: context,
+      title: '이제 홈으로 갈까요?',
+      message: '같이 드실 때 조심할 약을 보셨어요.',
+    );
+    if (!mounted || !go) return;
+    final onGoHome = widget.onGoHome;
+    if (onGoHome != null) {
+      onGoHome();
+      return;
+    }
+    context.go('/');
+  }
 }
 
-class _RiskCard extends StatelessWidget {
-  final DrugRisk risk;
-  final String headline;
-  final VoidCallback onCall;
+class _ConflictCard extends StatelessWidget {
+  final Map<String, dynamic> match;
 
-  const _RiskCard({
-    required this.risk,
-    required this.headline,
-    required this.onCall,
-  });
+  const _ConflictCard({required this.match});
 
   @override
   Widget build(BuildContext context) {
-    final isDanger = risk == DrugRisk.danger;
+    final medicines = _pairMedicines(match);
+    final why = _whyEasy(match);
+    final source = _sourceLabel(match);
+
     return SeniorCard(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
-      borderColor: isDanger ? AppColors.danger : AppColors.dangerBorder,
-      borderWidth: isDanger ? 3 : 2,
+      borderColor: AppColors.danger,
+      borderWidth: 3,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Align(
+          const Align(
             alignment: Alignment.centerLeft,
             child: SeniorBadge(
-              label: isDanger ? '꼭 확인하세요' : '조심하세요',
-              background: isDanger ? AppColors.danger : AppColors.dangerBorder,
-              foreground: isDanger ? Colors.white : AppColors.danger,
+              label: '꼭 확인하세요',
+              background: AppColors.danger,
+              foreground: Colors.white,
               radius: 10,
               fontSize: 17,
-              padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 6),
+              padding: EdgeInsets.symmetric(horizontal: 13, vertical: 6),
             ),
           ),
           const SizedBox(height: 12),
-          Text(headline, style: AppText.emphasis()),
-          const SizedBox(height: 12),
-          SeniorButton(
-            label: '가족에게 알리기',
-            kind: SeniorButtonKind.danger,
-            minHeight: 66,
-            fontSize: 22,
-            onPressed: onCall,
-          ),
+          for (int i = 0; i < medicines.length; i++) ...[
+            if (i > 0) const SizedBox(height: 12),
+            Text(
+              medicines[i].spokenLine,
+              style: AppText.emphasis(size: 24),
+            ),
+          ],
+          if (why.isNotEmpty) ...[
+            const SizedBox(height: 14),
+            Text(why, style: AppText.body(color: AppColors.textPrimary)),
+          ],
+          if (source.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            Text(source, style: AppText.caption()),
+          ],
         ],
       ),
     );
+  }
+
+  static List<_NamedMedicine> _pairMedicines(Map<String, dynamic> match) {
+    final namesA = _namesOf(match['medicine_names_a']);
+    final namesB = _namesOf(match['medicine_names_b']);
+    final lineA = (match['easy_line_a'] ?? '').toString().trim();
+    final lineB = (match['easy_line_b'] ?? '').toString().trim();
+    final uniqueA = namesA.isEmpty ? '' : namesA.first;
+    var uniqueB = namesB.isEmpty ? '' : namesB.first;
+    if (uniqueB.isEmpty || uniqueB == uniqueA) {
+      final all = [...namesA, ...namesB].where((n) => n.isNotEmpty).toList();
+      final unique = <String>[];
+      for (final name in all) {
+        if (!unique.contains(name)) unique.add(name);
+      }
+      if (unique.length >= 2) {
+        return [
+          _NamedMedicine(unique[0], lineA),
+          _NamedMedicine(unique[1], lineB),
+        ];
+      }
+      if (unique.length == 1) {
+        return [_NamedMedicine(unique[0], lineA)];
+      }
+      return const [];
+    }
+    return [
+      _NamedMedicine(uniqueA, lineA),
+      _NamedMedicine(uniqueB, lineB),
+    ];
+  }
+
+  static List<String> _namesOf(dynamic raw) {
+    if (raw is! List) return const [];
+    return [
+      for (final value in raw)
+        if (_shortDrugName(value.toString()).isNotEmpty)
+          _shortDrugName(value.toString()),
+    ];
+  }
+
+  static String _shortDrugName(String name) {
+    final trimmed = name.trim();
+    final index = trimmed.indexOf('(');
+    if (index > 0) return trimmed.substring(0, index).trim();
+    return trimmed;
+  }
+
+  static String _whyEasy(Map<String, dynamic> match) {
+    final why = (match['why_easy'] ?? '').toString().trim();
+    if (why.isNotEmpty) return why;
+    final count = _pairMedicines(match).length;
+    final opener = switch (count) {
+      3 => '세 약을 같이 드시면, ',
+      4 => '네 약을 같이 드시면, ',
+      _ => '두 약을 같이 드시면, ',
+    };
+    final body = switch ((match['type'] ?? '').toString()) {
+      '중복성분' => '같은 성분이 들어 있어서, 양이 겹칩니다.',
+      '효능군중복' => '비슷한 일을 해서, 효과가 겹칩니다.',
+      _ => '몸에 부담이 겹칠 수 있어요. 약국이나 병원에 한 번 확인해 주세요.',
+    };
+    return '$opener$body';
+  }
+
+  static String _sourceLabel(Map<String, dynamic> match) {
+    final label = (match['source_label'] ?? '').toString().trim();
+    if (label.isNotEmpty) return label;
+    return switch ((match['type'] ?? '').toString()) {
+      '병용금기' => '식약처 DUR 병용금기 참조',
+      '효능군중복' => '식약처 DUR 효능군중복 참조',
+      '중복성분' => '같은 성분 중복 참조',
+      _ => '식약처 DUR 참조',
+    };
+  }
+}
+
+class _NamedMedicine {
+  final String name;
+  final String easyLine;
+
+  const _NamedMedicine(this.name, this.easyLine);
+
+  String get spokenLine {
+    if (easyLine.contains('드시는 약이에요')) return easyLine;
+    if (easyLine.isEmpty) return name;
+    return '$name은 $easyLine';
   }
 }

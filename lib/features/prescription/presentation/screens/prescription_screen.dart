@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -54,15 +53,19 @@ class PrescriptionScreen extends ConsumerStatefulWidget {
   final String guardianTitle;
 
   /// 등록이 끝났을 때 부를 콜백.
-  final VoidCallback? onCompleted;
+  final ValueChanged<Map<String, dynamic>?>? onCompleted;
 
   /// 가족에게 부탁한 뒤 오늘 화면으로 돌아갈 때.
   final VoidCallback? onGoHome;
+
+  /// 약 있는 날 달력으로 갈 때. 쉬운 모드가 화면을 직접 바꿀 때 쓴다.
+  final VoidCallback? onOpenScheduleDays;
 
   const PrescriptionScreen({
     super.key,
     this.onCompleted,
     this.onGoHome,
+    this.onOpenScheduleDays,
     this.guardianTitle = '',
   });
 
@@ -110,6 +113,15 @@ class _PrescriptionScreenState extends ConsumerState<PrescriptionScreen> {
     }
     final status = item['match_status']?.toString().toUpperCase() ?? '';
     return status != 'UNMATCHED';
+  }
+
+  static bool _hasPairConflict(Map<String, dynamic>? durResult) {
+    const pairTypes = {'병용금기', '중복성분', '효능군중복'};
+    final matches = durResult?['matches'];
+    if (matches is! List) return false;
+    return matches.any(
+      (item) => item is Map && pairTypes.contains(item['type']?.toString()),
+    );
   }
 
   Future<void> _pick(ImageSource source) async {
@@ -199,7 +211,7 @@ class _PrescriptionScreenState extends ConsumerState<PrescriptionScreen> {
         ? 'mvp-user'
         : MvpSession.userId.trim();
     final confirmItems = editedItems
-        .where((item) => (item['medicine_code']?.toString() ?? '').isNotEmpty)
+        .where(_isOfficialMatchedItem)
         .map(
           (item) => <String, dynamic>{
             'medicine_code': item['medicine_code'],
@@ -229,16 +241,13 @@ class _PrescriptionScreenState extends ConsumerState<PrescriptionScreen> {
 
     if (confirmItems.isEmpty) {
       if (!mounted) return;
-      showSeniorSnackbar(
-        context,
-        '등록할 약을 찾지 못했어요. 다시 찍어 주세요.',
-        error: true,
-      );
+      showSeniorSnackbar(context, '등록할 약을 찾지 못했어요. 다시 찍어 주세요.', error: true);
       return;
     }
 
+    Map<String, dynamic>? durResult;
     try {
-      await _apiClient.post(
+      final response = await _apiClient.post(
         '/api/v1/prescriptions/confirm',
         body: {
           'user_id': userId,
@@ -249,30 +258,69 @@ class _PrescriptionScreenState extends ConsumerState<PrescriptionScreen> {
           'ocr_text': _result?['ocr_text'],
         },
       );
+      if (response is Map) {
+        final prescriptionId = response['prescription_id']?.toString().trim();
+        MvpSession.rememberPrescriptionSchedules(
+          prescriptionId: prescriptionId,
+          confirmResponse: response,
+          ocrItems: editedItems,
+        );
+        if (response['dur_result'] is Map) {
+          durResult = Map<String, dynamic>.from(response['dur_result'] as Map);
+        }
+      }
     } catch (error) {
       debugPrint('처방 확정 등록 실패: $error');
       if (!mounted) return;
-      showSeniorSnackbar(
-        context,
-        '약 등록에 실패했어요. 잠시 후 다시 시도해 주세요.',
-        error: true,
-      );
+      showSeniorSnackbar(context, '약 등록에 실패했어요. 잠시 후 다시 시도해 주세요.', error: true);
       return;
     }
 
     MvpSession.latestOcrItems = editedItems;
     MvpSession.latestOcrRegisteredAt = DateTime.now();
-    // 등록 성공 뒤 화면 이동을 목록 재조회가 막지 않게 백그라운드로 갱신한다.
-    unawaited(ref.read(medicationProvider.notifier).refreshFromServer());
-    unawaited(ref.read(userMedicinesProvider.notifier).refresh());
-
+    var refreshFailed = false;
+    try {
+      await Future.wait<void>([
+        ref.read(medicationProvider.notifier).refreshFromServer(),
+        ref.read(userMedicinesProvider.notifier).refresh(),
+      ]);
+    } catch (_) {
+      refreshFailed = true;
+    }
+    if (ref.read(userMedicinesProvider).hasError) {
+      refreshFailed = true;
+    }
     if (!mounted) return;
-    final onCompleted = widget.onCompleted;
-    if (onCompleted != null) {
-      onCompleted();
+    if (refreshFailed) {
+      showSeniorSnackbar(context, '약은 등록됐어요. 목록은 잠시 후 홈에서 다시 불러 주세요.');
+    }
+
+    void openScheduleDays() {
+      final onOpenScheduleDays = widget.onOpenScheduleDays;
+      if (onOpenScheduleDays != null) {
+        onOpenScheduleDays();
+        return;
+      }
+      context.push(
+        '/schedule-days',
+        extra: MvpSession.latestPrescriptionId,
+      );
+    }
+
+    if (!_hasPairConflict(durResult)) {
+      openScheduleDays();
       return;
     }
-    context.push('/dur-analysis');
+
+    final onCompleted = widget.onCompleted;
+    if (onCompleted != null) {
+      onCompleted(durResult);
+      return;
+    }
+    context.push(
+      '/dur-analysis',
+      extra: {...?durResult, 'open_schedule_days': true},
+    );
   }
 
   @override
@@ -301,10 +349,18 @@ class _PrescriptionScreenState extends ConsumerState<PrescriptionScreen> {
           onSaved: () {
             final onCompleted = widget.onCompleted;
             if (onCompleted != null) {
-              onCompleted();
+              onCompleted(null);
               return;
             }
-            context.push('/dur-analysis');
+            final onOpenScheduleDays = widget.onOpenScheduleDays;
+            if (onOpenScheduleDays != null) {
+              onOpenScheduleDays();
+              return;
+            }
+            context.push(
+              '/schedule-days',
+              extra: MvpSession.latestPrescriptionId,
+            );
           },
         );
       case PrescriptionStep.capture:
@@ -949,11 +1005,7 @@ class _ConfirmScreenState extends State<_ConfirmScreen> {
                 .toList()
           : <Map<String, dynamic>>[];
       if (hits.isEmpty) {
-        showSeniorSnackbar(
-          context,
-          '공식 의약품 목록에서 해당 이름을 찾지 못했어요.',
-          error: true,
-        );
+        showSeniorSnackbar(context, '공식 의약품 목록에서 해당 이름을 찾지 못했어요.', error: true);
         return;
       }
       final picked = await _pickOfficialMedicine(hits);

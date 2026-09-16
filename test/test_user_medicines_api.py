@@ -109,15 +109,49 @@ def test_interaction_summary_distinguishes_risk_incomplete_and_none():
             "risk_level": "HIGH",
             "matches": [
                 {
+                    "type": "병용금기",
+                    "official_reason": "심실부정맥 위험 증가",
                     "medicine_names_a": ["아디팜정(히드록시진염산염)"],
                     "medicine_names_b": ["코다론정"],
-                    "reason": "함께 먹으면 안 되는 조합이에요.",
+                    "reason": "아디팜정(히드록시진염산염) ↔ 코다론정 — 심실부정맥 위험 증가 가능",
                 }
             ],
         },
     )
     assert risk["interaction_status"] == "risk_found"
-    assert "안 되는" in risk["interaction_summary"]
+    assert "심실부정맥" not in risk["interaction_summary"]
+    assert "심장" in risk["interaction_summary"]
+    assert "같이 드시면" in risk["interaction_summary"]
+    assert "↔" in risk["interaction_pair_label"]
+    assert "아디팜" in risk["interaction_pair_label"]
+    assert "코다론" in risk["interaction_pair_label"]
+    assert risk["interaction_risk_factor"] == "심실부정맥 위험 증가"
+
+    other = _interaction_for_medicine(
+        {
+            "medicine_code": "200701021",
+            "product_name": "코다론정(아미오다론염산염)",
+            "ingredient": "아미오다론염산염",
+            "created_at": "2026-09-01",
+        },
+        {
+            "created_at": "2026-09-11",
+            "assessment_status": "RISK_FOUND",
+            "risk_level": "HIGH",
+            "matches": [
+                {
+                    "type": "병용금기",
+                    "official_reason": "심실부정맥 위험 증가",
+                    "medicine_names_a": ["아디팜정(히드록시진염산염)"],
+                    "medicine_names_b": ["코다론정"],
+                    "reason": "아디팜정(히드록시진염산염) ↔ 코다론정 — 심실부정맥 위험 증가 가능",
+                }
+            ],
+        },
+    )
+    assert other["interaction_status"] == "risk_found"
+    assert other["interaction_summary"] == risk["interaction_summary"]
+    assert other["interaction_risk_factor"] == "심실부정맥 위험 증가"
     assert risk["interaction_risk_level"] == "HIGH"
     assert risk["interaction_conflict_names"] == ["코다론정"]
 

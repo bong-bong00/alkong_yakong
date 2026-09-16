@@ -10,6 +10,7 @@ from fastapi import HTTPException
 
 from app.database import get_connection
 from app.services.drug_explain_service import reviewed_detail_payload
+from app.services.dur_service import pair_card_fields, person_cautions_for_medicine
 from app.services.today_medication_service import _visible_medicine_item
 
 
@@ -48,6 +49,66 @@ def _latest_interaction_result(conn, user_id: str) -> dict[str, Any] | None:
     return result
 
 
+def _short_drug_name(name: str) -> str:
+    text = str(name or "").strip()
+    index = text.find("(")
+    if index > 0:
+        return text[:index].strip()
+    return text
+
+
+def _medicine_in_pair_match(row: dict[str, Any], match: dict[str, Any]) -> bool:
+    code = str(row.get("medicine_code") or "").strip()
+    product = str(row.get("product_name") or row.get("display_name") or "").strip()
+    short = _short_drug_name(product)
+    ingredient = str(row.get("ingredient") or "").strip()
+    codes = [
+        str(value).strip()
+        for value in (
+            *(match.get("medicine_codes_a") or []),
+            *(match.get("medicine_codes_b") or []),
+        )
+        if str(value).strip()
+    ]
+    if code and code in codes:
+        return True
+    names = [
+        str(value).strip()
+        for value in (
+            *(match.get("medicine_names_a") or []),
+            *(match.get("medicine_names_b") or []),
+        )
+        if str(value).strip()
+    ]
+    if product and product in names:
+        return True
+    short_names = {_short_drug_name(name) for name in names}
+    if short and short in short_names:
+        return True
+    for value in (match.get("ingredient_a"), match.get("ingredient_b")):
+        other = str(value or "").strip()
+        if ingredient and other and (other in ingredient or ingredient in other):
+            return True
+    return False
+
+
+def _pair_risk_factor(match: dict[str, Any]) -> str:
+    return pair_card_fields(match).get("risk_factor") or ""
+
+
+def _is_pair_interaction(match: dict[str, Any]) -> bool:
+    risk = str(match.get("type") or "").strip()
+    if risk in {"병용금기", "중복성분", "효능군중복"}:
+        return True
+    if risk in {"연령금기", "임부금기"}:
+        return False
+    return bool(match.get("medicine_names_b") or match.get("ingredient_b"))
+
+
+def _easy_pair_summary(match: dict[str, Any]) -> str:
+    return pair_card_fields(match).get("why_easy") or ""
+
+
 def _interaction_for_medicine(
     row: dict[str, Any],
     latest: dict[str, Any] | None,
@@ -56,6 +117,8 @@ def _interaction_for_medicine(
         return {
             "interaction_status": "not_checked",
             "interaction_summary": "아직 함께먹기 검사를 하지 않았어요.",
+            "interaction_risk_factor": "",
+            "interaction_pair_label": "",
             "interaction_matches": [],
         }
     last_prescribed = str(
@@ -65,6 +128,8 @@ def _interaction_for_medicine(
         return {
             "interaction_status": "check_needed",
             "interaction_summary": "이 약을 등록한 뒤 함께먹기 검사가 필요해요.",
+            "interaction_risk_factor": "",
+            "interaction_pair_label": "",
             "interaction_matches": [],
         }
     assessment = str(latest.get("assessment_status") or "").upper()
@@ -80,45 +145,41 @@ def _interaction_for_medicine(
         return {
             "interaction_status": "check_needed",
             "interaction_summary": str(latest.get("description") or "함께먹기 검사를 끝내지 못했어요."),
+            "interaction_risk_factor": "",
+            "interaction_pair_label": "",
             "interaction_matches": [],
         }
 
     product = str(row.get("product_name") or "").strip()
-    ingredient = str(row.get("ingredient") or "").strip()
     relevant: list[dict[str, Any]] = []
     for raw in latest.get("matches") or []:
         if not isinstance(raw, dict):
             continue
-        names = [
-            *[str(value) for value in raw.get("medicine_names_a") or []],
-            *[str(value) for value in raw.get("medicine_names_b") or []],
-        ]
-        ingredients = [
-            str(raw.get("ingredient_a") or ""),
-            str(raw.get("ingredient_b") or ""),
-        ]
-        if (product and product in names) or any(
-            ingredient and value and (value in ingredient or ingredient in value)
-            for value in ingredients
-        ):
+        if _is_pair_interaction(raw) and _medicine_in_pair_match(row, raw):
             relevant.append(raw)
     if relevant:
         conflict_names: list[str] = []
+        this_short = _short_drug_name(product)
         for match in relevant:
             for value in [
                 *(match.get("medicine_names_a") or []),
                 *(match.get("medicine_names_b") or []),
             ]:
                 name = str(value or "").strip()
-                if name and name != product and name not in conflict_names:
+                if (
+                    name
+                    and _short_drug_name(name) != this_short
+                    and name not in conflict_names
+                ):
                     conflict_names.append(name)
+        fields = pair_card_fields(relevant[0])
         return {
             "interaction_status": "risk_found",
             "interaction_risk_level": str(latest.get("risk_level") or "UNKNOWN"),
             "interaction_conflict_names": conflict_names,
-            "interaction_summary": str(
-                relevant[0].get("reason") or "함께 먹을 때 주의가 필요해요."
-            ),
+            "interaction_summary": fields["why_easy"],
+            "interaction_risk_factor": fields["risk_factor"],
+            "interaction_pair_label": fields["pair_label"],
             "interaction_matches": relevant,
         }
     return {
@@ -126,6 +187,8 @@ def _interaction_for_medicine(
         "interaction_risk_level": str(latest.get("risk_level") or "LOW"),
         "interaction_conflict_names": [],
         "interaction_summary": "최근 검사에서 이 약과 관련된 함께먹기 주의를 찾지 못했어요.",
+        "interaction_risk_factor": "",
+        "interaction_pair_label": "",
         "interaction_matches": [],
     }
 
@@ -282,15 +345,24 @@ def get_user_medicine(user_id: str, medicine_code: str) -> dict[str, Any]:
         if not row:
             raise HTTPException(status_code=404, detail="해당 약을 찾을 수 없습니다.")
 
+        source_row = dict(row)
         medicine = _enrich_medicine_row(
-            dict(row),
+            source_row,
             guidance_cursor=conn,
             latest_interaction=_latest_interaction_result(conn, uid),
         )
         if medicine is None:
             raise HTTPException(status_code=404, detail="해당 약을 찾을 수 없습니다.")
 
-        detail = reviewed_detail_payload(conn.cursor(), dict(row))
+        person_cautions = person_cautions_for_medicine(
+            conn,
+            user_id=uid,
+            medicine=source_row,
+        )
+        medicine["key_caution"] = person_cautions[0] if person_cautions else None
+        medicine["key_cautions"] = person_cautions
+
+        detail = reviewed_detail_payload(conn.cursor(), source_row)
         reviewed_safety = detail.get("safety") or {}
         detail["medicine"] = {
             **(detail.get("medicine") or {}),
@@ -305,14 +377,14 @@ def get_user_medicine(user_id: str, medicine_code: str) -> dict[str, Any]:
         }
         detail["safety"] = {
             **reviewed_safety,
-            "key_cautions": (
-                reviewed_safety.get("key_cautions")
-                or medicine.get("key_cautions")
-                or []
-            )[:3],
+            "key_cautions": person_cautions,
             "interaction_status": medicine.get("interaction_status"),
             "interaction_summary": medicine.get("interaction_summary"),
             "interaction_risk_level": medicine.get("interaction_risk_level"),
+            "interaction_risk_factor": medicine.get("interaction_risk_factor")
+            or "",
+            "interaction_pair_label": medicine.get("interaction_pair_label")
+            or "",
             "interaction_conflict_names": medicine.get(
                 "interaction_conflict_names"
             )

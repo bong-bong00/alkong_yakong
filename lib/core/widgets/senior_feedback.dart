@@ -3,6 +3,51 @@ import 'package:flutter_tabler_icons/flutter_tabler_icons.dart';
 
 import '../constants/app_colors.dart';
 import '../theme/app_typography.dart';
+import 'senior_button.dart';
+
+/// 예 / 아니요를 세로로 묻는 상태 안내창.
+Future<bool> showSeniorYesNoDialog({
+  required BuildContext context,
+  required String title,
+  String? message,
+}) async {
+  final confirmed = await showDialog<bool>(
+    context: context,
+    builder: (dialogContext) => Dialog(
+      insetPadding: const EdgeInsets.symmetric(horizontal: 24),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(22, 24, 22, 22),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(title, style: AppText.emphasis(size: 25)),
+            if (message != null && message.isNotEmpty) ...[
+              const SizedBox(height: 10),
+              Text(message, style: AppText.body()),
+            ],
+            const SizedBox(height: 20),
+            SeniorButton(
+              label: '예',
+              minHeight: 62,
+              fontSize: 22,
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+            ),
+            const SizedBox(height: 10),
+            SeniorButton(
+              label: '아니요',
+              kind: SeniorButtonKind.secondary,
+              minHeight: 62,
+              fontSize: 22,
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+            ),
+          ],
+        ),
+      ),
+    ),
+  );
+  return confirmed ?? false;
+}
 
 /// 스낵바.
 ///

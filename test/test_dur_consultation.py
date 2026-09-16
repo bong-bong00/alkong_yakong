@@ -42,6 +42,8 @@ class DurConsultationTest(unittest.TestCase):
                 risk_type TEXT,
                 total_matches INTEGER,
                 matches_json TEXT,
+                assessment_status TEXT,
+                incomplete_reasons_json TEXT,
                 created_at TEXT DEFAULT CURRENT_TIMESTAMP
             );
             CREATE TABLE dur_taboo (

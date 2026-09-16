@@ -53,7 +53,10 @@ def test_home_puts_pair_caution_cards_first():
         names = f"{cards[0]['name_a']} {cards[0]['name_b']}"
         assert "아디팜" in names
         assert "코다론" in names
-        assert cards[0]["reason"]
+        assert "심장" in str(cards[0]["reason"])
+        factor = str(cards[0].get("risk_factor") or "")
+        assert "부정맥" in factor
+        assert not cards[0].get("caution_a")
         assert "함께 먹을 때 주의" in str(today.get("interaction_alert") or "")
     finally:
         conn = get_connection()

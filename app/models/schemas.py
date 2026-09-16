@@ -194,3 +194,7 @@ class DrugExplainChatRequest(BaseModel):
             "duplicate",
         ]
     ] = None
+
+
+class ScheduleDayToggleRequest(BaseModel):
+    date: str

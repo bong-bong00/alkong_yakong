@@ -1,4 +1,5 @@
 from datetime import date
+import json
 
 import pytest
 
@@ -226,3 +227,144 @@ def test_ocr_preview_returns_multi_purpose_patient_guidance(monkeypatch):
     conn.execute("DELETE FROM medicines WHERE medicine_code = 'TEST-ADIPHARM'")
     conn.commit()
     conn.close()
+
+
+def _seed_schedule_user(user_id: str, medicine_code: str) -> None:
+    conn = get_connection()
+    conn.execute(
+        "INSERT OR IGNORE INTO users (id, name, role) VALUES (?, '테스트', 'PATIENT')",
+        (user_id,),
+    )
+    conn.execute(
+        """
+        INSERT OR REPLACE INTO medicines (medicine_code, product_name, ingredient)
+        VALUES (?, '스케줄첨부정', '테스트성분')
+        """,
+        (medicine_code,),
+    )
+    conn.commit()
+    conn.close()
+
+
+def _cleanup_schedule_user(user_id: str, medicine_code: str) -> None:
+    conn = get_connection()
+    conn.execute("DELETE FROM users WHERE id = ?", (user_id,))
+    conn.execute("DELETE FROM medicines WHERE medicine_code = ?", (medicine_code,))
+    conn.commit()
+    conn.close()
+
+
+def test_confirm_attaches_schedules_for_frequency_and_duration():
+    user_id = "test-schedule-attach"
+    medicine_code = "TEST-SCHEDULE-ATTACH"
+    _seed_schedule_user(user_id, medicine_code)
+    try:
+        result = confirm_prescription(
+            PrescriptionConfirmRequest(
+                user_id=user_id,
+                items=[
+                    PrescriptionConfirmItem(
+                        medicine_code=medicine_code,
+                        drug_name="스케줄첨부정",
+                        frequency_per_day=3,
+                        duration_days=7,
+                        match_status="MATCHED",
+                    )
+                ],
+            )
+        )
+        assert result["registered"] is True
+        assert result["schedule_count"] == 21
+        conn = get_connection()
+        times = conn.execute(
+            """
+            SELECT administration_times FROM user_medicines
+            WHERE user_id = ? AND medicine_code = ? AND COALESCE(is_active, 1) = 1
+            """,
+            (user_id, medicine_code),
+        ).fetchone()
+        conn.close()
+        assert times is not None
+        assert json.loads(times["administration_times"]) == ["08:00", "13:00", "20:00"]
+    finally:
+        _cleanup_schedule_user(user_id, medicine_code)
+
+
+def test_confirm_does_not_invent_schedule_without_duration():
+    user_id = "test-schedule-no-days"
+    medicine_code = "TEST-SCHEDULE-NO-DAYS"
+    _seed_schedule_user(user_id, medicine_code)
+    try:
+        result = confirm_prescription(
+            PrescriptionConfirmRequest(
+                user_id=user_id,
+                items=[
+                    PrescriptionConfirmItem(
+                        medicine_code=medicine_code,
+                        drug_name="스케줄첨부정",
+                        frequency_per_day=3,
+                        duration_days=None,
+                        match_status="MATCHED",
+                    )
+                ],
+            )
+        )
+        assert result["registered"] is True
+        assert result["schedule_count"] == 0
+    finally:
+        _cleanup_schedule_user(user_id, medicine_code)
+
+
+def test_confirm_does_not_default_missing_frequency_to_once():
+    user_id = "test-schedule-no-freq"
+    medicine_code = "TEST-SCHEDULE-NO-FREQ"
+    _seed_schedule_user(user_id, medicine_code)
+    try:
+        result = confirm_prescription(
+            PrescriptionConfirmRequest(
+                user_id=user_id,
+                items=[
+                    PrescriptionConfirmItem(
+                        medicine_code=medicine_code,
+                        drug_name="스케줄첨부정",
+                        frequency_per_day=None,
+                        duration_days=7,
+                        match_status="MATCHED",
+                    )
+                ],
+            )
+        )
+        assert result["registered"] is True
+        assert result["schedule_count"] == 0
+    finally:
+        _cleanup_schedule_user(user_id, medicine_code)
+
+
+def test_confirm_skips_unmatched_item_without_rolling_back_matched():
+    user_id = "test-partial-unmatched"
+    medicine_code = "TEST-PARTIAL-MATCHED"
+    _seed_schedule_user(user_id, medicine_code)
+    try:
+        result = confirm_prescription(
+            PrescriptionConfirmRequest(
+                user_id=user_id,
+                items=[
+                    PrescriptionConfirmItem(
+                        medicine_code=medicine_code,
+                        drug_name="스케줄첨부정",
+                        frequency_per_day=1,
+                        duration_days=1,
+                        match_status="MATCHED",
+                    ),
+                    PrescriptionConfirmItem(
+                        medicine_code="OCR-UNKNOWN",
+                        drug_name="모르는약",
+                        match_status="UNMATCHED",
+                    ),
+                ],
+            )
+        )
+        assert result["registered"] is True
+        assert result["medicine_codes"] == [medicine_code]
+    finally:
+        _cleanup_schedule_user(user_id, medicine_code)
