@@ -185,7 +185,7 @@ def login(credentials: UserLogin):
         password_ok = row is not None and _verify_password(
             credentials.password, row["password_hash"]
         )
-        logger.info(
+        logger.warning(
             "LOGIN_DIAG pid=%s db_path=%s phone_matches=%s hash_accounts=%s "
             "selected=%s password_ok=%s",
             os.getpid(),
