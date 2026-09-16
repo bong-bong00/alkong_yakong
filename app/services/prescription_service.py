@@ -2,6 +2,7 @@ import base64
 import binascii
 import hashlib
 import json
+import logging
 import re
 import uuid
 from calendar import monthrange
@@ -39,6 +40,9 @@ from app.services.pharmacist.easy_category import (
 from app.services.pharmacist.efficacy_display import display_efficacy_text
 from app.services.pharmacist.ingredient import clean_ingredient_text
 from app.services.pharmacist.retrieve import retrieve_official
+
+
+logger = logging.getLogger("uvicorn.error")
 
 
 OCR_RECOGNITION_MEANING = (
@@ -1382,6 +1386,13 @@ def confirm_prescription(request: PrescriptionConfirmRequest) -> dict:
                 easy_explanation=item.easy_explanation,
                 warning_note=item.warning_note,
             )
+            logger.warning(
+                "[PRESCRIPTION_DIAG] duration_days=%s frequency_per_day=%s "
+                "administration_times_count=%s",
+                item.duration_days,
+                item.frequency_per_day,
+                len(item.administration_times or []),
+            )
             schedules = _create_medication_schedules(
                 cursor,
                 user_id=request.user_id,
@@ -1389,6 +1400,10 @@ def confirm_prescription(request: PrescriptionConfirmRequest) -> dict:
                 prescribed_date=registration_date,
                 expire_date=None,
                 item=ocr_item,
+            )
+            logger.warning(
+                "[PRESCRIPTION_DIAG] schedule_count=%s",
+                len(schedules),
             )
             created_items.append(
                 {
@@ -1515,12 +1530,17 @@ def get_prescription_schedule_days(
 
     conn = get_connection()
     try:
-        if not conn.execute(
+        user_exists = conn.execute(
             "SELECT 1 FROM users WHERE id = ?", (user_id,)
-        ).fetchone():
+        ).fetchone() is not None
+        if not user_exists:
+            logger.warning("[SCHEDULE_DIAG] reason=user_not_found")
             raise HTTPException(status_code=404, detail="사용자가 없습니다.")
         medicines = _prescription_user_medicines(conn, user_id, prescription_id)
         if medicines is None:
+            logger.warning(
+                "[SCHEDULE_DIAG] reason=prescription_not_found_or_not_owned"
+            )
             raise HTTPException(status_code=404, detail="처방전을 찾지 못했어요.")
         um_ids = [row["id"] for row in medicines]
         on_dates: set[date] = set()
@@ -1552,6 +1572,11 @@ def get_prescription_schedule_days(
                 }
             )
         total_on = len(on_dates)
+        logger.warning(
+            "[SCHEDULE_DIAG] user_exists=true "
+            "prescription_exists_for_user=true on_count=%s",
+            total_on,
+        )
         headline = (
             "투약일수를 확인해 주세요"
             if total_on == 0

@@ -106,6 +106,20 @@ class _ScheduleDaysScreenState extends ConsumerState<ScheduleDaysScreen> {
 
   Future<void> _load() async {
     final prescriptionId = _prescriptionId;
+    final widgetPrescriptionId = widget.prescriptionId?.trim() ?? '';
+    final sessionPrescriptionId =
+        MvpSession.latestPrescriptionId?.trim() ?? '';
+    final prescriptionIdSource = widgetPrescriptionId.isNotEmpty
+        ? 'widget'
+        : sessionPrescriptionId.isNotEmpty
+        ? 'session'
+        : 'none';
+    debugPrint(
+      '[SCHEDULE_DIAG] '
+      'user_id_present=${MvpSession.userId.trim().isNotEmpty} '
+      'prescription_id_present=${prescriptionId.isNotEmpty} '
+      'prescription_id_source=$prescriptionIdSource',
+    );
     if (prescriptionId.isEmpty) {
       if (!mounted) return;
       setState(() {
@@ -123,8 +137,34 @@ class _ScheduleDaysScreenState extends ConsumerState<ScheduleDaysScreen> {
         '?year=$_year&month=$_month',
       );
       if (!mounted) return;
+      final onCount = response is Map ? response['on_count'] : null;
+      debugPrint(
+        '[SCHEDULE_DIAG] http_status=200 on_count=${onCount ?? 'unknown'}',
+      );
       _apply(response);
-    } catch (_) {
+    } on ApiException catch (error) {
+      final reason = switch (error.message) {
+        '사용자가 없습니다.' => 'user_not_found',
+        '처방전을 찾지 못했어요.' =>
+          'prescription_not_found_or_not_owned',
+        _ when error.statusCode == null => 'network_or_unknown_error',
+        _ => 'http_error',
+      };
+      debugPrint(
+        '[SCHEDULE_DIAG] GET failed '
+        'http_status=${error.statusCode ?? 'unknown'} '
+        'reason=$reason',
+      );
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _applyCachedDays();
+      });
+    } catch (error) {
+      debugPrint(
+        '[SCHEDULE_DIAG] GET failed '
+        'http_status=unknown error_type=${error.runtimeType}',
+      );
       if (!mounted) return;
       setState(() {
         _loading = false;

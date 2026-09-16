@@ -196,7 +196,9 @@ class _PrescriptionScreenState extends ConsumerState<PrescriptionScreen> {
         MvpSession.medicineCode = first['medicine_code']?.toString() ?? '';
       }
     } catch (error) {
-      debugPrint('처방전 OCR 실패: $error');
+      debugPrint(
+        '[PRESCRIPTION_DIAG] OCR failed error_type=${error.runtimeType}',
+      );
       if (!mounted) return;
       setState(() {
         _failureCount++;
@@ -245,6 +247,17 @@ class _PrescriptionScreenState extends ConsumerState<PrescriptionScreen> {
       return;
     }
 
+    for (final item in confirmItems) {
+      final administrationTimes = item['administration_times'];
+      debugPrint(
+        '[PRESCRIPTION_DIAG] '
+        'duration_days=${item['duration_days'] ?? 'null'} '
+        'frequency_per_day=${item['frequency_per_day'] ?? 'null'} '
+        'administration_times_count='
+        '${administrationTimes is List ? administrationTimes.length : 0}',
+      );
+    }
+
     Map<String, dynamic>? durResult;
     try {
       final response = await _apiClient.post(
@@ -260,6 +273,11 @@ class _PrescriptionScreenState extends ConsumerState<PrescriptionScreen> {
       );
       if (response is Map) {
         final prescriptionId = response['prescription_id']?.toString().trim();
+        debugPrint(
+          '[PRESCRIPTION_DIAG] '
+          'prescription_id_present=${prescriptionId?.isNotEmpty == true} '
+          'schedule_count=${response['schedule_count'] ?? 'unknown'}',
+        );
         MvpSession.rememberPrescriptionSchedules(
           prescriptionId: prescriptionId,
           confirmResponse: response,
@@ -268,9 +286,16 @@ class _PrescriptionScreenState extends ConsumerState<PrescriptionScreen> {
         if (response['dur_result'] is Map) {
           durResult = Map<String, dynamic>.from(response['dur_result'] as Map);
         }
+      } else {
+        debugPrint(
+          '[PRESCRIPTION_DIAG] '
+          'prescription_id_present=false schedule_count=unknown',
+        );
       }
     } catch (error) {
-      debugPrint('처방 확정 등록 실패: $error');
+      debugPrint(
+        '[PRESCRIPTION_DIAG] confirm failed error_type=${error.runtimeType}',
+      );
       if (!mounted) return;
       showSeniorSnackbar(context, '약 등록에 실패했어요. 잠시 후 다시 시도해 주세요.', error: true);
       return;
