@@ -7,6 +7,7 @@ import '../../../../core/constants/app_colors.dart';
 import '../../../../core/network/api_client.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../core/widgets/senior_button.dart';
+import '../../../../core/mode/app_mode.dart';
 import '../../../../core/widgets/senior_card.dart';
 import '../../../../core/widgets/senior_feedback.dart';
 import '../../../../core/widgets/senior_header.dart';
@@ -101,6 +102,7 @@ class _MyPageScreenState extends ConsumerState<MyPageScreen> {
   @override
   Widget build(BuildContext context) {
     final today = ref.watch(medicationProvider);
+    final mode = ref.watch(appModeProvider);
     final user = ref.watch(currentUserProvider);
     final profile = user.valueOrNull;
     final guardians = ref.watch(guardiansProvider);
@@ -184,6 +186,37 @@ class _MyPageScreenState extends ConsumerState<MyPageScreen> {
                                   ),
                                 ),
                               ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 12),
+
+                // ── 화면 모드 ──
+                // 토글이 아니라 세그먼트다. 지금 어느 쪽인지가 늘 보인다.
+                SeniorCard(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 20,
+                    vertical: 18,
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Text('화면 모드', style: AppText.cardTitle(size: 20)),
+                      const SizedBox(height: 6),
+                      Text(
+                        mode.isEasy
+                            ? '다음 할 일 버튼 하나만 따라가면 됩니다'
+                            : '버튼 하나만 따라가는 쉬운 화면으로 바꿀 수 있어요',
+                        style: AppText.caption(size: 17.5),
+                      ),
+                      const SizedBox(height: 14),
+                      SeniorSegmented(
+                        labels: const ['일반', '쉬운 화면'],
+                        index: mode.isEasy ? 1 : 0,
+                        onChanged: (i) => ref
+                            .read(appModeProvider.notifier)
+                            .set(i == 1 ? AppMode.easy : AppMode.normal),
                       ),
                     ],
                   ),

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_tabler_icons/flutter_tabler_icons.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -18,7 +19,15 @@ class ManualMedicineScreen extends ConsumerStatefulWidget {
   final VoidCallback? onBack;
   final VoidCallback? onSaved;
 
-  const ManualMedicineScreen({super.key, this.onBack, this.onSaved});
+  /// 사진으로 넣는 쪽으로 갈아타기. 손으로 적다 막히면 여기로 나간다.
+  final VoidCallback? onUseCamera;
+
+  const ManualMedicineScreen({
+    super.key,
+    this.onBack,
+    this.onSaved,
+    this.onUseCamera,
+  });
 
   @override
   ConsumerState<ManualMedicineScreen> createState() =>
@@ -34,6 +43,9 @@ class _ManualMedicineScreenState extends ConsumerState<ManualMedicineScreen> {
   Map<String, dynamic>? _picked;
   int? _frequency;
   int? _days;
+
+  /// 드시는 때. 이게 없으면 알림 시각을 정할 수 없다.
+  final Set<String> _slots = <String>{};
   bool _searching = false;
   bool _saving = false;
 
@@ -92,15 +104,12 @@ class _ManualMedicineScreenState extends ConsumerState<ManualMedicineScreen> {
       _showError('목록에서 약을 먼저 골라 주세요.');
       return;
     }
+    if (_slots.isEmpty) {
+      _showError('드시는 때를 한 개 이상 골라 주세요.');
+      return;
+    }
+    // 용량과 날수는 나중에 채워도 된다. 여기서 다 물으면 대부분 포기한다.
     final amount = _amount.text.trim();
-    if (amount.isEmpty) {
-      _showError('한 번에 먹는 양을 적어 주세요.');
-      return;
-    }
-    if (_frequency == null || _days == null) {
-      _showError('하루 복용 횟수와 복용 일수를 확인해 주세요.');
-      return;
-    }
     ScaffoldMessenger.of(context).hideCurrentSnackBar();
     setState(() => _saving = true);
     final userId = MvpSession.userId.trim().isEmpty
@@ -117,10 +126,10 @@ class _ManualMedicineScreenState extends ConsumerState<ManualMedicineScreen> {
               'drug_name':
                   picked?['display_name'] ?? picked?['product_name'] ?? '',
               'dosage': amount,
-              'frequency_per_day': _frequency,
+              'frequency_per_day': _frequency ?? _slots.length,
               'times_per_take': 1,
               'duration_days': _days,
-              'administration_times': <String>[],
+              'administration_times': _slots.toList(),
               'match_status': 'MATCHED',
             },
           ],
@@ -133,7 +142,7 @@ class _ManualMedicineScreenState extends ConsumerState<ManualMedicineScreen> {
           ocrItems: [
             {
               'duration_days': _days,
-              'frequency_per_day': _frequency,
+              'frequency_per_day': _frequency ?? _slots.length,
             },
           ],
         );
@@ -171,9 +180,35 @@ class _ManualMedicineScreenState extends ConsumerState<ManualMedicineScreen> {
             child: ListView(
               padding: const EdgeInsets.fromLTRB(20, 16, 20, 28),
               children: [
-                Text(
-                  '처방전에 적힌 약 이름을 찾아 등록해요.',
-                  style: AppText.body(color: AppColors.textSecondary),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 22,
+                    vertical: 18,
+                  ),
+                  decoration: BoxDecoration(
+                    color: AppColors.pointTint,
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '약 이름과 드시는 때만 적으면 돼요',
+                        style: AppText.cardTitle(
+                          size: 20,
+                          color: AppColors.point,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        '용량과 남은 날수는 나중에 채워도 됩니다.',
+                        style: AppText.body(
+                          size: 17.5,
+                          color: AppColors.pointInk,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
                 const SizedBox(height: 16),
                 TextField(
@@ -260,15 +295,105 @@ class _ManualMedicineScreenState extends ConsumerState<ManualMedicineScreen> {
                     },
                   ),
                   const SizedBox(height: 18),
+                  Text(
+                    '드시는 때 (여러 개 고를 수 있어요)',
+                    style: AppText.cardTitle(size: 20),
+                  ),
+                  const SizedBox(height: 12),
+                  IntrinsicHeight(
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        for (int i = 0; i < _slotLabels.length; i++) ...[
+                          if (i > 0) const SizedBox(width: 10),
+                          Expanded(
+                            child: _SlotChip(
+                              label: _slotLabels[i],
+                              selected: _slots.contains(_slotLabels[i]),
+                              onTap: () => setState(() {
+                                if (!_slots.remove(_slotLabels[i])) {
+                                  _slots.add(_slotLabels[i]);
+                                }
+                              }),
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 16),
                   SeniorButton(
                     label: _saving ? '등록 중…' : '이 약 등록하기',
                     onPressed: _saving ? () {} : _save,
+                  ),
+                  const SizedBox(height: 12),
+                  SeniorButton(
+                    label: '사진으로 넣기',
+                    icon: TablerIcons.camera,
+                    kind: SeniorButtonKind.secondary,
+                    minHeight: 62,
+                    fontSize: 20,
+                    onPressed: widget.onUseCamera,
                   ),
                 ],
               ],
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+
+/// 드시는 때 후보. 한 번에 여러 개를 고를 수 있다.
+const List<String> _slotLabels = ['아침', '점심', '저녁'];
+
+/// 3분할 칩. 고르면 파랑으로 채워진다.
+class _SlotChip extends StatelessWidget {
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const _SlotChip({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      button: true,
+      selected: selected,
+      label: '$label ${selected ? '고름' : '고르지 않음'}',
+      child: GestureDetector(
+        onTap: onTap,
+        child: ExcludeSemantics(
+          child: Container(
+            constraints: const BoxConstraints(minHeight: 70),
+            alignment: Alignment.center,
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 14),
+            decoration: BoxDecoration(
+              color: selected ? AppColors.point : AppColors.surface,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                color: selected
+                    ? AppColors.pointBorder
+                    : AppColors.strongBorder,
+                width: 2,
+              ),
+            ),
+            child: Text(
+              label,
+              textAlign: TextAlign.center,
+              style: AppText.cardTitle(
+                size: 19,
+                color: selected ? Colors.white : AppColors.textBody,
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }

@@ -104,6 +104,7 @@ void main() {
   _recordTimelineTests();
   _medicinesByTimeTests();
   _confirmPreviewTests();
+  _screenCopyTests();
   _calendarTests();
   Widget wrap(Widget child, {double textScale = 1.0}) {
     return ProviderScope(
@@ -1063,5 +1064,29 @@ void _confirmPreviewTests() {
     expect(home.contains('에 다시 알려드려요'), isTrue);
     // "나중에 확인"처럼 무엇이 일어나는지 모를 문구를 쓰지 않는다.
     expect(home.contains('나중에 확인'), isFalse);
+  });
+}
+
+
+/// 3장 — 화면별 문구·경로가 9/11 병합에서 빠졌던 자리들.
+void _screenCopyTests() {
+  test('손으로 적기는 드시는 때를 묻는다 (10)', () {
+    final source = File(
+      'lib/features/prescription/presentation/screens/manual_medicine_screen.dart',
+    ).readAsStringSync();
+    // 이게 없으면 알림 시각을 정할 수 없고 서버에 빈 배열이 올라간다.
+    expect(source.contains("'administration_times': _slots.toList()"), isTrue);
+    expect(source.contains('드시는 때를 한 개 이상 골라 주세요.'), isTrue);
+    expect(source.contains('약 이름과 드시는 때만 적으면 돼요'), isTrue);
+    // 용량은 나중에 채워도 된다. 여기서 다 물으면 대부분 포기한다.
+    expect(source.contains('한 번에 먹는 양을 적어 주세요.'), isFalse);
+  });
+
+  test('내 정보에서 쉬운 화면으로 바꿀 수 있다 (34)', () {
+    final source = File(
+      'lib/features/profile/presentation/screens/mypage_screen.dart',
+    ).readAsStringSync();
+    expect(source.contains("Text('화면 모드'"), isTrue);
+    expect(source.contains("labels: const ['일반', '쉬운 화면']"), isTrue);
   });
 }
