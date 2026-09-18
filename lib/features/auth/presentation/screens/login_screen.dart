@@ -3,6 +3,8 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../profile/domain/user_profile.dart';
+
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/network/api_client.dart';
 import '../../../../core/theme/app_typography.dart';
@@ -37,6 +39,12 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     super.dispose();
   }
 
+  /// 화면만 확인할 때 쓰는 가짜 로그인.
+  ///
+  /// `flutter run --dart-define=FAKE_LOGIN=true` 로 켠다. **기본은 꺼져 있다** —
+  /// 켜진 채로 배포하면 아무나 남의 복약 기록을 열어볼 수 있다.
+  static const bool _fakeLogin = bool.fromEnvironment('FAKE_LOGIN');
+
   Future<void> _login() async {
     if (_phone.text.trim().isEmpty || _password.text.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -45,6 +53,22 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       return;
     }
     if (_loggingIn) return;
+
+    // 서버 없이 화면만 볼 때. 무엇을 넣든 그대로 통과시킨다.
+    if (_fakeLogin) {
+      await startSession(
+        ref,
+        UserProfile(
+          id: 'mvp-user',
+          name: '김복자',
+          role: 'patient',
+          phone: _phone.text.trim(),
+        ),
+      );
+      if (mounted) context.go('/');
+      return;
+    }
+
     setState(() => _loggingIn = true);
     try {
       final user = await ref

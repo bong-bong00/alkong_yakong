@@ -106,6 +106,7 @@ void main() {
   _confirmPreviewTests();
   _screenCopyTests();
   _colorTokenTests();
+  _fakeLoginTests();
   _calendarTests();
   Widget wrap(Widget child, {double textScale = 1.0}) {
     return ProviderScope(
@@ -1109,5 +1110,32 @@ void _colorTokenTests() {
       }
     }
     expect(offenders, isEmpty, reason: offenders.join('\n'));
+  });
+}
+
+
+/// 개발용 우회는 기본으로 꺼져 있어야 한다.
+void _fakeLoginTests() {
+  test('가짜 로그인과 로그인 건너뛰기가 기본값으로 꺼져 있다', () {
+    final login = File(
+      'lib/features/auth/presentation/screens/login_screen.dart',
+    ).readAsStringSync();
+    // 켜진 채로 배포하면 아무나 남의 복약 기록을 열어볼 수 있다.
+    expect(
+      login.contains("bool.fromEnvironment('FAKE_LOGIN')"),
+      isTrue,
+      reason: '빌드 플래그로만 켜져야 한다',
+    );
+    expect(
+      login.contains("bool.fromEnvironment('FAKE_LOGIN', defaultValue: true)"),
+      isFalse,
+      reason: '가짜 로그인이 기본값으로 켜져 있다',
+    );
+
+    final main = File('lib/main.dart').readAsStringSync();
+    expect(
+      main.contains("bool.fromEnvironment('SKIP_LOGIN', defaultValue: true)"),
+      isFalse,
+    );
   });
 }
