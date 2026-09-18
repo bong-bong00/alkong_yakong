@@ -106,7 +106,9 @@ class IconTitle extends StatelessWidget {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        ExcludeSemantics(child: Icon(icon, size: size, color: color)),
+        ExcludeSemantics(
+          child: Icon(icon, size: size, color: color),
+        ),
         const SizedBox(width: 9),
         Expanded(child: Text(text, style: style)),
       ],
@@ -189,6 +191,17 @@ class SeniorListRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // 글씨를 크게 키운 기기에서는 값을 라벨 아래로 내린다.
+    // 한 줄에 억지로 붙이면 "1건"이 두 줄로 쪼개진다.
+    final stacked = MediaQuery.textScalerOf(context).scale(18) > 26;
+    final valueText = value == null
+        ? null
+        : Text(
+            value!,
+            textAlign: stacked ? TextAlign.left : TextAlign.right,
+            style: AppText.label(size: 18, color: valueColor),
+          );
+
     return InkWell(
       onTap: onTap,
       child: Container(
@@ -197,9 +210,7 @@ class SeniorListRow extends StatelessWidget {
         child: Row(
           children: [
             if (icon != null) ...[
-              ExcludeSemantics(
-                child: Icon(icon, size: 24, color: iconColor),
-              ),
+              ExcludeSemantics(child: Icon(icon, size: 24, color: iconColor)),
               const SizedBox(width: 13),
             ],
             Expanded(
@@ -220,17 +231,23 @@ class SeniorListRow extends StatelessWidget {
                       subtitle!,
                       style: AppText.caption(size: 17, color: subtitleColor),
                     ),
+                  if (stacked && valueText != null) ...[
+                    const SizedBox(height: 4),
+                    valueText,
+                  ],
                 ],
               ),
             ),
-            if (value != null) ...[
+            // 값은 오른쪽 끝에 붙인다. Flexible로 두면 라벨과 남은 폭을
+            // 반씩 나눠 가져서 값이 화면 한가운데로 밀려난다.
+            // 폭 상한만 걸어 두면 아주 긴 값도 넘치지 않고 줄바꿈한다.
+            if (!stacked && valueText != null) ...[
               const SizedBox(width: 12),
-              Flexible(
-                child: Text(
-                  value!,
-                  textAlign: TextAlign.right,
-                  style: AppText.label(size: 18, color: valueColor),
+              ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxWidth: MediaQuery.sizeOf(context).width * 0.45,
                 ),
+                child: valueText,
               ),
             ],
             if (trailing != null) ...[const SizedBox(width: 10), trailing!],
@@ -311,11 +328,19 @@ class LabelValueRow extends StatelessWidget {
         children: [label, const SizedBox(height: 6), value],
       );
     }
+    // 값은 제 너비만 쓰고 오른쪽 끝에 붙는다. Flexible을 주면 라벨과
+    // 남은 폭을 반씩 나눠 가져서 값이 가운데로 밀려난다.
+    // 폭 상한만 걸어 두면 긴 값도 넘치지 않고 줄바꿈한다.
     return Row(
       children: [
         Expanded(child: label),
         const SizedBox(width: 12),
-        Flexible(child: value),
+        ConstrainedBox(
+          constraints: BoxConstraints(
+            maxWidth: MediaQuery.sizeOf(context).width * 0.55,
+          ),
+          child: value,
+        ),
       ],
     );
   }

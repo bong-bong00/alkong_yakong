@@ -29,10 +29,7 @@ class SeniorHeader extends StatelessWidget {
       decoration: BoxDecoration(
         color: background ?? AppColors.surface,
         border: Border(
-          bottom: BorderSide(
-            color: borderColor ?? AppColors.border,
-            width: 1,
-          ),
+          bottom: BorderSide(color: borderColor ?? AppColors.border, width: 1),
         ),
       ),
       child: SafeArea(
@@ -112,17 +109,16 @@ class SeniorBackHeader extends StatelessWidget {
   }
 }
 
-/// 44×44 원형 뒤로가기. 탭 영역은 48×48 이상으로 잡는다.
-/// 라벨이 보이는 뒤로 버튼. 높이 56, 채움 + 2px 테두리.
+/// 뒤로 버튼. 56×56, 채움 + 2px 테두리.
 ///
-/// **아이콘만 있는 뒤로가기는 만들지 않는다.** 어르신은 `‹` 모양만 있는 원형을
-/// 버튼으로 인식하지 못한다 — 사용자 테스트에서 "여기서 나가는 법을 모르겠다"가
-/// 가장 많이 나온 지점이다.
+/// 글자는 빼고 화살표만 둔다. 대신 **버튼처럼 보이는 모양은 유지한다** —
+/// 테두리 없는 작은 `‹` 아이콘은 어르신이 버튼으로 인식하지 못한다.
+/// [label]은 화면에 그리지 않고 스크린리더에만 읽힌다.
 class SeniorBackButton extends StatelessWidget {
   final VoidCallback? onTap;
   final bool onDark;
 
-  /// 기본 "뒤로". 돌아갈 곳이 특별하면 "목록으로"처럼 바꿔도 된다.
+  /// 스크린리더가 읽을 이름. 기본 "뒤로".
   final String label;
 
   const SeniorBackButton({
@@ -147,8 +143,9 @@ class SeniorBackButton extends StatelessWidget {
         onTap: onTap ?? () => Navigator.of(context).maybePop(),
         behavior: HitTestBehavior.opaque,
         child: Container(
+          width: 56,
           height: 56,
-          padding: const EdgeInsets.symmetric(horizontal: 16),
+          alignment: Alignment.center,
           decoration: BoxDecoration(
             color: onDark ? AppColors.camChip : AppColors.secondaryFill,
             borderRadius: BorderRadius.circular(18),
@@ -157,15 +154,8 @@ class SeniorBackButton extends StatelessWidget {
               width: 2,
             ),
           ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              ExcludeSemantics(
-                child: Icon(TablerIcons.arrow_left, size: 26, color: fg),
-              ),
-              const SizedBox(width: 8),
-              Text(label, style: AppText.button(size: 21, color: fg)),
-            ],
+          child: ExcludeSemantics(
+            child: Icon(TablerIcons.arrow_left, size: 28, color: fg),
           ),
         ),
       ),
@@ -212,9 +202,6 @@ class SeniorChevron extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Text(
-      '›',
-      style: AppText.label(size: 22, color: color),
-    );
+    return Text('›', style: AppText.label(size: 22, color: color));
   }
 }

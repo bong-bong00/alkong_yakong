@@ -7,7 +7,6 @@ import '../../../../core/constants/app_colors.dart';
 import '../../../../core/network/api_client.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../core/widgets/senior_button.dart';
-import '../../../../core/mode/app_mode.dart';
 import '../../../../core/widgets/senior_card.dart';
 import '../../../../core/widgets/senior_feedback.dart';
 import '../../../../core/widgets/senior_header.dart';
@@ -102,7 +101,6 @@ class _MyPageScreenState extends ConsumerState<MyPageScreen> {
   @override
   Widget build(BuildContext context) {
     final today = ref.watch(medicationProvider);
-    final mode = ref.watch(appModeProvider);
     final user = ref.watch(currentUserProvider);
     final profile = user.valueOrNull;
     final guardians = ref.watch(guardiansProvider);
@@ -192,37 +190,6 @@ class _MyPageScreenState extends ConsumerState<MyPageScreen> {
                 ),
                 const SizedBox(height: 12),
 
-                // ── 화면 모드 ──
-                // 토글이 아니라 세그먼트다. 지금 어느 쪽인지가 늘 보인다.
-                SeniorCard(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 20,
-                    vertical: 18,
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      Text('화면 모드', style: AppText.cardTitle(size: 20)),
-                      const SizedBox(height: 6),
-                      Text(
-                        mode.isEasy
-                            ? '다음 할 일 버튼 하나만 따라가면 됩니다'
-                            : '버튼 하나만 따라가는 쉬운 화면으로 바꿀 수 있어요',
-                        style: AppText.caption(size: 17.5),
-                      ),
-                      const SizedBox(height: 14),
-                      SeniorSegmented(
-                        labels: const ['일반', '쉬운 화면'],
-                        index: mode.isEasy ? 1 : 0,
-                        onChanged: (i) => ref
-                            .read(appModeProvider.notifier)
-                            .set(i == 1 ? AppMode.easy : AppMode.normal),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 12),
-
                 // ── 설정 목록 ──
                 SeniorCard(
                   padding: const EdgeInsets.symmetric(
@@ -291,81 +258,81 @@ class _MyPageScreenState extends ConsumerState<MyPageScreen> {
 
                 // ── 함께 보는 가족 ── (어르신만. 보호자는 돌보는 분 탭에서 본다)
                 if (!widget.isGuardian) ...[
-                SeniorCard(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 22,
-                    vertical: 18,
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      IconTitle(
-                        icon: TablerIcons.users,
-                        text: '함께 보는 가족',
-                        style: AppText.cardTitle(size: 19),
-                      ),
-                      const SizedBox(height: 14),
-                      ...guardians.when(
-                        loading: () => [
-                          Text('불러오는 중이에요', style: AppText.caption()),
-                        ],
-                        error: (_, _) => [
-                          Text(
-                            '가족 목록을 불러오지 못했어요',
-                            style: AppText.caption(color: AppColors.danger),
-                          ),
-                        ],
-                        data: (list) => list.isEmpty
-                            ? [
-                                Text(
-                                  '아직 함께 보는 가족이 없어요. '
-                                  '초대하면 약을 놓쳤을 때 알려드려요.',
-                                  style: AppText.body(size: 17.5),
-                                ),
-                              ]
-                            : [
-                                for (int i = 0; i < list.length; i++) ...[
-                                  if (i > 0) const SizedBox(height: 12),
-                                  _GuardianRow(
-                                    guardian: list[i],
-                                    onAnswer: (accept) =>
-                                        _answerRequest(list[i], accept),
+                  SeniorCard(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 22,
+                      vertical: 18,
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        IconTitle(
+                          icon: TablerIcons.users,
+                          text: '함께 보는 가족',
+                          style: AppText.cardTitle(size: 19),
+                        ),
+                        const SizedBox(height: 14),
+                        ...guardians.when(
+                          loading: () => [
+                            Text('불러오는 중이에요', style: AppText.caption()),
+                          ],
+                          error: (_, _) => [
+                            Text(
+                              '가족 목록을 불러오지 못했어요',
+                              style: AppText.caption(color: AppColors.danger),
+                            ),
+                          ],
+                          data: (list) => list.isEmpty
+                              ? [
+                                  Text(
+                                    '아직 함께 보는 가족이 없어요. '
+                                    '초대하면 약을 놓쳤을 때 알려드려요.',
+                                    style: AppText.body(size: 17.5),
                                   ),
+                                ]
+                              : [
+                                  for (int i = 0; i < list.length; i++) ...[
+                                    if (i > 0) const SizedBox(height: 12),
+                                    _GuardianRow(
+                                      guardian: list[i],
+                                      onAnswer: (accept) =>
+                                          _answerRequest(list[i], accept),
+                                    ),
+                                  ],
                                 ],
-                              ],
-                      ),
-                      const SizedBox(height: 14),
-                      // 보호자 계정은 따로 있다. 여기서 열리지 않는다는 사실을
-                      // 미리 적어 두지 않으면 "안 열린다"는 문의가 된다.
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 18,
-                          vertical: 16,
                         ),
-                        decoration: BoxDecoration(
-                          color: AppColors.sunken,
-                          borderRadius: BorderRadius.circular(16),
+                        const SizedBox(height: 14),
+                        // 보호자 계정은 따로 있다. 여기서 열리지 않는다는 사실을
+                        // 미리 적어 두지 않으면 "안 열린다"는 문의가 된다.
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 18,
+                            vertical: 16,
+                          ),
+                          decoration: BoxDecoration(
+                            color: AppColors.sunken,
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                          child: Text(
+                            '가족은 따로 가입한 보호자 계정으로 봅니다. '
+                            '어르신 화면에서는 보호자 화면이 열리지 않아요.',
+                            style: AppText.body(size: 17.5),
+                          ),
                         ),
-                        child: Text(
-                          '가족은 따로 가입한 보호자 계정으로 봅니다. '
-                          '어르신 화면에서는 보호자 화면이 열리지 않아요.',
-                          style: AppText.body(size: 17.5),
+                        const SizedBox(height: 14),
+                        SeniorButton(
+                          label: guardians.valueOrNull?.isNotEmpty ?? false
+                              ? '가족 더 초대하기'
+                              : '가족 초대하기',
+                          kind: SeniorButtonKind.secondary,
+                          minHeight: 58,
+                          fontSize: 20,
+                          onPressed: _inviteFamily,
                         ),
-                      ),
-                      const SizedBox(height: 14),
-                      SeniorButton(
-                        label: guardians.valueOrNull?.isNotEmpty ?? false
-                            ? '가족 더 초대하기'
-                            : '가족 초대하기',
-                        kind: SeniorButtonKind.secondary,
-                        minHeight: 58,
-                        fontSize: 20,
-                        onPressed: _inviteFamily,
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
-                ),
-                const SizedBox(height: 12),
+                  const SizedBox(height: 12),
                 ],
 
                 // ── 도움말 ──

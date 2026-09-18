@@ -202,8 +202,10 @@ class _HeartScreenState extends State<HeartScreen> {
                   ],
                   const SizedBox(height: 12),
                   _NotifyRow(
-                    guardianTitle:
-                        resolveGuardianTitle(context, widget.guardianTitle),
+                    guardianTitle: resolveGuardianTitle(
+                      context,
+                      widget.guardianTitle,
+                    ),
                     value: _notifyGuardian,
                     onChanged: (v) => setState(() => _notifyGuardian = v),
                   ),
@@ -387,7 +389,12 @@ class _TodayCard extends StatelessWidget {
               Expanded(child: Text('오늘 잰 것', style: AppText.cardTitle())),
               // 오늘 잰 것이 없으면 "저녁 약"이라고 붙일 근거도 없다.
               if (measuredToday && data.todaySlotLabel.isNotEmpty)
-                Flexible(
+                // Flexible로 두면 남은 폭을 제목과 반씩 나눠 가져
+                // 때 이름이 화면 한가운데로 밀려난다. 폭 상한만 건다.
+                ConstrainedBox(
+                  constraints: BoxConstraints(
+                    maxWidth: MediaQuery.sizeOf(context).width * 0.45,
+                  ),
                   child: Text(
                     data.todaySlotLabel,
                     textAlign: TextAlign.end,

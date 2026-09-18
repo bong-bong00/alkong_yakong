@@ -168,7 +168,7 @@ class _PatientHomeScreenState extends ConsumerState<PatientHomeScreen> {
     final rows = <Widget>[];
 
     void add(Widget child, {bool current = false, bool past = false}) {
-      rows.add(TimelineRow(child: child, current: current, past: past));
+      rows.add(TimelineRow(current: current, past: past, child: child));
       rows.add(kTimelineGap);
     }
 
@@ -269,13 +269,14 @@ class _PatientHomeScreenState extends ConsumerState<PatientHomeScreen> {
                       card: card,
                       onOpenDrug: widget.onOpenDrug,
                       medicines: [
-                        for (final dose in today.doses)
-                          ...dose.medicines,
+                        for (final dose in today.doses) ...dose.medicines,
                       ],
                     ),
                     const SizedBox(height: 12),
                   ],
-                ] else if ((today.interactionAlert ?? '').trim().isNotEmpty) ...[
+                ] else if ((today.interactionAlert ?? '')
+                    .trim()
+                    .isNotEmpty) ...[
                   SeniorCard(
                     padding: const EdgeInsets.all(18),
                     borderColor: AppColors.dangerBorder,
@@ -338,7 +339,6 @@ class _PatientHomeScreenState extends ConsumerState<PatientHomeScreen> {
                   // 지난 일 → 지금 → 앞으로 올 일 순서다.
                   SeniorButton(
                     label: '어제 · 지난주 보기',
-                    icon: TablerIcons.chevron_up,
                     kind: SeniorButtonKind.secondary,
                     minHeight: 56,
                     fontSize: 20,
@@ -350,7 +350,7 @@ class _PatientHomeScreenState extends ConsumerState<PatientHomeScreen> {
                 const SizedBox(height: 12),
                 // 바로가기는 접어 둔다. 넷이 펼쳐져 있으면 주 액션과 경쟁한다.
                 SeniorButton(
-                  label: _moreOpen ? '다른 기능 접기  ⌃' : '다른 기능 보기  ⌄',
+                  label: _moreOpen ? '다른 기능 접기' : '다른 기능 보기',
                   kind: SeniorButtonKind.secondary,
                   minHeight: 62,
                   fontSize: 21,
@@ -488,18 +488,12 @@ class _InteractionPriorityCard extends StatelessWidget {
             style: AppText.cardTitle(size: 19, color: AppColors.danger),
           ),
           const SizedBox(height: 6),
-          Text(
-            '${card.nameA} ↔ ${card.nameB}',
-            style: AppText.body(size: 18),
-          ),
+          Text('${card.nameA} ↔ ${card.nameB}', style: AppText.body(size: 18)),
           const SizedBox(height: 8),
           Text(card.reason, style: AppText.body(size: 17)),
           if (card.riskFactor.trim().isNotEmpty) ...[
             const SizedBox(height: 8),
-            Text(
-              '성분 위험요소: ${card.riskFactor}',
-              style: AppText.label(size: 17),
-            ),
+            Text('성분 위험요소: ${card.riskFactor}', style: AppText.label(size: 17)),
           ],
           if (!card.reason.contains('확인해')) ...[
             const SizedBox(height: 8),
@@ -514,7 +508,10 @@ class _InteractionPriorityCard extends StatelessWidget {
               spacing: 8,
               runSpacing: 8,
               children: [
-                for (final medicine in [_byCode(card.codeA), _byCode(card.codeB)])
+                for (final medicine in [
+                  _byCode(card.codeA),
+                  _byCode(card.codeB),
+                ])
                   if (medicine != null)
                     OutlinedButton(
                       onPressed: () => onOpenDrug!(medicine),
@@ -796,7 +793,6 @@ class _AllDoneCard extends StatelessWidget {
   }
 }
 
-
 /// 2×2 바로가기.
 class _ShortcutGrid extends StatelessWidget {
   /// 잰 적이 없으면 null. 숫자 자리를 비워 둔다.
@@ -925,49 +921,117 @@ class _Shortcut extends StatelessWidget {
 ///
 /// 제목은 19/900. "지금" 행의 30/900과 크기가 달라야 무엇이 지금 할 일인지
 /// 한눈에 잡힌다. 모두 같은 크기로 만들면 타임라인의 효과가 사라진다.
-class _TakenRow extends StatelessWidget {
+class _TakenRow extends StatefulWidget {
   final DoseEntry dose;
 
   const _TakenRow({required this.dose});
 
   @override
+  State<_TakenRow> createState() => _TakenRowState();
+}
+
+class _TakenRowState extends State<_TakenRow> {
+  bool _open = false;
+
+  @override
   Widget build(BuildContext context) {
+    final dose = widget.dose;
     return SeniorCard(
       radius: 20,
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
-      child: Row(
+      onTap: () => setState(() => _open = !_open),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Expanded(
-            child: Column(
+          Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '${dose.slot.spokenTime} · ${dose.medicines.length}알',
+                      style: AppText.cardTitle(size: 19),
+                    ),
+                    Text(
+                      _open ? '드셨어요 · 접기' : '드셨어요 · 눌러서 약 보기',
+                      style: AppText.caption(size: 17),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 12),
+              ExcludeSemantics(
+                child: Container(
+                  width: 38,
+                  height: 38,
+                  alignment: Alignment.center,
+                  decoration: const BoxDecoration(
+                    color: AppColors.pointTint,
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    TablerIcons.check,
+                    size: 22,
+                    color: AppColors.point,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          if (_open) _DoseMedicineList(medicines: dose.medicines),
+        ],
+      ),
+    );
+  }
+}
+
+/// 접힌 복약 행을 펼쳤을 때 나오는 약 목록.
+///
+/// 이름과 개수만 준다. 여기서 설명까지 펼치면 타임라인이 화면을 넘어간다 —
+/// 자세한 내용은 '내 약 보기'가 맡는다.
+class _DoseMedicineList extends StatelessWidget {
+  final List<Medicine> medicines;
+
+  const _DoseMedicineList({required this.medicines});
+
+  @override
+  Widget build(BuildContext context) {
+    if (medicines.isEmpty) {
+      return Padding(
+        padding: const EdgeInsets.only(top: 14),
+        child: Text(
+          '등록된 약이 없어요',
+          style: AppText.body(size: 17, color: AppColors.textSecondary),
+        ),
+      );
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SizedBox(height: 14),
+        const SeniorDivider(),
+        for (final medicine in medicines)
+          Padding(
+            padding: const EdgeInsets.only(top: 12),
+            child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  '${dose.slot.spokenTime} · ${dose.medicines.length}알',
-                  style: AppText.cardTitle(size: 19),
+                Expanded(
+                  child: Text(
+                    medicine.displayName,
+                    style: AppText.body(size: 18),
+                  ),
                 ),
-                Text('드셨어요', style: AppText.caption(size: 17)),
+                const SizedBox(width: 12),
+                Text(
+                  medicine.amount,
+                  style: AppText.label(size: 18, color: AppColors.point),
+                ),
               ],
             ),
           ),
-          const SizedBox(width: 12),
-          ExcludeSemantics(
-            child: Container(
-              width: 38,
-              height: 38,
-              alignment: Alignment.center,
-              decoration: const BoxDecoration(
-                color: AppColors.pointTint,
-                shape: BoxShape.circle,
-              ),
-              child: const Icon(
-                TablerIcons.check,
-                size: 22,
-                color: AppColors.point,
-              ),
-            ),
-          ),
-        ],
-      ),
+      ],
     );
   }
 }
@@ -1024,15 +1088,22 @@ class _HeartRow extends StatelessWidget {
 }
 
 /// 앞으로 올 복약 행 — 회색으로 물려 둔다. 지금 할 일이 아니다.
-class _UpcomingRow extends StatelessWidget {
+class _UpcomingRow extends StatefulWidget {
   final DoseEntry dose;
 
   const _UpcomingRow({required this.dose});
 
+  @override
+  State<_UpcomingRow> createState() => _UpcomingRowState();
+}
+
+class _UpcomingRowState extends State<_UpcomingRow> {
+  bool _open = false;
+
   /// "2시간 뒤". 이미 지난 시각이면 비운다.
   String get _inPhrase {
     final now = DateTime.now();
-    final at = dose.slot.todayAt(now);
+    final at = widget.dose.slot.todayAt(now);
     final minutes = at.difference(now).inMinutes;
     if (minutes <= 0) return '';
     if (minutes < 60) return '$minutes분 뒤';
@@ -1041,28 +1112,48 @@ class _UpcomingRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final dose = widget.dose;
     final inPhrase = _inPhrase;
     return SeniorCard(
       radius: 20,
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
-      child: Row(
+      onTap: () => setState(() => _open = !_open),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Expanded(
-            child: Text(
-              '${dose.slot.spokenTime} · ${dose.medicines.length}알',
-              style: AppText.cardTitle(
-                size: 19,
-                color: AppColors.textTertiary,
+          Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '${dose.slot.spokenTime} · ${dose.medicines.length}알',
+                      style: AppText.cardTitle(
+                        size: 19,
+                        color: AppColors.textTertiary,
+                      ),
+                    ),
+                    Text(
+                      _open ? '접기' : '눌러서 약 보기',
+                      style: AppText.caption(
+                        size: 17,
+                        color: AppColors.textTertiary,
+                      ),
+                    ),
+                  ],
+                ),
               ),
-            ),
+              if (inPhrase.isNotEmpty) ...[
+                const SizedBox(width: 12),
+                Text(
+                  inPhrase,
+                  style: AppText.label(size: 17, color: AppColors.textTertiary),
+                ),
+              ],
+            ],
           ),
-          if (inPhrase.isNotEmpty) ...[
-            const SizedBox(width: 12),
-            Text(
-              inPhrase,
-              style: AppText.label(size: 17, color: AppColors.textTertiary),
-            ),
-          ],
+          if (_open) _DoseMedicineList(medicines: dose.medicines),
         ],
       ),
     );

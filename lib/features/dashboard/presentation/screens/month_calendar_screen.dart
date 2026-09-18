@@ -5,7 +5,6 @@ import '../../../../core/constants/app_colors.dart';
 import '../../../../core/network/api_client.dart';
 import '../../../../core/session/mvp_session.dart';
 import '../../../../core/theme/app_typography.dart';
-import '../../../../core/widgets/senior_button.dart';
 import '../../../../core/widgets/senior_card.dart';
 import '../../../../core/widgets/senior_header.dart';
 
@@ -276,14 +275,6 @@ class _MonthCalendarScreenState extends ConsumerState<MonthCalendarScreen> {
                           const SizedBox(height: 12),
                           _MissedCard(missed: _missed),
                         ],
-                        const SizedBox(height: 16),
-                        SeniorButton(
-                          label: '복약 기록으로 돌아가기',
-                          kind: SeniorButtonKind.secondary,
-                          minHeight: 62,
-                          fontSize: 20,
-                          onPressed: () => Navigator.of(context).maybePop(),
-                        ),
                       ],
                     ),
                   ),

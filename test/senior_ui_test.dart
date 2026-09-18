@@ -19,6 +19,8 @@ import 'package:alkong_yakong/features/reminder/domain/reminder_ladder.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter_tabler_icons/flutter_tabler_icons.dart';
+import 'package:alkong_yakong/core/widgets/senior_card.dart';
 import 'package:alkong_yakong/features/dashboard/presentation/screens/home_screen.dart';
 import 'package:alkong_yakong/features/easy_flow/domain/easy_flow.dart';
 import 'package:alkong_yakong/core/widgets/senior_bottom_nav.dart';
@@ -102,6 +104,7 @@ void main() {
   _backButtonTests();
   _homeTimelineTests();
   _recordTimelineTests();
+  _rightAlignTests();
   _medicinesByTimeTests();
   _confirmPreviewTests();
   _screenCopyTests();
@@ -598,9 +601,7 @@ void _sensorTests() {
     final sensor = HeartSensor();
     addTearDown(sensor.dispose);
 
-    await tester.pumpWidget(
-      wrap(MeasureScreen(sensor: sensor)),
-    );
+    await tester.pumpWidget(wrap(MeasureScreen(sensor: sensor)));
 
     expect(sensor.status, HeartSensorStatus.idle);
     expect(find.text('폴라 베리티 센스를 찾고 있어요'), findsOneWidget);
@@ -682,9 +683,7 @@ void _sensorTests() {
     expect(find.text('오늘 잰 것'), findsNothing);
   });
 
-  testWidgets('보호자가 어르신 id로 열면 그 기록을 읽고 재기 버튼은 없다 (24)', (
-    tester,
-  ) async {
+  testWidgets('보호자가 어르신 id로 열면 그 기록을 읽고 재기 버튼은 없다 (24)', (tester) async {
     final repository = _FakeHeartRepository(_heartSample);
     await tester.pumpWidget(
       wrap(HeartScreen(userId: 'patient-1', repository: repository)),
@@ -753,23 +752,22 @@ class _SeniorTestMedicationController extends MedicationController {
   }
 }
 
-
-/// A장 — 뒤로가기는 라벨을 갖는다.
+/// A장 — 뒤로가기는 화살표 하나지만 버튼처럼 보인다.
 ///
-/// 어르신은 `‹` 모양만 있는 원형을 버튼으로 인식하지 못한다.
-/// 사용자 테스트에서 "여기서 나가는 법을 모르겠다"가 가장 많이 나온 지점이다.
+/// 글씨는 뺐다. 대신 채움 + 2px 테두리의 56×56 판은 남긴다 —
+/// 테두리 없는 작은 `‹`는 어르신이 버튼으로 인식하지 못한다.
 void _backButtonTests() {
   Widget wrap(Widget child, {double textScale = 1.0}) => ProviderScope(
-        child: MaterialApp(
-          theme: AppTheme.build(),
-          home: MediaQuery(
-            data: MediaQueryData(textScaler: TextScaler.linear(textScale)),
-            child: child,
-          ),
-        ),
-      );
+    child: MaterialApp(
+      theme: AppTheme.build(),
+      home: MediaQuery(
+        data: MediaQueryData(textScaler: TextScaler.linear(textScale)),
+        child: child,
+      ),
+    ),
+  );
 
-  testWidgets('뒤로 버튼에 글씨가 보인다', (tester) async {
+  testWidgets('뒤로 버튼은 화살표만 두고 글씨는 없다', (tester) async {
     await tester.pumpWidget(
       wrap(
         Scaffold(
@@ -777,8 +775,23 @@ void _backButtonTests() {
         ),
       ),
     );
-    expect(find.text('뒤로'), findsOneWidget);
+    expect(find.byType(SeniorBackButton), findsOneWidget);
+    expect(find.byIcon(TablerIcons.arrow_left), findsOneWidget);
+    expect(find.text('뒤로'), findsNothing);
     expect(find.text('약 함께먹기 주의'), findsOneWidget);
+  });
+
+  testWidgets('글씨가 없어도 스크린리더는 이름을 읽는다', (tester) async {
+    final handle = tester.ensureSemantics();
+    await tester.pumpWidget(
+      wrap(
+        Scaffold(
+          body: SeniorBackHeader(title: '약 함께먹기 주의', onBack: () {}),
+        ),
+      ),
+    );
+    expect(find.bySemanticsLabel('뒤로 가기'), findsOneWidget);
+    handle.dispose();
   });
 
   testWidgets('돌아갈 곳이 없으면 그리지 않는다', (tester) async {
@@ -786,7 +799,7 @@ void _backButtonTests() {
     await tester.pumpWidget(
       wrap(const Scaffold(body: SeniorBackHeader(title: '오늘'))),
     );
-    expect(find.text('뒤로'), findsNothing);
+    expect(find.byIcon(TablerIcons.arrow_left), findsNothing);
   });
 
   testWidgets('제목이 길고 글자가 2배여도 버튼이 찌그러지지 않는다', (tester) async {
@@ -799,7 +812,9 @@ void _backButtonTests() {
       ),
     );
     expect(tester.takeException(), isNull);
-    expect(find.text('뒤로'), findsOneWidget);
+    final box = tester.getSize(find.byType(SeniorBackButton));
+    expect(box.width, 56);
+    expect(box.height, 56);
   });
 
   test('라벨 없는 아이콘 버튼이 앱 전체에 없다', () {
@@ -817,20 +832,15 @@ void _backButtonTests() {
   });
 }
 
-
 /// B장 — 홈은 시간 축이다.
 void _homeTimelineTests() {
   Widget home({required List<DoseEntry> doses}) => ProviderScope(
-        overrides: [
-          medicationProvider.overrideWith(
-            () => _FixedMedication(doses),
-          ),
-        ],
-        child: MaterialApp(
-          theme: AppTheme.build(),
-          home: const Scaffold(body: PatientHomeScreen()),
-        ),
-      );
+    overrides: [medicationProvider.overrideWith(() => _FixedMedication(doses))],
+    child: MaterialApp(
+      theme: AppTheme.build(),
+      home: const Scaffold(body: PatientHomeScreen()),
+    ),
+  );
 
   testWidgets('굵은 테두리 카드가 하나만 있다', (tester) async {
     await tester.pumpWidget(
@@ -957,6 +967,67 @@ void _homeTimelineTests() {
     );
     expect(same.phrase, '평소와 비슷');
   });
+
+  testWidgets('지난 복약 행을 누르면 무슨 약이었는지 나온다', (tester) async {
+    await tester.pumpWidget(
+      home(
+        doses: const [
+          DoseEntry(
+            slot: DoseSlot.lunch,
+            medicines: [
+              Medicine(ingredient: '메트포르민', amount: '1알'),
+              Medicine(ingredient: '아스피린', amount: '2알'),
+            ],
+            taken: true,
+          ),
+          DoseEntry(
+            slot: DoseSlot.dinner,
+            medicines: [Medicine(ingredient: '저녁정', amount: '1알')],
+          ),
+        ],
+      ),
+    );
+    await tester.pump();
+
+    // 접힌 행 자체는 개수만 말한다. ("오늘 다른 약" 블록에 한 번 더 나온다)
+    final before = tester.widgetList(find.text('메트포르민')).length;
+    await tester.tap(find.textContaining('눌러서 약 보기').first);
+    await tester.pump();
+    expect(tester.widgetList(find.text('메트포르민')).length, before + 1);
+  });
+
+  testWidgets('앞으로 올 복약 행도 눌러서 펼친다', (tester) async {
+    await tester.pumpWidget(
+      home(
+        doses: const [
+          DoseEntry(
+            slot: DoseSlot.morning,
+            medicines: [Medicine(ingredient: '아침정', amount: '1알')],
+          ),
+          DoseEntry(
+            slot: DoseSlot.dinner,
+            medicines: [Medicine(ingredient: '저녁정', amount: '1알')],
+          ),
+        ],
+      ),
+    );
+    await tester.pump();
+
+    expect(find.text('저녁정'), findsNothing);
+    await tester.tap(find.text('눌러서 약 보기'));
+    await tester.pump();
+    expect(find.text('저녁정'), findsOneWidget);
+  });
+
+  test('접고 펴는 버튼에 화살표 장식을 붙이지 않는다', () {
+    // 글자가 이미 접힘 상태를 말한다. 화살표는 한 번 더 말할 뿐이다.
+    final source = File(
+      'lib/features/dashboard/presentation/screens/patient_home_screen.dart',
+    ).readAsStringSync();
+    expect(source.contains('⌄'), isFalse);
+    expect(source.contains('⌃'), isFalse);
+    expect(source.contains('TablerIcons.chevron_up'), isFalse);
+  });
 }
 
 /// 정해진 복약 목록만 들고 있는 컨트롤러.
@@ -967,14 +1038,75 @@ class _FixedMedication extends MedicationController {
 
   @override
   TodayMedication build() => TodayMedication(
-        doses: _doses,
-        guardianRelation: '딸',
-        guardianName: '지안',
-        heartRate: 72,
-        heartRateNormal: true,
-      );
+    doses: _doses,
+    guardianRelation: '딸',
+    guardianName: '지안',
+    heartRate: 72,
+    heartRateNormal: true,
+  );
 }
 
+/// 값과 글자 버튼은 오른쪽 끝에 붙는다.
+///
+/// Expanded 라벨 옆에 Flexible 값을 두면 둘이 남은 폭을 반씩 나눠 가진다 —
+/// 값이 화면 한가운데로 밀려나고, 라벨은 반 폭 안에서 두 줄로 쪼개진다.
+void _rightAlignTests() {
+  /// 실제 기기 폭(375)에서 본다. 값의 폭 상한을 화면 폭으로 잡으므로
+  /// 테스트 기본 폭(800)에서는 카드 안 여백이 과장된다.
+  Future<void> pump(WidgetTester tester, Widget child) async {
+    tester.view.physicalSize = const Size(375, 812);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.build(),
+        home: Scaffold(
+          body: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20),
+            child: SeniorCard(child: child),
+          ),
+        ),
+      ),
+    );
+  }
+
+  testWidgets('목록 행의 값은 오른쪽 끝에 붙는다', (tester) async {
+    await pump(
+      tester,
+      const SeniorListRow(
+        label: '약 함께먹기 주의',
+        icon: TablerIcons.alert_triangle,
+        value: '1건',
+      ),
+    );
+
+    final row = tester.getRect(find.byType(SeniorListRow));
+    final value = tester.getRect(find.text('1건'));
+    expect(row.right - value.right, lessThan(1));
+    // 라벨이 반 폭에 갇혀 두 줄로 쪼개지지 않는다.
+    expect(tester.getRect(find.text('약 함께먹기 주의')).height, lessThan(40));
+  });
+
+  testWidgets('값이 길어도 넘치지 않고 줄을 바꾼다', (tester) async {
+    await pump(
+      tester,
+      const SeniorListRow(
+        label: '이번 달',
+        value: '31일 중 25일 다 드셨어요 그리고 더 긴 말이 붙어도 괜찮습니다',
+      ),
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  test('달력 화면에 돌아가기 버튼을 따로 두지 않는다', () {
+    // 헤더의 뒤로 버튼과 같은 일을 하는 버튼이다. 둘이면 어느 쪽이
+    // 어디로 가는지 다시 읽어야 한다.
+    final source = File(
+      'lib/features/dashboard/presentation/screens/month_calendar_screen.dart',
+    ).readAsStringSync();
+    expect(source.contains('복약 기록으로 돌아가기'), isFalse);
+  });
+}
 
 /// C장 — 기록도 날짜 타임라인이다.
 void _recordTimelineTests() {
@@ -994,9 +1126,7 @@ void _recordTimelineTests() {
         ],
         child: MaterialApp(
           theme: AppTheme.build(),
-          home: Scaffold(
-            body: MedicationRecordScreen(onBackToToday: () {}),
-          ),
+          home: Scaffold(body: MedicationRecordScreen(onBackToToday: () {})),
         ),
       ),
     );
@@ -1014,7 +1144,6 @@ void _recordTimelineTests() {
     expect(source.contains('class _TodayCard'), isFalse);
   });
 }
-
 
 /// D장 — 내 약 목록은 드시는 때로 묶는다.
 void _medicinesByTimeTests() {
@@ -1040,7 +1169,6 @@ void _medicinesByTimeTests() {
     expect(source.contains('PillPhoto(size: 60)'), isTrue);
   });
 }
-
 
 /// E·F장 — 등록 전 미리보기, 재알림 문구.
 void _confirmPreviewTests() {
@@ -1069,7 +1197,6 @@ void _confirmPreviewTests() {
   });
 }
 
-
 /// 3장 — 화면별 문구·경로가 9/11 병합에서 빠졌던 자리들.
 void _screenCopyTests() {
   test('손으로 적기는 드시는 때를 묻는다 (10)', () {
@@ -1084,15 +1211,23 @@ void _screenCopyTests() {
     expect(source.contains('한 번에 먹는 양을 적어 주세요.'), isFalse);
   });
 
-  test('내 정보에서 쉬운 화면으로 바꿀 수 있다 (34)', () {
+  test('설정에는 화면 모드 칸이 없다', () {
+    // 모드는 홈 헤더의 배지 하나로만 바꾼다. 같은 스위치를 두 군데 두면
+    // 어느 쪽이 지금 상태인지 서로 어긋나 보인다.
     final source = File(
       'lib/features/profile/presentation/screens/mypage_screen.dart',
     ).readAsStringSync();
-    expect(source.contains("Text('화면 모드'"), isTrue);
-    expect(source.contains("labels: const ['일반', '쉬운 화면']"), isTrue);
+    expect(source.contains("Text('화면 모드'"), isFalse);
+    expect(source.contains("labels: const ['일반', '쉬운 화면']"), isFalse);
+  });
+
+  test('쉬운 화면으로 가는 길은 홈 헤더에 남아 있다', () {
+    final source = File(
+      'lib/features/dashboard/presentation/screens/patient_home_screen.dart',
+    ).readAsStringSync();
+    expect(source.contains('ModeBadge()'), isTrue);
   });
 }
-
 
 /// 색은 AppColors 에서만 나온다.
 ///
@@ -1105,14 +1240,15 @@ void _colorTokenTests() {
       if (file is! File || !file.path.endsWith('.dart')) continue;
       if (file.path.endsWith('core/constants/app_colors.dart')) continue;
       final text = file.readAsStringSync();
-      for (final match in RegExp(r'Color\(0x[0-9A-Fa-f]{8}\)').allMatches(text)) {
+      for (final match in RegExp(
+        r'Color\(0x[0-9A-Fa-f]{8}\)',
+      ).allMatches(text)) {
         offenders.add('${file.path}: ${match.group(0)}');
       }
     }
     expect(offenders, isEmpty, reason: offenders.join('\n'));
   });
 }
-
 
 /// 개발용 우회는 기본으로 꺼져 있어야 한다.
 void _fakeLoginTests() {
