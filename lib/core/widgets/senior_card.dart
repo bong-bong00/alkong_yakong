@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_tabler_icons/flutter_tabler_icons.dart';
 
 import '../constants/app_colors.dart';
 import '../theme/app_typography.dart';
@@ -316,6 +317,36 @@ class LabelValueRow extends StatelessWidget {
         const SizedBox(width: 12),
         Flexible(child: value),
       ],
+    );
+  }
+}
+
+/// 약 사진 자리. 사진이 붙기 전까지는 알약 아이콘으로 둔다.
+///
+/// 홈 카드와 내 약 목록이 **같은 생김새**를 써야 같은 약으로 읽힌다.
+class PillPhoto extends StatelessWidget {
+  final double size;
+
+  const PillPhoto({super.key, required this.size});
+
+  @override
+  Widget build(BuildContext context) {
+    return ExcludeSemantics(
+      child: Container(
+        width: size,
+        height: size,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: AppColors.bg,
+          shape: BoxShape.circle,
+          border: Border.all(color: AppColors.border, width: 2),
+        ),
+        child: Icon(
+          TablerIcons.pill,
+          size: size * 0.45,
+          color: AppColors.inactive,
+        ),
+      ),
     );
   }
 }

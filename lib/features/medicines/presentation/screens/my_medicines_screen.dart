@@ -10,6 +10,7 @@ import '../../../../core/widgets/senior_button.dart';
 import '../../../../core/widgets/senior_card.dart';
 import '../../../../core/widgets/senior_header.dart';
 import '../../application/user_medicines_controller.dart';
+import '../../../reminder/presentation/screens/alarm_settings_screen.dart';
 import '../../domain/user_medicine_models.dart';
 
 /// 내 약 목록 — 활성 약 종류당 1행 (서버 `/medicines`).
@@ -96,19 +97,17 @@ class _MedicineList extends StatelessWidget {
     return ListView(
       padding: const EdgeInsets.fromLTRB(20, 16, 20, 28),
       children: [
+        // 목록을 보는 이유는 대부분 "이 약을 언제 먹지?"다.
         Text(
-          '등록한 약 ${items.length}가지',
+          '언제 드시는 약인지로 묶었어요 · 눌러서 설명 보기',
           style: AppText.body(size: 19, color: AppColors.textSecondary),
         ),
         const SizedBox(height: 14),
-        if (active.isNotEmpty) ...[
-          Text('현재 복용 중', style: AppText.cardTitle(size: 21)),
-          const SizedBox(height: 10),
+        if (active.isNotEmpty)
           for (final med in active) ...[
             _MedicineCard(medicine: med),
             const SizedBox(height: 10),
           ],
-        ],
         if (past.isNotEmpty) ...[
           if (active.isNotEmpty) const SizedBox(height: 12),
           Text('이전에 등록한 약', style: AppText.cardTitle(size: 21)),
@@ -118,9 +117,25 @@ class _MedicineList extends StatelessWidget {
             const SizedBox(height: 10),
           ],
         ],
+        const SizedBox(height: 12),
+        SeniorCard(
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
+          child: SeniorListRow(
+            label: '알림 시간 바꾸기',
+            icon: TablerIcons.alarm,
+            subtitle: '지금 · 아침 8시, 저녁 6시',
+            trailing: const SeniorChevron(),
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (_) => const AlarmSettingsScreen(),
+              ),
+            ),
+          ),
+        ),
         const SizedBox(height: 18),
         SeniorButton(
           label: '새 처방전 넣기',
+          minHeight: 66,
           onPressed: () => context.push('/prescription'),
         ),
       ],
@@ -141,6 +156,9 @@ class _MedicineCard extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // 홈 카드와 같은 생김새여야 같은 약으로 읽힌다.
+          const PillPhoto(size: 60),
+          const SizedBox(width: 14),
           Expanded(child: _MedicineSummary(medicine: medicine)),
           const SizedBox(width: 12),
           Text(
@@ -162,9 +180,25 @@ class _MedicineSummary extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final badge = slotBadgeFor(medicine.administrationTimes);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        // 시간대를 모르면 배지를 만들지 않는다.
+        if (badge != null) ...[
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+            decoration: BoxDecoration(
+              color: AppColors.pointTint,
+              borderRadius: BorderRadius.circular(9),
+            ),
+            child: Text(
+              badge,
+              style: AppText.cardTitle(size: 16.5, color: AppColors.point),
+            ),
+          ),
+          const SizedBox(height: 6),
+        ],
         Text(
           medicine.displayName,
           style: AppText.label(size: 20, color: AppColors.textBody),
@@ -192,4 +226,38 @@ class _MedicineSummary extends StatelessWidget {
       ],
     );
   }
+}
+
+
+/// 복용 시간대를 "아침 · 저녁" 한 줄로 만든다.
+///
+/// 서버가 한글로도 영문으로도 보낼 수 있어 둘 다 받는다.
+/// 알 수 없는 값만 들어 있으면 null — **배지를 만들지 않는다.**
+String? slotBadgeFor(List<String> times) {
+  const order = ['아침', '점심', '저녁', '자기 전'];
+  const alias = {
+    'morning': '아침',
+    'lunch': '점심',
+    'noon': '점심',
+    'afternoon': '점심',
+    'evening': '저녁',
+    'dinner': '저녁',
+    'night': '자기 전',
+    'bedtime': '자기 전',
+  };
+
+  final found = <String>{};
+  for (final raw in times) {
+    final text = raw.trim();
+    if (text.isEmpty) continue;
+    final lower = text.toLowerCase();
+    for (final entry in alias.entries) {
+      if (lower.contains(entry.key)) found.add(entry.value);
+    }
+    for (final label in order) {
+      if (text.contains(label)) found.add(label);
+    }
+  }
+  if (found.isEmpty) return null;
+  return order.where(found.contains).join(' · ');
 }

@@ -2,13 +2,13 @@ import 'dart:io';
 import 'package:alkong_yakong/core/theme/app_theme.dart';
 import 'package:alkong_yakong/features/auth/presentation/screens/login_screen.dart';
 import 'package:alkong_yakong/features/auth/domain/exclusive_choice.dart';
+import 'package:alkong_yakong/features/medicines/presentation/screens/my_medicines_screen.dart';
 import 'package:alkong_yakong/features/biosignal/application/heart_sensor.dart';
 import 'package:alkong_yakong/features/biosignal/domain/heart_data.dart';
 import 'package:alkong_yakong/features/biosignal/presentation/screens/measure_screen.dart';
 import 'package:alkong_yakong/features/biosignal/presentation/screens/polar_screen.dart';
 import 'package:alkong_yakong/features/auth/presentation/screens/signup_screen.dart';
 import 'package:alkong_yakong/features/dashboard/presentation/screens/guardian_home_screen.dart';
-import 'package:alkong_yakong/features/dashboard/presentation/screens/medication_record_screen.dart';
 import 'package:alkong_yakong/features/dashboard/presentation/screens/medication_record_screen.dart';
 import 'package:alkong_yakong/features/dashboard/presentation/screens/patient_home_screen.dart';
 import 'package:alkong_yakong/features/medication/domain/medication_models.dart';
@@ -102,6 +102,8 @@ void main() {
   _backButtonTests();
   _homeTimelineTests();
   _recordTimelineTests();
+  _medicinesByTimeTests();
+  _confirmPreviewTests();
   _calendarTests();
   Widget wrap(Widget child, {double textScale = 1.0}) {
     return ProviderScope(
@@ -1007,5 +1009,59 @@ void _recordTimelineTests() {
     expect(source.contains('data.missed ? AppColors.danger'), isTrue);
     // 오늘 기록을 시각별로 늘어놓던 카드는 타임라인이 대신한다.
     expect(source.contains('class _TodayCard'), isFalse);
+  });
+}
+
+
+/// D장 — 내 약 목록은 드시는 때로 묶는다.
+void _medicinesByTimeTests() {
+  test('시간대 배지는 한글·영문을 모두 받는다', () {
+    expect(slotBadgeFor(const ['아침', '저녁']), '아침 · 저녁');
+    expect(slotBadgeFor(const ['MORNING', 'EVENING']), '아침 · 저녁');
+    expect(slotBadgeFor(const ['저녁', '아침']), '아침 · 저녁');
+  });
+
+  test('시간대를 모르면 배지를 만들지 않는다', () {
+    // 모르는 값을 "아침"으로 찍으면 엉뚱한 때에 드시게 된다.
+    expect(slotBadgeFor(const []), isNull);
+    expect(slotBadgeFor(const ['', '  ']), isNull);
+    expect(slotBadgeFor(const ['알 수 없음']), isNull);
+  });
+
+  test('목록은 시간대를 앞세워 안내한다', () {
+    final source = File(
+      'lib/features/medicines/presentation/screens/my_medicines_screen.dart',
+    ).readAsStringSync();
+    expect(source.contains('언제 드시는 약인지로 묶었어요'), isTrue);
+    // 홈과 같은 사진 자리를 쓴다. 다른 모양이면 다른 약으로 읽힌다.
+    expect(source.contains('PillPhoto(size: 60)'), isTrue);
+  });
+}
+
+
+/// E·F장 — 등록 전 미리보기, 재알림 문구.
+void _confirmPreviewTests() {
+  final confirm = File(
+    'lib/features/prescription/presentation/screens/prescription_screen.dart',
+  ).readAsStringSync();
+
+  test('확인 화면이 내일 모습을 홈과 같은 타임라인으로 보여준다', () {
+    expect(confirm.contains('내일부터 이렇게 됩니다'), isTrue);
+    // 다른 스타일을 새로 만들면 등록 뒤 홈과 다른 화면으로 읽힌다.
+    expect(confirm.contains('TimelineRow('), isTrue);
+  });
+
+  test('시간대를 못 읽으면 미리보기를 만들지 않는다', () {
+    // 지어낸 시각을 보여주면 그 시각에 드시게 된다.
+    expect(confirm.contains('if (bySlot.isEmpty) return const [];'), isTrue);
+  });
+
+  test('재알림은 절대시각으로 말한다', () {
+    final home = File(
+      'lib/features/dashboard/presentation/screens/patient_home_screen.dart',
+    ).readAsStringSync();
+    expect(home.contains('에 다시 알려드려요'), isTrue);
+    // "나중에 확인"처럼 무엇이 일어나는지 모를 문구를 쓰지 않는다.
+    expect(home.contains('나중에 확인'), isFalse);
   });
 }

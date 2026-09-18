@@ -619,7 +619,7 @@ class _MedicineRow extends StatelessWidget {
         padding: const EdgeInsets.symmetric(vertical: 12),
         child: Row(
           children: [
-            _PillPhoto(size: 60),
+            PillPhoto(size: 60),
             const SizedBox(width: 14),
             Expanded(
               child: Column(
@@ -671,33 +671,6 @@ class _MedicineRow extends StatelessWidget {
   }
 }
 
-/// 약 사진 자리. 실제 의약품 이미지가 들어오면 여기를 바꾼다.
-class _PillPhoto extends StatelessWidget {
-  final double size;
-  const _PillPhoto({required this.size});
-
-  @override
-  Widget build(BuildContext context) {
-    return ExcludeSemantics(
-      child: Container(
-        width: size,
-        height: size,
-        alignment: Alignment.center,
-        decoration: BoxDecoration(
-          color: AppColors.bg,
-          shape: BoxShape.circle,
-          border: Border.all(color: AppColors.border, width: 2),
-        ),
-        child: Icon(
-          TablerIcons.pill,
-          size: size * 0.45,
-          color: AppColors.inactive,
-        ),
-      ),
-    );
-  }
-}
-
 /// 오늘 이미 드신 다른 약.
 class _OtherDosesBlock extends StatelessWidget {
   final List<DoseEntry> doses;
@@ -722,7 +695,7 @@ class _OtherDosesBlock extends StatelessWidget {
                 padding: const EdgeInsets.only(bottom: 8),
                 child: Row(
                   children: [
-                    const _PillPhoto(size: 38),
+                    const PillPhoto(size: 38),
                     const SizedBox(width: 12),
                     Expanded(
                       child: Column(

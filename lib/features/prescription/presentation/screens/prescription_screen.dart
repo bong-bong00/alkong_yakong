@@ -15,6 +15,7 @@ import '../../../../core/widgets/senior_button.dart';
 import '../../../../core/widgets/senior_card.dart';
 import '../../../../core/widgets/senior_feedback.dart';
 import '../../../../core/widgets/senior_header.dart';
+import '../../../../core/widgets/senior_timeline.dart';
 import '../../../medication/application/medication_controller.dart';
 import '../../../medicines/application/user_medicines_controller.dart';
 import '../../../medicines/domain/display_policy.dart';
@@ -1166,6 +1167,72 @@ class _ConfirmScreenState extends State<_ConfirmScreen> {
     }
   }
 
+  /// 등록하면 내일부터 어떤 시간에 무엇을 드시게 되는지 미리 보여준다.
+  ///
+  /// 홈과 **같은 TimelineRow** 를 쓴다. 다른 스타일을 새로 만들면
+  /// 등록 뒤 홈에서 본 것과 다른 화면으로 읽힌다.
+  List<Widget> _tomorrowPreview() {
+    final bySlot = <String, int>{};
+    for (final item in _editedItems) {
+      final times = item['administration_times'];
+      if (times is! List) continue;
+      for (final raw in times) {
+        final label = _slotLabel(raw?.toString() ?? '');
+        if (label == null) continue;
+        bySlot[label] = (bySlot[label] ?? 0) + 1;
+      }
+    }
+    // 시간대를 못 읽었으면 미리보기를 만들지 않는다. 지어낸 시각을
+    // 보여주면 그 시각에 드시게 된다.
+    if (bySlot.isEmpty) return const [];
+
+    const order = ['아침 8시', '점심 12시', '저녁 6시', '자기 전'];
+    final rows = <Widget>[];
+    final labels = order.where(bySlot.containsKey).toList();
+    for (int i = 0; i < labels.length; i++) {
+      rows.add(
+        TimelineRow(
+          last: i == labels.length - 1,
+          child: SeniorCard(
+            radius: 20,
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
+            child: Text(
+              '${labels[i]} · ${bySlot[labels[i]]}알',
+              style: AppText.cardTitle(size: 19),
+            ),
+          ),
+        ),
+      );
+      if (i != labels.length - 1) rows.add(kTimelineGap);
+    }
+
+    return [
+      Text('내일부터 이렇게 됩니다', style: AppText.cardTitle(size: 20)),
+      const SizedBox(height: 12),
+      ...rows,
+      const SizedBox(height: 12),
+    ];
+  }
+
+  /// 서버가 주는 복용 시간을 화면 문구로. 모르면 null.
+  static String? _slotLabel(String raw) {
+    final text = raw.toLowerCase();
+    if (text.contains('아침') || text.contains('morning')) return '아침 8시';
+    if (text.contains('점심') || text.contains('lunch') ||
+        text.contains('noon')) {
+      return '점심 12시';
+    }
+    if (text.contains('저녁') || text.contains('evening') ||
+        text.contains('dinner')) {
+      return '저녁 6시';
+    }
+    if (text.contains('자기') || text.contains('night') ||
+        text.contains('bed')) {
+      return '자기 전';
+    }
+    return null;
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -1296,6 +1363,9 @@ class _ConfirmScreenState extends State<_ConfirmScreen> {
                     ),
                     const SizedBox(height: 12),
                   ],
+                  // 목록만 보여주면 등록 뒤 무엇이 달라지는지 모른다.
+                  // 홈 타임라인과 같은 생김새로 미리 보여준다.
+                  if (_editedItems.isNotEmpty) ..._tomorrowPreview(),
                 ],
               ),
             ),
@@ -1312,8 +1382,12 @@ class _ConfirmScreenState extends State<_ConfirmScreen> {
                       minHeight: 70,
                       onPressed: _registering ? null : _tryRegister,
                     ),
-                    SeniorTextButton(
+                    const SizedBox(height: 10),
+                    SeniorButton(
                       label: '다시 찍기',
+                      kind: SeniorButtonKind.secondary,
+                      minHeight: 62,
+                      fontSize: 20,
                       onPressed: widget.onRetake,
                     ),
                   ] else
