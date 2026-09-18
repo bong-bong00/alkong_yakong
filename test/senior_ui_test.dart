@@ -22,6 +22,7 @@ import 'package:alkong_yakong/features/dashboard/presentation/screens/home_scree
 import 'package:alkong_yakong/features/easy_flow/domain/easy_flow.dart';
 import 'package:alkong_yakong/core/widgets/senior_bottom_nav.dart';
 import 'package:alkong_yakong/core/widgets/senior_header.dart';
+import 'package:alkong_yakong/core/widgets/senior_timeline.dart';
 import 'package:alkong_yakong/core/mode/app_mode.dart';
 import 'package:alkong_yakong/features/medication/presentation/screens/dose_done_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -98,6 +99,7 @@ void main() {
   _sensorTests();
   _shippingTests();
   _backButtonTests();
+  _homeTimelineTests();
   _calendarTests();
   Widget wrap(Widget child, {double textScale = 1.0}) {
     return ProviderScope(
@@ -806,4 +808,162 @@ void _backButtonTests() {
       expect(text.contains("'‹'"), isFalse, reason: file.path);
     }
   });
+}
+
+
+/// B장 — 홈은 시간 축이다.
+void _homeTimelineTests() {
+  Widget home({required List<DoseEntry> doses}) => ProviderScope(
+        overrides: [
+          medicationProvider.overrideWith(
+            () => _FixedMedication(doses),
+          ),
+        ],
+        child: MaterialApp(
+          theme: AppTheme.build(),
+          home: const Scaffold(body: PatientHomeScreen()),
+        ),
+      );
+
+  testWidgets('굵은 테두리 카드가 하나만 있다', (tester) async {
+    await tester.pumpWidget(
+      home(
+        doses: const [
+          DoseEntry(
+            slot: DoseSlot.morning,
+            medicines: [Medicine(ingredient: '아침정', amount: '1알')],
+            taken: true,
+          ),
+          DoseEntry(
+            slot: DoseSlot.dinner,
+            medicines: [Medicine(ingredient: '저녁정', amount: '1알')],
+          ),
+        ],
+      ),
+    );
+    await tester.pump();
+
+    // "지금" 행만 3px 파란 테두리를 갖는다. 모두 같으면 개편 효과가 없다.
+    final current = tester
+        .widgetList<TimelineRow>(find.byType(TimelineRow))
+        .where((row) => row.current)
+        .length;
+    expect(current, 1);
+  });
+
+  testWidgets('점 3개 진행 표시가 사라졌다', (tester) async {
+    await tester.pumpWidget(
+      home(
+        doses: const [
+          DoseEntry(
+            slot: DoseSlot.dinner,
+            medicines: [Medicine(ingredient: '저녁정', amount: '1알')],
+          ),
+        ],
+      ),
+    );
+    await tester.pump();
+    expect(find.textContaining('번 드셨어요'), findsNothing);
+  });
+
+  testWidgets('바로가기는 기본으로 접혀 있다', (tester) async {
+    await tester.pumpWidget(
+      home(
+        doses: const [
+          DoseEntry(
+            slot: DoseSlot.dinner,
+            medicines: [Medicine(ingredient: '저녁정', amount: '1알')],
+          ),
+        ],
+      ),
+    );
+    await tester.pump();
+
+    expect(find.textContaining('다른 기능 보기'), findsOneWidget);
+    expect(find.text('내 약 설명'), findsNothing);
+
+    await tester.tap(find.textContaining('다른 기능 보기'));
+    await tester.pump();
+    expect(find.textContaining('다른 기능 접기'), findsOneWidget);
+  });
+
+  testWidgets('심박수를 안 잰 시간대에는 행이 없다', (tester) async {
+    await tester.pumpWidget(
+      home(
+        doses: const [
+          DoseEntry(
+            slot: DoseSlot.morning,
+            medicines: [Medicine(ingredient: '아침정', amount: '1알')],
+            taken: true,
+          ),
+        ],
+      ),
+    );
+    await tester.pump();
+    // 빈 카드를 두면 재야 할 것을 안 잰 것처럼 보인다.
+    expect(find.textContaining('심박수'), findsNothing);
+  });
+
+  testWidgets('잰 시간대에는 전·후가 함께 보인다', (tester) async {
+    await tester.pumpWidget(
+      home(
+        doses: [
+          DoseEntry(
+            slot: DoseSlot.morning,
+            medicines: const [Medicine(ingredient: '아침정', amount: '1알')],
+            taken: true,
+            heartCheck: DoseHeartCheck(
+              before: 78,
+              after: 72,
+              measuredAt: DateTime(2026, 9, 18, 8, 20),
+            ),
+          ),
+        ],
+      ),
+    );
+    await tester.pump();
+    expect(find.text('아침 심박수'), findsOneWidget);
+    expect(find.textContaining('78 → 72'), findsOneWidget);
+  });
+
+  test('심박수 문구는 빠른 쪽을 먼저 말한다', () {
+    final fast = DoseHeartCheck(
+      before: 90,
+      after: 84,
+      measuredAt: DateTime(2026, 9, 18),
+    );
+    // 6회 낮아졌지만 84는 여전히 빠르다. 낮아진 폭보다 먼저 알려야 한다.
+    expect(fast.phrase, '조금 빨라요');
+    expect(fast.isFast, isTrue);
+
+    final calm = DoseHeartCheck(
+      before: 78,
+      after: 72,
+      measuredAt: DateTime(2026, 9, 18),
+    );
+    expect(calm.phrase, '조금 낮아졌어요');
+
+    final same = DoseHeartCheck(
+      before: 74,
+      after: 72,
+      measuredAt: DateTime(2026, 9, 18),
+    );
+    expect(same.phrase, '평소와 비슷');
+  });
+}
+
+/// 정해진 복약 목록만 들고 있는 컨트롤러.
+class _FixedMedication extends MedicationController {
+  _FixedMedication(this._doses);
+
+  final List<DoseEntry> _doses;
+
+  @override
+  TodayMedication build() => TodayMedication(
+        doses: _doses,
+        guardianRelation: '딸',
+        guardianName: '지안',
+        heartRate: 72,
+        heartRateNormal: true,
+      );
 }

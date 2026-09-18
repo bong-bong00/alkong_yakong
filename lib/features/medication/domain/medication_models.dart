@@ -139,6 +139,40 @@ class Medicine {
   }
 }
 
+/// 한 복약 시간대에 붙는 심박수 측정.
+///
+/// 없으면 null — **행을 그리지 않는다.** 재지 않은 시간대에 가짜 값을
+/// 채우면 그 숫자가 그대로 판단의 근거가 된다.
+class DoseHeartCheck {
+  /// 약 먹기 전.
+  final int before;
+
+  /// 약 먹은 뒤.
+  final int after;
+
+  final DateTime measuredAt;
+
+  const DoseHeartCheck({
+    required this.before,
+    required this.after,
+    required this.measuredAt,
+  });
+
+  /// 먹은 뒤 몇 회 낮아졌는지. 올라갔으면 음수.
+  int get drop => before - after;
+
+  /// "평소와 비슷" / "조금 낮아졌어요" / "조금 빨라요"
+  String get phrase {
+    // 빠른 쪽을 먼저 본다. 낮아진 폭보다 먼저 알려야 할 사실이다.
+    if (after >= 80) return '조금 빨라요';
+    if (drop >= 5) return '조금 낮아졌어요';
+    return '평소와 비슷';
+  }
+
+  /// 빠르면 화면이 붉게 짚어 준다.
+  bool get isFast => after >= 80;
+}
+
 /// 한 시간대의 복약 상태.
 class DoseEntry {
   final DoseSlot slot;
@@ -151,12 +185,16 @@ class DoseEntry {
   /// "30분 뒤에 다시" 를 눌러 사다리가 밀린 시각.
   final DateTime? snoozedUntil;
 
+  /// 이 시간대에 잰 심박수. 안 쟀으면 null.
+  final DoseHeartCheck? heartCheck;
+
   const DoseEntry({
     required this.slot,
     required this.medicines,
     this.taken = false,
     this.takenAt,
     this.snoozedUntil,
+    this.heartCheck,
   });
 
   /// "두 알" — 개수를 한글로 읽어준다.
@@ -171,6 +209,7 @@ class DoseEntry {
     bool? taken,
     DateTime? takenAt,
     DateTime? snoozedUntil,
+    DoseHeartCheck? heartCheck,
     bool clearTakenAt = false,
     bool clearSnooze = false,
   }) {
@@ -180,6 +219,7 @@ class DoseEntry {
       taken: taken ?? this.taken,
       takenAt: clearTakenAt ? null : (takenAt ?? this.takenAt),
       snoozedUntil: clearSnooze ? null : (snoozedUntil ?? this.snoozedUntil),
+      heartCheck: heartCheck ?? this.heartCheck,
     );
   }
 }
