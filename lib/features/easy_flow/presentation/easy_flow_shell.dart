@@ -157,7 +157,9 @@ class _EasyFlowShellState extends ConsumerState<EasyFlowShell> {
           onUndone: () => _goTo(EasyScreen.today),
         );
       case EasyScreen.record:
-        return const MedicationRecordScreen();
+        return MedicationRecordScreen(
+          onBackToToday: () => _goTo(EasyScreen.today),
+        );
       case EasyScreen.heart:
         return const HeartScreen();
       case EasyScreen.medicines:

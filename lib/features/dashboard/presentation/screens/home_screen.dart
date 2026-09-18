@@ -88,7 +88,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   slot: _justRecorded!,
                   onUndone: () => setState(() => _justRecorded = null),
                 ),
-          const MedicationRecordScreen(),
+          MedicationRecordScreen(
+            // 기록에서 나가는 길이 탭바뿐이면 길을 잃는다.
+            onBackToToday: () => setState(() => _index = 0),
+          ),
           const MyPageScreen(),
         ],
       ),

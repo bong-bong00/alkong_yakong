@@ -4,8 +4,10 @@ import 'package:flutter_tabler_icons/flutter_tabler_icons.dart';
 
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
+import '../../../../core/widgets/senior_button.dart';
 import '../../../../core/widgets/senior_card.dart';
 import '../../../../core/widgets/senior_header.dart';
+import '../../../../core/widgets/senior_timeline.dart';
 import '../../../medication/application/medication_controller.dart';
 import '../../../dur_analysis/presentation/screens/dur_analysis_screen.dart';
 import '../../application/medication_history_provider.dart';
@@ -29,9 +31,13 @@ class MedicationRecordScreen extends ConsumerWidget {
   /// 보호자가 볼 어르신 id. null이면 로그인한 본인의 기록이다.
   final String? patientUserId;
 
+  /// 오늘 화면으로 돌아가는 길. 탭 루트일 때만 쓴다.
+  final VoidCallback? onBackToToday;
+
   const MedicationRecordScreen({
     super.key,
     this.patientName,
+    this.onBackToToday,
     this.showBack = false,
     this.patientUserId,
   });
@@ -66,6 +72,18 @@ class MedicationRecordScreen extends ConsumerWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
+                // 기록에서 홈으로 돌아가는 길이 탭바뿐이면 길을 잃는다.
+                if (patientId == null && onBackToToday != null) ...[
+                  SeniorButton(
+                    label: '오늘 화면으로 돌아가기',
+                    icon: TablerIcons.calendar_event,
+                    minHeight: 72,
+                    fontSize: 23,
+                    elevated: true,
+                    onPressed: onBackToToday,
+                  ),
+                  const SizedBox(height: 12),
+                ],
                 _MonthCard(rate: _monthRate(today, history)),
                 const SizedBox(height: 12),
                 _WeekCard(
@@ -78,7 +96,8 @@ class MedicationRecordScreen extends ConsumerWidget {
                   ),
                 ),
                 const SizedBox(height: 12),
-                _TodayCard(rows: _todayRows(today)),
+                // 날짜를 위에서 아래로, 최신이 위다. 오늘 카드가 축 위의 "지금".
+                ..._dayTimeline(context, today, history),
                 // 함께먹기 주의 화면은 로그인한 본인 약만 분석한다.
                 if (patientId == null) ...[
                 const SizedBox(height: 12),
@@ -176,24 +195,71 @@ class MedicationRecordScreen extends ConsumerWidget {
     ];
   }
 
-  List<_RecordRow> _todayRows(TodayMedication today) {
-    return [
-      for (final dose in today.doses)
-        _RecordRow(
-          time: dose.slot.spokenTime,
-          medicines: [
-            for (final med in dose.medicines)
-              _RecordMedicine(
-                name: med.displayName,
-                ingredientLabel: med.ingredientLabel,
-                spoken: med.cardSpoken,
-                amount: med.amount,
-              ),
+  /// 날짜 카드를 시간 축으로 쌓는다. 최신이 위, 오늘이 축 위의 "지금".
+  ///
+  /// 기록이 없는 날은 만들지 않는다 — "다 드셨다"로도 "빠뜨렸다"로도
+  /// 채우지 않는다.
+  List<Widget> _dayTimeline(
+    BuildContext context,
+    TodayMedication today,
+    Map<DateTime, DayAdherence> history,
+  ) {
+    final now = DateTime.now();
+    final todayKey = dateOnly(now);
+
+    final days = history.values.toList()
+      ..sort((a, b) => b.date.compareTo(a.date));
+
+    // 오늘은 서버 기록보다 이 전화기의 상태가 정확하다.
+    final entries = <_DayCardData>[
+      if (today.doses.isNotEmpty)
+        _DayCardData(
+          date: todayKey,
+          taken: today.takenCount,
+          total: today.doses.length,
+          missedSlots: [
+            for (final dose in today.doses)
+              if (!dose.taken && dose.slot.todayAt(now).isBefore(now))
+                dose.slot.label,
           ],
-          taken: dose.taken,
+          heartCheck: today.doses
+              .map((d) => d.heartCheck)
+              .whereType<DoseHeartCheck>()
+              .firstOrNull,
+          isToday: true,
         ),
+      for (final day in days)
+        if (dateOnly(day.date) != todayKey)
+          _DayCardData(
+            date: day.date,
+            taken: day.taken,
+            total: day.total,
+            missedSlots: day.missedSlots,
+            heartCheck: null,
+            isToday: false,
+          ),
     ];
+
+    if (entries.isEmpty) return const [];
+
+    final rows = <Widget>[];
+    for (int i = 0; i < entries.length; i++) {
+      rows.add(
+        TimelineRow(
+          current: entries[i].isToday,
+          past: !entries[i].isToday,
+          last: i == entries.length - 1,
+          child: _DayCard(
+            data: entries[i],
+            onTap: entries[i].isToday ? onBackToToday : null,
+          ),
+        ),
+      );
+      if (i != entries.length - 1) rows.add(kTimelineGap);
+    }
+    return rows;
   }
+
 }
 
 class _DayStatus {
@@ -217,31 +283,6 @@ class _DayStatus {
   /// 지난 날인데 약 일정이 없었던 날. 다 드신 날로도 빠뜨린 날로도 치지 않는다.
   bool get noRecord => !isFuture && !isToday && total == 0;
   bool get partial => total > 0 && taken < total;
-}
-
-class _RecordMedicine {
-  final String name;
-  final String? ingredientLabel;
-  final String? spoken;
-  final String amount;
-
-  const _RecordMedicine({
-    required this.name,
-    this.ingredientLabel,
-    this.spoken,
-    this.amount = '',
-  });
-}
-
-class _RecordRow {
-  final String time;
-  final List<_RecordMedicine> medicines;
-  final bool taken;
-  const _RecordRow({
-    required this.time,
-    required this.medicines,
-    required this.taken,
-  });
 }
 
 /// 카드 1 — 이번 달.
@@ -461,120 +502,104 @@ class _WeekDay extends StatelessWidget {
   }
 }
 
-/// 카드 3 — 오늘 기록.
-class _TodayCard extends StatelessWidget {
-  final List<_RecordRow> rows;
-  const _TodayCard({required this.rows});
+/// 날짜 카드 한 장에 필요한 것.
+class _DayCardData {
+  final DateTime date;
+  final int taken;
+  final int total;
+  final List<String> missedSlots;
+
+  /// 그날 잰 심박수. 없으면 줄을 빼고 간격도 줄인다.
+  final DoseHeartCheck? heartCheck;
+
+  final bool isToday;
+
+  const _DayCardData({
+    required this.date,
+    required this.taken,
+    required this.total,
+    required this.missedSlots,
+    required this.heartCheck,
+    required this.isToday,
+  });
+
+  bool get complete => total > 0 && taken >= total;
+
+  /// 지난 날인데 다 못 드셨으면 빠뜨린 날이다.
+  bool get missed => !isToday && !complete;
+
+  String get label {
+    final base = '${date.month}월 ${date.day}일';
+    return isToday ? '$base 오늘' : base;
+  }
+
+  /// "다 드셨어요" / "점심 놓침" / "아직 안 드셨어요"
+  String get status {
+    if (complete) return '다 드셨어요';
+    if (missedSlots.isNotEmpty) return '${missedSlots.join(' · ')} 놓침';
+    return isToday ? '아직 안 드셨어요' : '${total - taken}번 놓침';
+  }
+}
+
+/// 하루 한 장. 막대 개수가 그날 복용 횟수고, 칠해진 만큼 드신 것이다.
+class _DayCard extends StatelessWidget {
+  final _DayCardData data;
+  final VoidCallback? onTap;
+
+  const _DayCard({required this.data, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
+    final check = data.heartCheck;
     return SeniorCard(
-      padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 18),
+      radius: 22,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
+      onTap: onTap,
+      borderColor: data.isToday
+          ? AppColors.point
+          : data.missed
+              ? AppColors.dangerBorder
+              : null,
+      borderWidth: data.isToday ? 3 : 2,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          IconTitle(
-            icon: TablerIcons.list_check,
-            text: '오늘 기록',
-            style: AppText.cardTitle(),
+          LabelValueRow(
+            label: Text(data.label, style: AppText.cardTitle(size: 21)),
+            value: Text(
+              data.status,
+              style: AppText.cardTitle(
+                size: 18,
+                // 놓친 날만 붉게. 화면당 위험색은 하나다.
+                color: data.missed ? AppColors.danger : AppColors.point,
+              ),
+            ),
           ),
           const SizedBox(height: 12),
-          for (int i = 0; i < rows.length; i++) ...[
-            if (i > 0) ...[
-              const SizedBox(height: 12),
-              const SeniorDivider(),
-              const SizedBox(height: 12),
-            ],
-            _TodayRow(row: rows[i]),
-          ],
-        ],
-      ),
-    );
-  }
-}
-
-class _TodayRow extends StatelessWidget {
-  final _RecordRow row;
-  const _TodayRow({required this.row});
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Row(
-          children: [
-            Expanded(
-              child: Text(
-                row.time,
-                style: AppText.cardTitle(size: 19),
-              ),
-            ),
-            Text(
-              row.taken ? '드셨어요' : '아직이에요',
-              style: AppText.cardTitle(
-                size: 17,
-                color: row.taken ? AppColors.point : AppColors.textTertiary,
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 8),
-        for (int i = 0; i < row.medicines.length; i++) ...[
-          if (i > 0) const SeniorDivider(),
-          _RecordMedicineLine(medicine: row.medicines[i]),
-        ],
-      ],
-    );
-  }
-}
-
-class _RecordMedicineLine extends StatelessWidget {
-  final _RecordMedicine medicine;
-
-  const _RecordMedicineLine({required this.medicine});
-
-  @override
-  Widget build(BuildContext context) {
-    final ingredient = medicine.ingredientLabel?.trim() ?? '';
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  medicine.name,
-                  style: AppText.cardTitle(size: 21),
-                ),
-                if (ingredient.isNotEmpty) ...[
-                  const SizedBox(height: 2),
-                  Text(
-                    '주성분: $ingredient',
-                    style: AppText.caption(
-                      size: 16.5,
-                      color: AppColors.textSecondary,
+          Row(
+            children: [
+              for (int i = 0; i < data.total; i++) ...[
+                if (i > 0) const SizedBox(width: 7),
+                Expanded(
+                  child: Container(
+                    height: 13,
+                    decoration: BoxDecoration(
+                      color: i < data.taken
+                          ? AppColors.point
+                          : AppColors.strongBorder,
+                      borderRadius: BorderRadius.circular(7),
                     ),
                   ),
-                ],
-                if ((medicine.spoken ?? '').trim().isNotEmpty) ...[
-                  const SizedBox(height: 2),
-                  Text(
-                    medicine.spoken!,
-                    style: AppText.caption(size: 17),
-                  ),
-                ],
+                ),
               ],
-            ),
+            ],
           ),
-          if (medicine.amount.trim().isNotEmpty) ...[
-            const SizedBox(width: 10),
+          // 안 잰 날에는 이 줄을 아예 두지 않는다.
+          if (check != null) ...[
+            const SizedBox(height: 12),
             Text(
-              medicine.amount,
-              style: AppText.cardTitle(size: 20, color: AppColors.point),
+              '심박수 ${check.before} → ${check.after}',
+              style: AppText.caption(size: 17.5),
             ),
           ],
         ],

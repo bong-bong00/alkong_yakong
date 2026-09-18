@@ -9,6 +9,7 @@ import 'package:alkong_yakong/features/biosignal/presentation/screens/polar_scre
 import 'package:alkong_yakong/features/auth/presentation/screens/signup_screen.dart';
 import 'package:alkong_yakong/features/dashboard/presentation/screens/guardian_home_screen.dart';
 import 'package:alkong_yakong/features/dashboard/presentation/screens/medication_record_screen.dart';
+import 'package:alkong_yakong/features/dashboard/presentation/screens/medication_record_screen.dart';
 import 'package:alkong_yakong/features/dashboard/presentation/screens/patient_home_screen.dart';
 import 'package:alkong_yakong/features/medication/domain/medication_models.dart';
 import 'package:alkong_yakong/features/medication/application/medication_controller.dart';
@@ -100,6 +101,7 @@ void main() {
   _shippingTests();
   _backButtonTests();
   _homeTimelineTests();
+  _recordTimelineTests();
   _calendarTests();
   Widget wrap(Widget child, {double textScale = 1.0}) {
     return ProviderScope(
@@ -966,4 +968,44 @@ class _FixedMedication extends MedicationController {
         heartRate: 72,
         heartRateNormal: true,
       );
+}
+
+
+/// C장 — 기록도 날짜 타임라인이다.
+void _recordTimelineTests() {
+  testWidgets('기록 첫 화면에 오늘로 돌아가는 버튼이 있다', (tester) async {
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          medicationProvider.overrideWith(
+            () => _FixedMedication(const [
+              DoseEntry(
+                slot: DoseSlot.morning,
+                medicines: [Medicine(ingredient: '아침정', amount: '1알')],
+                taken: true,
+              ),
+            ]),
+          ),
+        ],
+        child: MaterialApp(
+          theme: AppTheme.build(),
+          home: Scaffold(
+            body: MedicationRecordScreen(onBackToToday: () {}),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+    expect(find.text('오늘 화면으로 돌아가기'), findsOneWidget);
+  });
+
+  test('날짜 카드는 놓친 날만 붉게 말한다', () {
+    final source = File(
+      'lib/features/dashboard/presentation/screens/medication_record_screen.dart',
+    ).readAsStringSync();
+    // 화면당 위험색은 하나다.
+    expect(source.contains('data.missed ? AppColors.danger'), isTrue);
+    // 오늘 기록을 시각별로 늘어놓던 카드는 타임라인이 대신한다.
+    expect(source.contains('class _TodayCard'), isFalse);
+  });
 }
