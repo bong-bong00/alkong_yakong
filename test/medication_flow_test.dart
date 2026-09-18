@@ -1,4 +1,6 @@
 import 'package:alkong_yakong/core/theme/app_theme.dart';
+import 'package:alkong_yakong/core/network/api_client.dart';
+import 'package:alkong_yakong/core/session/mvp_session.dart';
 import 'package:alkong_yakong/features/dashboard/presentation/screens/patient_home_screen.dart';
 import 'package:alkong_yakong/features/medication/application/medication_controller.dart';
 import 'package:alkong_yakong/features/medication/domain/medication_models.dart';
@@ -6,27 +8,39 @@ import 'package:alkong_yakong/features/medication/presentation/widgets/dose_guar
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
 
 void main() {
   group('복약 체크 판정', () {
     late ProviderContainer container;
 
-    setUp(
-      () => container = ProviderContainer(
+    setUp(() {
+      MvpSession.userId = 'test-user';
+      final client = MockClient(
+        (_) async => http.Response(
+          '{"doses":[]}',
+          200,
+          headers: {'content-type': 'application/json'},
+        ),
+      );
+      container = ProviderContainer(
         overrides: [
-          medicationProvider.overrideWith(_TestMedicationController.new),
+          medicationProvider.overrideWith(
+            () => _TestMedicationController(client),
+          ),
         ],
-      ),
-    );
+      );
+    });
     tearDown(() => container.dispose());
 
     MedicationController controller() =>
         container.read(medicationProvider.notifier);
 
-    test('처음 누르면 기록된다', () {
+    test('처음 누르면 기록된다', () async {
       final now = DoseSlot.dinner.todayAt(DateTime.now());
       expect(
-        controller().take(DoseSlot.dinner, now: now),
+        await controller().take(DoseSlot.dinner, now: now),
         DoseCheckOutcome.recorded,
       );
       expect(
@@ -35,16 +49,83 @@ void main() {
       );
     });
 
-    test('두 번째로 누르면 기록하지 않고 차단한다 (5f)', () {
+    test('서버 저장 실패 시 로컬 완료 상태를 확정하지 않는다', () async {
+      final failingClient = MockClient(
+        (_) async => http.Response(
+          '{"detail":"저장 실패"}',
+          500,
+          headers: {'content-type': 'application/json'},
+        ),
+      );
+      final failedContainer = ProviderContainer(
+        overrides: [
+          medicationProvider.overrideWith(
+            () => _TestMedicationController(failingClient),
+          ),
+        ],
+      );
+      addTearDown(failedContainer.dispose);
+      MvpSession.userId = 'test-user';
+
+      final controller = failedContainer.read(medicationProvider.notifier);
       final now = DoseSlot.dinner.todayAt(DateTime.now());
-      controller().take(DoseSlot.dinner, now: now);
+      await expectLater(
+        controller.take(DoseSlot.dinner, now: now),
+        throwsA(isA<ApiException>()),
+      );
+      expect(
+        failedContainer.read(medicationProvider).doseOf(DoseSlot.dinner).taken,
+        isFalse,
+      );
+    });
+
+    test('서버 중복 응답도 완료 저장 성공으로 처리한다', () async {
+      final duplicateClient = MockClient((request) async {
+        if (request.url.path.endsWith('/today-medicines')) {
+          return http.Response(
+            '{"doses":[]}',
+            200,
+            headers: {'content-type': 'application/json'},
+          );
+        }
+        return http.Response(
+          '{"duplicate":true,"status":"TAKEN"}',
+          200,
+          headers: {'content-type': 'application/json'},
+        );
+      });
+      final duplicateContainer = ProviderContainer(
+        overrides: [
+          medicationProvider.overrideWith(
+            () => _TestMedicationController(duplicateClient),
+          ),
+        ],
+      );
+      addTearDown(duplicateContainer.dispose);
+      MvpSession.userId = 'test-user';
+
+      final controller = duplicateContainer.read(medicationProvider.notifier);
+      final now = DoseSlot.dinner.todayAt(DateTime.now());
+      expect(
+        await controller.take(DoseSlot.dinner, now: now),
+        DoseCheckOutcome.recorded,
+      );
+      expect(
+        duplicateContainer.read(medicationProvider).doseOf(DoseSlot.dinner).taken,
+        isTrue,
+      );
+    });
+
+    test('두 번째로 누르면 기록하지 않고 차단한다 (5f)', () async {
+      final now = DoseSlot.dinner.todayAt(DateTime.now());
+      await controller().take(DoseSlot.dinner, now: now);
       final takenAt = container
           .read(medicationProvider)
           .doseOf(DoseSlot.dinner)
           .takenAt;
 
       expect(
-        controller().take(DoseSlot.dinner, now: now),
+        await controller().take(DoseSlot.dinner, now: now),
         DoseCheckOutcome.alreadyTaken,
       );
       // 기록 시각이 덮어써지지 않는다.
@@ -54,12 +135,12 @@ void main() {
       );
     });
 
-    test('4시간 넘게 지나면 바로 기록하지 않는다', () {
+    test('4시간 넘게 지나면 바로 기록하지 않는다', () async {
       final late = DoseSlot.dinner
           .todayAt(DateTime.now())
           .add(const Duration(hours: 5));
       expect(
-        controller().take(DoseSlot.dinner, now: late),
+        await controller().take(DoseSlot.dinner, now: late),
         DoseCheckOutcome.tooLate,
       );
       expect(
@@ -68,16 +149,16 @@ void main() {
       );
 
       // "그래도 먹었어요"를 고르면 그때 기록된다.
-      controller().takeAnyway(DoseSlot.dinner, now: late);
+      await controller().takeAnyway(DoseSlot.dinner, now: late);
       expect(
         container.read(medicationProvider).doseOf(DoseSlot.dinner).taken,
         isTrue,
       );
     });
 
-    test('되돌리면 기록과 보호자 알림이 함께 취소된다 (4b)', () {
+    test('되돌리면 기록과 보호자 알림이 함께 취소된다 (4b)', () async {
       final now = DoseSlot.dinner.todayAt(DateTime.now());
-      controller().take(DoseSlot.dinner, now: now);
+      await controller().take(DoseSlot.dinner, now: now);
       expect(controller().guardianNotifiedFor(DoseSlot.dinner), isTrue);
 
       controller().undo(DoseSlot.dinner);
@@ -189,13 +270,18 @@ void main() {
 }
 
 class _TestMedicationController extends MedicationController {
+  _TestMedicationController([http.Client? client])
+    : super(apiClient: client == null ? null : ApiClient(client: client));
+
   @override
   TodayMedication build() {
     return const TodayMedication(
       doses: [
         DoseEntry(
           slot: DoseSlot.dinner,
-          medicines: [Medicine(ingredient: '테스트정', amount: '1알')],
+          medicines: [
+            Medicine(ingredient: '테스트정', amount: '1알', scheduleId: 1),
+          ],
         ),
       ],
       guardianRelation: '가족',

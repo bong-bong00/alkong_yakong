@@ -168,9 +168,9 @@ class LockScreenAlertRoute extends ConsumerWidget {
     return LockScreenAlert(
       dose: dose,
       now: DateTime.now(),
-      onTake: () {
-        ref.read(medicationProvider.notifier).take(dose.slot);
-        context.pop();
+      onTake: () async {
+        await ref.read(medicationProvider.notifier).take(dose.slot);
+        if (context.mounted) context.pop();
       },
       onSnooze: () {
         ref.read(medicationProvider.notifier).snooze(dose.slot);
