@@ -5,6 +5,7 @@ import '../../../medication/application/medication_controller.dart';
 import 'package:flutter_tabler_icons/flutter_tabler_icons.dart';
 
 import '../../../../core/constants/app_colors.dart';
+import '../../../../core/session/mvp_session.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../core/widgets/senior_button.dart';
 import '../../../../core/widgets/senior_card.dart';
@@ -15,6 +16,7 @@ import '../../application/heart_sensor.dart';
 import '../../data/heart_repository.dart';
 import '../../domain/heart_data.dart';
 import '../widgets/dumbbell_chart.dart';
+import '../widgets/heart_readings_card.dart';
 import 'measure_screen.dart';
 import 'monthly_heart_screen.dart';
 import 'polar_screen.dart';
@@ -60,6 +62,17 @@ class _HeartScreenState extends State<HeartScreen> {
   HeartData? _data;
   bool _loading = true;
   bool _failed = false;
+  int _requestSequence = 0;
+  bool _sensorUpdatePending = false;
+
+  @override
+  void didUpdateWidget(covariant HeartScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.userId != widget.userId) {
+      _data = null;
+      unawaited(_load());
+    }
+  }
 
   /// 다른 사람(어르신)의 기록을 보는 중인지. 그러면 이 전화기로 재지 않는다.
   bool get _viewingOther => widget.userId != null;
@@ -72,7 +85,13 @@ class _HeartScreenState extends State<HeartScreen> {
   }
 
   void _onSensor() {
-    if (mounted) setState(() {});
+    // Measurement route init/dispose can notify while Navigator is building.
+    if (_sensorUpdatePending) return;
+    _sensorUpdatePending = true;
+    scheduleMicrotask(() {
+      _sensorUpdatePending = false;
+      if (mounted) setState(() {});
+    });
   }
 
   @override
@@ -83,32 +102,40 @@ class _HeartScreenState extends State<HeartScreen> {
 
   /// 기록을 읽는다.
   ///
-  /// [quiet]이면 들고 있던 기록을 치우지 않고 뒤에서 새로 읽는다 —
-  /// 재고 돌아왔을 때 화면이 한 번 비었다 채워지면 어르신이 놀란다.
+  /// 갱신 중·실패를 표시하되 서버 기록을 로컬에서 만들거나 다시 저장하지 않는다.
   Future<void> _load({bool quiet = false}) async {
+    final sequence = ++_requestSequence;
+    final userId = widget.userId ?? MvpSession.userId;
     // 처음 부를 때는 이미 "읽는 중"으로 시작하므로 initState 안에서
     // setState 를 부르지 않는다. 다시 불러오기를 누른 경우에만 상태를 되돌린다.
-    if (!quiet && !_loading) {
+    if (!_loading) {
       setState(() {
         _loading = true;
         _failed = false;
       });
     }
-    final loaded = await _repository.fetch(userId: widget.userId);
-    if (!mounted) return;
+    final loaded = await _repository.fetch(userId: userId);
+    if (!mounted || sequence != _requestSequence) return;
+    if (userId != (widget.userId ?? MvpSession.userId)) {
+      _data = null;
+      unawaited(_load());
+      return;
+    }
     setState(() {
       _loading = false;
       if (loaded != null) {
         _data = loaded;
         _failed = false;
-      } else if (!quiet || _data == null) {
-        // 조용히 다시 읽다 실패했으면 이미 보이는 진짜 기록은 그대로 둔다.
+      } else {
+        // 이전 데이터가 있어도 새 조회 실패를 숨기지 않는다.
         _failed = true;
       }
     });
   }
 
   Future<void> _openMonthly() async {
+    await _load(quiet: true);
+    if (!mounted || _failed) return;
     final data = _data;
     if (data == null) return;
     await Navigator.of(context).push(
@@ -119,6 +146,7 @@ class _HeartScreenState extends State<HeartScreen> {
         ),
       ),
     );
+    if (mounted) unawaited(_load(quiet: true));
   }
 
   Future<void> _openMeasure() async {
@@ -163,7 +191,11 @@ class _HeartScreenState extends State<HeartScreen> {
                   index: 0,
                   onChanged: (i) {
                     // 읽어 온 기록이 없으면 한 달 화면에 넘길 것도 없다.
-                    if (i == 1) unawaited(_openMonthly());
+                    if (i == 1) {
+                      unawaited(_openMonthly());
+                    } else {
+                      unawaited(_load());
+                    }
                   },
                 ),
               ],
@@ -175,13 +207,26 @@ class _HeartScreenState extends State<HeartScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  if (_loading && data == null)
+                  if (_loading)
                     const _LoadingCard()
-                  else if (_failed && data == null)
+                  else if (_failed)
                     _FailedCard(onRetry: () => unawaited(_load()))
-                  else if (data != null && !data.hasReadings)
+                  else if (data != null &&
+                      data.readingsFor(monthly: false).isEmpty &&
+                      !data.week.any(
+                        (d) => d.pair.before != null || d.pair.after != null,
+                      ) &&
+                      data.today.before == null &&
+                      data.today.after == null)
                     _EmptyCard(viewingOther: _viewingOther)
                   else if (data != null) ...[
+                    if (data.readingsFor(monthly: false).isNotEmpty) ...[
+                      HeartReadingsCard(
+                        readings: data.readingsFor(monthly: false),
+                        hasComparison: data.week.any((d) => d.pair.isComplete),
+                      ),
+                      const SizedBox(height: 12),
+                    ],
                     _TodayCard(data: data),
                     const SizedBox(height: 12),
                     _WeekCard(data: data),
@@ -190,11 +235,14 @@ class _HeartScreenState extends State<HeartScreen> {
                     const SizedBox(height: 12),
                     _SensorRow(
                       sensor: widget.sensor,
-                      onTap: () => Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (_) => PolarScreen(sensor: widget.sensor),
-                        ),
-                      ),
+                      onTap: () async {
+                        await Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => PolarScreen(sensor: widget.sensor),
+                          ),
+                        );
+                        if (mounted) unawaited(_load(quiet: true));
+                      },
                     ),
                   ],
                   const SizedBox(height: 12),
@@ -406,7 +454,7 @@ class _TodayCard extends StatelessWidget {
                 borderRadius: BorderRadius.circular(16),
               ),
               child: Text(
-                '오늘은 아직 재지 않았어요',
+                '오늘의 복약 전·후 비교 기록은 없어요',
                 style: AppText.label(size: 18.5, color: AppColors.textPrimary),
               ),
             )
@@ -575,7 +623,7 @@ class _WeekCard extends StatelessWidget {
               borderRadius: BorderRadius.circular(16),
             ),
             child: Text(
-              data.allDropped ? '7일 모두 약을 드신 뒤에 낮아졌어요' : '며칠은 약을 드신 뒤에도 비슷했어요',
+              _summary(),
               style: AppText.label(size: 18, color: AppColors.textPrimary),
             ),
           ),

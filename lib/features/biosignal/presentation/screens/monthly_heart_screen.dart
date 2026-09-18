@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import '../../../medication/application/medication_controller.dart';
 import 'package:flutter_tabler_icons/flutter_tabler_icons.dart';
 
 import '../../../../core/constants/app_colors.dart';
@@ -8,6 +7,7 @@ import '../../../../core/widgets/senior_card.dart';
 import '../../../../core/widgets/senior_feedback.dart';
 import '../../../../core/widgets/senior_header.dart';
 import '../../domain/heart_data.dart';
+import '../widgets/heart_readings_card.dart';
 
 /// 26 · 한 달 기록.
 ///
@@ -39,13 +39,17 @@ class _MonthlyHeartScreenState extends State<MonthlyHeartScreen> {
   /// 눌러서 펼친 날짜. 없으면 안내 문장을 보여준다.
   HeartMonthDay? _picked;
 
-  late final int _month = (widget.now ?? DateTime.now()).month;
+  late final int _month =
+      (widget.now ?? widget.data.periodDate ?? DateTime.now()).month;
 
   @override
   Widget build(BuildContext context) {
     final data = widget.data;
-    final measured = data.month.any((d) => !d.isMissing);
-    final guardianTitle = resolveGuardianTitle(context, widget.guardianTitle);
+    final hasComparison = data.month.any(
+      (d) => d.pair.before != null || d.pair.after != null,
+    );
+    final readings = data.readingsFor(monthly: true);
+    final measured = hasComparison || readings.isNotEmpty;
     return Scaffold(
       backgroundColor: AppColors.bg,
       body: Column(
@@ -83,9 +87,16 @@ class _MonthlyHeartScreenState extends State<MonthlyHeartScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
+                  if (readings.isNotEmpty) ...[
+                    HeartReadingsCard(
+                      readings: readings,
+                      hasComparison: data.month.any((d) => d.pair.isComplete),
+                    ),
+                    const SizedBox(height: 12),
+                  ],
                   if (!measured)
                     _EmptyMonthCard(month: _month)
-                  else ...[
+                  else if (hasComparison) ...[
                     // 정상인 날이 이어지지 않았으면 "0일째"를 크게 쓰지 않는다.
                     if (data.streakDays > 0) ...[
                       _StreakCard(data: data),
@@ -95,7 +106,7 @@ class _MonthlyHeartScreenState extends State<MonthlyHeartScreen> {
                       _AnomalyCard(
                         anomaly: data.anomaly!,
                         month: _month,
-                        guardianTitle: guardianTitle,
+                        guardianTitle: widget.guardianTitle,
                       ),
                       const SizedBox(height: 12),
                     ],
@@ -108,8 +119,6 @@ class _MonthlyHeartScreenState extends State<MonthlyHeartScreen> {
                       ),
                     ),
                   ],
-                  const SizedBox(height: 12),
-                  _SharedNote(guardianTitle: guardianTitle),
                 ],
               ),
             ),
@@ -146,7 +155,7 @@ class _EmptyMonthCard extends StatelessWidget {
           ),
           const SizedBox(height: 6),
           Text(
-            '약 먹기 전·후로 재면 날짜별로 여기에 모여요.',
+            '심박수를 재고 저장하면 날짜별로 여기에 모여요.',
             textAlign: TextAlign.center,
             style: AppText.body(size: 18, color: AppColors.textSecondary),
           ),
@@ -173,7 +182,7 @@ class _StreakCard extends StatelessWidget {
           ),
           const SizedBox(height: 6),
           Semantics(
-            label: '잰 날 기준으로 심박수가 ${data.streakDays}일째 계속 정상이에요',
+            label: '복약 후 심박 기록이 있는 날은 ${data.streakDays}일이에요',
             child: ExcludeSemantics(
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.center,
@@ -194,7 +203,7 @@ class _StreakCard extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           Text(
-            '심박수가\n계속 정상이에요',
+            '복약 후 심박\n기록이 있어요',
             textAlign: TextAlign.center,
             style: AppText.cardTitle(size: 21),
           ),
@@ -281,7 +290,8 @@ class _AnomalyCard extends StatelessWidget {
               style: AppText.body(size: 18),
               children: [
                 TextSpan(
-                  text: '$month월 ${anomaly.day}일'
+                  text:
+                      '$month월 ${anomaly.day}일'
                       '${slot.isEmpty ? '' : ' $slot'}, 약 먹은 뒤 ',
                 ),
                 TextSpan(
@@ -355,8 +365,7 @@ class _DayGrid extends StatelessWidget {
                           ? _DayCell(
                               day: days[row * 5 + col],
                               month: month,
-                              selected:
-                                  picked?.day == days[row * 5 + col].day,
+                              selected: picked?.day == days[row * 5 + col].day,
                               onTap: () => onPick(days[row * 5 + col]),
                             )
                           : const SizedBox.shrink(),
@@ -470,7 +479,10 @@ class _PickedDetail extends StatelessWidget {
           Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text('전 ${day.pair.before ?? '–'}', style: AppText.label(size: 18)),
+              Text(
+                '전 ${day.pair.before ?? '–'}',
+                style: AppText.label(size: 18),
+              ),
               const SizedBox(width: 10),
               const Text('→'),
               const SizedBox(width: 10),
@@ -479,38 +491,6 @@ class _PickedDetail extends StatelessWidget {
                 style: AppText.label(size: 18, color: AppColors.point),
               ),
             ],
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _SharedNote extends StatelessWidget {
-  final String guardianTitle;
-  const _SharedNote({required this.guardianTitle});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 17),
-      decoration: BoxDecoration(
-        color: AppColors.sunken,
-        borderRadius: BorderRadius.circular(22),
-      ),
-      child: Row(
-        children: [
-          InitialAvatar(
-            name: guardianTitle,
-            size: 44,
-            background: AppColors.surface,
-          ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Text(
-              '이 기록은 $guardianTitle도 같이 보고 있어요',
-              style: AppText.label(size: 18, color: AppColors.textPrimary),
-            ),
           ),
         ],
       ),

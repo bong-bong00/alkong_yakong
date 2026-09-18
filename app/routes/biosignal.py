@@ -1,4 +1,4 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, Query
 
 from app.models.schemas import HeartRateCreate
 from app.models.response_schemas import AbnormalEventResponse, HeartRateResponse
@@ -23,10 +23,17 @@ def list_abnormal_events(user_id: str):
 
 
 @router.get("/users/{user_id}/biosignal/heart-summary")
-def read_heart_summary(user_id: str):
+def read_heart_summary(
+    user_id: str,
+    include_readings: bool = False,
+    utc_offset_minutes: int = Query(default=0, ge=-840, le=840),
+):
     """심박수 화면 하나가 쓰는 것을 한 번에 돌려준다.
 
     오늘·이번 주·한 달을 따로 부르면 그 사이 날짜가 바뀔 때 서로 다른
     기준의 숫자가 한 화면에 놓인다.
     """
-    return get_heart_summary(user_id)
+    return get_heart_summary(
+        user_id, include_readings=include_readings,
+        utc_offset_minutes=utc_offset_minutes,
+    )

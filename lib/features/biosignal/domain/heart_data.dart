@@ -1,5 +1,18 @@
 import 'package:flutter/foundation.dart';
 
+/// One stored measurement, independent of medication comparison pairs.
+@immutable
+class HeartReading {
+  final int id;
+  final int bpm;
+  final DateTime measuredAt;
+  const HeartReading({
+    required this.id,
+    required this.bpm,
+    required this.measuredAt,
+  });
+}
+
 /// 복약 **전·후 한 쌍**의 심박수.
 ///
 /// 이 앱은 심박수를 연속으로 재지 않는다. 폴라 가슴 띠로 약 먹기 전에 한 번,
@@ -49,6 +62,22 @@ class HeartMonthDay {
 /// 불러오는 중·못 불러옴·기록 없음을 그대로 말한다.
 @immutable
 class HeartData {
+  final List<HeartReading> readings;
+  final DateTime? periodDate;
+
+  List<HeartReading> readingsFor({required bool monthly}) {
+    final now = periodDate ?? DateTime.now();
+    final day = DateTime(now.year, now.month, now.day);
+    final start = monthly
+        ? DateTime(day.year, day.month)
+        : DateTime(day.year, day.month, day.day - day.weekday + 1);
+    final end = DateTime(day.year, day.month, day.day + 1);
+    return readings.where((r) {
+      final at = r.measuredAt.toLocal();
+      return !at.isBefore(start) && at.isBefore(end);
+    }).toList();
+  }
+
   /// 오늘 잰 것.
   final HeartPair today;
 
@@ -84,6 +113,8 @@ class HeartData {
   final bool notifyGuardian;
 
   const HeartData({
+    this.readings = const [],
+    this.periodDate,
     required this.today,
     required this.todaySlotLabel,
     required this.beforeAt,
@@ -108,7 +139,8 @@ class HeartData {
   /// 칸이 있다고 기록이 있는 것은 아니므로 값으로 판단한다.
   bool get hasReadings {
     bool has(HeartPair p) => p.before != null || p.after != null;
-    return has(today) ||
+    return readings.isNotEmpty ||
+        has(today) ||
         week.any((d) => has(d.pair)) ||
         month.any((d) => has(d.pair));
   }
@@ -119,6 +151,8 @@ class HeartData {
     HeartPair? today,
     int? sensorBattery,
   }) => HeartData(
+    readings: readings,
+    periodDate: periodDate,
     today: today ?? this.today,
     todaySlotLabel: todaySlotLabel,
     beforeAt: beforeAt,

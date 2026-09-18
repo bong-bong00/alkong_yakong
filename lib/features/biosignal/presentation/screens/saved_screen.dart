@@ -7,7 +7,7 @@ import '../../../../core/theme/app_typography.dart';
 import '../../../../core/widgets/senior_button.dart';
 import '../../../../core/widgets/senior_card.dart';
 import '../../../../core/widgets/senior_header.dart';
-import '../../../medication/domain/medication_models.dart';
+import '../../domain/heart_time.dart';
 
 /// 30 · 기록 저장.
 ///
@@ -42,7 +42,7 @@ class SavedScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final at = DoseSlot.absoluteTime(savedAt ?? DateTime.now());
+    final at = heartSavedTimeLabel(savedAt ?? DateTime.now());
     final doseSummary = this.doseSummary;
     return Scaffold(
       backgroundColor: AppColors.bg,
@@ -81,7 +81,7 @@ class SavedScreen extends StatelessWidget {
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    '오늘 $at 기준으로\n아래 기록이 남았습니다.',
+                    '$at 기준으로\n아래 기록이 남았습니다.',
                     textAlign: TextAlign.center,
                     style: AppText.body(
                       size: 18.5,
