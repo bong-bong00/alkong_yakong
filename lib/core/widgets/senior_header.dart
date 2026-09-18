@@ -153,7 +153,7 @@ class SeniorBackButton extends StatelessWidget {
             color: onDark ? AppColors.camChip : AppColors.secondaryFill,
             borderRadius: BorderRadius.circular(18),
             border: Border.all(
-              color: onDark ? const Color(0x80FFFFFF) : AppColors.strongLine,
+              color: onDark ? AppColors.onDarkBorder : AppColors.strongLine,
               width: 2,
             ),
           ),
@@ -185,7 +185,7 @@ class InitialAvatar extends StatelessWidget {
     required this.name,
     this.size = 52,
     this.background = AppColors.surface,
-    this.foreground = const Color(0xFF4A4A52),
+    this.foreground = AppColors.inkGray,
   });
 
   @override

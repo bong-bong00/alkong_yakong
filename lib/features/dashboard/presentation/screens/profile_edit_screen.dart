@@ -231,7 +231,7 @@ class _ProfileEditScreenState extends ConsumerState<ProfileEditScreen> {
             child: const Text(
               '연결 해제',
               style: TextStyle(
-                color: Color(0xFFE24B4A),
+                color: AppColors.legacyRed,
                 fontWeight: FontWeight.w700,
               ),
             ),
@@ -736,7 +736,7 @@ class _ProfileEditScreenState extends ConsumerState<ProfileEditScreen> {
                     TextButton(
                       onPressed: () => _confirmUnlink(p),
                       style: TextButton.styleFrom(
-                        foregroundColor: const Color(0xFFE24B4A),
+                        foregroundColor: AppColors.legacyRed,
                         padding: const EdgeInsets.symmetric(horizontal: 8),
                         minimumSize: const Size(0, 0),
                       ),

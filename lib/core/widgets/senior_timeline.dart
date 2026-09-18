@@ -30,7 +30,7 @@ class TimelineRow extends StatelessWidget {
   });
 
   /// "지금" 점을 감싸는 연파랑 링.
-  static const Color _currentRing = Color(0xFFC9D2FA);
+  static const Color _currentRing = AppColors.timelineRing;
 
   @override
   Widget build(BuildContext context) {

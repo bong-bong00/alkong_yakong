@@ -56,7 +56,7 @@ class SeniorSheet extends StatelessWidget {
         borderRadius: BorderRadius.vertical(top: Radius.circular(30)),
         boxShadow: [
           BoxShadow(
-            color: Color(0x2E14161E),
+            color: AppColors.sheetShadow,
             blurRadius: 40,
             offset: Offset(0, -12),
           ),
@@ -75,7 +75,7 @@ class SeniorSheet extends StatelessWidget {
                   width: 52,
                   height: 5,
                   decoration: BoxDecoration(
-                    color: const Color(0xFFDDDDE6),
+                    color: AppColors.chartPast,
                     borderRadius: BorderRadius.circular(3),
                   ),
                 ),

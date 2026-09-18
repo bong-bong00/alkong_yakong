@@ -37,7 +37,7 @@ class _BiosignalLiveScreenState extends State<BiosignalLiveScreen>
     with SingleTickerProviderStateMixin {
   static const int _maxPoints = 60; // 그래프에 유지할 최근 심박 개수
   static const Duration _interval = Duration(seconds: 1); // 새 값 주기
-  static const Color _danger = Color(0xFFE24B4A);
+  static const Color _danger = AppColors.legacyRed;
   static const String _targetDeviceId = '115F4138';
   static const String _targetDeviceName = 'Polar Sense 115F4138';
 
@@ -510,7 +510,7 @@ class _BiosignalLiveScreenState extends State<BiosignalLiveScreen>
               ),
             ),
             const SizedBox(height: 10),
-            Center(child: _legend(const Color(0xFFEAF7F1), '정상 범위 (60~100)')),
+            Center(child: _legend(AppColors.legacyMint, '정상 범위 (60~100)')),
             const SizedBox(height: 18),
 
             // ── 보조 지표 ──
@@ -541,7 +541,7 @@ class _BiosignalLiveScreenState extends State<BiosignalLiveScreen>
     final hasError = _connectionError != null;
     final Color c = hasError || _isAnomalyDetected
         ? _danger
-        : const Color(0xFF2E7D32);
+        : AppColors.legacyGreen;
     final String label = _isAnomalyDetected && _isStreaming
         ? '심박 이상 감지'
         : _sensorStatusLabel;
@@ -738,12 +738,12 @@ class _FlowPainter extends CustomPainter {
     double xFor(int i) => (i - progress) * step;
 
     // 정상 범위 밴드
-    final band = Paint()..color = const Color(0xFFEAF7F1);
+    final band = Paint()..color = AppColors.legacyMint;
     canvas.drawRect(Rect.fromLTRB(0, yFor(bandHigh), w, yFor(bandLow)), band);
 
     // 가로 보조선
     final grid = Paint()
-      ..color = const Color(0xFFEDEDED)
+      ..color = AppColors.legacyLine
       ..strokeWidth = 1;
     for (final v in [75.0, 100.0, 125.0]) {
       final y = yFor(v);

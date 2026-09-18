@@ -236,10 +236,10 @@ class _EasyFlowBar extends StatelessWidget {
     return Container(
       decoration: const BoxDecoration(
         color: AppColors.surface,
-        border: Border(top: BorderSide(color: Color(0xFFDDDDE6), width: 1)),
+        border: Border(top: BorderSide(color: AppColors.chartPast, width: 1)),
         boxShadow: [
           BoxShadow(
-            color: Color(0x2914161E),
+            color: AppColors.barShadow,
             blurRadius: 34,
             offset: Offset(0, -12),
           ),

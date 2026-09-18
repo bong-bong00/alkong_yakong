@@ -89,7 +89,7 @@ class _SeniorButtonState extends State<SeniorButton> {
       case SeniorButtonKind.dangerQuiet:
         return _pressed ? AppColors.neutralPressed : AppColors.bg;
       case SeniorButtonKind.dark:
-        return _pressed ? const Color(0xFF3A3A44) : AppColors.camChip;
+        return _pressed ? AppColors.darkPressed : AppColors.camChip;
     }
   }
 
@@ -115,7 +115,7 @@ class _SeniorButtonState extends State<SeniorButton> {
       case SeniorButtonKind.primary:
         return AppColors.onPointMuted;
       case SeniorButtonKind.danger:
-        return const Color(0xFFF3CFCA);
+        return AppColors.dangerBorderSoft;
       case SeniorButtonKind.dark:
         return AppColors.inactive;
       default:
@@ -129,7 +129,7 @@ class _SeniorButtonState extends State<SeniorButton> {
       case SeniorButtonKind.outline:
         return Border.all(color: AppColors.strongLine, width: 2);
       case SeniorButtonKind.dark:
-        return Border.all(color: const Color(0x80FFFFFF), width: 2);
+        return Border.all(color: AppColors.onDarkBorder, width: 2);
       default:
         return null;
     }
@@ -182,7 +182,7 @@ class _SeniorButtonState extends State<SeniorButton> {
               boxShadow: widget.elevated && !_pressed
                   ? const [
                       BoxShadow(
-                        color: Color(0x471F42E5),
+                        color: AppColors.pointShadow,
                         blurRadius: 14,
                         offset: Offset(0, 4),
                       ),
@@ -269,7 +269,7 @@ class _SeniorChoiceCardState extends State<SeniorChoiceCard> {
             boxShadow: primary && !_pressed
                 ? const [
                     BoxShadow(
-                      color: Color(0x471F42E5),
+                      color: AppColors.pointShadow,
                       blurRadius: 14,
                       offset: Offset(0, 4),
                     ),

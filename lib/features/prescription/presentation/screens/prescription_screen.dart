@@ -1270,7 +1270,7 @@ class _ConfirmScreenState extends State<_ConfirmScreen> {
                               ? '글자는 읽었는데, 공식 약과 아직 못 맞췄어요'
                               : '틀린 곳이 있으면 눌러서 고쳐주세요.',
                           style: AppText.caption(
-                            color: const Color(0xFF3A4590),
+                            color: AppColors.pointInk,
                           ),
                         ),
                       ],

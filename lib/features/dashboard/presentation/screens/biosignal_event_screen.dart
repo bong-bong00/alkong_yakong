@@ -38,7 +38,7 @@ class BiosignalEventScreen extends StatelessWidget {
     this.eventType = '빈맥 (빠른 맥박)',
   });
 
-  static const _danger = Color(0xFFE24B4A);
+  static const _danger = AppColors.legacyRed;
 
   /// 이 값을 넘으면 빠른 맥박으로 본다 (아래 설명 문구와 같은 값).
   static const int _tachyBpm = 100;
@@ -205,7 +205,7 @@ class BiosignalEventScreen extends StatelessWidget {
         Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            _legend(const Color(0xFFEAF7F1), '정상 범위 (60~100)'),
+            _legend(AppColors.legacyMint, '정상 범위 (60~100)'),
             const SizedBox(width: 16),
             _legend(_danger, '심박'),
           ],
@@ -257,7 +257,7 @@ class BiosignalEventScreen extends StatelessWidget {
           drawVerticalLine: false,
           horizontalInterval: 20,
           getDrawingHorizontalLine: (v) =>
-              FlLine(color: const Color(0xFFEDEDED), strokeWidth: 1),
+              FlLine(color: AppColors.legacyLine, strokeWidth: 1),
         ),
         borderData: FlBorderData(show: false),
         titlesData: FlTitlesData(
@@ -302,7 +302,7 @@ class BiosignalEventScreen extends StatelessWidget {
             HorizontalRangeAnnotation(
               y1: 60,
               y2: 100,
-              color: const Color(0xFFEAF7F1),
+              color: AppColors.legacyMint,
             ),
           ],
         ),

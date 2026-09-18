@@ -270,7 +270,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                 '등록일: $displayedPrescriptionRegisteredAt\n'
                                 '약: ${displayedPrescriptionMedicines.take(3).join(', ')}',
                       icon: Icons.description_outlined,
-                      color: const Color(0xFF4A78C2),
+                      color: AppColors.legacyBlue,
                     ),
                     const SizedBox(height: 10),
                     _DashboardCard(

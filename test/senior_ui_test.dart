@@ -105,6 +105,7 @@ void main() {
   _medicinesByTimeTests();
   _confirmPreviewTests();
   _screenCopyTests();
+  _colorTokenTests();
   _calendarTests();
   Widget wrap(Widget child, {double textScale = 1.0}) {
     return ProviderScope(
@@ -1088,5 +1089,25 @@ void _screenCopyTests() {
     ).readAsStringSync();
     expect(source.contains("Text('화면 모드'"), isTrue);
     expect(source.contains("labels: const ['일반', '쉬운 화면']"), isTrue);
+  });
+}
+
+
+/// 색은 AppColors 에서만 나온다.
+///
+/// 화면마다 리터럴을 두면 같은 회색이 조금씩 달라지고, 나중에 한 번에
+/// 바꿀 수도 없다.
+void _colorTokenTests() {
+  test('AppColors 밖에 색 리터럴이 없다', () {
+    final offenders = <String>[];
+    for (final file in Directory('lib').listSync(recursive: true)) {
+      if (file is! File || !file.path.endsWith('.dart')) continue;
+      if (file.path.endsWith('core/constants/app_colors.dart')) continue;
+      final text = file.readAsStringSync();
+      for (final match in RegExp(r'Color\(0x[0-9A-Fa-f]{8}\)').allMatches(text)) {
+        offenders.add('${file.path}: ${match.group(0)}');
+      }
+    }
+    expect(offenders, isEmpty, reason: offenders.join('\n'));
   });
 }

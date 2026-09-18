@@ -18,7 +18,7 @@ Future<T?> _showGuardSheet<T>(BuildContext context, Widget child) {
     isScrollControlled: true,
     isDismissible: false,
     enableDrag: false,
-    barrierColor: const Color(0xA8141620),
+    barrierColor: AppColors.sheetScrim,
     backgroundColor: Colors.transparent,
     builder: (_) => child,
   );
@@ -37,7 +37,7 @@ class _GuardSheet extends StatelessWidget {
         borderRadius: BorderRadius.vertical(top: Radius.circular(30)),
         boxShadow: [
           BoxShadow(
-            color: Color(0x2E14161E),
+            color: AppColors.sheetShadow,
             blurRadius: 40,
             offset: Offset(0, -12),
           ),

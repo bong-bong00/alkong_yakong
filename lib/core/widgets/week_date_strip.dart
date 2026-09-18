@@ -121,7 +121,7 @@ class _DayCell extends StatelessWidget {
                     fontSize: 19,
                     height: 1,
                     fontWeight: isToday ? FontWeight.w900 : FontWeight.w700,
-                    color: isToday ? Colors.white : const Color(0xFF4A4A52),
+                    color: isToday ? Colors.white : AppColors.inkGray,
                     fontFamily: AppText.fontFamily,
                     fontFamilyFallback: AppText.fontFallback,
                   ),
