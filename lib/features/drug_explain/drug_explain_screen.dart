@@ -945,13 +945,30 @@ class _ChatBubble extends StatelessWidget {
                   ),
                 ],
               ),
-              child: Text(
-                text,
-                style: TextStyle(
-                  fontSize: 14.5,
-                  height: 1.4,
-                  color: isMe ? Colors.white : kText,
-                ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (!isMe) ...[
+                    const Text(
+                      'AI 약사 답변',
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                        color: kPrimary,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                  ],
+                  Text(
+                    text,
+                    textAlign: TextAlign.start,
+                    style: TextStyle(
+                      fontSize: isMe ? 14.5 : 16,
+                      height: isMe ? 1.4 : 1.55,
+                      color: isMe ? Colors.white : kText,
+                    ),
+                  ),
+                ],
               ),
             ),
           ),

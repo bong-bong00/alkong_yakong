@@ -760,6 +760,8 @@ class ChatContextTest(unittest.TestCase):
         prompt_text = build_grounded_chat_prompt(message="같이 먹어도 돼?", intents={"combination"}, official_contexts=[], dur_result={"status": "stale", "items": []})
         self.assertIn("DUR 위험 여부를 새로 추론하거나 판정하지 마세요", prompt_text)
         self.assertIn("서버가 전달한 DUR 분석 결과만 설명하세요", prompt_text)
+        self.assertIn("핵심 답을 첫 문장에", prompt_text)
+        self.assertIn("근거가 있는 경우에만", prompt_text)
         self.assertIn("stale", prompt_text)
         self.assertNotIn("raw_json", prompt_text)
 
