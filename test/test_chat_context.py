@@ -765,6 +765,21 @@ class ChatContextTest(unittest.TestCase):
         self.assertIn("stale", prompt_text)
         self.assertNotIn("raw_json", prompt_text)
 
+    def test_prompt_requires_plain_language_without_dropping_exact_medicine_terms(self):
+        prompt_text = build_grounded_chat_prompt(
+            message="이 약이 어떤 약인지 알려줘",
+            intents={"efficacy"},
+            official_contexts=[],
+            dur_result={"status": "not_required", "items": []},
+        )
+        for term in ("융모", "상피", "수용체", "대사", "흡수", "배설", "분비", "효소"):
+            self.assertIn(term, prompt_text)
+            self.assertIn(f"{term}는", prompt_text)
+        self.assertIn("전문용어를 괄호 안에 덧붙이지 마세요", prompt_text)
+        self.assertIn("주성분, 복용량, 공식 의약품명·제품명·성분명은 원래 표현을 유지", prompt_text)
+        self.assertIn("추측하지 말고", prompt_text)
+        self.assertIn("의료적 판단을 단정하지 마세요", prompt_text)
+
     def test_general_conversation_rules_do_not_match_drug_questions(self):
         self.assertIn("안녕하세요", general_conversation_reply("안녕하세요"))
         self.assertIn("도움이 되어", general_conversation_reply("고마워"))
