@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -26,9 +27,14 @@ import 'features/reminder/presentation/screens/lock_screen_alert.dart';
 
 /// 화면을 둘러보는 동안 로그인을 건너뛴다.
 ///
-/// 기본은 로그인부터 시작한다.
-/// 화면만 훑어볼 때는 `flutter run --dart-define=SKIP_LOGIN=true` 로 켠다.
-const bool kSkipLogin = bool.fromEnvironment('SKIP_LOGIN');
+/// 개발 중(디버그 빌드)에는 켜져 있다. 매번 `--dart-define`을 붙이지 않아도
+/// `flutter run` 하면 바로 오늘 화면으로 들어간다.
+///
+/// **릴리스·프로파일 빌드에서는 절대 켜지지 않는다** — [kDebugMode]가 막는다.
+/// 플래그를 되돌리는 걸 잊어도 배포본으로 새어 나가지 않는다.
+/// 디버그에서 로그인 화면 자체를 보려면
+/// `flutter run --dart-define=REAL_LOGIN=true`.
+const bool kSkipLogin = kDebugMode && !bool.fromEnvironment('REAL_LOGIN');
 
 final _router = GoRouter(
   initialLocation: kSkipLogin ? '/' : '/login',

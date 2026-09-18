@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:alkong_yakong/main.dart' show kSkipLogin;
 
 import '../../../profile/domain/user_profile.dart';
 
@@ -39,17 +40,18 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     super.dispose();
   }
 
-  /// 화면만 확인할 때 쓰는 가짜 로그인.
+  /// 화면만 확인할 때 쓰는 가짜 로그인. 무엇을 넣든 통과시킨다.
   ///
-  /// `flutter run --dart-define=FAKE_LOGIN=true` 로 켠다. **기본은 꺼져 있다** —
+  /// 로그인 화면 건너뛰기([kSkipLogin])와 같은 스위치를 쓴다 —
+  /// 개발 중에는 켜져 있고, **릴리스·프로파일 빌드에서는 절대 켜지지 않는다.**
   /// 켜진 채로 배포하면 아무나 남의 복약 기록을 열어볼 수 있다.
-  static const bool _fakeLogin = bool.fromEnvironment('FAKE_LOGIN');
+  static const bool _fakeLogin = kSkipLogin;
 
   Future<void> _login() async {
     if (_phone.text.trim().isEmpty || _password.text.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('전화번호와 비밀번호를 넣어주세요')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('전화번호와 비밀번호를 넣어주세요')));
       return;
     }
     if (_loggingIn) return;
@@ -106,10 +108,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
               const SizedBox(height: 8),
               Text(
                 '약 드실 시간을 알려드리고,\n가족이 함께 챙겨드려요.',
-                style: AppText.body(
-                  size: 21,
-                  color: AppColors.textSecondary,
-                ),
+                style: AppText.body(size: 21, color: AppColors.textSecondary),
               ),
               const SizedBox(height: 34),
 
@@ -292,7 +291,9 @@ class PhoneNumberFormatter extends TextInputFormatter {
 
     final buffer = StringBuffer();
     for (int i = 0; i < capped.length; i++) {
-      if (i == 3 || (i == 7 && capped.length > 10) || (i == 6 && capped.length <= 10)) {
+      if (i == 3 ||
+          (i == 7 && capped.length > 10) ||
+          (i == 6 && capped.length <= 10)) {
         buffer.write('-');
       }
       buffer.write(capped[i]);

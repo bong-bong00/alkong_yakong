@@ -703,13 +703,14 @@ void _sensorTests() {
 
 /// 넘기기 전에 되돌려야 할 것들.
 void _shippingTests() {
-  test('로그인 화면을 건너뛰지 않는다', () {
-    // 화면을 훑어보려고 잠시 껐던 것. 켠 채로 넘기면 아무나 들어온다.
+  test('넘기는 빌드에서는 로그인 화면을 건너뛸 수 없다', () {
+    // 개발 중에는 건너뛴다. 대신 그 스위치가 kDebugMode 안에 갇혀 있어야
+    // 되돌리는 걸 잊어도 배포본으로 새어 나가지 않는다.
     final main = File('lib/main.dart').readAsStringSync();
     expect(
-      main.contains("bool.fromEnvironment('SKIP_LOGIN', defaultValue: true)"),
-      isFalse,
-      reason: '로그인 건너뛰기가 기본값으로 켜져 있다',
+      main.contains('const bool kSkipLogin = kDebugMode &&'),
+      isTrue,
+      reason: '로그인 건너뛰기가 디버그 빌드 밖에서도 켜질 수 있다',
     );
   });
 
@@ -1252,26 +1253,26 @@ void _colorTokenTests() {
 
 /// 개발용 우회는 기본으로 꺼져 있어야 한다.
 void _fakeLoginTests() {
-  test('가짜 로그인과 로그인 건너뛰기가 기본값으로 꺼져 있다', () {
+  test('가짜 로그인은 개발 빌드에만 있다', () {
     final login = File(
       'lib/features/auth/presentation/screens/login_screen.dart',
     ).readAsStringSync();
     // 켜진 채로 배포하면 아무나 남의 복약 기록을 열어볼 수 있다.
+    // 건너뛰기와 같은 스위치를 쓰면 끄는 곳도 한 군데다.
     expect(
-      login.contains("bool.fromEnvironment('FAKE_LOGIN')"),
+      login.contains('static const bool _fakeLogin = kSkipLogin;'),
       isTrue,
-      reason: '빌드 플래그로만 켜져야 한다',
+      reason: '가짜 로그인이 따로 켜질 수 있다',
     );
     expect(
       login.contains("bool.fromEnvironment('FAKE_LOGIN', defaultValue: true)"),
       isFalse,
-      reason: '가짜 로그인이 기본값으로 켜져 있다',
     );
+  });
 
+  test('디버그에서도 진짜 로그인 화면을 볼 길이 있다', () {
+    // 로그인 화면 자체를 고칠 때 이 길이 없으면 확인할 방법이 없다.
     final main = File('lib/main.dart').readAsStringSync();
-    expect(
-      main.contains("bool.fromEnvironment('SKIP_LOGIN', defaultValue: true)"),
-      isFalse,
-    );
+    expect(main.contains("bool.fromEnvironment('REAL_LOGIN')"), isTrue);
   });
 }
