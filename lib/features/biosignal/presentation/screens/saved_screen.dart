@@ -100,9 +100,7 @@ class SavedScreen extends StatelessWidget {
                   _SavedItem(
                     icon: TablerIcons.activity_heartbeat,
                     title: '심박수 기록',
-                    description: fromAlert
-                        ? '$bpm회 / 분 · 빠르게 뛴 기록으로 따로 표시했어요'
-                        : '$bpm회 / 분 · 1분 동안 잰 결과',
+                    description: '$bpm회 / 분 · 서버에 저장된 심박수',
                   ),
                   const SizedBox(height: 12),
                   Container(
@@ -124,7 +122,7 @@ class SavedScreen extends StatelessWidget {
                         const SizedBox(width: 14),
                         Expanded(
                           child: Text(
-                            '${resolveGuardianTitle(context, guardianTitle)}에게도 전해졌어요',
+                            '보호자 자동 알림은 지원하지 않아요',
                             style: AppText.label(
                               size: 18,
                               color: AppColors.textPrimary,

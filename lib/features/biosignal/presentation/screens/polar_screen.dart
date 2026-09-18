@@ -139,7 +139,7 @@ class _PolarScreenState extends State<PolarScreen> {
 
   Future<void> _search() async {
     setState(() => _searching = true);
-    await _sensor.start();
+    await _sensor.start(measure: false);
     if (!mounted) return;
     setState(() => _searching = false);
 
