@@ -21,6 +21,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:alkong_yakong/features/dashboard/presentation/screens/home_screen.dart';
 import 'package:alkong_yakong/features/easy_flow/domain/easy_flow.dart';
 import 'package:alkong_yakong/core/widgets/senior_bottom_nav.dart';
+import 'package:alkong_yakong/core/widgets/senior_header.dart';
 import 'package:alkong_yakong/core/mode/app_mode.dart';
 import 'package:alkong_yakong/features/medication/presentation/screens/dose_done_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -96,6 +97,7 @@ void main() {
   _signupTests();
   _sensorTests();
   _shippingTests();
+  _backButtonTests();
   _calendarTests();
   Widget wrap(Widget child, {double textScale = 1.0}) {
     return ProviderScope(
@@ -740,4 +742,68 @@ class _SeniorTestMedicationController extends MedicationController {
       heartRateNormal: true,
     );
   }
+}
+
+
+/// A장 — 뒤로가기는 라벨을 갖는다.
+///
+/// 어르신은 `‹` 모양만 있는 원형을 버튼으로 인식하지 못한다.
+/// 사용자 테스트에서 "여기서 나가는 법을 모르겠다"가 가장 많이 나온 지점이다.
+void _backButtonTests() {
+  Widget wrap(Widget child, {double textScale = 1.0}) => ProviderScope(
+        child: MaterialApp(
+          theme: AppTheme.build(),
+          home: MediaQuery(
+            data: MediaQueryData(textScaler: TextScaler.linear(textScale)),
+            child: child,
+          ),
+        ),
+      );
+
+  testWidgets('뒤로 버튼에 글씨가 보인다', (tester) async {
+    await tester.pumpWidget(
+      wrap(
+        Scaffold(
+          body: SeniorBackHeader(title: '약 함께먹기 주의', onBack: () {}),
+        ),
+      ),
+    );
+    expect(find.text('뒤로'), findsOneWidget);
+    expect(find.text('약 함께먹기 주의'), findsOneWidget);
+  });
+
+  testWidgets('돌아갈 곳이 없으면 그리지 않는다', (tester) async {
+    // 쉘 안에 얹힌 화면. 눌러도 아무 일 없는 버튼을 두지 않는다.
+    await tester.pumpWidget(
+      wrap(const Scaffold(body: SeniorBackHeader(title: '오늘'))),
+    );
+    expect(find.text('뒤로'), findsNothing);
+  });
+
+  testWidgets('제목이 길고 글자가 2배여도 버튼이 찌그러지지 않는다', (tester) async {
+    await tester.pumpWidget(
+      wrap(
+        Scaffold(
+          body: SeniorBackHeader(title: '약 함께먹기 주의', onBack: () {}),
+        ),
+        textScale: 2.0,
+      ),
+    );
+    expect(tester.takeException(), isNull);
+    expect(find.text('뒤로'), findsOneWidget);
+  });
+
+  test('라벨 없는 아이콘 버튼이 앱 전체에 없다', () {
+    for (final file in Directory('lib').listSync(recursive: true)) {
+      if (file is! File || !file.path.endsWith('.dart')) continue;
+      final text = file.readAsStringSync();
+      expect(
+        text.contains('IconButton('),
+        isFalse,
+        reason: '${file.path} 에 라벨 없는 아이콘 버튼이 있다',
+      );
+      // 옛 원형 뒤로가기의 흔적.
+      expect(text.contains("'‹'"), isFalse, reason: file.path);
+    }
+  });
 }

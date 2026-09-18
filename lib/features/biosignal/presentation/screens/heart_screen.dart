@@ -542,17 +542,6 @@ class _WeekCard extends StatelessWidget {
   const _WeekCard({required this.data});
 
   /// 전·후를 함께 잰 날만 센다. 못 잰 날을 "비슷했다"로 치지 않는다.
-  String _summary() {
-    final complete = data.week.where((d) => d.pair.isComplete).toList();
-    if (complete.isEmpty) {
-      return '이번 주에는 전·후를 함께 잰 날이 아직 없어요';
-    }
-    final dropped = complete.where((d) => d.pair.drop! > 0).length;
-    if (dropped == complete.length) {
-      return '잰 ${complete.length}일 모두 약을 드신 뒤에 낮아졌어요';
-    }
-    return '잰 ${complete.length}일 중 $dropped일은 약을 드신 뒤에 낮아졌어요';
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -704,43 +693,3 @@ class _NotifyRow extends StatelessWidget {
 ///
 /// 화면은 그대로 보여주되 **이 숫자가 무엇인지** 먼저 밝힌다.
 /// 예시를 진짜 기록으로 읽고 나면 그것대로 판단의 근거가 된다.
-class _ExampleNotice extends StatelessWidget {
-  const _ExampleNotice();
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-      decoration: BoxDecoration(
-        color: AppColors.sunken,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: AppColors.strongLine, width: 2),
-      ),
-      child: Row(
-        children: [
-          const ExcludeSemantics(
-            child: Icon(
-              TablerIcons.info_circle,
-              size: 26,
-              color: AppColors.textTertiary,
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('아래는 예시 화면이에요', style: AppText.cardTitle(size: 19)),
-                Text(
-                  '아직 잰 기록이 없거나 불러오지 못했어요. '
-                  '한 번 재고 나면 그 값이 여기 남습니다.',
-                  style: AppText.body(size: 17.5),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}

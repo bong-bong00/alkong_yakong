@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../../core/widgets/senior_header.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/constants/app_colors.dart';
@@ -65,21 +66,14 @@ class _PatientLinkScreenState extends ConsumerState<PatientLinkScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: kBackground,
-      appBar: AppBar(
-        backgroundColor: kBackground,
-        elevation: 0,
-        foregroundColor: kText,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new_rounded),
-          onPressed: () => Navigator.of(context).maybePop(),
-        ),
-        title: const Text(
-          '환자 연결',
-          style: TextStyle(fontWeight: FontWeight.w800),
-        ),
-      ),
+      // 라벨 없는 화살표 아이콘은 어르신이 버튼으로 인식하지 못한다.
       body: SafeArea(
-        child: _requestedName != null ? _doneView() : _formView(),
+        child: Column(
+          children: [
+            const SeniorBackHeader(title: '환자 연결'),
+            Expanded(child: _requestedName != null ? _doneView() : _formView()),
+          ],
+        )
       ),
     );
   }

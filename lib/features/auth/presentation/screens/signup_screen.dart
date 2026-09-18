@@ -433,11 +433,11 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
               _pw,
               hint: '비밀번호 (6자 이상)',
               obscure: _obscure,
-              suffix: IconButton(
-                icon: Icon(
-                  _obscure ? Icons.visibility_off : Icons.visibility,
-                  color: Colors.grey,
-                ),
+              // 눈 모양 아이콘은 학습이 안 된다. 한글 라벨로 둔다.
+              suffix: SeniorTextButton(
+                label: _obscure ? '보기' : '숨기기',
+                color: AppColors.point,
+                expand: false,
                 onPressed: () => setState(() => _obscure = !_obscure),
               ),
             ),
@@ -908,6 +908,8 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
+                  // 뒤로 버튼이 라벨을 갖게 되면서 한 줄에 셋을 넣으면
+                  // 글자가 커질 때 넘친다. 걸음 표시를 아래로 내린다.
                   Row(
                     children: [
                       SeniorBackButton(onTap: _prev),
@@ -918,16 +920,17 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
                           style: AppText.screenTitle(size: 24),
                         ),
                       ),
-                      Text(
-                        '${_step + 1} / ${steps.length}',
-                        style: AppText.cardTitle(
-                          size: 18,
-                          color: AppColors.textTertiary,
-                        ),
-                      ),
                     ],
                   ),
-                  const SizedBox(height: 14),
+                  const SizedBox(height: 10),
+                  Text(
+                    '${_step + 1} / ${steps.length}',
+                    style: AppText.cardTitle(
+                      size: 18,
+                      color: AppColors.textTertiary,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
                   ClipRRect(
                     borderRadius: BorderRadius.circular(4),
                     child: LinearProgressIndicator(

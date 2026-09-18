@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_tabler_icons/flutter_tabler_icons.dart';
 
 import '../constants/app_colors.dart';
 import '../theme/app_typography.dart';
@@ -37,7 +38,7 @@ class SeniorHeader extends StatelessWidget {
       child: SafeArea(
         bottom: false,
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(22, 14, 22, 15),
+          padding: const EdgeInsets.fromLTRB(18, 12, 18, 14),
           child: child,
         ),
       ),
@@ -112,45 +113,59 @@ class SeniorBackHeader extends StatelessWidget {
 }
 
 /// 44×44 원형 뒤로가기. 탭 영역은 48×48 이상으로 잡는다.
+/// 라벨이 보이는 뒤로 버튼. 높이 56, 채움 + 2px 테두리.
+///
+/// **아이콘만 있는 뒤로가기는 만들지 않는다.** 어르신은 `‹` 모양만 있는 원형을
+/// 버튼으로 인식하지 못한다 — 사용자 테스트에서 "여기서 나가는 법을 모르겠다"가
+/// 가장 많이 나온 지점이다.
 class SeniorBackButton extends StatelessWidget {
   final VoidCallback? onTap;
   final bool onDark;
 
-  const SeniorBackButton({super.key, this.onTap, this.onDark = false});
+  /// 기본 "뒤로". 돌아갈 곳이 특별하면 "목록으로"처럼 바꿔도 된다.
+  final String label;
+
+  const SeniorBackButton({
+    super.key,
+    this.onTap,
+    this.onDark = false,
+    this.label = '뒤로',
+  });
 
   @override
   Widget build(BuildContext context) {
-    // 쉬운 모드처럼 화면이 쉘 안에 얹혀 있으면 돌아갈 곳이 없다.
-    // 눌러도 아무 일이 없는 버튼은 그리지 않는다.
+    // 쉘 안에 얹혀 돌아갈 곳이 없으면 그리지 않는다.
     if (onTap == null && !Navigator.of(context).canPop()) {
-      return const SizedBox(width: 4);
+      return const SizedBox.shrink();
     }
 
+    final fg = onDark ? Colors.white : AppColors.textBody;
     return Semantics(
       button: true,
-      label: '뒤로 가기',
-      child: InkResponse(
+      label: '$label 가기',
+      child: GestureDetector(
         onTap: onTap ?? () => Navigator.of(context).maybePop(),
-        radius: 32,
+        behavior: HitTestBehavior.opaque,
         child: Container(
-          width: 48,
-          height: 48,
-          alignment: Alignment.center,
-          child: Container(
-            width: 44,
-            height: 44,
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-              color: onDark ? AppColors.camChip : AppColors.surface,
-              shape: BoxShape.circle,
+          height: 56,
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          decoration: BoxDecoration(
+            color: onDark ? AppColors.camChip : AppColors.secondaryFill,
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(
+              color: onDark ? const Color(0x80FFFFFF) : AppColors.strongLine,
+              width: 2,
             ),
-            child: Text(
-              '‹',
-              style: AppText.cardTitle(
-                size: 22,
-                color: onDark ? Colors.white : AppColors.textPrimary,
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ExcludeSemantics(
+                child: Icon(TablerIcons.arrow_left, size: 26, color: fg),
               ),
-            ),
+              const SizedBox(width: 8),
+              Text(label, style: AppText.button(size: 21, color: fg)),
+            ],
           ),
         ),
       ),
