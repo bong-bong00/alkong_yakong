@@ -325,7 +325,7 @@ class ChatContextTest(unittest.TestCase):
             intent="combination",
             e_drug_result=None,
         )
-        self.assertIn("확인되지 않았습니다", reply)
+        self.assertIn("해당하는 정보를 찾지 못했어요", reply)
         self.assertEqual(
             analyze.call_args.kwargs["selected_medicine"]["ingredient"],
             "공식성분 100mg",
@@ -337,7 +337,7 @@ class ChatContextTest(unittest.TestCase):
             intent="combination",
             e_drug_error=RuntimeError("upstream unavailable"),
         )
-        self.assertIn("확인되지 않았습니다", reply)
+        self.assertIn("해당하는 정보를 찾지 못했어요", reply)
         analyze.assert_called_once()
 
     def test_permission_only_selected_medicine_reaches_duplicate_consultation(self):
@@ -345,8 +345,8 @@ class ChatContextTest(unittest.TestCase):
             intent="duplicate",
             e_drug_result=None,
         )
-        self.assertIn("공식 DUR 기준으로 확인된 중복 성분 또는 효능군 중복 정보가 없습니다", reply)
-        self.assertIn("모든 복약 위험이 없다는 의미는 아니며", reply)
+        self.assertIn("성분이나 비슷한 효과가 겹친다는 정보를 확인한 공식 자료에서는 찾지 못했어요", reply)
+        self.assertIn("모든 위험이 없다는 뜻은 아니에요", reply)
         self.assertEqual(
             analyze.call_args.kwargs["risk_types"],
             {"중복성분", "효능군중복"},
@@ -389,7 +389,7 @@ class ChatContextTest(unittest.TestCase):
                 "빠른 질문", user_id="U1", selected_medicine=selected, intent="duplicate"
             )
         self.assertIn("공식 중복 결과", reply)
-        self.assertNotIn("중복 성분 또는 효능군 중복 정보가 없습니다", reply)
+        self.assertNotIn("확인한 공식 자료에서는 찾지 못했어요", reply)
         self.assertEqual(generate.call_count, 2)
 
     def test_duplicate_dur_failure_is_not_reported_as_zero_match(self):
@@ -420,8 +420,8 @@ class ChatContextTest(unittest.TestCase):
             reply = gemini_service.generate_chat_response(
                 "빠른 질문", user_id="U1", selected_medicine=selected, intent="duplicate"
             )
-        self.assertIn("현재 공식 DUR 정보를 확인하기 어렵습니다", reply)
-        self.assertNotIn("중복 정보가 없습니다", reply)
+        self.assertIn("지금은 약을 함께 사용할 때 주의할 공식 정보를 확인하지 못했어요", reply)
+        self.assertNotIn("확인한 공식 자료에서는 찾지 못했어요", reply)
 
     def test_duplicate_missing_ingredient_is_not_reported_as_zero_match(self):
         selected = {"medicine_code": "202400001", "product_name": "공식허가약정"}
@@ -437,14 +437,14 @@ class ChatContextTest(unittest.TestCase):
             reply = gemini_service.generate_chat_response(
                 "빠른 질문", user_id="U1", selected_medicine=selected, intent="duplicate"
             )
-        self.assertIn("공식 성분 정보를 확인하지 못해", reply)
-        self.assertNotIn("중복 정보가 없습니다", reply)
+        self.assertIn("선택한 약의 성분을 공식 자료에서 확인하지 못했어요", reply)
+        self.assertNotIn("확인한 공식 자료에서는 찾지 못했어요", reply)
 
     def test_duplicate_zero_match_message_does_not_apply_to_other_safety_intents(self):
         for intent in ("combination", "age", "pregnancy"):
             with self.subTest(intent=intent):
                 reply, _ = self._run_permission_only_safety(intent=intent)
-                self.assertNotIn("중복 성분 또는 효능군 중복 정보가 없습니다", reply)
+                self.assertNotIn("성분이나 비슷한 효과가 겹친다는 정보", reply)
 
     def test_unverified_selected_medicine_keeps_missing_fallback(self):
         selected = {
@@ -470,7 +470,7 @@ class ChatContextTest(unittest.TestCase):
                 selected_medicine=selected,
                 intent="combination",
             )
-        self.assertIn("DUR 병용금기 분석 결과를 확인할 수 없습니다", reply)
+        self.assertIn("함께 사용하면 안 되는 조합이 있는지 확인한 결과를 찾지 못했어요", reply)
         analyze.assert_not_called()
 
     def test_permission_only_efficacy_uses_exact_official_document(self):
@@ -664,7 +664,7 @@ class ChatContextTest(unittest.TestCase):
                 intent="combination",
             )
 
-        self.assertIn("확인되지 않았습니다", reply)
+        self.assertIn("해당하는 정보를 찾지 못했어요", reply)
         self.assertEqual(
             analyze.call_args.kwargs["selected_medicine"]["ingredient"],
             "알마게이트 500mg",
@@ -772,13 +772,79 @@ class ChatContextTest(unittest.TestCase):
             official_contexts=[],
             dur_result={"status": "not_required", "items": []},
         )
-        for term in ("융모", "상피", "수용체", "대사", "흡수", "배설", "분비", "효소"):
-            self.assertIn(term, prompt_text)
-            self.assertIn(f"{term}는", prompt_text)
+        examples = {
+            "융모": "장의 구조를 뜻하는 문맥에서만",
+            "상피": "몸 표면이나 장기를 덮는 얇은 층",
+            "수용체": "약 성분이 작용하는 몸속 부분",
+            "대사": "약을 처리하는 문맥에서만",
+            "흡수": "약 성분이 몸 안으로 들어오는 과정",
+            "배설": "몸 밖으로 내보내는 과정",
+            "분비": "몸에서 특정 물질을 만들어 내보내는 과정",
+            "효소": "몸속에서 화학 작용을 돕는 물질",
+        }
+        for term, explanation in examples.items():
+            with self.subTest(term=term):
+                self.assertIn(term, prompt_text)
+                self.assertIn(explanation, prompt_text)
         self.assertIn("전문용어를 괄호 안에 덧붙이지 마세요", prompt_text)
         self.assertIn("주성분, 복용량, 공식 의약품명·제품명·성분명은 원래 표현을 유지", prompt_text)
         self.assertIn("추측하지 말고", prompt_text)
         self.assertIn("의료적 판단을 단정하지 마세요", prompt_text)
+
+    def test_prompt_preserves_source_conditions_and_personal_prescription_boundary(self):
+        fixtures = {
+            "efficacy": {"efficacy": "합성 증상 완화"},
+            "dosage": {"dosage": "18세 이상, 1회 2mg, 하루 1회, 3일간 주사"},
+            "precautions": {"precautions": "12세 미만은 사용하면 안 됨. 예외: 공식 조건 충족 시"},
+            "side_effects": {"side_effects": "심각한 증상이 나타날 수 있음"},
+            "general": {},
+        }
+        rules = (
+            "목록에 없는 어려운 말에도 같은 원칙",
+            "단순 단어 치환은 하지 마세요",
+            "용량, 단위, 횟수, 기간, 연령 조건과 적용 대상, 금지·주의·예외 조건의 강도를 그대로 유지",
+            '"사용하면 안 됨"을 "주의가 필요함"으로 완화하지 마세요',
+            '심각한 위험이나 증상을 단순한 "불편함"으로 축소하지 마세요',
+            "투여를 모든 경우에 복용으로 바꾸지 마세요",
+            "먹는 약·주사·바르는 약 등 공식 자료에 나온 사용 방식을 유지",
+            "설명이 어렵다는 이유로 공식 자료가 없다고 답하지 마세요",
+            "공식 자료의 일반 사용법은 일반 안내임을 분명히",
+            "실제 등록 처방 정보가 제공된 경우에만",
+            "개인 처방 정보 없이 개인 복용량을 새로 정하지 말고",
+            "일반 사용법을 개인 처방처럼 표현하지 마세요",
+            "공식정보에 없는 내용을 사실처럼 만들지 마세요",
+            "복용 시작, 중단, 용량 변경을 지시하지 마세요",
+            "핵심 답을 첫 문장에",
+        )
+        for intent, source in fixtures.items():
+            with self.subTest(intent=intent):
+                prompt = build_grounded_chat_prompt(
+                    message="합성 질문", intents={intent},
+                    official_contexts=[source] if source else [],
+                    dur_result={"status": "not_required", "items": []},
+                )
+                for rule in rules:
+                    self.assertIn(rule, prompt)
+                for value in source.values():
+                    self.assertIn(value, prompt)
+
+    def test_fixed_replies_preserve_missing_stale_and_zero_result_meanings(self):
+        for intent in ("combination", "age", "pregnancy", "duplicate"):
+            with self.subTest(intent=intent):
+                missing = gemini_service._dur_context_unavailable_reply({intent}, "missing")
+                stale = gemini_service._dur_context_unavailable_reply({intent}, "stale")
+                zero = gemini_service._dur_no_match_reply({intent})
+                self.assertIn("확인한 결과를 찾지 못했어요", missing)
+                self.assertNotIn("복용 중인 약이 바뀌어", missing)
+                self.assertIn("복용 중인 약이 바뀌어", stale)
+                self.assertIn("이전 결과를 그대로 사용하기 어려워요", stale)
+                self.assertIn("찾지 못했어요", zero)
+                self.assertNotIn("다시 시도", zero)
+                for reply in (missing, stale, zero):
+                    for jargon in ("DUR", "병용금기", "연령금기", "임부금기", "효능군중복"):
+                        self.assertNotIn(jargon, reply)
+                    self.assertNotIn("안전합니다", reply)
+                    self.assertNotIn("복용해도 됩니다", reply)
 
     def test_general_conversation_rules_do_not_match_drug_questions(self):
         self.assertIn("안녕하세요", general_conversation_reply("안녕하세요"))
@@ -791,7 +857,7 @@ class ChatContextTest(unittest.TestCase):
             greeting = gemini_service.generate_chat_response("안녕", user_id="U1")
             safety = gemini_service.generate_chat_response("같이 먹어도 돼?", user_id="U1")
         self.assertIn("안녕하세요", greeting)
-        self.assertIn("DUR 재분석", safety)
+        self.assertIn("현재 복용약으로 다시 확인", safety)
         self.assertNotIn("타이레놀", safety)
 
         with (
