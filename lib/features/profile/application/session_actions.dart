@@ -22,6 +22,14 @@ Future<void> startSession(WidgetRef ref, UserProfile user) async {
   ref.read(userRoleProvider.notifier).state = user.isGuardian
       ? UserRole.guardian
       : UserRole.patient;
+  resetUserScopedData(ref);
+}
+
+/// 사람에게 딸린 화면 값을 모두 버린다.
+///
+/// 가입처럼 로그인 절차를 거치지 않고 사용자가 바뀌는 길에서도
+/// 앞사람의 약·가족·기록이 화면에 남지 않게 한다.
+void resetUserScopedData(WidgetRef ref) {
   ref
     ..invalidate(currentUserProvider)
     ..invalidate(guardiansProvider)

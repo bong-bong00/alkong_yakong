@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../domain/exclusive_choice.dart';
 import '../../../../core/network/api_client.dart';
+import '../../../../core/providers/user_role.dart';
 import '../../../../core/session/auth_session.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../core/widgets/senior_button.dart';
@@ -13,7 +14,6 @@ import '../../../../core/widgets/senior_feedback.dart';
 import '../../../../core/widgets/senior_header.dart';
 import '../../../guardian/application/guardians_provider.dart';
 import '../../../guardian/data/guardian_repository.dart';
-import '../../../profile/application/current_user_controller.dart';
 import '../../../profile/application/session_actions.dart';
 import '../../../profile/domain/user_profile.dart';
 
@@ -235,7 +235,7 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
   void _next(List<_StepDef> steps) {
     final err = steps[_step].validate();
     if (err != null) {
-      setState(() => _error = err);
+      showSeniorSnackbar(context, err, error: true);
       return;
     }
     if (_step >= steps.length - 1) {
@@ -341,6 +341,15 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
       }
 
       await AuthSession.persistUserId(userId);
+      // 가입한 역할대로 로그인 상태를 만든다. 보호자로 가입하면 보호자 화면이 열린다.
+      await AuthSession.setLoggedIn(_role);
+      if (mounted) {
+        ref.read(userRoleProvider.notifier).state = _role == 'guardian'
+            ? UserRole.guardian
+            : UserRole.patient;
+        // 방금 만든 계정으로 바뀌었으니 앞사람의 약·가족·기록은 버린다.
+        resetUserScopedData(ref);
+      }
       await _saveGuardianContact();
       if (!mounted) return;
       await _showSignupComplete();

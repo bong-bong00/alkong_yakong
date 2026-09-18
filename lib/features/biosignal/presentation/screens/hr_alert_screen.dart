@@ -9,7 +9,6 @@ import '../../../../core/widgets/senior_card.dart';
 import '../../../../core/widgets/senior_feedback.dart';
 import '../../../../core/widgets/senior_header.dart';
 import '../../../medication/domain/medication_models.dart';
-import '../../domain/heart_data.dart';
 import 'saved_screen.dart';
 
 /// 29 · 심박수 이상.
@@ -157,14 +156,17 @@ class _ValueCard extends StatelessWidget {
     required this.usualRange,
   });
 
+  /// 안정 상태에서 이 수치를 넘으면 빠른 것으로 본다.
+  static const int _fastBpm = 80;
+
   @override
   Widget build(BuildContext context) {
     final usualRange = this.usualRange;
     final hasUsual = usualRange != null && usualRange.isNotEmpty;
-    // 평소 범위를 모르면 앱이 쓰는 기준(HeartPair.isFast)과 비교해 말한다.
+    // 평소 범위를 모르면 이 기준과 비교해 말한다.
     final headline = hasUsual
         ? '평소보다 빠릅니다'
-        : '기준(${HeartPair.fastBpm}회)보다 빠릅니다';
+        : '기준($_fastBpm회)보다 빠릅니다';
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
       decoration: const BoxDecoration(
