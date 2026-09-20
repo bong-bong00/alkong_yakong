@@ -98,12 +98,10 @@ class _DetailBody extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final ingredients = ingredientParts(medicine.ingredientName);
-    final extraOfficialUses = medicine.allApprovedUses.where((purpose) {
-      final normalized = purpose.trim();
-      return normalized.isNotEmpty &&
-          normalized != medicine.approvedUseSummary.trim() &&
-          !medicine.approvedUses.any((shown) => shown.trim() == normalized);
-    }).toList();
+    final allOfficialUses = medicine.allApprovedUses
+        .where((purpose) => purpose.trim().isNotEmpty)
+        .toSet()
+        .toList();
     final cautions = <String>[
       if ((medicine.keyCaution ?? '').trim().isNotEmpty) medicine.keyCaution!,
       ...medicine.keyCautions.where(
@@ -145,14 +143,16 @@ class _DetailBody extends StatelessWidget {
                       ),
                     ),
                 ],
-                if (medicine.cardSpoken != null) ...[
+                if (medicine.detailStatus.toUpperCase() != 'OUTDATED' &&
+                    medicine.cardSpoken != null) ...[
                   const SizedBox(height: 10),
                   Text(
                     medicine.cardSpoken!,
                     style: AppText.body(size: 19, color: AppColors.textBody),
                   ),
                 ],
-                if (medicine.easyPurposes.any(isCardPurposeLabel)) ...[
+                if (medicine.detailStatus.toUpperCase() != 'OUTDATED' &&
+                    medicine.easyPurposes.any(isCardPurposeLabel)) ...[
                   const SizedBox(height: 12),
                   Wrap(
                     spacing: 8,
@@ -181,15 +181,16 @@ class _DetailBody extends StatelessWidget {
                       style: AppText.cardTitle(),
                     ),
                     const SizedBox(height: 12),
-                    Text(
-                      medicine.ingredientExplanation,
-                      style: AppText.body(size: 18),
+                    _EmphasizedBodyText(
+                      text: medicine.ingredientExplanation,
+                      highlight: medicine.ingredientHighlight,
                     ),
                   ],
                 ),
               ),
             ],
-            if (medicine.approvedUseSummary.trim().isNotEmpty ||
+            if (medicine.treatmentUses.isNotEmpty ||
+                medicine.approvedUseSummary.trim().isNotEmpty ||
                 medicine.approvedUses.isNotEmpty) ...[
               const SizedBox(height: 12),
               SeniorCard(
@@ -202,16 +203,39 @@ class _DetailBody extends StatelessWidget {
                       text: '어떤 치료에 쓰이나요?',
                       style: AppText.cardTitle(),
                     ),
-                    if (medicine.approvedUseSummary.trim().isNotEmpty) ...[
-                      const SizedBox(height: 12),
-                      Text(
-                        medicine.approvedUseSummary,
-                        style: AppText.body(size: 18),
-                      ),
-                    ],
-                    for (final purpose in medicine.approvedUses) ...[
-                      const SizedBox(height: 8),
-                      Text('· $purpose', style: AppText.body(size: 18)),
+                    if (medicine.treatmentUses.isNotEmpty)
+                      for (final use in medicine.treatmentUses) ...[
+                        const SizedBox(height: 12),
+                        Text(
+                          '· ${use.title}',
+                          style: AppText.body(
+                            size: 18,
+                            color: AppColors.detailEmphasis,
+                          ).copyWith(fontWeight: FontWeight.w800),
+                        ),
+                        if (use.description.isNotEmpty) ...[
+                          const SizedBox(height: 4),
+                          Padding(
+                            padding: const EdgeInsets.only(left: 14),
+                            child: Text(
+                              use.description,
+                              style: AppText.body(size: 18),
+                            ),
+                          ),
+                        ],
+                      ]
+                    else ...[
+                      if (medicine.approvedUseSummary.trim().isNotEmpty) ...[
+                        const SizedBox(height: 12),
+                        Text(
+                          medicine.approvedUseSummary,
+                          style: AppText.body(size: 18),
+                        ),
+                      ],
+                      for (final purpose in medicine.approvedUses) ...[
+                        const SizedBox(height: 8),
+                        Text('· $purpose', style: AppText.body(size: 18)),
+                      ],
                     ],
                     const SizedBox(height: 10),
                     Text(
@@ -222,7 +246,7 @@ class _DetailBody extends StatelessWidget {
                 ),
               ),
             ],
-            if (extraOfficialUses.isNotEmpty) ...[
+            if (allOfficialUses.isNotEmpty) ...[
               const SizedBox(height: 12),
               SeniorCard(
                 padding: EdgeInsets.zero,
@@ -241,10 +265,13 @@ class _DetailBody extends StatelessWidget {
                       style: AppText.cardTitle(),
                     ),
                     children: [
-                      for (final purpose in extraOfficialUses) ...[
+                      for (final purpose in allOfficialUses) ...[
                         Align(
                           alignment: Alignment.centerLeft,
-                          child: Text('· $purpose', style: AppText.body(size: 17)),
+                          child: Text(
+                            '· $purpose',
+                            style: AppText.body(size: 17),
+                          ),
                         ),
                         const SizedBox(height: 8),
                       ],
@@ -274,7 +301,7 @@ class _DetailBody extends StatelessWidget {
                     icon: TablerIcons.alert_triangle,
                     color: AppColors.danger,
                     text: '꼭 기억해 주세요',
-                  style: AppText.cardTitle(color: AppColors.danger),
+                    style: AppText.cardTitle(color: AppColors.danger),
                   ),
                   const SizedBox(height: 12),
                   for (final caution in cautions) ...[
@@ -471,6 +498,42 @@ class _DetailBody extends StatelessWidget {
       'NEEDS_REVIEW' => '공식 정보에서 안전하게 정리한 기본 설명을 보여드려요.',
       _ => '현재 확인할 수 있는 제품 기본 정보를 보여드려요.',
     };
+  }
+}
+
+class _EmphasizedBodyText extends StatelessWidget {
+  final String text;
+  final String highlight;
+
+  const _EmphasizedBodyText({required this.text, required this.highlight});
+
+  @override
+  Widget build(BuildContext context) {
+    final bodyStyle = AppText.body(size: 18);
+    final target = highlight.trim();
+    final start = target.isEmpty || target == text.trim()
+        ? -1
+        : text.indexOf(target);
+    if (start < 0) {
+      return Text(text, style: bodyStyle);
+    }
+    final end = start + target.length;
+    return Text.rich(
+      TextSpan(
+        style: bodyStyle,
+        children: [
+          if (start > 0) TextSpan(text: text.substring(0, start)),
+          TextSpan(
+            text: text.substring(start, end),
+            style: bodyStyle.copyWith(
+              color: AppColors.detailEmphasis,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          if (end < text.length) TextSpan(text: text.substring(end)),
+        ],
+      ),
+    );
   }
 }
 

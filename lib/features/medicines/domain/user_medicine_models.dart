@@ -3,6 +3,12 @@ library;
 
 import 'display_policy.dart';
 
+class TreatmentUse {
+  final String title;
+  final String description;
+  const TreatmentUse({required this.title, required this.description});
+}
+
 class UserMedicine {
   final String medicineCode;
   final String displayName;
@@ -31,6 +37,8 @@ class UserMedicine {
   final int? frequencyPerDay;
   final List<String> administrationTimes;
   final String ingredientExplanation;
+  final String ingredientHighlight;
+  final List<TreatmentUse> treatmentUses;
   final String approvedUseSummary;
   final List<String> approvedUses;
   final List<String> allApprovedUses;
@@ -74,6 +82,8 @@ class UserMedicine {
     this.frequencyPerDay,
     this.administrationTimes = const [],
     this.ingredientExplanation = '',
+    this.ingredientHighlight = '',
+    this.treatmentUses = const [],
     this.approvedUseSummary = '',
     this.approvedUses = const [],
     this.allApprovedUses = const [],
@@ -132,9 +142,12 @@ class UserMedicine {
       dosage: json['dosage']?.toString(),
       frequencyPerDay: _intOrNull(json['frequency_per_day']),
       administrationTimes: _stringList(json['administration_times']),
-      ingredientExplanation:
-          json['ingredient_explanation']?.toString() ?? '',
+      ingredientExplanation: json['ingredient_explanation']?.toString() ?? '',
       approvedUseSummary: json['approved_use_summary']?.toString() ?? '',
+      ingredientHighlight: json['ingredient_highlight'] is String
+          ? (json['ingredient_highlight'] as String).trim()
+          : '',
+      treatmentUses: _treatmentUseList(json['treatment_uses']),
       approvedUses: _stringList(json['approved_uses']),
       allApprovedUses: _stringList(json['all_approved_uses']),
       officialUsage: json['official_usage']?.toString() ?? '',
@@ -165,11 +178,32 @@ class UserMedicine {
           allApprovedUses.isNotEmpty);
 
   bool get hasDetailContent =>
-      const {'READY', 'OFFICIAL_ONLY', 'NEEDS_REVIEW', 'OUTDATED'}
-          .contains(detailStatus.toUpperCase()) &&
+      const {
+        'READY',
+        'OFFICIAL_ONLY',
+        'NEEDS_REVIEW',
+      }.contains(detailStatus.toUpperCase()) &&
       (ingredientExplanation.trim().isNotEmpty ||
           approvedUseSummary.trim().isNotEmpty ||
-          approvedUses.isNotEmpty);
+          approvedUses.isNotEmpty ||
+          allApprovedUses.isNotEmpty ||
+          treatmentUses.isNotEmpty);
+
+  static List<TreatmentUse> _treatmentUseList(dynamic raw) {
+    if (raw is! List) return const [];
+    return [
+      for (final item in raw)
+        if (item is Map &&
+            item['title'] is String &&
+            item['description'] is String &&
+            (item['title'] as String).trim().isNotEmpty &&
+            (item['description'] as String).trim().isNotEmpty)
+          TreatmentUse(
+            title: (item['title'] as String).trim(),
+            description: (item['description'] as String).trim(),
+          ),
+    ].take(3).toList();
+  }
 
   String get ingredientLabel {
     final summary = ingredientSummary.trim().isNotEmpty

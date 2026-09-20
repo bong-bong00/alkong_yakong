@@ -46,9 +46,11 @@ class UserMedicinesController extends AsyncNotifier<List<UserMedicine>> {
       data['short_explanation'] =
           explanation['short_explanation'] ?? data['short_explanation'];
       data['ingredient_explanation'] = explanation['ingredient_explanation'];
+      data['ingredient_highlight'] = explanation['ingredient_highlight'];
       data['approved_use_summary'] = explanation['approved_use_summary'];
       data['approved_uses'] = explanation['approved_uses'];
       data['all_approved_uses'] = explanation['all_approved_uses'];
+      data['treatment_uses'] = explanation['treatment_uses'];
       data['detail_review_status'] = explanation['review_status'];
       data['detail_status'] = explanation['status'];
     }

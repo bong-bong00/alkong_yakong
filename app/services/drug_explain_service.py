@@ -17,12 +17,72 @@ from app.services.mfds_drug_permission.sync import (
 from app.services.pharmacist.easy_category import derive_easy_category_from_medicine
 from app.services.pharmacist.generate import generate_card_from_source
 from app.services.medicine_display import split_ingredients
-from app.services.medicine_detail_service import get_medicine_detail_profile
+from app.services.medicine_detail_service import (
+    get_medicine_detail_profile,
+    ingredient_entries,
+)
+from app.services.medicine_detail_providers import find_reviewed_ingredient_explanations
 
 
 logger = logging.getLogger(__name__)
 CACHE_MAX_AGE = "-1 day"
 MISSING_OFFICIAL_TEXT = "공식 정보에 명시되어 있지 않습니다."
+
+
+def _ingredient_highlight(cursor, medicine: dict[str, Any], explanation: str) -> str:
+    if not explanation:
+        return ""
+    entries = ingredient_entries(medicine.get("ingredient"))
+    reviewed = find_reviewed_ingredient_explanations(cursor, entries)
+    for entry in entries:
+        row = reviewed.get(entry["key"], {})
+        for field in ("use_help", "role_explanation"):
+            candidate = row.get(field)
+            if (
+                isinstance(candidate, str)
+                and candidate.strip()
+                and candidate.strip() != explanation.strip()
+                and candidate.strip() in explanation
+            ):
+                return candidate.strip()
+    return ""
+
+
+def _treatment_use_items(
+    summary: str, uses: list[str], all_uses: list[str]
+) -> list[dict[str, str]]:
+    """Use explicit source headings only, not inferred indication categories.
+
+    Prefer the full list over potentially summarized representative sentences;
+    use representatives, then summary, only when the preceding source is absent.
+    Ambiguous/unstructured content keeps the existing display fallback.
+    """
+    source: list[str] = []
+    for item in all_uses or uses or ([summary] if summary else []):
+        if not isinstance(item, str) or not item.strip() or len(item) > 180:
+            return []
+        if item not in source:
+            source.append(item)
+    if not source or len(source) > 3:
+        return []
+    # Do not hide a separate summary condition by replacing its existing card.
+    if summary and not any(summary.strip() in item for item in source):
+        return []
+    result: list[dict[str, str]] = []
+    for item in source:
+        separator = '：' if '：' in item else ':'
+        title, found, description = item.partition(separator)
+        title, description = title.strip(), description.strip()
+        if (
+            not found or not title or not description or len(title) > 40
+            or '\n' in title or title.isdecimal()
+            or title in {'성인', '소아', '고령자', '주의', '주의사항', '용법', '용량'}
+            or ''.join(title.split()).rstrip('.!?。')
+            == ''.join(description.split()).rstrip('.!?。')
+        ):
+            return []
+        result.append({"title": title, "description": description})
+    return result
 
 
 def get_drug_explanation(
@@ -80,6 +140,7 @@ def reviewed_detail_payload(cursor, medicine: dict[str, Any]) -> dict[str, Any]:
     reviewed = str((profile or {}).get("review_status") or "").upper() == "REVIEWED"
     if card:
         reviewed = True
+    stale = status == "OUTDATED"
     ingredient_names = split_ingredients(medicine.get("ingredient"))
     approved_uses = (
         list(profile.get("approved_uses") or [])
@@ -125,6 +186,18 @@ def reviewed_detail_payload(cursor, medicine: dict[str, Any]) -> dict[str, Any]:
         or (card.get("approved_use_summary") if card else "")
         or ""
     ).strip()
+    all_approved_uses = list((profile or {}).get("all_approved_uses") or approved_uses)
+    if stale:
+        # A cached card/summary must not reintroduce an outdated explanation.
+        short_explanation = ""
+        ingredient_explanation = ""
+        approved_use_summary = ""
+        approved_uses = []
+        all_approved_uses = []
+    ingredient_highlight = _ingredient_highlight(cursor, medicine, ingredient_explanation)
+    treatment_uses = _treatment_use_items(
+        approved_use_summary, approved_uses, all_approved_uses
+    )
     return {
         "medicine": {
             "medicine_code": code,
@@ -145,15 +218,15 @@ def reviewed_detail_payload(cursor, medicine: dict[str, Any]) -> dict[str, Any]:
                 ingredient_explanation
                 or approved_use_summary
                 or approved_uses
-                or (profile or {}).get("all_approved_uses")
+                or all_approved_uses
             ),
             "short_explanation": short_explanation,
             "ingredient_explanation": ingredient_explanation,
+            "ingredient_highlight": ingredient_highlight,
             "approved_use_summary": approved_use_summary,
             "approved_uses": approved_uses,
-            "all_approved_uses": list(
-                (profile or {}).get("all_approved_uses") or approved_uses
-            ),
+            "all_approved_uses": all_approved_uses,
+            "treatment_uses": treatment_uses,
             "review_status": "REVIEWED" if reviewed else "UNAVAILABLE",
             "status": status,
             "quality_flags": list((profile or {}).get("quality_flags") or []),
