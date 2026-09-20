@@ -13,41 +13,78 @@ class AlarmPreferences {
   final bool repeatOnce;
   final bool tellGuardian;
 
-  /// 24시간제. 아침 7~10시, 저녁 17~20시 안에서 고른다.
-  final int morningHour;
-  final int eveningHour;
+  /// 들어온 그대로의 시각 목록. 읽을 때는 [hours]로 정리해서 쓴다.
+  final List<int> _rawHours;
 
   const AlarmPreferences({
     this.autoAlarm = true,
     this.repeatOnce = true,
     this.tellGuardian = true,
-    this.morningHour = 8,
-    this.eveningHour = 18,
-  });
+    List<int> hours = const [8, 18],
+  }) : _rawHours = hours;
+
+  /// 알림 시각(24시간제). 오름차순이고 겹치지 않는다. 적어도 하나는 남는다.
+  List<int> get hours => normalize(_rawHours);
+
+  /// 한 사람이 챙길 수 있는 알림은 이 정도가 끝이다.
+  static const int maxHours = 6;
 
   AlarmPreferences copyWith({
     bool? autoAlarm,
     bool? repeatOnce,
     bool? tellGuardian,
-    int? morningHour,
-    int? eveningHour,
+    List<int>? hours,
   }) => AlarmPreferences(
     autoAlarm: autoAlarm ?? this.autoAlarm,
     repeatOnce: repeatOnce ?? this.repeatOnce,
     tellGuardian: tellGuardian ?? this.tellGuardian,
-    morningHour: morningHour ?? this.morningHour,
-    eveningHour: eveningHour ?? this.eveningHour,
+    hours: normalize(hours ?? this.hours),
   );
 
-  /// "아침 8시" · "저녁 6시".
-  static String spoken(int hour) {
-    final display = hour > 12 ? hour - 12 : hour;
-    return '${hour >= 12 ? '저녁' : '아침'} $display시';
+  /// 시각을 더한다. 이미 있는 시각이면 그대로 둔다.
+  AlarmPreferences withHour(int hour) =>
+      hours.contains(hour) || hours.length >= maxHours
+      ? this
+      : copyWith(hours: [...hours, hour]);
+
+  /// 시각을 지운다. 마지막 하나는 지우지 않는다 — 알림이 통째로 사라진다.
+  AlarmPreferences withoutHour(int hour) => hours.length <= 1
+      ? this
+      : copyWith(
+          hours: [
+            for (final h in hours)
+              if (h != hour) h,
+          ],
+        );
+
+  /// [was]를 [now]로 바꾼다.
+  AlarmPreferences replaceHour(int was, int now) => copyWith(
+    hours: [
+      for (final h in hours)
+        if (h == was) now else h,
+    ],
+  );
+
+  /// 겹치는 시각을 덜어내고 순서대로 세운다. 비면 기본값으로 돌린다.
+  static List<int> normalize(List<int> raw) {
+    final kept = <int>{
+      for (final hour in raw)
+        if (hour >= 0 && hour <= 23) hour,
+    }.toList()..sort();
+    if (kept.isEmpty) return const [8];
+    return List<int>.unmodifiable(kept.take(maxHours));
+  }
+
+  /// "오전 8시" · "낮 12시" · "오후 6시".
+  static String clock(int hour) {
+    if (hour == 0) return '밤 12시';
+    if (hour == 12) return '낮 12시';
+    return hour < 12 ? '오전 $hour시' : '오후 ${hour - 12}시';
   }
 
   /// 내 정보 목록에 쓰는 한 줄.
   String get summary => autoAlarm
-      ? '${spoken(morningHour)} · ${spoken(eveningHour)} · 소리로 알려드려요'
+      ? '${hours.map(clock).join(' · ')} · 소리로 알려드려요'
       : '소리 알림이 꺼져 있어요';
 }
 
@@ -69,14 +106,27 @@ class AlarmPreferencesController extends Notifier<AlarmPreferences> {
         repeatOnce: prefs.getBool('${_prefix}repeat') ?? defaults.repeatOnce,
         tellGuardian:
             prefs.getBool('${_prefix}guardian') ?? defaults.tellGuardian,
-        morningHour: prefs.getInt('${_prefix}morning') ?? defaults.morningHour,
-        eveningHour: prefs.getInt('${_prefix}evening') ?? defaults.eveningHour,
+        hours: _readHours(prefs) ?? defaults.hours,
       );
     } catch (_) {
       // 저장소를 못 열면 기본값으로 둔다.
     }
     // 저장소를 못 열었어도 기본값대로는 울려야 한다.
     await ref.read(reminderNotificationsProvider).sync(state);
+  }
+
+  /// 새 목록을 읽는다. 없으면 옛 아침·저녁 값을 옮겨 온다.
+  static List<int>? _readHours(SharedPreferences prefs) {
+    final stored = prefs.getStringList('${_prefix}hours');
+    if (stored != null && stored.isNotEmpty) {
+      return AlarmPreferences.normalize([
+        for (final text in stored) int.tryParse(text) ?? -1,
+      ]);
+    }
+    final morning = prefs.getInt('${_prefix}morning');
+    final evening = prefs.getInt('${_prefix}evening');
+    if (morning == null && evening == null) return null;
+    return AlarmPreferences.normalize([?morning, ?evening]);
   }
 
   Future<void> update(AlarmPreferences next) async {
@@ -88,8 +138,9 @@ class AlarmPreferencesController extends Notifier<AlarmPreferences> {
       await prefs.setBool('${_prefix}auto', next.autoAlarm);
       await prefs.setBool('${_prefix}repeat', next.repeatOnce);
       await prefs.setBool('${_prefix}guardian', next.tellGuardian);
-      await prefs.setInt('${_prefix}morning', next.morningHour);
-      await prefs.setInt('${_prefix}evening', next.eveningHour);
+      await prefs.setStringList('${_prefix}hours', [
+        for (final hour in next.hours) '$hour',
+      ]);
     } catch (_) {
       // 화면에는 이미 반영됐다. 다음 실행 때 기본값으로 돌아갈 뿐이다.
     }

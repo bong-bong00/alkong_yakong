@@ -55,10 +55,7 @@ class NoticesScreen extends StatelessWidget {
                       vertical: 20,
                     ),
                     child: LabelValueRow(
-                      label: Text(
-                        '지금 쓰시는 버전',
-                        style: AppText.label(size: 19),
-                      ),
+                      label: Text('지금 쓰시는 버전', style: AppText.label(size: 19)),
                       value: Text(
                         '알콩약콩 $kAppVersion',
                         textAlign: TextAlign.right,

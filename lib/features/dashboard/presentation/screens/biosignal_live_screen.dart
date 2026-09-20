@@ -438,29 +438,41 @@ class _BiosignalLiveScreenState extends State<BiosignalLiveScreen>
                     style: TextStyle(fontSize: 13, color: Colors.grey[600]),
                   ),
                   const SizedBox(height: 8),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    crossAxisAlignment: CrossAxisAlignment.center,
-                    children: [
-                      const Icon(Icons.favorite_rounded, size: 30, color: kPrimary),
-                      const SizedBox(width: 8),
-                      Text(
-                        _isStreaming && _currentHr != null
-                            ? '$_currentHr'
-                            : '--',
-                        style: TextStyle(
-                          fontSize: 56,
-                          fontWeight: FontWeight.w900,
-                          color: hrColor,
-                          height: 1,
+                  // 글자를 키우면 큰 숫자가 카드를 넘는다. 한 줄을 통째로
+                  // 줄여서 잘리지 않게 한다.
+                  FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        const Icon(
+                          Icons.favorite_rounded,
+                          size: 30,
+                          color: kPrimary,
                         ),
-                      ),
-                      const SizedBox(width: 6),
-                      Text(
-                        'bpm',
-                        style: TextStyle(fontSize: 18, color: Colors.grey[500]),
-                      ),
-                    ],
+                        const SizedBox(width: 8),
+                        Text(
+                          _isStreaming && _currentHr != null
+                              ? '$_currentHr'
+                              : '--',
+                          style: TextStyle(
+                            fontSize: 56,
+                            fontWeight: FontWeight.w700,
+                            color: hrColor,
+                            height: 1,
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        Text(
+                          'bpm',
+                          style: TextStyle(
+                            fontSize: 18,
+                            color: Colors.grey[500],
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                   const SizedBox(height: 8),
                   _statusChip(),
@@ -472,12 +484,14 @@ class _BiosignalLiveScreenState extends State<BiosignalLiveScreen>
             // ── 흐르는 실시간 그래프 ──
             Row(
               children: [
-                const Text(
-                  '실시간 추이',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w800,
-                    color: kText,
+                const Flexible(
+                  child: Text(
+                    '실시간 추이',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w800,
+                      color: kText,
+                    ),
                   ),
                 ),
                 const SizedBox(width: 8),
@@ -516,12 +530,7 @@ class _BiosignalLiveScreenState extends State<BiosignalLiveScreen>
             // ── 보조 지표 ──
             Row(
               children: [
-                _metric(
-                  '평소 심박',
-                  _usualHrValueText,
-                  'bpm',
-                  accent,
-                ),
+                _metric('평소 심박', _usualHrValueText, 'bpm', accent),
                 const SizedBox(width: 12),
                 _metric('심박 변화', _hrChangeText, '%', accent),
               ],
@@ -659,25 +668,29 @@ class _BiosignalLiveScreenState extends State<BiosignalLiveScreen>
               style: TextStyle(fontSize: 12, color: Colors.grey[500]),
             ),
             const SizedBox(height: 6),
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                Text(
-                  value,
-                  style: TextStyle(
-                    fontSize: 22,
-                    fontWeight: FontWeight.w800,
-                    color: color,
-                  ),
-                ),
-                if (unit.isNotEmpty) ...[
-                  const SizedBox(width: 3),
+            FittedBox(
+              fit: BoxFit.scaleDown,
+              alignment: Alignment.centerLeft,
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
                   Text(
-                    unit,
-                    style: TextStyle(fontSize: 12, color: Colors.grey[500]),
+                    value,
+                    style: TextStyle(
+                      fontSize: 22,
+                      fontWeight: FontWeight.w800,
+                      color: color,
+                    ),
                   ),
+                  if (unit.isNotEmpty) ...[
+                    const SizedBox(width: 3),
+                    Text(
+                      unit,
+                      style: TextStyle(fontSize: 12, color: Colors.grey[500]),
+                    ),
+                  ],
                 ],
-              ],
+              ),
             ),
           ],
         ),

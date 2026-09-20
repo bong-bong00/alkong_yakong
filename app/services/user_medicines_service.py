@@ -8,6 +8,7 @@ from typing import Any
 
 from fastapi import HTTPException
 
+from app.core.kst import today_kst
 from app.database import get_connection
 from app.services.drug_explain_service import reviewed_detail_payload
 from app.services.dur_service import pair_card_fields, person_cautions_for_medicine
@@ -252,7 +253,7 @@ def _enrich_medicine_row(
     explicitly_active = bool(row.get("is_active", 1))
     item["status"] = (
         "active"
-        if explicitly_active and (not end_date or end_date >= date.today().isoformat())
+        if explicitly_active and (not end_date or end_date >= today_kst().isoformat())
         else "past"
     )
     item["registered_at"] = row.get("created_at")

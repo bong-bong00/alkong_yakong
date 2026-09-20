@@ -73,8 +73,7 @@ class _SeniorButtonState extends State<SeniorButton> {
   bool _pressed = false;
 
   /// 높이 70 이상은 라운드 20, 그 아래는 18.
-  double get _radius =>
-      widget.radius ?? (widget.minHeight >= 70 ? 20 : 18);
+  double get _radius => widget.radius ?? (widget.minHeight >= 70 ? 20 : 18);
 
   Color get _background {
     switch (widget.kind) {

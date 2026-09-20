@@ -40,18 +40,12 @@ class FirstRunScreen extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Text(
-                '약 등록만 하면\n준비가 끝나요',
-                style: AppText.screenTitle(size: 32),
-              ),
+              Text('약 등록만 하면\n준비가 끝나요', style: AppText.screenTitle(size: 32)),
               const SizedBox(height: 10),
               Text(
-                '약을 한 번만 넣어두면, 그다음부터는 시간에 맞춰 '
-                '저희가 알려드려요.',
-                style: AppText.body(
-                  size: 20,
-                  color: AppColors.textSecondary,
-                ),
+                '처방전을 찍으면 약과 시간이 자동으로 들어갑니다. '
+                '어렵다면 가족이 대신 해드릴 수 있어요.',
+                style: AppText.body(size: 20, color: AppColors.textSecondary),
               ),
               const SizedBox(height: 24),
 

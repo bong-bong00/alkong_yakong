@@ -18,16 +18,16 @@ enum WearChoice {
   cancel,
 }
 
-/// 13 · 가슴 띠 차고 계신가요.
+/// 13 · 심박 센서 차고 계신가요.
 ///
 /// "먹었어요"를 누르면 **항상** 이것이 먼저 뜬다. 바로 기록하지 않는다.
-/// 띠를 차고 계시면 약 드신 뒤 심박수를 한 번 재는 것이 이 앱의 핵심이라,
+/// 센서를 차고 계시면 약 드신 뒤 심박수를 한 번 재는 것이 이 앱의 핵심이라,
 /// 그 기회를 놓치지 않으려고 매번 묻는다.
 Future<WearChoice> showWearSensorSheet(BuildContext context) async {
   final choice = await SeniorSheet.show<WearChoice>(
     context: context,
     builder: (sheetContext) => SeniorSheet(
-      title: '가슴 띠를\n차고 계신가요?',
+      title: '심박 센서를 차고 계신가요?',
       body: const SeniorSheetBody([
         '차고 계시면 약을 드신 뒤 ',
         '심박수를 한 번 재드립니다.',

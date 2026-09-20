@@ -22,62 +22,72 @@ void main() {
       );
     });
 
-    test('켜면 아침·저녁 두 개를 정시에 예약한다', () {
+    test('켜면 고른 시각마다 정시에 예약한다', () {
       final plan = ReminderPlan.forPrefs(
-        const AlarmPreferences(
-          repeatOnce: false,
-          morningHour: 8,
-          eveningHour: 18,
-        ),
+        const AlarmPreferences(repeatOnce: false, hours: [8, 13, 18]),
       );
 
       expect(plan.map((r) => r.id), [
-        ReminderPlan.morningId,
-        ReminderPlan.eveningId,
+        ReminderPlan.baseId,
+        ReminderPlan.baseId + 1,
+        ReminderPlan.baseId + 2,
       ]);
       expect([plan[0].hour, plan[0].minute], [8, 0]);
-      expect([plan[1].hour, plan[1].minute], [18, 0]);
+      expect([plan[1].hour, plan[1].minute], [13, 0]);
+      expect([plan[2].hour, plan[2].minute], [18, 0]);
       expect(plan[0].title, '약 드실 시간이에요');
-      expect(plan[0].body, '아침 8시 약을 물과 함께 드세요.');
-      expect(plan[1].body, '저녁 6시 약을 물과 함께 드세요.');
+      expect(plan[0].body, '오전 8시 약을 물과 함께 드세요.');
+      expect(plan[2].body, '오후 6시 약을 물과 함께 드세요.');
     });
 
-    test('10분 뒤 한 번 더를 켜면 네 개, 다시 알림은 10분 뒤', () {
+    test('시각은 겹치지 않고 순서대로 선다', () {
+      const prefs = AlarmPreferences(hours: [18, 8, 8]);
+      expect(prefs.hours, [8, 18]);
+      expect(const AlarmPreferences(hours: []).hours, [8]);
+    });
+
+    test('마지막 한 개는 지워지지 않는다', () {
+      const prefs = AlarmPreferences(hours: [9]);
+      expect(prefs.withoutHour(9).hours, [9]);
+      expect(const AlarmPreferences(hours: [9, 21]).withoutHour(9).hours, [21]);
+    });
+
+    test('10분 뒤 한 번 더를 켜면 두 배, 다시 알림은 10분 뒤', () {
       final plan = ReminderPlan.forPrefs(
-        const AlarmPreferences(morningHour: 7, eveningHour: 20),
+        const AlarmPreferences(hours: [7, 20]),
       );
       final byId = {for (final r in plan) r.id: r};
 
       expect(plan, hasLength(4));
-      expect(byId.keys.toSet(), ReminderPlan.allIds.toSet());
       expect(
-        [
-          byId[ReminderPlan.morningId]!.hour,
-          byId[ReminderPlan.morningId]!.minute,
-        ],
+        byId.keys.toSet().difference(ReminderPlan.allIds.toSet()),
+        isEmpty,
+      );
+      expect(
+        [byId[ReminderPlan.baseId]!.hour, byId[ReminderPlan.baseId]!.minute],
         [7, 0],
       );
       expect(
         [
-          byId[ReminderPlan.eveningId]!.hour,
-          byId[ReminderPlan.eveningId]!.minute,
+          byId[ReminderPlan.baseId + 1]!.hour,
+          byId[ReminderPlan.baseId + 1]!.minute,
         ],
         [20, 0],
       );
 
-      final morningAgain = byId[ReminderPlan.morningFollowUpId]!;
-      final eveningAgain = byId[ReminderPlan.eveningFollowUpId]!;
+      final morningAgain = byId[ReminderPlan.followUpBaseId]!;
+      final eveningAgain = byId[ReminderPlan.followUpBaseId + 1]!;
       expect([morningAgain.hour, morningAgain.minute], [7, 10]);
       expect([eveningAgain.hour, eveningAgain.minute], [20, 10]);
       expect(morningAgain.body, contains('아직 안 드셨다면 지금 드세요.'));
-      expect(eveningAgain.body, startsWith('저녁 8시'));
+      expect(eveningAgain.body, startsWith('오후 8시'));
     });
   });
 
   group('ReminderPlan.nextInstance', () {
     late tz.Location seoul;
     const morning = PlannedReminder(
-      id: ReminderPlan.morningId,
+      id: ReminderPlan.baseId,
       hour: 8,
       minute: 0,
       title: '',
@@ -125,6 +135,7 @@ void main() {
   });
 
   test('저장된 설정을 읽은 뒤와 바꿀 때마다 알림을 다시 맞춘다', () async {
+    // 옛 버전의 아침·저녁 값도 새 목록으로 옮겨 읽는다.
     SharedPreferences.setMockInitialValues({'alarm.morning': 9});
     final fake = _FakeNotifications();
     final container = ProviderContainer(
@@ -134,7 +145,7 @@ void main() {
 
     container.read(alarmPreferencesProvider);
     await pumpEventQueue();
-    expect(fake.synced.single.morningHour, 9);
+    expect(fake.synced.single.hours, [9]);
 
     await container
         .read(alarmPreferencesProvider.notifier)

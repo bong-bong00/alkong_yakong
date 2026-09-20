@@ -334,19 +334,18 @@ class TodayMedication {
     int? daysLeft,
     String? interactionAlert,
     List<InteractionPriorityCard>? interactionCards,
-  }) =>
-      TodayMedication(
-        doses: doses ?? this.doses,
-        guardianRelation: guardianRelation,
-        guardianName: guardianName,
-        heartRate: heartRate,
-        heartRateNormal: heartRateNormal,
-        daysLeft: daysLeft ?? this.daysLeft,
-        courseStartedOn: courseStartedOn,
-        courseTotalDays: courseTotalDays,
-        interactionAlert: interactionAlert ?? this.interactionAlert,
-        interactionCards: interactionCards ?? this.interactionCards,
-      );
+  }) => TodayMedication(
+    doses: doses ?? this.doses,
+    guardianRelation: guardianRelation,
+    guardianName: guardianName,
+    heartRate: heartRate,
+    heartRateNormal: heartRateNormal,
+    daysLeft: daysLeft ?? this.daysLeft,
+    courseStartedOn: courseStartedOn,
+    courseTotalDays: courseTotalDays,
+    interactionAlert: interactionAlert ?? this.interactionAlert,
+    interactionCards: interactionCards ?? this.interactionCards,
+  );
 }
 
 class InteractionPriorityCard {

@@ -10,7 +10,6 @@ import '../../../../core/widgets/senior_button.dart';
 import '../../../../core/widgets/senior_card.dart';
 import '../../../../core/widgets/senior_header.dart';
 import '../../application/user_medicines_controller.dart';
-import '../../../reminder/presentation/screens/alarm_settings_screen.dart';
 import '../../domain/user_medicine_models.dart';
 
 /// 내 약 목록 — 활성 약 종류당 1행 (서버 `/medicines`).
@@ -97,44 +96,25 @@ class _MedicineList extends StatelessWidget {
     return ListView(
       padding: const EdgeInsets.fromLTRB(20, 16, 20, 28),
       children: [
-        // 목록을 보는 이유는 대부분 "이 약을 언제 먹지?"다.
         Text(
-          '언제 드시는 약인지로 묶었어요 · 눌러서 설명 보기',
+          '약을 누르면 설명이 나와요',
           style: AppText.body(size: 19, color: AppColors.textSecondary),
         ),
         const SizedBox(height: 14),
-        if (active.isNotEmpty)
-          for (final med in active) ...[
-            _MedicineCard(medicine: med),
-            const SizedBox(height: 10),
-          ],
-        if (past.isNotEmpty) ...[
-          if (active.isNotEmpty) const SizedBox(height: 12),
-          Text('이전에 등록한 약', style: AppText.cardTitle(size: 21)),
+        for (final med in active) ...[
+          _MedicineCard(medicine: med),
           const SizedBox(height: 10),
-          for (final med in past) ...[
-            _MedicineCard(medicine: med),
-            const SizedBox(height: 10),
-          ],
         ],
-        const SizedBox(height: 12),
-        SeniorCard(
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
-          child: SeniorListRow(
-            label: '알림 시간 바꾸기',
-            icon: TablerIcons.alarm,
-            subtitle: '지금 · 아침 8시, 저녁 6시',
-            trailing: const SeniorChevron(),
-            onTap: () => Navigator.of(context).push(
-              MaterialPageRoute<void>(
-                builder: (_) => const AlarmSettingsScreen(),
-              ),
-            ),
-          ),
-        ),
+        // 지금 안 드시는 약은 줄 하나로 접어 둔다. 목록을 보는 이유는
+        // 대부분 "지금 먹는 약"이기 때문이다.
+        if (past.isNotEmpty) ...[
+          const SizedBox(height: 2),
+          _PastMedicines(medicines: past),
+        ],
         const SizedBox(height: 18),
         SeniorButton(
           label: '새 처방전 넣기',
+          kind: SeniorButtonKind.secondary,
           minHeight: 66,
           onPressed: () => context.push('/prescription'),
         ),
@@ -146,26 +126,41 @@ class _MedicineList extends StatelessWidget {
 class _MedicineCard extends StatelessWidget {
   final UserMedicine medicine;
 
-  const _MedicineCard({required this.medicine});
+  /// 지금 안 드시는 약. 칸 색은 그대로 두고 왼쪽 회색 띠와 회색 글씨로
+  /// 지금 드시는 약과 갈라 둔다.
+  final bool past;
+
+  const _MedicineCard({required this.medicine, this.past = false});
 
   @override
   Widget build(BuildContext context) {
+    if (past) {
+      return _StackedCard(child: _body(context));
+    }
+    return _body(context);
+  }
+
+  Widget _body(BuildContext context) {
     return SeniorCard(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
       onTap: () => context.push('/medicines/${medicine.medicineCode}'),
       child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           // 홈 카드와 같은 생김새여야 같은 약으로 읽힌다.
-          const PillPhoto(size: 60),
+          const PillPhoto(size: 56),
           const SizedBox(width: 14),
-          Expanded(child: _MedicineSummary(medicine: medicine)),
-          const SizedBox(width: 12),
-          Text(
-            medicine.dosageLabel,
-            style: AppText.cardTitle(size: 19, color: AppColors.textSecondary),
+          Expanded(
+            child: Text(
+              medicine.displayName,
+              style: AppText.cardTitle(
+                size: 20,
+                color: past ? AppColors.textTertiary : AppColors.textPrimary,
+              ),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            ),
           ),
-          const SizedBox(width: 4),
+          const SizedBox(width: 10),
           const SeniorChevron(),
         ],
       ),
@@ -173,61 +168,84 @@ class _MedicineCard extends StatelessWidget {
   }
 }
 
-class _MedicineSummary extends StatelessWidget {
-  final UserMedicine medicine;
+/// 지금은 안 드시는 약. 줄을 누르면 그 자리에서 펴진다.
+class _PastMedicines extends StatefulWidget {
+  final List<UserMedicine> medicines;
 
-  const _MedicineSummary({required this.medicine});
+  const _PastMedicines({required this.medicines});
+
+  @override
+  State<_PastMedicines> createState() => _PastMedicinesState();
+}
+
+class _PastMedicinesState extends State<_PastMedicines> {
+  bool _open = false;
 
   @override
   Widget build(BuildContext context) {
-    final badge = slotBadgeFor(medicine.administrationTimes);
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        // 시간대를 모르면 배지를 만들지 않는다.
-        if (badge != null) ...[
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-            decoration: BoxDecoration(
-              color: AppColors.pointTint,
-              borderRadius: BorderRadius.circular(9),
-            ),
-            child: Text(
-              badge,
-              style: AppText.cardTitle(size: 16.5, color: AppColors.point),
+        _StackedCard(
+          child: SeniorCard(
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
+            child: SeniorListRow(
+              label: '이전에 등록한 약',
+              labelColor: AppColors.textTertiary,
+              value: '${widget.medicines.length}가지',
+              trailing: const SeniorChevron(),
+              onTap: () => setState(() => _open = !_open),
             ),
           ),
-          const SizedBox(height: 6),
-        ],
-        Text(
-          medicine.displayName,
-          style: AppText.label(size: 20, color: AppColors.textBody),
-          maxLines: 2,
-          overflow: TextOverflow.ellipsis,
         ),
-        if (medicine.ingredientLabel.isNotEmpty) ...[
-          const SizedBox(height: 4),
-          Text(
-            '주성분: ${medicine.ingredientLabel}',
-            style: AppText.caption(color: AppColors.textSecondary),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ),
-        ],
-        if (medicine.cardSpoken != null) ...[
-          const SizedBox(height: 4),
-          Text(
-            medicine.cardSpoken!,
-            style: AppText.caption(color: AppColors.textSecondary),
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-          ),
-        ],
+        if (_open)
+          for (final med in widget.medicines) ...[
+            const SizedBox(height: 10),
+            _MedicineCard(medicine: med, past: true),
+          ],
       ],
     );
   }
 }
 
+/// 카드 한 장이 뒤에 더 깔린 모양.
+///
+/// 지금 드시는 약과 같은 흰 카드를 쓰되, 뒤에 회색 카드가 왼쪽으로 조금
+/// 삐져나오게 둔다. "이 아래에 지난 약이 더 있다"를 색이 아니라 모양으로 말한다.
+class _StackedCard extends StatelessWidget {
+  final Widget child;
+
+  const _StackedCard({required this.child});
+
+  /// 뒤 카드가 왼쪽으로 보이는 만큼.
+  static const double _peek = 6;
+
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      children: [
+        // 카드와 똑같은 크기·모서리로 한 장을 왼쪽으로 밀어 깐다.
+        // 그래야 삐져나온 회색이 위아래 모서리까지 카드를 따라 휘어진다.
+        Positioned(
+          left: 0,
+          right: _peek,
+          top: 0,
+          bottom: 0,
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              color: AppColors.chevron,
+              borderRadius: BorderRadius.circular(22),
+            ),
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.only(left: _peek),
+          child: child,
+        ),
+      ],
+    );
+  }
+}
 
 /// 복용 시간대를 "아침 · 저녁" 한 줄로 만든다.
 ///

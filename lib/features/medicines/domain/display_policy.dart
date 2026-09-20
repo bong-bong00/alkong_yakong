@@ -153,18 +153,12 @@ String formatOfficialUsage(String? raw) {
   text = text.replaceAll(RegExp(r'[ \t]+'), ' ');
   text = text.replaceAll(RegExp(r' *\n *'), '\n');
   text = text.replaceAll(_usageBullet, '\n\n○ ');
-  text = text.replaceAllMapped(
-    _usageNumbered,
-    (match) => '\n\n${match[1]}',
-  );
+  text = text.replaceAllMapped(_usageNumbered, (match) => '\n\n${match[1]}');
   text = text.replaceAllMapped(
     _usagePersonLabel,
     (match) => '\n\n${match[1]} : ',
   );
-  text = text.replaceAllMapped(
-    _usageSentenceEnd,
-    (match) => '${match[1]}\n\n',
-  );
+  text = text.replaceAllMapped(_usageSentenceEnd, (match) => '${match[1]}\n\n');
   text = text.replaceAll(RegExp(r' : +'), ' : ');
   text = text.replaceAllMapped(
     RegExp(r'\s+(고령자)\s+(이 약은)'),

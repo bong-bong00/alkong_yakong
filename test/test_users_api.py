@@ -158,3 +158,23 @@ def test_course_fields_count_days_until_end():
         "course_total_days": 21,
     }
     assert _course_fields(None, "2026-09-14")["days_left"] is None
+
+
+def test_user_list_is_closed_when_no_admin_key_is_set(client):
+    # 열쇠를 정하지 않은 서버에서는 회원 목록 길이 아예 없다.
+    assert client.get("/api/v1/users").status_code == 404
+
+
+def test_user_list_needs_the_admin_key(client, monkeypatch):
+    monkeypatch.setenv("ALKONGYAKONG_ADMIN_KEY", "secret-key")
+    _signup(client)
+
+    assert client.get("/api/v1/users").status_code == 403
+    wrong = client.get("/api/v1/users", headers={"X-Admin-Key": "nope"})
+    assert wrong.status_code == 403
+
+    allowed = client.get("/api/v1/users", headers={"X-Admin-Key": "secret-key"})
+    assert allowed.status_code == 200
+    listed = allowed.json()
+    assert [user["name"] for user in listed] == ["김복자"]
+    assert "password_hash" not in listed[0]

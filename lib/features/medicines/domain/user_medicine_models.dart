@@ -132,8 +132,7 @@ class UserMedicine {
       dosage: json['dosage']?.toString(),
       frequencyPerDay: _intOrNull(json['frequency_per_day']),
       administrationTimes: _stringList(json['administration_times']),
-      ingredientExplanation:
-          json['ingredient_explanation']?.toString() ?? '',
+      ingredientExplanation: json['ingredient_explanation']?.toString() ?? '',
       approvedUseSummary: json['approved_use_summary']?.toString() ?? '',
       approvedUses: _stringList(json['approved_uses']),
       allApprovedUses: _stringList(json['all_approved_uses']),
@@ -165,8 +164,12 @@ class UserMedicine {
           allApprovedUses.isNotEmpty);
 
   bool get hasDetailContent =>
-      const {'READY', 'OFFICIAL_ONLY', 'NEEDS_REVIEW', 'OUTDATED'}
-          .contains(detailStatus.toUpperCase()) &&
+      const {
+        'READY',
+        'OFFICIAL_ONLY',
+        'NEEDS_REVIEW',
+        'OUTDATED',
+      }.contains(detailStatus.toUpperCase()) &&
       (ingredientExplanation.trim().isNotEmpty ||
           approvedUseSummary.trim().isNotEmpty ||
           approvedUses.isNotEmpty);

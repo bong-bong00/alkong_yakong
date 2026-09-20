@@ -43,7 +43,8 @@ class SeniorSheet extends StatelessWidget {
       enableDrag: dismissible,
       barrierColor: AppColors.scrim,
       backgroundColor: Colors.transparent,
-      builder: builder,
+      builder: (sheetContext) =>
+          _SheetHost(dismissible: dismissible, builder: builder),
     );
   }
 
@@ -96,6 +97,43 @@ class SeniorSheet extends StatelessWidget {
   }
 }
 
+/// 시트를 담는 자리.
+///
+/// 시트는 화면 위에 덮이는 창이라, 화면 쪽 스낵바를 띄우면 시트 뒤에 가려
+/// 아무것도 보이지 않는다. 그래서 시트가 **자기 스낵바 자리**를 갖는다.
+/// 시트 위쪽 빈 곳을 누르면 닫히는 것은 그대로다.
+class _SheetHost extends StatelessWidget {
+  final WidgetBuilder builder;
+  final bool dismissible;
+
+  const _SheetHost({required this.builder, required this.dismissible});
+
+  @override
+  Widget build(BuildContext context) {
+    return ScaffoldMessenger(
+      child: Builder(
+        builder: (hostContext) => Scaffold(
+          backgroundColor: Colors.transparent,
+          body: Column(
+            children: [
+              Expanded(
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: dismissible
+                      ? () => Navigator.of(hostContext).maybePop()
+                      : null,
+                  child: const SizedBox.expand(),
+                ),
+              ),
+              Builder(builder: builder),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 /// 시트 본문. 강조할 말만 굵고 진하게 둔다.
 class SeniorSheetBody extends StatelessWidget {
   /// 일반 문장과 강조 문장을 번갈아 넣는다. 홀수 번째가 강조다.
@@ -119,7 +157,7 @@ class SeniorSheetBody extends StatelessWidget {
                   ? AppText.body(
                       size: 19,
                       color: AppColors.textPrimary,
-                      weight: FontWeight.w900,
+                      weight: FontWeight.w700,
                     )
                   : base,
             ),

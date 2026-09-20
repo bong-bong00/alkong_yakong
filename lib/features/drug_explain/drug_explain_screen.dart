@@ -5,7 +5,12 @@ import 'package:flutter/material.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/network/api_client.dart';
 import '../../core/session/mvp_session.dart';
-import '../../core/widgets/rounded_gradient_app_bar.dart';
+import '../../core/theme/app_typography.dart';
+import '../../core/widgets/senior_button.dart';
+import '../../core/widgets/senior_card.dart';
+import '../../core/widgets/senior_feedback.dart';
+import '../../core/widgets/senior_header.dart';
+import '../../core/widgets/senior_wheel.dart';
 
 class DrugExplainScreen extends StatefulWidget {
   final ApiClient? apiClient;
@@ -31,6 +36,19 @@ class _DrugExplainScreenState extends State<DrugExplainScreen> {
   String? _medicineLoadError;
   final List<String> _medicines = [];
   final List<Map<String, dynamic>> _messages = [];
+
+  static const List<Map<String, String>> _suggestions = [
+    {
+      'label': '이 약은 무슨 약이에요?',
+      'prompt': '{medicine}이 무슨 약인지 쉬운 말로 알려주세요.',
+      'intent': 'efficacy',
+    },
+    {
+      'label': '언제 먹어야 해요?',
+      'prompt': '{medicine}을 언제 어떻게 먹어야 하는지 쉬운 말로 알려주세요.',
+      'intent': 'dosage',
+    },
+  ];
 
   static const List<Map<String, String>> _keywordPrompts = [
     {
@@ -83,7 +101,7 @@ class _DrugExplainScreenState extends State<DrugExplainScreen> {
     // 초기 안내 메시지 추가
     _messages.add({
       'isMe': false,
-      'text': '안녕하세요! 어떤 약에 대해 알고 싶으신가요?\n증상이나 약 이름을 편하게 물어보세요.',
+      'text': '안녕하세요! 약에 대해 궁금한 것을 편하게 물어보세요.\n어려운 말은 쉬운 말로 바꿔서 알려드릴게요.',
     });
     WidgetsBinding.instance.addPostFrameCallback((_) => _loadMedicines());
   }
@@ -106,12 +124,7 @@ class _DrugExplainScreenState extends State<DrugExplainScreen> {
 
     final medicine = _selectedMedicine;
     if (medicine == null || medicine.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('먼저 궁금한 약을 선택해주세요.'),
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
+      showSeniorSnackbar(context, '먼저 궁금한 약을 선택해주세요.', error: true);
       return;
     }
 
@@ -258,6 +271,60 @@ class _DrugExplainScreenState extends State<DrugExplainScreen> {
     }
   }
 
+  Future<void> _pickSubject() async {
+    if (_isLoading) return;
+    // 첫 칸은 "약 전체". 그 뒤로 내가 먹는 약이 온다.
+    final options = <String>['약 전체', ..._medicines];
+    final current = _selectedMedicine == null
+        ? 0
+        : options.indexOf(_selectedMedicine!);
+    final picked = await showSeniorWheel(
+      context: context,
+      title: '어떤 약을 물어볼까요?',
+      options: options,
+      selectedIndex: current < 0 ? 0 : current,
+      confirmLabel: '이 약으로 정하기',
+      extraButtons: [
+        Builder(
+          builder: (dialogContext) => SeniorButton(
+            label: '다른 약 검색하기',
+            kind: SeniorButtonKind.secondary,
+            minHeight: 60,
+            fontSize: 19,
+            // -1은 "목록에 없는 약을 찾아보겠다"는 뜻이다.
+            onPressed: () => Navigator.of(dialogContext).pop(-1),
+          ),
+        ),
+      ],
+    );
+    if (!mounted || picked == null) return;
+    if (picked < 0) {
+      await _enterOtherMedicine();
+      return;
+    }
+    final name = picked == 0 ? null : options[picked];
+    setState(() {
+      _selectedMedicine = name;
+      _selectedOfficialMedicine = name == null
+          ? null
+          : _officialMedicinesByName[name];
+      _selectedKeyword = null;
+    });
+  }
+
+  Future<void> _askSuggestion(Map<String, String> suggestion) async {
+    if (_isLoading) return;
+    // 약을 아직 안 골랐으면 "제가 먹는 약"으로 물어본다. 되묻지 않는다.
+    final medicine = _selectedMedicine?.trim();
+    final subject = (medicine == null || medicine.isEmpty)
+        ? '제가 먹는 약'
+        : medicine;
+    await _sendMessage(
+      message: suggestion['prompt']!.replaceAll('{medicine}', subject),
+      intent: suggestion['intent'],
+    );
+  }
+
   Future<void> _enterOtherMedicine() async {
     final medicine = await showDialog<_DrugSearchCandidate>(
       context: context,
@@ -364,18 +431,23 @@ class _DrugExplainScreenState extends State<DrugExplainScreen> {
                 label: Text(label),
                 selected: selected,
                 onSelected: _isLoading ? null : (_) => _selectKeyword(keyword),
-                labelStyle: TextStyle(
-                  color: selected ? Colors.white : kText,
-                  fontSize: 15,
-                  fontWeight: FontWeight.w600,
+                labelStyle: AppText.label(
+                  size: 19,
+                  color: selected ? Colors.white : AppColors.textBody,
                 ),
-                backgroundColor: Colors.white,
-                selectedColor: kPrimary,
-                side: BorderSide(color: selected ? kPrimary : kPrimaryLight),
+                backgroundColor: AppColors.surface,
+                selectedColor: AppColors.point,
+                side: BorderSide(
+                  color: selected ? AppColors.point : AppColors.strongLine,
+                  width: 2,
+                ),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(18),
                 ),
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 12,
+                ),
               ),
             );
           }).toList(),
@@ -386,129 +458,213 @@ class _DrugExplainScreenState extends State<DrugExplainScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // 아직 아무것도 안 물어봤을 때만 예시 질문을 보여준다.
+    final showSuggestions = _messages.length <= 1;
+    final subject = _selectedMedicine?.trim();
+
     return Scaffold(
-      backgroundColor: kBackground,
-      appBar: const RoundedGradientAppBar('AI 약사 상담'),
+      backgroundColor: AppColors.bg,
       body: SafeArea(
         child: Column(
           children: [
-            // 채팅 내역 리스트
-            Expanded(
-              child: ListView.builder(
-                controller: _scrollController,
-                padding: const EdgeInsets.all(20),
-                keyboardDismissBehavior:
-                    ScrollViewKeyboardDismissBehavior.onDrag,
-                itemCount: _messages.length + 2,
-                itemBuilder: (context, index) {
-                  if (index == 0) {
-                    return const _PharmacistGuide();
-                  }
-                  if (index == 1) {
-                    return _MedicineSelector(
-                      medicines: _medicines,
-                      selectedMedicine: _selectedMedicine,
-                      isLoading: _isLoadingMedicines,
-                      errorMessage: _medicineLoadError,
-                      onSelected: (medicine) {
-                        setState(() {
-                          if (_selectedMedicine == medicine) {
-                            _selectedMedicine = null;
-                            _selectedOfficialMedicine = null;
-                          } else {
-                            _selectedMedicine = medicine;
-                            _selectedOfficialMedicine =
-                                _officialMedicinesByName[medicine];
-                          }
-                          _selectedKeyword = null;
-                        });
-                      },
-                      onEnterOther: _enterOtherMedicine,
-                    );
-                  }
-                  final msg = _messages[index - 2];
-                  final isMe = msg['isMe'] as bool;
-                  return _ChatBubble(isMe: isMe, text: msg['text'] as String);
-                },
+            SeniorHeader(
+              child: Row(
+                children: [
+                  const SeniorBackButton(),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          '무엇이든 물어보세요',
+                          style: AppText.screenTitle(size: 24),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          '약 이야기를 쉬운 말로 알려드려요',
+                          style: AppText.caption(size: 16.5),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
               ),
             ),
-            if (_isLoading)
-              const Padding(
-                padding: EdgeInsets.symmetric(vertical: 8.0),
-                child: Text(
-                  'AI가 답변을 작성하고 있습니다...',
-                  style: TextStyle(fontSize: 12, color: kTextSub),
-                ),
-              ),
-            _buildKeywordBar(),
-            // 하단 입력창 (플로팅 스타일)
+            // 무엇에 대해 묻는지 늘 보이게 둔다. 고른 약은 질문에 함께 실린다.
             Padding(
-              // 하단바와 겹치지 않도록 좌, 우, 아래에 여백을 주어 띄웁니다.
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-              child: Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 10,
-                  vertical: 8,
-                ),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  // 전체 컨테이너를 캡슐 모양으로 완전히 둥글게 처리합니다.
-                  borderRadius: BorderRadius.circular(30),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.06),
-                      blurRadius: 16,
-                      offset: const Offset(0, 4),
-                    ),
-                  ],
-                ),
+              padding: const EdgeInsets.fromLTRB(20, 14, 20, 2),
+              child: SeniorCard(
+                padding: const EdgeInsets.fromLTRB(20, 12, 12, 12),
                 child: Row(
                   children: [
                     Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('물어볼 약', style: AppText.caption(size: 17.5)),
+                          const SizedBox(height: 2),
+                          Text(
+                            (subject == null || subject.isEmpty)
+                                ? '약 전체'
+                                : subject,
+                            style: AppText.cardTitle(size: 22),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Semantics(
+                      button: true,
+                      child: GestureDetector(
+                        onTap: _pickSubject,
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 6,
+                            vertical: 12,
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                '바꾸기',
+                                style: AppText.label(
+                                  size: 19,
+                                  color: AppColors.point,
+                                ),
+                              ),
+                              const SizedBox(width: 4),
+                              const SeniorChevron(color: AppColors.point),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            Expanded(
+              child: ListView(
+                controller: _scrollController,
+                padding: const EdgeInsets.fromLTRB(20, 18, 20, 12),
+                keyboardDismissBehavior:
+                    ScrollViewKeyboardDismissBehavior.onDrag,
+                children: [
+                  for (final message in _messages) ...[
+                    _ChatBubble(
+                      text: message['text'] as String,
+                      isMe: message['isMe'] as bool,
+                    ),
+                    const SizedBox(height: 12),
+                  ],
+                  if (_isLoadingMedicines) ...[
+                    Text('내 약을 불러오는 중이에요…', style: AppText.caption(size: 18)),
+                    const SizedBox(height: 12),
+                  ] else if (_medicineLoadError != null) ...[
+                    Text(
+                      _medicineLoadError!,
+                      style: AppText.caption(size: 16.5),
+                    ),
+                    const SizedBox(height: 12),
+                  ],
+                  if (showSuggestions) ...[
+                    const SizedBox(height: 4),
+                    Text('이렇게 물어보셔도 돼요', style: AppText.caption(size: 18.5)),
+                    const SizedBox(height: 10),
+                    for (final suggestion in _suggestions) ...[
+                      SeniorCard(
+                        onTap: () => _askSuggestion(suggestion),
+                        borderColor: AppColors.border,
+                        borderWidth: 2,
+                        padding: const EdgeInsets.fromLTRB(20, 18, 20, 18),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                suggestion['label']!,
+                                style: AppText.label(size: 21),
+                              ),
+                            ),
+                            const SeniorChevron(),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                    ],
+                  ],
+                  if (_isLoading) ...[
+                    const SizedBox(height: 4),
+                    Text('AI 약사가 답을 쓰고 있어요…', style: AppText.caption(size: 18)),
+                  ],
+                ],
+              ),
+            ),
+            // 빠른 질문은 약을 고른 뒤에만 내놓는다. 무엇에 대한 질문인지
+            // 정해지지 않으면 눌러도 되묻게 된다.
+            if (subject != null && subject.isNotEmpty) _buildKeywordBar(),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 10, 20, 14),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Container(
+                      constraints: const BoxConstraints(minHeight: 60),
+                      decoration: BoxDecoration(
+                        color: AppColors.surface,
+                        borderRadius: BorderRadius.circular(30),
+                        border: Border.all(
+                          color: AppColors.strongLine,
+                          width: 2,
+                        ),
+                      ),
+                      padding: const EdgeInsets.symmetric(horizontal: 20),
                       child: TextField(
                         controller: _chatController,
                         focusNode: _chatFocusNode,
                         textInputAction: TextInputAction.send,
                         onSubmitted: (_) => _sendMessage(),
+                        style: AppText.body(size: 20),
                         decoration: InputDecoration(
-                          hintText: '궁금한 약 정보나 증상을 입력하세요...',
-                          hintStyle: TextStyle(
-                            color: Colors.grey[400],
-                            fontSize: 14,
+                          hintText: '여기에 물어보세요',
+                          hintStyle: AppText.body(
+                            size: 20,
+                            color: AppColors.textTertiary,
                           ),
-                          filled: true,
-                          // 캡슐(흰색)과 구분되도록 입력칸은 연한 연두색으로.
-                          fillColor: kPrimaryLight,
-                          contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 20,
-                            vertical: 12,
-                          ),
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(24),
-                            borderSide: BorderSide.none,
-                          ),
+                          border: InputBorder.none,
+                          isDense: true,
                         ),
                       ),
                     ),
-                    const SizedBox(width: 8),
-                    GestureDetector(
-                      onTap: _isLoading ? null : _sendMessage,
+                  ),
+                  const SizedBox(width: 10),
+                  Semantics(
+                    button: true,
+                    label: '질문 보내기',
+                    child: GestureDetector(
+                      onTap: _isLoading ? null : () => _sendMessage(),
                       child: Container(
-                        width: 48,
-                        height: 48,
+                        width: 60,
+                        height: 60,
                         decoration: BoxDecoration(
-                          color: _isLoading ? Colors.grey : kPrimary,
+                          color: _isLoading
+                              ? AppColors.inactive
+                              : AppColors.point,
                           shape: BoxShape.circle,
                         ),
-                        child: const Icon(
-                          Icons.send_rounded,
-                          color: Colors.white,
-                          size: 20,
+                        child: const ExcludeSemantics(
+                          child: Icon(
+                            Icons.send_rounded,
+                            color: Colors.white,
+                            size: 26,
+                          ),
                         ),
                       ),
                     ),
-                  ],
-                ),
+                  ),
+                ],
               ),
             ),
           ],
@@ -764,134 +920,6 @@ class _DrugSearchCandidate {
   }
 }
 
-class _MedicineSelector extends StatelessWidget {
-  final List<String> medicines;
-  final String? selectedMedicine;
-  final bool isLoading;
-  final String? errorMessage;
-  final ValueChanged<String> onSelected;
-  final VoidCallback onEnterOther;
-
-  const _MedicineSelector({
-    required this.medicines,
-    required this.selectedMedicine,
-    required this.isLoading,
-    required this.errorMessage,
-    required this.onSelected,
-    required this.onEnterOther,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      margin: const EdgeInsets.only(bottom: 18),
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: kBorder),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
-            '어떤 약이 궁금하세요?',
-            style: TextStyle(
-              fontSize: 17,
-              fontWeight: FontWeight.w700,
-              color: kText,
-            ),
-          ),
-          const SizedBox(height: 4),
-          const Text(
-            '내 처방/복용약',
-            style: TextStyle(fontSize: 14, color: kTextSub),
-          ),
-          const SizedBox(height: 12),
-          if (isLoading)
-            const LinearProgressIndicator(minHeight: 3)
-          else if (medicines.isNotEmpty)
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: medicines.map((medicine) {
-                final selected = medicine == selectedMedicine;
-                return ChoiceChip(
-                  label: Text(medicine),
-                  selected: selected,
-                  onSelected: (_) => onSelected(medicine),
-                  labelStyle: TextStyle(
-                    color: selected ? Colors.white : kText,
-                    fontWeight: FontWeight.w600,
-                  ),
-                  selectedColor: kPrimary,
-                  backgroundColor: kPrimaryLight,
-                  side: BorderSide(color: selected ? kPrimary : kBorder),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(18),
-                  ),
-                );
-              }).toList(),
-            )
-          else
-            Text(
-              errorMessage ?? '등록된 처방/복용약이 없습니다.',
-              style: const TextStyle(fontSize: 14, color: kTextSub),
-            ),
-          const SizedBox(height: 10),
-          OutlinedButton.icon(
-            onPressed: onEnterOther,
-            icon: const Icon(Icons.search_rounded, size: 20),
-            label: const Text('다른 약 검색하기'),
-            style: OutlinedButton.styleFrom(
-              foregroundColor: kPrimary,
-              side: const BorderSide(color: kPrimary),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(18),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _PharmacistGuide extends StatelessWidget {
-  const _PharmacistGuide();
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 14),
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color: kPrimaryLight,
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: const Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'AI 약사에게 궁금한 내용을 물어보세요.',
-            style: TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.w700,
-              color: kText,
-            ),
-          ),
-          SizedBox(height: 6),
-          Text(
-            '아래 키워드를 선택하거나 직접 질문할 수 있어요.\n답변은 공식 의약품 정보와 기존 DUR 분석 결과를 바탕으로 설명해요.',
-            style: TextStyle(fontSize: 14.5, height: 1.45, color: kTextSub),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 class _ChatBubble extends StatelessWidget {
   final bool isMe;
   final String text;
@@ -908,27 +936,9 @@ class _ChatBubble extends StatelessWidget {
             : MainAxisAlignment.start,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          if (!isMe) ...[
-            Container(
-              width: 36,
-              height: 36,
-              decoration: const BoxDecoration(
-                color: kPrimaryLight,
-                shape: BoxShape.circle,
-              ),
-              child: const Center(
-                child: Icon(
-                  Icons.chat_bubble_outline_rounded,
-                  size: 18,
-                  color: kPrimary,
-                ),
-              ),
-            ),
-            const SizedBox(width: 8),
-          ],
           Flexible(
             child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
               decoration: BoxDecoration(
                 color: isMe ? kPrimary : Colors.white,
                 borderRadius: BorderRadius.only(
@@ -947,10 +957,9 @@ class _ChatBubble extends StatelessWidget {
               ),
               child: Text(
                 text,
-                style: TextStyle(
-                  fontSize: 14.5,
-                  height: 1.4,
-                  color: isMe ? Colors.white : kText,
+                style: AppText.body(
+                  size: 20,
+                  color: isMe ? Colors.white : AppColors.textPrimary,
                 ),
               ),
             ),

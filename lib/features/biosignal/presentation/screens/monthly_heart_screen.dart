@@ -36,9 +36,6 @@ class MonthlyHeartScreen extends StatefulWidget {
 }
 
 class _MonthlyHeartScreenState extends State<MonthlyHeartScreen> {
-  /// 눌러서 펼친 날짜. 없으면 안내 문장을 보여준다.
-  HeartMonthDay? _picked;
-
   late final int _month = (widget.now ?? DateTime.now()).month;
 
   @override
@@ -60,7 +57,7 @@ class _MonthlyHeartScreenState extends State<MonthlyHeartScreen> {
                     const SizedBox(width: 14),
                     Expanded(
                       child: Text(
-                        '심박수 관리',
+                        '한 달 기록',
                         style: AppText.screenTitle(size: 24),
                       ),
                     ),
@@ -86,27 +83,17 @@ class _MonthlyHeartScreenState extends State<MonthlyHeartScreen> {
                   if (!measured)
                     _EmptyMonthCard(month: _month)
                   else ...[
-                    // 정상인 날이 이어지지 않았으면 "0일째"를 크게 쓰지 않는다.
-                    if (data.streakDays > 0) ...[
-                      _StreakCard(data: data),
-                      const SizedBox(height: 12),
-                    ],
+                    _MonthSummaryCard(data: data, month: _month),
+                    const SizedBox(height: 12),
+                    _WeeklyBars(days: data.month),
                     if (data.anomaly != null) ...[
+                      const SizedBox(height: 12),
                       _AnomalyCard(
                         anomaly: data.anomaly!,
                         month: _month,
                         guardianTitle: guardianTitle,
                       ),
-                      const SizedBox(height: 12),
                     ],
-                    _DayGrid(
-                      days: data.month,
-                      month: _month,
-                      picked: _picked,
-                      onPick: (d) => setState(
-                        () => _picked = _picked?.day == d.day ? null : d,
-                      ),
-                    ),
                   ],
                   const SizedBox(height: 12),
                   _SharedNote(guardianTitle: guardianTitle),
@@ -156,98 +143,8 @@ class _EmptyMonthCard extends StatelessWidget {
   }
 }
 
-/// 며칠째 정상인지 — 이 화면의 주인공.
-class _StreakCard extends StatelessWidget {
-  final HeartData data;
-  const _StreakCard({required this.data});
-
-  @override
-  Widget build(BuildContext context) {
-    return SeniorCard(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 22),
-      child: Column(
-        children: [
-          Text(
-            '지금까지',
-            style: AppText.label(size: 19, color: AppColors.textSecondary),
-          ),
-          const SizedBox(height: 6),
-          Semantics(
-            label: '잰 날 기준으로 심박수가 ${data.streakDays}일째 계속 정상이에요',
-            child: ExcludeSemantics(
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Text(
-                    '${data.streakDays}',
-                    style: AppText.hero(size: 72, color: AppColors.point),
-                  ),
-                  const SizedBox(width: 6),
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 10),
-                    child: Text('일째', style: AppText.cardTitle(size: 24)),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            '심박수가\n계속 정상이에요',
-            textAlign: TextAlign.center,
-            style: AppText.cardTitle(size: 21),
-          ),
-          const SizedBox(height: 16),
-          _RecentBars(days: data.month),
-          const SizedBox(height: 12),
-          Text(
-            '가장 길었던 기록은 ${data.bestStreakDays}일이에요',
-            textAlign: TextAlign.center,
-            style: AppText.caption(size: 17.5),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 /// 최근에 **잰** 날 열흘까지. 빨랐던 날은 붉게, 정상인 날은 파랗게.
 ///
-/// 연속 일수로 칸 색을 거꾸로 지어내지 않는다 — 못 잰 날까지
-/// "이상했던 날"로 칠하게 되기 때문이다. 실제 날짜별 값으로만 칠한다.
-class _RecentBars extends StatelessWidget {
-  final List<HeartMonthDay> days;
-  const _RecentBars({required this.days});
-
-  static const int _max = 10;
-
-  @override
-  Widget build(BuildContext context) {
-    final measured = days.where((d) => !d.isMissing).toList();
-    final recent = measured.length > _max
-        ? measured.sublist(measured.length - _max)
-        : measured;
-    return ExcludeSemantics(
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          for (int i = 0; i < recent.length; i++) ...[
-            if (i > 0) const SizedBox(width: 6),
-            Container(
-              width: 16,
-              height: 34,
-              decoration: BoxDecoration(
-                color: AppColors.point,
-                borderRadius: BorderRadius.circular(8),
-              ),
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-}
 
 /// 한 번 빠르게 뛴 날.
 class _AnomalyCard extends StatelessWidget {
@@ -274,14 +171,15 @@ class _AnomalyCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('빠르게 뛴 날이 있었어요', style: AppText.cardTitle(size: 19.5)),
+          Text('한 번 빠른 날이 있었어요', style: AppText.cardTitle(size: 19.5)),
           const SizedBox(height: 8),
           Text.rich(
             TextSpan(
               style: AppText.body(size: 18),
               children: [
                 TextSpan(
-                  text: '$month월 ${anomaly.day}일'
+                  text:
+                      '$month월 ${anomaly.day}일'
                       '${slot.isEmpty ? '' : ' $slot'}, 약 먹은 뒤 ',
                 ),
                 TextSpan(
@@ -289,196 +187,12 @@ class _AnomalyCard extends StatelessWidget {
                   style: AppText.body(
                     size: 18,
                     color: AppColors.danger,
-                    weight: FontWeight.w900,
+                    weight: FontWeight.w700,
                   ),
                 ),
                 TextSpan(text: '였어요. (먹기 전 ${anomaly.before}회)'),
               ],
             ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-/// 날짜별 격자. 먹은 뒤 수치만 보여주고, 누르면 전·후를 함께 편다.
-class _DayGrid extends StatelessWidget {
-  final List<HeartMonthDay> days;
-  final int month;
-  final HeartMonthDay? picked;
-  final ValueChanged<HeartMonthDay> onPick;
-
-  const _DayGrid({
-    required this.days,
-    required this.month,
-    required this.picked,
-    required this.onPick,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return SeniorCard(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Row(
-            children: [
-              Expanded(child: Text('날짜별로 보기', style: AppText.cardTitle())),
-              SeniorBadge(
-                label: '먹은 후 수치',
-                fontSize: 16.5,
-                radius: 11,
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 13,
-                  vertical: 7,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 14),
-          // 칸 높이를 계산하지 않고 내용에 맡긴다.
-          // 글자 배율이 커지면 칸도 같이 자라야 잘리지 않는다.
-          for (int row = 0; row < (days.length / 5).ceil(); row++) ...[
-            if (row > 0) const SizedBox(height: 7),
-            // 한 줄 안의 칸은 키를 맞춘다. 세로 스크롤 안이라 stretch만으로는
-            // 높이가 무한이 되므로 IntrinsicHeight로 묶는다.
-            IntrinsicHeight(
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  for (int col = 0; col < 5; col++) ...[
-                    if (col > 0) const SizedBox(width: 7),
-                    Expanded(
-                      child: row * 5 + col < days.length
-                          ? _DayCell(
-                              day: days[row * 5 + col],
-                              month: month,
-                              selected:
-                                  picked?.day == days[row * 5 + col].day,
-                              onTap: () => onPick(days[row * 5 + col]),
-                            )
-                          : const SizedBox.shrink(),
-                    ),
-                  ],
-                ],
-              ),
-            ),
-          ],
-          const SizedBox(height: 14),
-          if (picked == null)
-            Text(
-              '날짜를 누르면 그날 먹기 전 수치까지 보여드려요',
-              style: AppText.caption(size: 17.5),
-            )
-          else
-            _PickedDetail(day: picked!, month: month),
-        ],
-      ),
-    );
-  }
-}
-
-class _DayCell extends StatelessWidget {
-  final HeartMonthDay day;
-  final int month;
-  final bool selected;
-  final VoidCallback onTap;
-
-  const _DayCell({
-    required this.day,
-    required this.month,
-    required this.selected,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final after = day.pair.after;
-    final missing = day.isMissing;
-    final Color background = missing ? AppColors.bg : AppColors.sunken;
-    final Color valueColor = missing
-        ? AppColors.chevron
-        : AppColors.textPrimary;
-
-    return Semantics(
-      button: true,
-      selected: selected,
-      label: missing
-          ? '$month월 ${day.day}일 재지 못했어요'
-          : '$month월 ${day.day}일 먹은 후 $after회',
-      child: GestureDetector(
-        onTap: missing ? null : onTap,
-        child: ExcludeSemantics(
-          child: Container(
-            constraints: const BoxConstraints(minHeight: 64),
-            alignment: Alignment.center,
-            padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
-            decoration: BoxDecoration(
-              color: background,
-              borderRadius: BorderRadius.circular(14),
-              border: selected
-                  ? Border.all(color: AppColors.point, width: 2)
-                  : null,
-            ),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  '${day.day}',
-                  style: AppText.label(
-                    size: 14.5,
-                    color: AppColors.textTertiary,
-                  ),
-                ),
-                Text(
-                  after?.toString() ?? '–',
-                  style: AppText.cardTitle(size: 21, color: valueColor),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _PickedDetail extends StatelessWidget {
-  final HeartMonthDay day;
-  final int month;
-  const _PickedDetail({required this.day, required this.month});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
-      decoration: BoxDecoration(
-        color: AppColors.sunken,
-        borderRadius: BorderRadius.circular(18),
-      ),
-      // 글자 배율이 커지면 한 줄에 다 안 들어가므로 줄바꿈을 허락한다.
-      child: Wrap(
-        alignment: WrapAlignment.spaceBetween,
-        crossAxisAlignment: WrapCrossAlignment.center,
-        spacing: 12,
-        runSpacing: 6,
-        children: [
-          Text('$month월 ${day.day}일', style: AppText.cardTitle(size: 19)),
-          Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text('전 ${day.pair.before ?? '–'}', style: AppText.label(size: 18)),
-              const SizedBox(width: 10),
-              const Text('→'),
-              const SizedBox(width: 10),
-              Text(
-                '후 ${day.pair.after ?? '–'}',
-                style: AppText.label(size: 18, color: AppColors.point),
-              ),
-            ],
           ),
         ],
       ),
@@ -514,6 +228,262 @@ class _SharedNote extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// 한 달 요약 — "약을 드신 뒤 평균 몇 회 내려갔는지" 하나만 말한다.
+class _MonthSummaryCard extends StatelessWidget {
+  final HeartData data;
+  final int month;
+
+  const _MonthSummaryCard({required this.data, required this.month});
+
+  /// 잰 날만 세어 평균 낙폭을 구한다. 못 잰 날을 0으로 치지 않는다.
+  int get _drop {
+    final drops = <int>[
+      for (final day in data.month)
+        if (day.pair.before != null && day.pair.after != null)
+          day.pair.before! - day.pair.after!,
+    ];
+    if (drops.isEmpty) return 0;
+    return (drops.reduce((a, b) => a + b) / drops.length).round();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final drop = _drop;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 20),
+      decoration: BoxDecoration(
+        color: AppColors.point,
+        borderRadius: BorderRadius.circular(22),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '$month월 한 달',
+            style: AppText.label(size: 17.5, color: AppColors.onPointMuted),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            drop > 0 ? '약 드신 뒤 평균 $drop회 내려갔어요' : '약 드신 뒤에도 비슷했어요',
+            style: AppText.emphasis(size: 24, color: Colors.white),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// 주마다 변화 — 약 먹기 전(회색)과 먹은 뒤(파랑)를 주 단위로 나란히 본다.
+class _WeeklyBars extends StatelessWidget {
+  final List<HeartMonthDay> days;
+
+  const _WeeklyBars({required this.days});
+
+  /// 한 주(7일)씩 묶어 전·후 평균을 낸다. 잰 날이 없는 주는 건너뛴다.
+  List<_WeekAverage> get _weeks {
+    final result = <_WeekAverage>[];
+    for (int start = 0; start < days.length; start += 7) {
+      final chunk = days.skip(start).take(7);
+      final before = <int>[
+        for (final day in chunk)
+          if (day.pair.before != null) day.pair.before!,
+      ];
+      final after = <int>[
+        for (final day in chunk)
+          if (day.pair.after != null) day.pair.after!,
+      ];
+      if (before.isEmpty && after.isEmpty) continue;
+      result.add(
+        _WeekAverage(
+          week: start ~/ 7 + 1,
+          before: before.isEmpty
+              ? null
+              : (before.reduce((a, b) => a + b) / before.length).round(),
+          after: after.isEmpty
+              ? null
+              : (after.reduce((a, b) => a + b) / after.length).round(),
+        ),
+      );
+    }
+    return result;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final weeks = _weeks;
+    if (weeks.isEmpty) return const SizedBox.shrink();
+    final highest = weeks
+        .expand((w) => [w.before ?? 0, w.after ?? 0])
+        .reduce((a, b) => a > b ? a : b);
+    final allDropped = weeks.every(
+      (w) => w.before == null || w.after == null || w.after! <= w.before!,
+    );
+
+    return SeniorCard(
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Flexible(child: Text('주마다 변화', style: AppText.cardTitle())),
+              const SizedBox(width: 10),
+              const Flexible(
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.centerRight,
+                  child: _BarLegend(),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          SizedBox(
+            height: 120,
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                for (final week in weeks)
+                  Expanded(
+                    child: _WeekPair(week: week, highest: highest),
+                  ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              for (final week in weeks)
+                Expanded(
+                  child: Column(
+                    children: [
+                      Text(
+                        '${week.after ?? week.before ?? '–'}',
+                        textAlign: TextAlign.center,
+                        style: AppText.cardTitle(
+                          size: 18,
+                          color: AppColors.point,
+                        ),
+                      ),
+                      Text(
+                        '${week.week}주',
+                        textAlign: TextAlign.center,
+                        style: AppText.caption(size: 16),
+                      ),
+                    ],
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Text(
+            allDropped
+                ? '파란 막대가 회색보다 늘 낮아요. 약을 드신 뒤 심박수가 내려갔다는 뜻이에요.'
+                : '어떤 주는 약을 드신 뒤에도 비슷했어요.',
+            style: AppText.body(size: 17, color: AppColors.textSecondary),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// 한 주의 전·후 평균.
+class _WeekAverage {
+  final int week;
+  final int? before;
+  final int? after;
+
+  const _WeekAverage({required this.week, this.before, this.after});
+}
+
+/// 한 주의 막대 두 개 — 왼쪽이 먹기 전, 오른쪽이 먹은 뒤.
+class _WeekPair extends StatelessWidget {
+  final _WeekAverage week;
+  final int highest;
+
+  const _WeekPair({required this.week, required this.highest});
+
+  double _height(int? value) {
+    if (value == null || highest == 0) return 8;
+    return 24 + (value / highest) * 84;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: [
+        _Bar(height: _height(week.before), color: AppColors.secondaryFill),
+        const SizedBox(width: 5),
+        _Bar(height: _height(week.after), color: AppColors.point),
+      ],
+    );
+  }
+}
+
+class _Bar extends StatelessWidget {
+  final double height;
+  final Color color;
+
+  const _Bar({required this.height, required this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 16,
+      height: height,
+      decoration: BoxDecoration(
+        color: color,
+        borderRadius: BorderRadius.circular(5),
+      ),
+    );
+  }
+}
+
+/// 막대 두 색이 무엇인지 알려 주는 표시.
+class _BarLegend extends StatelessWidget {
+  const _BarLegend();
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: const [
+        _LegendDot(color: AppColors.secondaryFill, label: '전'),
+        SizedBox(width: 10),
+        _LegendDot(color: AppColors.point, label: '후'),
+      ],
+    );
+  }
+}
+
+class _LegendDot extends StatelessWidget {
+  final Color color;
+  final String label;
+
+  const _LegendDot({required this.color, required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 10,
+          height: 10,
+          decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+        ),
+        const SizedBox(width: 5),
+        Text(label, style: AppText.caption(size: 16)),
+      ],
     );
   }
 }

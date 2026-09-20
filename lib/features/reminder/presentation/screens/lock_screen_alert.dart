@@ -55,10 +55,7 @@ class LockScreenAlert extends StatelessWidget {
               Center(
                 child: Text(
                   '${now.month}월 ${now.day}일 ${_weekdays[now.weekday - 1]}',
-                  style: AppText.body(
-                    size: 22,
-                    color: AppColors.onDarkDate,
-                  ),
+                  style: AppText.body(size: 22, color: AppColors.onDarkDate),
                 ),
               ),
               const SizedBox(height: 6),

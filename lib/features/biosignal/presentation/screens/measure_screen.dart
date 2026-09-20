@@ -28,11 +28,7 @@ class MeasureScreen extends StatefulWidget {
   /// 밖에서 넣어 주는 센서. 없으면 이 화면이 하나 만들어 쓴다.
   final HeartSensor? sensor;
 
-  const MeasureScreen({
-    super.key,
-    this.guardianTitle = '',
-    this.sensor,
-  });
+  const MeasureScreen({super.key, this.guardianTitle = '', this.sensor});
 
   @override
   State<MeasureScreen> createState() => _MeasureScreenState();
@@ -110,19 +106,16 @@ class _MeasureScreenState extends State<MeasureScreen> {
   /// 아무 값도 나오지 않는다. 그 자리에서 다시 붙는 방법을 알려준다.
   Widget _recovery() {
     return RecoveryView(
-      title: '지금은 심장 박동을\n재지 못하고 있어요',
-      reassurance: '폴라 베리티 센스와 전화기가 떨어져 있어요. ',
+      title: '지금은 심박수를\n재지 못하고 있어요',
+      reassurance: '심박 센서와 전화기가 떨어져 있어요. ',
       reassuranceEmphasis: '고장이 아니니 걱정하지 마세요.',
-      steps: const [
-        '센서가 팔이나 가슴에 잘 붙어 있는지 만져보세요',
-        '센서 가운데 단추를 한 번 누르세요',
-        '전화기를 센서 가까이 두세요',
-      ],
+      steps: const ['센서를 가슴에 다시 대주세요', '전화기를 가까이 두세요', '아래 버튼을 눌러주세요'],
       actionLabel: '다시 연결하기',
       onAction: () => unawaited(_sensor.start()),
       stillWorksTitle: '약 알림은 그대로 와요',
       stillWorksBody: '센서가 끊겨도 복약 알림에는 영향이 없어요.',
-      helperText: '그래도 안 되면\n${resolveGuardianTitle(context, widget.guardianTitle)}에게 도움 청하기',
+      helperText:
+          '그래도 안 되면\n${resolveGuardianTitle(context, widget.guardianTitle)}에게 도움 청하기',
       // 어르신 화면에서 밖으로 전화를 걸지 않는다.
       onCallHelper: () =>
           showSeniorSnackbar(context, '${widget.guardianTitle}에게 연락이 갔어요'),
@@ -143,7 +136,7 @@ class _MeasureScreenState extends State<MeasureScreen> {
         backgroundColor: AppColors.bg,
         body: Column(
           children: [
-            const SeniorBackHeader(title: '심박수 재기'),
+            const SeniorBackHeader(title: '심박수 관리'),
             Expanded(child: _recovery()),
           ],
         ),
@@ -188,7 +181,7 @@ class _MeasureScreenState extends State<MeasureScreen> {
                             steps: [
                               '앉아서 가만히 계세요',
                               '숨을 편하게 쉬세요',
-                              '가슴 띠는 그대로 두세요',
+                              '심박 센서는 그대로 두세요',
                             ],
                           ),
                         ],
@@ -201,18 +194,37 @@ class _MeasureScreenState extends State<MeasureScreen> {
                         vertical: 17,
                       ),
                       child: LabelValueRow(
-                        label: Text(
-                          _lost
-                              ? '센서가 떨어졌어요'
-                              : _live
-                              ? '폴라 베리티 센스로 재고 있어요'
-                              : '폴라 베리티 센스를 찾고 있어요',
-                          style: AppText.cardTitle(
-                            size: 19,
-                            color: _lost
-                                ? AppColors.danger
-                                : AppColors.textPrimary,
-                          ),
+                        label: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Container(
+                              margin: const EdgeInsets.only(top: 8),
+                              width: 10,
+                              height: 10,
+                              decoration: BoxDecoration(
+                                color: _lost
+                                    ? AppColors.danger
+                                    : AppColors.point,
+                                shape: BoxShape.circle,
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            Flexible(
+                              child: Text(
+                                _lost
+                                    ? '센서가 떨어졌어요'
+                                    : _live
+                                    ? '폴라 센서로 재고 있어요'
+                                    : '폴라 센서를 찾고 있어요',
+                                style: AppText.cardTitle(
+                                  size: 19,
+                                  color: _lost
+                                      ? AppColors.danger
+                                      : AppColors.textPrimary,
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
                         value: Text(
                           _lost ? '센서 단추를 한 번 눌러 주세요' : '약 $_secondsLeft초 남았어요',

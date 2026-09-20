@@ -64,7 +64,7 @@ class SeniorTitleHeader extends StatelessWidget {
   }
 }
 
-/// 상단 바 (B형 · 하위 화면). 뒤로가기 44×44 원형 + 제목 24px/900.
+/// 상단 바 (B형 · 하위 화면). 왼쪽에 뒤로가기, 가운데에 제목.
 class SeniorBackHeader extends StatelessWidget {
   final String title;
   final VoidCallback? onBack;
@@ -84,16 +84,18 @@ class SeniorBackHeader extends StatelessWidget {
     final row = Row(
       children: [
         SeniorBackButton(onTap: onBack, onDark: onDark),
-        const SizedBox(width: 14),
         Expanded(
           child: Text(
             title,
+            textAlign: TextAlign.center,
             style: AppText.screenTitle(
               size: 24,
               color: onDark ? Colors.white : AppColors.textPrimary,
             ),
           ),
         ),
+        // 제목이 진짜 가운데에 오도록 뒤로가기만큼 오른쪽을 비워 둔다.
+        const SizedBox(width: 56),
       ],
     );
 
@@ -109,11 +111,10 @@ class SeniorBackHeader extends StatelessWidget {
   }
 }
 
-/// 뒤로 버튼. 56×56, 채움 + 2px 테두리.
+/// 뒤로 버튼. 화살표 하나.
 ///
-/// 글자는 빼고 화살표만 둔다. 대신 **버튼처럼 보이는 모양은 유지한다** —
-/// 테두리 없는 작은 `‹` 아이콘은 어르신이 버튼으로 인식하지 못한다.
-/// [label]은 화면에 그리지 않고 스크린리더에만 읽힌다.
+/// 누르는 자리는 56×56으로 넉넉히 두되, 칸을 그리지는 않는다.
+/// 글자는 빼고, [label]은 화면에 그리지 않고 스크린리더에만 읽힌다.
 class SeniorBackButton extends StatelessWidget {
   final VoidCallback? onTap;
   final bool onDark;
@@ -135,27 +136,21 @@ class SeniorBackButton extends StatelessWidget {
       return const SizedBox.shrink();
     }
 
-    final fg = onDark ? Colors.white : AppColors.textBody;
+    final fg = onDark ? Colors.white : AppColors.textPrimary;
     return Semantics(
       button: true,
       label: '$label 가기',
       child: GestureDetector(
         onTap: onTap ?? () => Navigator.of(context).maybePop(),
         behavior: HitTestBehavior.opaque,
-        child: Container(
+        child: SizedBox(
           width: 56,
           height: 56,
-          alignment: Alignment.center,
-          decoration: BoxDecoration(
-            color: onDark ? AppColors.camChip : AppColors.secondaryFill,
-            borderRadius: BorderRadius.circular(18),
-            border: Border.all(
-              color: onDark ? AppColors.onDarkBorder : AppColors.strongLine,
-              width: 2,
+          child: Align(
+            alignment: Alignment.centerLeft,
+            child: ExcludeSemantics(
+              child: Icon(TablerIcons.chevron_left, size: 40, color: fg),
             ),
-          ),
-          child: ExcludeSemantics(
-            child: Icon(TablerIcons.arrow_left, size: 28, color: fg),
           ),
         ),
       ),

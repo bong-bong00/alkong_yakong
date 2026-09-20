@@ -7,9 +7,8 @@ import '../../../../core/constants/app_colors.dart';
 import '../../../../core/mode/app_mode.dart';
 import '../../../easy_flow/presentation/easy_flow_shell.dart';
 import '../../../../core/widgets/senior_bottom_nav.dart';
+import '../../../../core/widgets/senior_feedback.dart';
 import '../../../biosignal/presentation/screens/measure_screen.dart';
-import '../../../medication/domain/medication_models.dart';
-import '../../../medication/presentation/screens/dose_done_screen.dart';
 import '../../../medicines/presentation/screens/my_medicines_screen.dart';
 import '../../../profile/presentation/screens/mypage_screen.dart';
 import 'medication_record_screen.dart';
@@ -31,7 +30,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   int _index = 0;
 
   /// 방금 기록한 시간대. null이 아니면 오늘 탭이 완료 화면을 그린다.
-  DoseSlot? _justRecorded;
 
   static const List<SeniorNavItem> _tabs = [
     SeniorNavItem(icon: TablerIcons.pill, label: '오늘'),
@@ -52,42 +50,30 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       body: IndexedStack(
         index: _index,
         children: [
-          _justRecorded == null
-              ? PatientHomeScreen(
-                  onOpenRecord: () => setState(() => _index = 1),
-                  onOpenHeartbeat: () => context.push('/biosignal'),
-                  onOpenPrescription: () => context.push('/prescription'),
-                  onOpenChat: () => context.push('/drug-explain'),
-                  onOpenMedicines: () => Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (_) => const MyMedicinesScreen(),
-                    ),
-                  ),
-                  onOpenDrug: (medicine) {
-                    final code = (medicine.medicineCode ?? medicine.key ?? '')
-                        .trim();
-                    if (code.isEmpty) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('이 약의 상세 정보를 찾지 못했어요.')),
-                      );
-                      return;
-                    }
-                    context.push('/medicines/$code');
-                  },
-                  onDone: () => setState(() => _justRecorded = DoseSlot.dinner),
-                  onMeasure: () async {
-                    await Navigator.of(context).push(
-                      MaterialPageRoute(builder: (_) => const MeasureScreen()),
-                    );
-                    if (mounted) {
-                      setState(() => _justRecorded = DoseSlot.dinner);
-                    }
-                  },
-                )
-              : DoseDoneScreen(
-                  slot: _justRecorded!,
-                  onUndone: () => setState(() => _justRecorded = null),
-                ),
+          PatientHomeScreen(
+            onOpenRecord: () => setState(() => _index = 1),
+            onOpenHeartbeat: () => context.push('/biosignal'),
+            onOpenPrescription: () => context.push('/prescription'),
+            onOpenChat: () => context.push('/drug-explain'),
+            onOpenMedicines: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const MyMedicinesScreen()),
+            ),
+            onOpenDrug: (medicine) {
+              final code = (medicine.medicineCode ?? medicine.key ?? '').trim();
+              if (code.isEmpty) {
+                showSeniorSnackbar(
+                  context,
+                  '이 약의 상세 정보를 찾지 못했어요.',
+                  error: true,
+                );
+                return;
+              }
+              context.push('/medicines/$code');
+            },
+            onMeasure: (_) => Navigator.of(
+              context,
+            ).push(MaterialPageRoute(builder: (_) => const MeasureScreen())),
+          ),
           MedicationRecordScreen(
             // 기록에서 나가는 길이 탭바뿐이면 길을 잃는다.
             onBackToToday: () => setState(() => _index = 0),

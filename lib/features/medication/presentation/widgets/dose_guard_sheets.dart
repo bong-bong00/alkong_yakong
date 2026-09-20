@@ -154,7 +154,7 @@ Future<void> showDuplicateDoseSheet({
               TextSpan(
                 text: '지금은 드시지 마세요.',
                 style: AppText.body(
-                  weight: FontWeight.w900,
+                  weight: FontWeight.w700,
                   color: AppColors.textPrimary,
                 ),
               ),
@@ -194,10 +194,7 @@ Future<bool> showLateDoseSheet({
     context,
     _GuardSheet(
       children: [
-        Text(
-          '${slot.label} 약 시간이\n한참 지났어요',
-          style: AppText.emphasis(size: 27),
-        ),
+        Text('${slot.label} 약 시간이\n한참 지났어요', style: AppText.emphasis(size: 27)),
         const SizedBox(height: 14),
         Text(
           '지금 드시면 다음 약과 너무 가까워질 수 있어요. '

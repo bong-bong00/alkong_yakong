@@ -47,7 +47,7 @@ class _AddMedicineScreenState extends State<AddMedicineScreen> {
       backgroundColor: AppColors.bg,
       body: Column(
         children: [
-          const SeniorBackHeader(title: '약 넣기'),
+          const SeniorBackHeader(title: '처방전 넣기'),
           Expanded(
             child: SingleChildScrollView(
               padding: const EdgeInsets.fromLTRB(20, 16, 20, 28),
@@ -59,9 +59,12 @@ class _AddMedicineScreenState extends State<AddMedicineScreen> {
                       horizontal: 22,
                       vertical: 18,
                     ),
+                    // 파랑은 실제로 누르는 버튼에만 남긴다. 안내 박스까지
+                    // 파랗게 두면 어느 것이 눌리는 것인지 흐려진다.
                     decoration: BoxDecoration(
-                      color: AppColors.pointTint,
+                      color: AppColors.surface,
                       borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: AppColors.border, width: 2),
                     ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -70,7 +73,7 @@ class _AddMedicineScreenState extends State<AddMedicineScreen> {
                           '어떻게 넣을까요?',
                           style: AppText.cardTitle(
                             size: 22,
-                            color: AppColors.point,
+                            color: AppColors.textPrimary,
                           ),
                         ),
                         const SizedBox(height: 6),
@@ -78,50 +81,70 @@ class _AddMedicineScreenState extends State<AddMedicineScreen> {
                           '하나만 고르시면 됩니다. 나머지는 나중에도 할 수 있어요.',
                           style: AppText.body(
                             size: 17.5,
-                            color: AppColors.pointInk,
+                            color: AppColors.textBody,
                           ),
                         ),
                       ],
                     ),
                   ),
                   const SizedBox(height: 14),
-                  SeniorChoiceCard(
+                  // 가장 쉬운 길 하나만 파란 버튼으로 크게 둔다.
+                  SeniorButton(
+                    label: '처방전 사진 찍기',
                     icon: TablerIcons.camera,
-                    title: '처방전 사진 찍기',
-                    description: '약 이름을 대신 읽어 드려요',
-                    primary: true,
+                    minHeight: 68,
+                    fontSize: 22,
+                    elevated: true,
                     onPressed: () => widget.onPick(AddMedicineMethod.camera),
                   ),
                   const SizedBox(height: 12),
-                  SeniorChoiceCard(
-                    icon: TablerIcons.photo,
-                    title: '앨범에서 고르기',
-                    description: '이미 찍어 둔 사진이 있을 때',
-                    onPressed: () => widget.onPick(AddMedicineMethod.gallery),
-                  ),
-                  const SizedBox(height: 12),
-                  SeniorChoiceCard(
-                    icon: TablerIcons.edit,
-                    title: '손으로 적기',
-                    description: '처방전이 없어도 됩니다',
-                    onPressed: () => widget.onPick(AddMedicineMethod.manual),
-                  ),
-                  const SizedBox(height: 12),
-                  if (_asked)
-                    _AskedCard(
-                      guardianTitle: resolveGuardianTitle(context, widget.guardianTitle),
-                      onGoHome: widget.onGoHome,
-                    )
-                  else
-                    SeniorChoiceCard(
-                      icon: TablerIcons.users,
-                      title: '가족에게 부탁하기',
-                      description: '${resolveGuardianTitle(context, widget.guardianTitle)}이 대신 넣어 줘요',
-                      onPressed: () {
-                        setState(() => _asked = true);
-                        widget.onPick(AddMedicineMethod.family);
-                      },
+                  // 나머지 길은 한 카드에 줄로 모은다. 넷이 같은 크기로
+                  // 펼쳐져 있으면 무엇을 먼저 눌러야 할지 고르게 된다.
+                  SeniorCard(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 22,
+                      vertical: 4,
                     ),
+                    child: Column(
+                      children: [
+                        SeniorListRow(
+                          label: '앨범에서 고르기',
+                          icon: TablerIcons.photo,
+                          trailing: const SeniorChevron(),
+                          onTap: () => widget.onPick(AddMedicineMethod.gallery),
+                        ),
+                        const SeniorDivider(),
+                        SeniorListRow(
+                          label: '손으로 적기',
+                          icon: TablerIcons.edit,
+                          trailing: const SeniorChevron(),
+                          onTap: () => widget.onPick(AddMedicineMethod.manual),
+                        ),
+                        if (!_asked) ...[
+                          const SeniorDivider(),
+                          SeniorListRow(
+                            label: '가족에게 부탁하기',
+                            icon: TablerIcons.users,
+                            trailing: const SeniorChevron(),
+                            onTap: () {
+                              setState(() => _asked = true);
+                              widget.onPick(AddMedicineMethod.family);
+                            },
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                  if (_asked) ...[
+                    const SizedBox(height: 12),
+                    _AskedCard(
+                      guardianTitle: resolveGuardianTitle(
+                        context,
+                        widget.guardianTitle,
+                      ),
+                      onGoHome: widget.onGoHome,
+                    ),
+                  ],
                 ],
               ),
             ),

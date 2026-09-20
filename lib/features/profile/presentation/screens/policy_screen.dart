@@ -51,6 +51,15 @@ class PolicyScreen extends StatelessWidget {
                     ],
                   ),
                 ),
+                // 쉬운 말 요약을 먼저 읽게 한다 (프로토타입 49번).
+                for (final section in document.plain) ...[
+                  const SizedBox(height: 12),
+                  _SectionCard(section: section),
+                ],
+                if (document.plain.isNotEmpty) ...[
+                  const SizedBox(height: 22),
+                  Text('자세한 약관', style: AppText.cardTitle(size: 20)),
+                ],
                 for (final section in document.sections) ...[
                   const SizedBox(height: 12),
                   _SectionCard(section: section),
@@ -133,7 +142,7 @@ class _Paragraph extends StatelessWidget {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('·', style: AppText.body(size: 18, weight: FontWeight.w900)),
+        Text('·', style: AppText.body(size: 18, weight: FontWeight.w700)),
         const SizedBox(width: 8),
         Expanded(
           child: Text(

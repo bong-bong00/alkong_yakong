@@ -73,7 +73,7 @@ class _PatientLinkScreenState extends ConsumerState<PatientLinkScreen> {
             const SeniorBackHeader(title: '환자 연결'),
             Expanded(child: _requestedName != null ? _doneView() : _formView()),
           ],
-        )
+        ),
       ),
     );
   }

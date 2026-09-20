@@ -327,10 +327,7 @@ class _PrescriptionScreenState extends ConsumerState<PrescriptionScreen> {
         onOpenScheduleDays();
         return;
       }
-      context.push(
-        '/schedule-days',
-        extra: MvpSession.latestPrescriptionId,
-      );
+      context.push('/schedule-days', extra: MvpSession.latestPrescriptionId);
     }
 
     if (!_hasPairConflict(durResult)) {
@@ -489,7 +486,7 @@ class _CaptureScreen extends StatelessWidget {
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Text(
-                                    '📸 이렇게 찍어 주세요',
+                                    '이렇게 찍어 주세요',
                                     style: AppText.emphasis(
                                       size: 26,
                                       color: Colors.white,
@@ -498,20 +495,17 @@ class _CaptureScreen extends StatelessWidget {
                                   const SizedBox(height: 18),
                                   _CaptureTip(
                                     number: '1',
-                                    emoji: '☀️',
                                     text: '밝은 곳에 처방전이\n잘 보이게 펼쳐 놓으세요',
                                   ),
                                   const _CaptureTipArrow(),
                                   _CaptureTip(
                                     number: '2',
-                                    emoji: '📄',
                                     text: '종이 네 모서리가\n사진에 다 나오게 하세요',
                                   ),
                                   const _CaptureTipArrow(),
                                   _CaptureTip(
                                     number: '3',
-                                    emoji: '📱',
-                                    text: '두 손으로 잡고\n흔들리지 않게, 흐리지 않게 찍으세요',
+                                    text: '두 손으로 잡고\n흔들리지 않게 찍으세요',
                                   ),
                                 ],
                               ),
@@ -568,14 +562,9 @@ class _CaptureScreen extends StatelessWidget {
 
 class _CaptureTip extends StatelessWidget {
   final String number;
-  final String emoji;
   final String text;
 
-  const _CaptureTip({
-    required this.number,
-    required this.emoji,
-    required this.text,
-  });
+  const _CaptureTip({required this.number, required this.text});
 
   @override
   Widget build(BuildContext context) {
@@ -598,7 +587,7 @@ class _CaptureTip extends StatelessWidget {
         const SizedBox(width: 14),
         Expanded(
           child: Text(
-            '$emoji  $text',
+            text,
             style: AppText.body(
               size: 22,
               color: Colors.white,
@@ -700,7 +689,6 @@ class _ConfirmScreenState extends State<_ConfirmScreen> {
     for (final item in widget.items) Map<String, dynamic>.from(item),
   ];
   bool _registering = false;
-  final Set<int> _expandedItems = <int>{};
 
   static String _frequencyLabel(Map<String, dynamic> item) {
     final value = item['frequency_per_day'];
@@ -1055,7 +1043,6 @@ class _ConfirmScreenState extends State<_ConfirmScreen> {
           'ocr_drug_name_raw': current,
           'match_status': 'MATCHED',
         };
-        _expandedItems.add(index);
       });
     } catch (_) {
       if (!mounted) return;
@@ -1218,16 +1205,17 @@ class _ConfirmScreenState extends State<_ConfirmScreen> {
   static String? _slotLabel(String raw) {
     final text = raw.toLowerCase();
     if (text.contains('아침') || text.contains('morning')) return '아침 8시';
-    if (text.contains('점심') || text.contains('lunch') ||
+    if (text.contains('점심') ||
+        text.contains('lunch') ||
         text.contains('noon')) {
       return '점심 12시';
     }
-    if (text.contains('저녁') || text.contains('evening') ||
+    if (text.contains('저녁') ||
+        text.contains('evening') ||
         text.contains('dinner')) {
       return '저녁 6시';
     }
-    if (text.contains('자기') || text.contains('night') ||
-        text.contains('bed')) {
+    if (text.contains('자기') || text.contains('night') || text.contains('bed')) {
       return '자기 전';
     }
     return null;
@@ -1269,9 +1257,7 @@ class _ConfirmScreenState extends State<_ConfirmScreen> {
                           _editedItems.isEmpty
                               ? '글자는 읽었는데, 공식 약과 아직 못 맞췄어요'
                               : '틀린 곳이 있으면 눌러서 고쳐주세요.',
-                          style: AppText.caption(
-                            color: AppColors.pointInk,
-                          ),
+                          style: AppText.caption(color: AppColors.pointInk),
                         ),
                       ],
                     ),
@@ -1291,14 +1277,6 @@ class _ConfirmScreenState extends State<_ConfirmScreen> {
                               '',
                           ingredientStrength:
                               item['ingredient_strength']?.toString() ?? '',
-                          rawOcrName:
-                              item['ocr_drug_name_raw']?.toString() ??
-                              item['drug_name']?.toString() ??
-                              '',
-                          officialName:
-                              item['official_product_name']?.toString() ??
-                              item['drug_name']?.toString() ??
-                              '',
                           medicineCode: item['medicine_code']?.toString() ?? '',
                           doseAmount: _takeAmountLabel(item),
                           frequencyPerDay: _frequencyLabel(item),
@@ -1310,12 +1288,6 @@ class _ConfirmScreenState extends State<_ConfirmScreen> {
                           matchStatusLabel: _matchStatusLabel(item),
                           uncertain: _uncertain(item),
                           conflicts: _interactionConflicts(item),
-                          expanded: _expandedItems.contains(index),
-                          onToggle: () => setState(() {
-                            if (!_expandedItems.remove(index)) {
-                              _expandedItems.add(index);
-                            }
-                          }),
                           onFixName: () => _fixMedicineName(index),
                           onEditDosing: () => _editItem(index),
                         );
@@ -1410,8 +1382,6 @@ class _DrugCard extends StatelessWidget {
   final String name;
   final String ingredient;
   final String ingredientStrength;
-  final String rawOcrName;
-  final String officialName;
   final String medicineCode;
   final String doseAmount;
   final String frequencyPerDay;
@@ -1423,8 +1393,6 @@ class _DrugCard extends StatelessWidget {
   final String matchStatusLabel;
   final bool uncertain;
   final List<Map<String, String>> conflicts;
-  final bool expanded;
-  final VoidCallback onToggle;
   final VoidCallback onFixName;
   final VoidCallback onEditDosing;
 
@@ -1432,8 +1400,6 @@ class _DrugCard extends StatelessWidget {
     required this.name,
     required this.ingredient,
     required this.ingredientStrength,
-    required this.rawOcrName,
-    required this.officialName,
     required this.medicineCode,
     required this.doseAmount,
     required this.frequencyPerDay,
@@ -1445,8 +1411,6 @@ class _DrugCard extends StatelessWidget {
     required this.matchStatusLabel,
     required this.uncertain,
     this.conflicts = const [],
-    required this.expanded,
-    required this.onToggle,
     required this.onFixName,
     required this.onEditDosing,
   });
@@ -1454,7 +1418,6 @@ class _DrugCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SeniorCard(
-      onTap: onToggle,
       padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 20),
       borderColor: (uncertain || conflicts.isNotEmpty)
           ? AppColors.dangerBorder
@@ -1463,20 +1426,7 @@ class _DrugCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(child: Text(name, style: AppText.cardTitle(size: 21))),
-              const SizedBox(width: 12),
-              ExcludeSemantics(
-                child: Icon(
-                  expanded ? Icons.expand_less : Icons.chevron_right,
-                  color: AppColors.textTertiary,
-                  size: 30,
-                ),
-              ),
-            ],
-          ),
+          Text(name, style: AppText.cardTitle(size: 21)),
           if (ingredient.trim().isNotEmpty) ...[
             const SizedBox(height: 5),
             Text(
@@ -1491,8 +1441,6 @@ class _DrugCard extends StatelessWidget {
             Text(
               explanation!,
               style: AppText.body(size: 17, color: AppColors.textSecondary),
-              maxLines: expanded ? null : 2,
-              overflow: expanded ? null : TextOverflow.ellipsis,
             ),
           ],
           const SizedBox(height: 12),
@@ -1567,100 +1515,38 @@ class _DrugCard extends StatelessWidget {
             '처방전과 같은 약이 맞는지 한 번 더 확인해 주세요',
             style: AppText.label(size: 17.5, color: AppColors.danger),
           ),
-          if (expanded) ...[
-            const SizedBox(height: 16),
-            const SeniorDivider(),
-            const SizedBox(height: 14),
-            _DetailLine(label: '사진에서 읽은 이름', value: rawOcrName),
-            const SizedBox(height: 8),
-            _DetailLine(label: '공식 제품명', value: officialName),
-            if (medicineCode.isNotEmpty) ...[
-              const SizedBox(height: 8),
-              _DetailLine(label: '공식 의약품 코드', value: medicineCode),
-            ],
-            if ((purposeLabel ?? '').trim().isNotEmpty) ...[
-              const SizedBox(height: 12),
-              Text(
-                '사용될 수 있는 주요 목적',
-                style: AppText.label(size: 17, color: AppColors.textSecondary),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                purposeLabel!,
-                style: AppText.label(size: 18, color: AppColors.point),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                '실제 처방 이유는 의사나 약사에게 확인해 주세요.',
-                style: AppText.caption(
-                  size: 16,
-                  color: AppColors.textSecondary,
-                ),
-              ),
-            ],
-            if ((keyCaution ?? '').trim().isNotEmpty) ...[
-              const SizedBox(height: 12),
-              Text(
-                '주의: $keyCaution',
-                style: AppText.label(size: 17, color: AppColors.danger),
-              ),
-            ],
-            if (fieldConfidences.isNotEmpty) ...[
-              const SizedBox(height: 12),
-              Text(
-                '항목별 글자 인식률',
-                style: AppText.label(size: 17, color: AppColors.textSecondary),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                _confidenceSummary(fieldConfidences),
-                style: AppText.caption(
-                  size: 16,
-                  color: AppColors.textSecondary,
-                ),
-              ),
-            ],
-            const SizedBox(height: 14),
-            Row(
+          const SizedBox(height: 14),
+          // 고칠 방법은 접어 두지 않는다. 숨어 있으면 틀린 채로 등록하거나
+          // 등록을 포기한다.
+          IntrinsicHeight(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 Expanded(
-                  child: OutlinedButton(
+                  child: SeniorButton(
+                    label: '약 이름 다시 확인',
+                    kind: SeniorButtonKind.secondary,
+                    minHeight: 62,
+                    fontSize: 19,
                     onPressed: onFixName,
-                    child: const Text('약 이름 다시 확인'),
                   ),
                 ),
                 const SizedBox(width: 10),
                 Expanded(
-                  child: OutlinedButton(
+                  child: SeniorButton(
+                    label: '복용 정보 고치기',
+                    kind: SeniorButtonKind.secondary,
+                    minHeight: 62,
+                    fontSize: 19,
                     onPressed: onEditDosing,
-                    child: const Text('복용 정보 고치기'),
                   ),
                 ),
               ],
             ),
-          ] else ...[
-            const SizedBox(height: 8),
-            Text(
-              '자세히 확인하기',
-              style: AppText.label(size: 17, color: AppColors.point),
-            ),
-          ],
+          ),
         ],
       ),
     );
-  }
-
-  static String _confidenceSummary(Map<String, int> values) {
-    const labels = {
-      'drug_name': '약 이름',
-      'dose_amount': '1회 투약량',
-      'frequency_per_day': '1일 투여횟수',
-      'duration_days': '투약일수',
-    };
-    return values.entries
-        .where((entry) => labels.containsKey(entry.key))
-        .map((entry) => '${labels[entry.key]} ${entry.value}%')
-        .join(' · ');
   }
 }
 
@@ -1699,28 +1585,6 @@ class _DoseInfoRow extends StatelessWidget {
             ),
           ),
         ),
-      ],
-    );
-  }
-}
-
-class _DetailLine extends StatelessWidget {
-  final String label;
-  final String value;
-
-  const _DetailLine({required this.label, required this.value});
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          label,
-          style: AppText.caption(size: 16, color: AppColors.textSecondary),
-        ),
-        const SizedBox(height: 2),
-        Text(value, style: AppText.body(size: 17)),
       ],
     );
   }

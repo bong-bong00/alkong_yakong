@@ -7,10 +7,10 @@ import '../../../../core/theme/app_typography.dart';
 import '../../../../core/widgets/senior_button.dart';
 import '../../../../core/widgets/senior_card.dart';
 import '../../../../core/widgets/senior_header.dart';
-import '../../../../core/widgets/senior_timeline.dart';
 import '../../../medication/application/medication_controller.dart';
 import '../../../dur_analysis/presentation/screens/dur_analysis_screen.dart';
 import '../../application/medication_history_provider.dart';
+import '../widgets/day_dose_detail.dart';
 import '../../../medication/domain/medication_models.dart';
 import 'month_calendar_screen.dart';
 
@@ -96,34 +96,36 @@ class MedicationRecordScreen extends ConsumerWidget {
                   ),
                 ),
                 const SizedBox(height: 12),
-                // 날짜를 위에서 아래로, 최신이 위다. 오늘 카드가 축 위의 "지금".
-                ..._dayTimeline(context, today, history),
+                // 오늘 하루를 시간대별로 한 장에 둔다. 날짜별 카드를 쌓는 대신
+                // 달력이 날짜를 맡고, 여기서는 오늘 상태만 본다.
+                DayDoseDetail(
+                  dayLabel:
+                      '${DateTime.now().month}월 ${DateTime.now().day}일 오늘',
+                  doses: today.doses,
+                  footnote: '날짜를 누르면 그날 결과가 여기에 나와요.',
+                ),
                 // 함께먹기 주의 화면은 로그인한 본인 약만 분석한다.
                 if (patientId == null) ...[
-                const SizedBox(height: 12),
-                SeniorCard(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 22,
-                    vertical: 4,
-                  ),
-                  child: SeniorListRow(
-                    label: '약 함께먹기 주의',
-                    icon: TablerIcons.alert_triangle,
-                    iconColor: interactionCount > 0
-                        ? AppColors.danger
-                        : AppColors.textTertiary,
-                    value: interactionCount > 0 ? '$interactionCount건' : '없어요',
-                    valueColor: interactionCount > 0
-                        ? AppColors.danger
-                        : AppColors.textTertiary,
-                    trailing: const SeniorChevron(),
-                    onTap: () => Navigator.of(context).push(
-                      MaterialPageRoute<void>(
-                        builder: (_) => const DurAnalysisScreen(),
+                  const SizedBox(height: 12),
+                  SeniorCard(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 22,
+                      vertical: 4,
+                    ),
+                    child: SeniorListRow(
+                      label: '약 함께먹기 주의',
+                      // 건수보다 무엇을 해야 하는지가 먼저다.
+                      subtitle: interactionCount > 0
+                          ? '확인이 필요한 약이 있어요'
+                          : '부딪히는 약은 없어요',
+                      trailing: const SeniorChevron(),
+                      onTap: () => Navigator.of(context).push(
+                        MaterialPageRoute<void>(
+                          builder: (_) => const DurAnalysisScreen(),
+                        ),
                       ),
                     ),
                   ),
-                ),
                 ],
               ],
             ),
@@ -194,72 +196,6 @@ class MedicationRecordScreen extends ConsumerWidget {
         }(),
     ];
   }
-
-  /// 날짜 카드를 시간 축으로 쌓는다. 최신이 위, 오늘이 축 위의 "지금".
-  ///
-  /// 기록이 없는 날은 만들지 않는다 — "다 드셨다"로도 "빠뜨렸다"로도
-  /// 채우지 않는다.
-  List<Widget> _dayTimeline(
-    BuildContext context,
-    TodayMedication today,
-    Map<DateTime, DayAdherence> history,
-  ) {
-    final now = DateTime.now();
-    final todayKey = dateOnly(now);
-
-    final days = history.values.toList()
-      ..sort((a, b) => b.date.compareTo(a.date));
-
-    // 오늘은 서버 기록보다 이 전화기의 상태가 정확하다.
-    final entries = <_DayCardData>[
-      if (today.doses.isNotEmpty)
-        _DayCardData(
-          date: todayKey,
-          taken: today.takenCount,
-          total: today.doses.length,
-          missedSlots: [
-            for (final dose in today.doses)
-              if (!dose.taken && dose.slot.todayAt(now).isBefore(now))
-                dose.slot.label,
-          ],
-          heartCheck: today.doses
-              .map((d) => d.heartCheck)
-              .whereType<DoseHeartCheck>()
-              .firstOrNull,
-          isToday: true,
-        ),
-      for (final day in days)
-        if (dateOnly(day.date) != todayKey)
-          _DayCardData(
-            date: day.date,
-            taken: day.taken,
-            total: day.total,
-            missedSlots: day.missedSlots,
-            heartCheck: null,
-            isToday: false,
-          ),
-    ];
-
-    if (entries.isEmpty) return const [];
-
-    final rows = <Widget>[];
-    for (int i = 0; i < entries.length; i++) {
-      rows.add(
-        TimelineRow(
-          current: entries[i].isToday,
-          past: !entries[i].isToday,
-          last: i == entries.length - 1,
-          child: _DayCard(
-            data: entries[i],
-            onTap: entries[i].isToday ? onBackToToday : null,
-          ),
-        ),
-      );
-      if (i != entries.length - 1) rows.add(kTimelineGap);
-    }
-    return rows;
-  }
-
 }
 
 class _DayStatus {
@@ -301,13 +237,7 @@ class _MonthCard extends StatelessWidget {
         children: [
           Row(
             children: [
-              Expanded(
-                child: IconTitle(
-                  icon: TablerIcons.chart_bar,
-                  text: '이번 달',
-                  style: AppText.cardTitle(),
-                ),
-              ),
+              Expanded(child: Text('이번 달', style: AppText.cardTitle())),
               Text(
                 '$month월',
                 style: AppText.cardTitle(size: 19, color: AppColors.point),
@@ -363,7 +293,9 @@ class _WeekCard extends StatelessWidget {
   String get _summary {
     final missed = days.where((d) => d.partial && !d.isToday).toList();
     if (missed.isEmpty) return '이번 주는 빠뜨린 약이 없어요.';
-    final names = missed.map((d) => '${_labels[d.date.weekday - 1]}요일').join(', ');
+    final names = missed
+        .map((d) => '${_labels[d.date.weekday - 1]}요일')
+        .join(', ');
     return '$names 약을 한 번 못 드셨어요.';
   }
 
@@ -385,11 +317,7 @@ class _WeekCard extends StatelessWidget {
                   constraints: const BoxConstraints(minHeight: 48),
                   // 글자가 커지면 "달력으로 보기"가 제목 아래로 내려간다.
                   child: LabelValueRow(
-                    label: IconTitle(
-                      icon: TablerIcons.calendar,
-                      text: '이번 주',
-                      style: AppText.cardTitle(),
-                    ),
+                    label: Text('이번 주', style: AppText.cardTitle()),
                     value: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
@@ -415,14 +343,47 @@ class _WeekCard extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 13),
+          // 일곱 칸이 폭을 고르게 나눠 갖는다. 칸을 고정 폭으로 두면
+          // 작은 화면에서 마지막 요일이 줄 밖으로 밀려난다.
           Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               for (int i = 0; i < days.length; i++)
-                _WeekDay(status: days[i], label: _labels[i]),
+                Expanded(
+                  child: _WeekDay(status: days[i], label: _labels[i]),
+                ),
             ],
           ),
           const SizedBox(height: 13),
+          // 글자를 키우면 두 줄로 내려간다. 줄 밖으로 밀려나지 않게 Wrap을 쓴다.
+          Wrap(
+            spacing: 18,
+            runSpacing: 6,
+            children: [
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    '✓',
+                    style: AppText.cardTitle(size: 16, color: AppColors.point),
+                  ),
+                  const SizedBox(width: 6),
+                  Text('다 드심', style: AppText.caption(size: 16)),
+                ],
+              ),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    '✗',
+                    style: AppText.cardTitle(size: 16, color: AppColors.danger),
+                  ),
+                  const SizedBox(width: 6),
+                  Text('못 드심', style: AppText.caption(size: 16)),
+                ],
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
           Text(
             _summary,
             style: AppText.caption(color: AppColors.textSecondary),
@@ -464,30 +425,40 @@ class _WeekDay extends StatelessWidget {
         style: AppText.cardTitle(size: 17, color: AppColors.point),
       );
     } else {
-      background = AppColors.bg;
-      border = Border.all(color: AppColors.strongBorder, width: 2);
+      background = AppColors.surface;
+      border = Border.all(color: AppColors.danger, width: 2);
       mark = Text(
-        '${status.taken}',
-        style: AppText.cardTitle(size: 17, color: AppColors.textTertiary),
+        '✗',
+        style: AppText.cardTitle(size: 17, color: AppColors.danger),
       );
     }
 
     return Semantics(
-      label: '${status.date.day}일 $label요일, '
-          '${status.future ? '아직 오지 않은 날' : status.noRecord ? '기록 없음' : '${status.total}번 중 ${status.taken}번'}',
+      label:
+          '${status.date.day}일 $label요일, '
+          '${status.future
+              ? '아직 오지 않은 날'
+              : status.noRecord
+              ? '기록 없음'
+              : '${status.total}번 중 ${status.taken}번'}',
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Container(
-            width: 38,
-            height: 38,
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-              color: background,
-              shape: BoxShape.circle,
-              border: border,
+          // 38이 제 크기지만, 좁은 화면에서는 받은 폭까지만 줄어든다.
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 38, maxHeight: 38),
+            child: AspectRatio(
+              aspectRatio: 1,
+              child: Container(
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: background,
+                  shape: BoxShape.circle,
+                  border: border,
+                ),
+                child: FittedBox(fit: BoxFit.scaleDown, child: mark),
+              ),
             ),
-            child: mark,
           ),
           const SizedBox(height: 6),
           Text(
@@ -503,107 +474,3 @@ class _WeekDay extends StatelessWidget {
 }
 
 /// 날짜 카드 한 장에 필요한 것.
-class _DayCardData {
-  final DateTime date;
-  final int taken;
-  final int total;
-  final List<String> missedSlots;
-
-  /// 그날 잰 심박수. 없으면 줄을 빼고 간격도 줄인다.
-  final DoseHeartCheck? heartCheck;
-
-  final bool isToday;
-
-  const _DayCardData({
-    required this.date,
-    required this.taken,
-    required this.total,
-    required this.missedSlots,
-    required this.heartCheck,
-    required this.isToday,
-  });
-
-  bool get complete => total > 0 && taken >= total;
-
-  /// 지난 날인데 다 못 드셨으면 빠뜨린 날이다.
-  bool get missed => !isToday && !complete;
-
-  String get label {
-    final base = '${date.month}월 ${date.day}일';
-    return isToday ? '$base 오늘' : base;
-  }
-
-  /// "다 드셨어요" / "점심 놓침" / "아직 안 드셨어요"
-  String get status {
-    if (complete) return '다 드셨어요';
-    if (missedSlots.isNotEmpty) return '${missedSlots.join(' · ')} 놓침';
-    return isToday ? '아직 안 드셨어요' : '${total - taken}번 놓침';
-  }
-}
-
-/// 하루 한 장. 막대 개수가 그날 복용 횟수고, 칠해진 만큼 드신 것이다.
-class _DayCard extends StatelessWidget {
-  final _DayCardData data;
-  final VoidCallback? onTap;
-
-  const _DayCard({required this.data, required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    final check = data.heartCheck;
-    return SeniorCard(
-      radius: 22,
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
-      onTap: onTap,
-      borderColor: data.isToday
-          ? AppColors.point
-          : data.missed
-              ? AppColors.dangerBorder
-              : null,
-      borderWidth: data.isToday ? 3 : 2,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          LabelValueRow(
-            label: Text(data.label, style: AppText.cardTitle(size: 21)),
-            value: Text(
-              data.status,
-              style: AppText.cardTitle(
-                size: 18,
-                // 놓친 날만 붉게. 화면당 위험색은 하나다.
-                color: data.missed ? AppColors.danger : AppColors.point,
-              ),
-            ),
-          ),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              for (int i = 0; i < data.total; i++) ...[
-                if (i > 0) const SizedBox(width: 7),
-                Expanded(
-                  child: Container(
-                    height: 13,
-                    decoration: BoxDecoration(
-                      color: i < data.taken
-                          ? AppColors.point
-                          : AppColors.strongBorder,
-                      borderRadius: BorderRadius.circular(7),
-                    ),
-                  ),
-                ),
-              ],
-            ],
-          ),
-          // 안 잰 날에는 이 줄을 아예 두지 않는다.
-          if (check != null) ...[
-            const SizedBox(height: 12),
-            Text(
-              '심박수 ${check.before} → ${check.after}',
-              style: AppText.caption(size: 17.5),
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-}

@@ -107,8 +107,7 @@ class _ScheduleDaysScreenState extends ConsumerState<ScheduleDaysScreen> {
   Future<void> _load() async {
     final prescriptionId = _prescriptionId;
     final widgetPrescriptionId = widget.prescriptionId?.trim() ?? '';
-    final sessionPrescriptionId =
-        MvpSession.latestPrescriptionId?.trim() ?? '';
+    final sessionPrescriptionId = MvpSession.latestPrescriptionId?.trim() ?? '';
     final prescriptionIdSource = widgetPrescriptionId.isNotEmpty
         ? 'widget'
         : sessionPrescriptionId.isNotEmpty
@@ -145,8 +144,7 @@ class _ScheduleDaysScreenState extends ConsumerState<ScheduleDaysScreen> {
     } on ApiException catch (error) {
       final reason = switch (error.message) {
         '사용자가 없습니다.' => 'user_not_found',
-        '처방전을 찾지 못했어요.' =>
-          'prescription_not_found_or_not_owned',
+        '처방전을 찾지 못했어요.' => 'prescription_not_found_or_not_owned',
         _ when error.statusCode == null => 'network_or_unknown_error',
         _ => 'http_error',
       };
@@ -186,15 +184,12 @@ class _ScheduleDaysScreenState extends ConsumerState<ScheduleDaysScreen> {
             '${_month.toString().padLeft(2, '0')}-'
             '${day.toString().padLeft(2, '0')}',
           ),
-          isToday: today.year == _year &&
-              today.month == _month &&
-              today.day == day,
+          isToday:
+              today.year == _year && today.month == _month && today.day == day,
         ),
     ];
     final count = cached.length;
-    _headline = count == 0
-        ? '투약일수를 확인해 주세요'
-        : '오늘부터 $count일, 이 약을 드시는 날이에요';
+    _headline = count == 0 ? '투약일수를 확인해 주세요' : '오늘부터 $count일, 이 약을 드시는 날이에요';
   }
 
   void _goHome() {
@@ -359,10 +354,7 @@ class _ScheduleDaysScreenState extends ConsumerState<ScheduleDaysScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        Text(
-                          _headline,
-                          style: AppText.cardTitle(size: 22),
-                        ),
+                        Text(_headline, style: AppText.cardTitle(size: 22)),
                         const SizedBox(height: 8),
                         Text(
                           '파란 테두리 칸이 이 약을 드시는 날이에요. 칸을 누르면 빼거나 넣을 수 있어요.',
@@ -434,9 +426,9 @@ class _ScheduleDaysScreenState extends ConsumerState<ScheduleDaysScreen> {
                                                   cells[row * 7 + col] != null
                                               ? _DayCell(
                                                   cells[row * 7 + col]!,
-                                                  busy: _busyDay ==
-                                                      cells[row * 7 + col]!
-                                                          .day,
+                                                  busy:
+                                                      _busyDay ==
+                                                      cells[row * 7 + col]!.day,
                                                   onTap: () => _toggle(
                                                     cells[row * 7 + col]!,
                                                   ),
@@ -544,16 +536,19 @@ class _DayCell extends StatelessWidget {
                 children: [
                   Text(
                     '${day.day}',
-                    style: AppText.cardTitle(size: 20, color: ink)
-                        .copyWith(height: 1),
+                    style: AppText.cardTitle(
+                      size: 20,
+                      color: ink,
+                    ).copyWith(height: 1),
                   ),
                   if (todayMark.isNotEmpty) ...[
                     const SizedBox(height: 2),
                     Text(
                       todayMark,
-                      style: AppText.label(size: 13, color: ink).copyWith(
-                        height: 1,
-                      ),
+                      style: AppText.label(
+                        size: 13,
+                        color: ink,
+                      ).copyWith(height: 1),
                     ),
                   ],
                 ],

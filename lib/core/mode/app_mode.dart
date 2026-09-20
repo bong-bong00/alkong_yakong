@@ -51,8 +51,7 @@ class AppModeNotifier extends StateNotifier<AppMode> {
     await _prefs?.setString(_kAppModeKey, mode.name);
   }
 
-  Future<void> toggle() =>
-      set(state.isEasy ? AppMode.normal : AppMode.easy);
+  Future<void> toggle() => set(state.isEasy ? AppMode.normal : AppMode.easy);
 }
 
 /// 현재 사용 모드. 기본은 일반 모드.

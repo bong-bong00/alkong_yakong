@@ -66,7 +66,7 @@ class GuardianContact {
 /// 보호자 연결 — 어르신의 가족 초대, 보호자의 연결 요청, 수락·해제, 현황.
 class GuardianRepository {
   GuardianRepository({ApiClient? apiClient})
-      : _apiClient = apiClient ?? ApiClient();
+    : _apiClient = apiClient ?? ApiClient();
 
   final ApiClient _apiClient;
 
@@ -101,7 +101,8 @@ class GuardianRepository {
       patients: [
         if (patients is List)
           for (final row in patients)
-            if (row is Map) CarePatient.fromJson(Map<String, dynamic>.from(row)),
+            if (row is Map)
+              CarePatient.fromJson(Map<String, dynamic>.from(row)),
       ],
       pending: [
         if (pending is List)

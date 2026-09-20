@@ -19,11 +19,8 @@ import '../../../medication/application/medication_controller.dart';
 import '../../../reminder/application/alarm_preferences.dart';
 import '../../../reminder/presentation/screens/alarm_settings_screen.dart';
 import '../../../biosignal/presentation/screens/polar_screen.dart';
-import '../../../dur_analysis/presentation/screens/dur_analysis_screen.dart';
 import '../../../medicines/application/user_medicines_controller.dart';
 import '../../application/current_user_controller.dart';
-import '../../application/session_actions.dart';
-import '../widgets/logout_sheet.dart';
 import 'account_screen.dart';
 
 /// 4h — 내 정보 · 설정.
@@ -43,13 +40,6 @@ class MyPageScreen extends ConsumerStatefulWidget {
 }
 
 class _MyPageScreenState extends ConsumerState<MyPageScreen> {
-  Future<void> _logout() async {
-    final confirmed = await showLogoutSheet(context);
-    if (!confirmed || !mounted) return;
-    await endSession(ref);
-    if (mounted) context.go('/login');
-  }
-
   /// 39 시트를 그대로 쓴다. 보호자 화면에 있는 것과 같은 길이다.
   Future<void> _inviteFamily() async {
     final draft = await showAddCareSheet(context);
@@ -113,7 +103,6 @@ class _MyPageScreenState extends ConsumerState<MyPageScreen> {
           .toSet()
           .length,
     );
-    final interactionCount = today.interactionCount;
     final loadFailed = profile == null && user.hasError;
     final ageLine = profile?.ageLine(DateTime.now()) ?? '';
 
@@ -207,26 +196,6 @@ class _MyPageScreenState extends ConsumerState<MyPageScreen> {
                       ),
                       const SeniorDivider(),
                       SeniorListRow(
-                        label: '약 함께먹기 주의',
-                        icon: TablerIcons.alert_triangle,
-                        iconColor: interactionCount > 0
-                            ? AppColors.danger
-                            : AppColors.textTertiary,
-                        value: interactionCount > 0
-                            ? '$interactionCount건'
-                            : '없어요',
-                        valueColor: interactionCount > 0
-                            ? AppColors.danger
-                            : AppColors.textTertiary,
-                        trailing: const SeniorChevron(),
-                        onTap: () => Navigator.of(context).push(
-                          MaterialPageRoute<void>(
-                            builder: (_) => const DurAnalysisScreen(),
-                          ),
-                        ),
-                      ),
-                      const SeniorDivider(),
-                      SeniorListRow(
                         label: '복약 알림',
                         icon: TablerIcons.bell,
                         // 소리로 알려주기만 한다. 말로 기록하는 기능은 없다.
@@ -240,7 +209,7 @@ class _MyPageScreenState extends ConsumerState<MyPageScreen> {
                       ),
                       const SeniorDivider(),
                       SeniorListRow(
-                        label: '폴라 베리티 센스',
+                        label: '폴라 센서',
                         icon: TablerIcons.heart,
                         // 여기서는 연결 여부를 모른다. 들어가야 센서를 찾는다.
                         subtitle: '심박 센서 연결 · 차는 방법',
@@ -354,21 +323,6 @@ class _MyPageScreenState extends ConsumerState<MyPageScreen> {
                         builder: (_) => const AccountScreen(),
                       ),
                     ),
-                  ),
-                ),
-                const SizedBox(height: 28),
-
-                // 눈에 띄지 않게, 그러나 찾을 수 있게. 회색 글씨 한 줄.
-                SeniorCard(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 22,
-                    vertical: 4,
-                  ),
-                  child: SeniorListRow(
-                    label: '로그아웃',
-                    labelColor: AppColors.textTertiary,
-                    trailing: const SeniorChevron(),
-                    onTap: _logout,
                   ),
                 ),
                 // 어르신·보호자 화면은 가입한 계정의 역할로 정해진다.

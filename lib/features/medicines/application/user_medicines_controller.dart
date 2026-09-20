@@ -59,8 +59,7 @@ class UserMedicinesController extends AsyncNotifier<List<UserMedicine>> {
       data['frequency_per_day'] =
           patientDosage['frequency_per_day'] ?? data['frequency_per_day'];
       data['administration_times'] =
-          patientDosage['administration_times'] ??
-          data['administration_times'];
+          patientDosage['administration_times'] ?? data['administration_times'];
     }
     final officialUsage = response['official_usage'];
     if (officialUsage is Map) {

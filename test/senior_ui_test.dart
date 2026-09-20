@@ -10,6 +10,7 @@ import 'package:alkong_yakong/features/biosignal/presentation/screens/polar_scre
 import 'package:alkong_yakong/features/auth/presentation/screens/signup_screen.dart';
 import 'package:alkong_yakong/features/dashboard/presentation/screens/guardian_home_screen.dart';
 import 'package:alkong_yakong/features/dashboard/presentation/screens/medication_record_screen.dart';
+import 'package:alkong_yakong/features/dashboard/presentation/screens/month_calendar_screen.dart';
 import 'package:alkong_yakong/features/dashboard/presentation/screens/patient_home_screen.dart';
 import 'package:alkong_yakong/features/medication/domain/medication_models.dart';
 import 'package:alkong_yakong/features/medication/application/medication_controller.dart';
@@ -135,33 +136,32 @@ void main() {
     '보호자 (4j·4k)': () => const GuardianHomeScreen(),
   };
 
-  group('기본 글자 크기에서 그려진다', () {
-    screens.forEach((name, build) {
-      testWidgets(name, (tester) async {
-        tester.view.physicalSize = const Size(390, 844);
-        tester.view.devicePixelRatio = 1.0;
-        addTearDown(tester.view.reset);
+  /// 시중 전화기 크기 × 글자 배율. **가장 작은 화면에서 글자를 키운 조합**이
+  /// 가장 험하다 — 어르신은 글자를 키워 쓰시니 거기서 버텨야 한다.
+  /// 2.0x는 iOS·안드로이드의 접근성 최대 배율 언저리다.
+  const sizes = <String, Size>{
+    '작은 폰 320x568': Size(320, 568),
+    '보급형 폰 360x640': Size(360, 640),
+    '보통 폰 390x844': Size(390, 844),
+    '큰 폰 430x932': Size(430, 932),
+  };
 
-        await tester.pumpWidget(wrap(build()));
-        await tester.pump();
-        expect(tester.takeException(), isNull);
+  sizes.forEach((sizeName, size) {
+    for (final scale in <double>[1.0, 2.0]) {
+      group('$sizeName · 글자 배율 ${scale}x에서 그려진다', () {
+        screens.forEach((name, build) {
+          testWidgets(name, (tester) async {
+            tester.view.physicalSize = size;
+            tester.view.devicePixelRatio = 1.0;
+            addTearDown(tester.view.reset);
+
+            await tester.pumpWidget(wrap(build(), textScale: scale));
+            await tester.pump();
+            expect(tester.takeException(), isNull);
+          });
+        });
       });
-    });
-  });
-
-  group('시스템 글자 최대에서도 버틴다 (5h)', () {
-    screens.forEach((name, build) {
-      testWidgets(name, (tester) async {
-        tester.view.physicalSize = const Size(390, 844);
-        tester.view.devicePixelRatio = 1.0;
-        addTearDown(tester.view.reset);
-
-        // iOS·안드로이드의 접근성 최대 배율 언저리.
-        await tester.pumpWidget(wrap(build(), textScale: 2.0));
-        await tester.pump();
-        expect(tester.takeException(), isNull);
-      });
-    });
+    }
   });
 
   testWidgets('먹었어요는 바로 기록하지 않고 센서 착용부터 묻는다 (13)', (tester) async {
@@ -176,7 +176,7 @@ void main() {
     await tester.tap(find.text('먹었어요'));
     await tester.pumpAndSettle();
     // 기록보다 시트가 먼저다. 띠를 차고 계시면 심박수를 잴 기회이기 때문이다.
-    expect(find.textContaining('가슴 띠를'), findsOneWidget);
+    expect(find.textContaining('심박 센서를'), findsOneWidget);
     expect(find.text('차고 있어요 · 재기'), findsOneWidget);
     expect(find.text('안 차고 있어요 · 복약만 기록'), findsOneWidget);
     expect(find.text('그만두기'), findsOneWidget);
@@ -188,7 +188,7 @@ void main() {
     addTearDown(tester.view.reset);
 
     var done = 0;
-    await tester.pumpWidget(wrap(PatientHomeScreen(onDone: () => done++)));
+    await tester.pumpWidget(wrap(PatientHomeScreen(onDone: (_) => done++)));
     await tester.pump();
 
     await tester.tap(find.text('먹었어요'));
@@ -206,7 +206,7 @@ void main() {
     addTearDown(tester.view.reset);
 
     var done = 0;
-    await tester.pumpWidget(wrap(PatientHomeScreen(onDone: () => done++)));
+    await tester.pumpWidget(wrap(PatientHomeScreen(onDone: (_) => done++)));
     await tester.pump();
 
     await tester.tap(find.text('먹었어요'));
@@ -229,7 +229,7 @@ void main() {
     await tester.pumpWidget(wrap(const DoseDoneScreen(slot: DoseSlot.morning)));
     await tester.pump();
 
-    expect(find.textContaining('잘하셨어요'), findsOneWidget);
+    // 남은 약이 있으면 그 약을 먼저 보여 준다. 되돌리는 길은 그래도 남는다.
     expect(find.text('잘못 눌렀어요 · 되돌리기'), findsOneWidget);
   });
 
@@ -420,6 +420,26 @@ void _forbiddenFeatureTests() {
     ).readAsStringSync();
     expect(dur.contains('showSeniorSnackbar'), isTrue);
   });
+
+  test('알림은 시니어 스낵바 하나로만 띄운다', () {
+    // 오류를 화면 안에 끼워 넣으면 버튼이 밀려 내려가고, 누르려던 자리에
+    // 글자가 붙는다. 기본 스낵바는 모양이 따로 놀아 같은 말을 두 가지로 한다.
+    for (final file in dartFiles()) {
+      final path = file.path.replaceAll(r'\', '/');
+      if (path.endsWith('core/widgets/senior_feedback.dart')) continue;
+      final text = file.readAsStringSync();
+      expect(
+        text.contains('showSnackBar('),
+        isFalse,
+        reason: '$path 에 기본 스낵바가 있다 — showSeniorSnackbar를 쓴다',
+      );
+      expect(
+        text.contains('SeniorErrorBox('),
+        isFalse,
+        reason: '$path 가 오류를 화면에 끼워 넣는다 — 스낵바로 알린다',
+      );
+    }
+  });
 }
 
 /// 회원가입 — 한 화면에 하나만 묻고, 배타 선택을 지킨다.
@@ -479,7 +499,6 @@ void _signupTests() {
     await tester.enterText(find.byType(TextField).at(0), '김복자');
     await tester.enterText(find.byType(TextField).at(1), '01012345678');
     await tester.enterText(find.byType(TextField).at(2), 'abc123');
-    await tester.enterText(find.byType(TextField).at(3), 'abc123');
     await tester.tap(find.text('다음'));
     await tester.pumpAndSettle();
 
@@ -489,7 +508,7 @@ void _signupTests() {
   testWidgets('보호자는 건강 질문을 받지 않는다', (tester) async {
     await tester.pumpWidget(wrap(const SignupScreen()));
     // 보호자는 남의 복약을 지켜볼 뿐이라 자기 지병을 물을 이유가 없다.
-    await tester.tap(find.text('돌보는 가족'));
+    await tester.tap(find.text('돌보는 가족(보호자)'));
     await tester.pump();
     expect(find.text('1 / 3'), findsOneWidget);
   });
@@ -517,7 +536,6 @@ void _signupTests() {
     await tester.enterText(find.byType(TextField).at(0), '김복자');
     await tester.enterText(find.byType(TextField).at(1), '01012345678');
     await tester.enterText(find.byType(TextField).at(2), 'abc123');
-    await tester.enterText(find.byType(TextField).at(3), 'abc123');
     await tester.tap(find.text('다음'));
     await tester.pumpAndSettle();
 
@@ -526,12 +544,12 @@ void _signupTests() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('확인'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('여성'));
+    await tester.tap(find.text('여자'));
     await tester.pump();
     await tester.tap(find.text('다음'));
     await tester.pumpAndSettle();
 
-    // 3단계 · 키·몸무게·혈액형. 여기서 터지면 혈액형 여덟 칸이 범인이다.
+    // 3단계 · 키·몸무게·혈액형.
     expect(find.text('혈액형'), findsOneWidget);
     expect(tester.takeException(), isNull);
 
@@ -539,7 +557,7 @@ void _signupTests() {
     await tester.pumpAndSettle();
 
     // 4단계 · 임신 (여성일 때만 나온다)
-    expect(find.text('임신 준비중'), findsOneWidget);
+    expect(find.text('젖을 먹이고 있어요'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
@@ -549,12 +567,12 @@ void _signupTests() {
     ).readAsStringSync();
     // 임신·수유는 병용금기 판정을 통째로 바꾼다. 빠지면 안 된다.
     for (final question in [
-      "title: '키, 몸무게, 혈액형을",
-      "title: '임신 계획이",
-      "title: '담배와 술을",
+      "title: '키와 몸무게,",
+      "title: '지금 임신 중이거나",
+      "title: '담배와 술은",
       "title: '약물 알레르기가",
       "title: '지금 앓고 있는",
-      "title: '과거에 앓았거나",
+      "title: '크게 아팠던 적이나",
       "title: '보호자 연락처를",
     ]) {
       expect(source.contains(question), isTrue, reason: '$question 단계가 없다');
@@ -574,8 +592,9 @@ void _calendarTests() {
       source.contains('enum DayMark { done, missed, today, future, noRecord }'),
       isTrue,
     );
-    // 빠뜨린 날은 색으로 끝내지 않고 글로 다시 적는다.
-    expect(source.contains('_MissedCard'), isTrue);
+    // 빠뜨린 때는 색으로 끝내지 않고 글로 다시 적는다.
+    // 기록 탭과 같은 하루 상세가 "못 드셨어요"까지 말해 준다.
+    expect(source.contains('DayDoseDetail'), isTrue);
   });
 
   test('로그아웃 시트는 안전한 쪽이 주 버튼이다 (35)', () {
@@ -604,7 +623,7 @@ void _sensorTests() {
     await tester.pumpWidget(wrap(MeasureScreen(sensor: sensor)));
 
     expect(sensor.status, HeartSensorStatus.idle);
-    expect(find.text('폴라 베리티 센스를 찾고 있어요'), findsOneWidget);
+    expect(find.text('폴라 센서를 찾고 있어요'), findsOneWidget);
   });
 
   testWidgets('센서가 아직 값을 못 줘도 화면은 그려진다 (27)', (tester) async {
@@ -753,10 +772,9 @@ class _SeniorTestMedicationController extends MedicationController {
   }
 }
 
-/// A장 — 뒤로가기는 화살표 하나지만 버튼처럼 보인다.
+/// A장 — 뒤로가기는 화살표 하나다.
 ///
-/// 글씨는 뺐다. 대신 채움 + 2px 테두리의 56×56 판은 남긴다 —
-/// 테두리 없는 작은 `‹`는 어르신이 버튼으로 인식하지 못한다.
+/// 글씨는 뺐다. 칸은 그리지 않되 누르는 자리는 56×56으로 남긴다.
 void _backButtonTests() {
   Widget wrap(Widget child, {double textScale = 1.0}) => ProviderScope(
     child: MaterialApp(
@@ -777,7 +795,7 @@ void _backButtonTests() {
       ),
     );
     expect(find.byType(SeniorBackButton), findsOneWidget);
-    expect(find.byIcon(TablerIcons.arrow_left), findsOneWidget);
+    expect(find.byIcon(TablerIcons.chevron_left), findsOneWidget);
     expect(find.text('뒤로'), findsNothing);
     expect(find.text('약 함께먹기 주의'), findsOneWidget);
   });
@@ -800,7 +818,7 @@ void _backButtonTests() {
     await tester.pumpWidget(
       wrap(const Scaffold(body: SeniorBackHeader(title: '오늘'))),
     );
-    expect(find.byIcon(TablerIcons.arrow_left), findsNothing);
+    expect(find.byIcon(TablerIcons.chevron_left), findsNothing);
   });
 
   testWidgets('제목이 길고 글자가 2배여도 버튼이 찌그러지지 않는다', (tester) async {
@@ -861,12 +879,10 @@ void _homeTimelineTests() {
     );
     await tester.pump();
 
-    // "지금" 행만 3px 파란 테두리를 갖는다. 모두 같으면 개편 효과가 없다.
-    final current = tester
-        .widgetList<TimelineRow>(find.byType(TimelineRow))
-        .where((row) => row.current)
-        .length;
-    expect(current, 1);
+    // 할 일은 하나다. "먹었어요"가 두 개면 무엇을 눌러야 할지 고르게 된다.
+    expect(find.text('먹었어요'), findsOneWidget);
+    // 시간 축 막대는 두지 않는다 — 카드 한 장으로 말한다.
+    expect(find.byType(TimelineRow), findsNothing);
   });
 
   testWidgets('점 3개 진행 표시가 사라졌다', (tester) async {
@@ -884,7 +900,7 @@ void _homeTimelineTests() {
     expect(find.textContaining('번 드셨어요'), findsNothing);
   });
 
-  testWidgets('바로가기는 기본으로 접혀 있다', (tester) async {
+  testWidgets('바로가기는 접지 않고 늘 보인다', (tester) async {
     await tester.pumpWidget(
       home(
         doses: const [
@@ -897,12 +913,9 @@ void _homeTimelineTests() {
     );
     await tester.pump();
 
-    expect(find.textContaining('다른 기능 보기'), findsOneWidget);
-    expect(find.text('내 약 설명'), findsNothing);
-
-    await tester.tap(find.textContaining('다른 기능 보기'));
-    await tester.pump();
-    expect(find.textContaining('다른 기능 접기'), findsOneWidget);
+    // 한 번 더 눌러야 나오는 기능은 없는 것과 같다.
+    expect(find.textContaining('다른 기능 보기'), findsNothing);
+    expect(find.textContaining('다른 기능 접기'), findsNothing);
   });
 
   testWidgets('심박수를 안 잰 시간대에는 행이 없다', (tester) async {
@@ -919,7 +932,8 @@ void _homeTimelineTests() {
     );
     await tester.pump();
     // 빈 카드를 두면 재야 할 것을 안 잰 것처럼 보인다.
-    expect(find.textContaining('심박수'), findsNothing);
+    // 아래 바로가기의 "심박수" 타일은 늘 있는 것이라 시간 축의 행만 본다.
+    expect(find.text('아침 심박수'), findsNothing);
   });
 
   testWidgets('잰 시간대에는 전·후가 함께 보인다', (tester) async {
@@ -969,7 +983,7 @@ void _homeTimelineTests() {
     expect(same.phrase, '평소와 비슷');
   });
 
-  testWidgets('지난 복약 행을 누르면 무슨 약이었는지 나온다', (tester) async {
+  testWidgets('이미 드신 약은 "오늘 다른 약"에 이름으로 남는다', (tester) async {
     await tester.pumpWidget(
       home(
         doses: const [
@@ -990,14 +1004,13 @@ void _homeTimelineTests() {
     );
     await tester.pump();
 
-    // 접힌 행 자체는 개수만 말한다. ("오늘 다른 약" 블록에 한 번 더 나온다)
-    final before = tester.widgetList(find.text('메트포르민')).length;
-    await tester.tap(find.textContaining('눌러서 약 보기').first);
-    await tester.pump();
-    expect(tester.widgetList(find.text('메트포르민')).length, before + 1);
+    // 지난 복약을 행으로 쌓지 않고, 지금 카드 안에서 한 번만 말한다.
+    expect(find.text('오늘 다른 약'), findsOneWidget);
+    expect(find.text('메트포르민'), findsOneWidget);
+    expect(find.text('아스피린'), findsOneWidget);
   });
 
-  testWidgets('앞으로 올 복약 행도 눌러서 펼친다', (tester) async {
+  testWidgets('아직 오지 않은 약은 따로 늘어놓지 않는다', (tester) async {
     await tester.pumpWidget(
       home(
         doses: const [
@@ -1014,10 +1027,9 @@ void _homeTimelineTests() {
     );
     await tester.pump();
 
+    // 지금 드실 것은 아침이다. 저녁 약까지 같이 보여 주면 할 일이 둘로 보인다.
+    expect(find.text('아침정'), findsOneWidget);
     expect(find.text('저녁정'), findsNothing);
-    await tester.tap(find.text('눌러서 약 보기'));
-    await tester.pump();
-    expect(find.text('저녁정'), findsOneWidget);
   });
 
   test('접고 펴는 버튼에 화살표 장식을 붙이지 않는다', () {
@@ -1099,13 +1111,13 @@ void _rightAlignTests() {
     expect(tester.takeException(), isNull);
   });
 
-  test('달력 화면에 돌아가기 버튼을 따로 두지 않는다', () {
-    // 헤더의 뒤로 버튼과 같은 일을 하는 버튼이다. 둘이면 어느 쪽이
-    // 어디로 가는지 다시 읽어야 한다.
+  test('달력 맨 아래에 기록으로 돌아가는 길이 있다', () {
+    // 달력은 한 화면을 넘는다. 아래까지 내려간 자리에서 위쪽 뒤로 버튼까지
+    // 다시 올라가게 두지 않는다 (프로토타입 22번).
     final source = File(
       'lib/features/dashboard/presentation/screens/month_calendar_screen.dart',
     ).readAsStringSync();
-    expect(source.contains('복약 기록으로 돌아가기'), isFalse);
+    expect(source.contains('복약 기록으로 돌아가기'), isTrue);
   });
 }
 
@@ -1135,14 +1147,69 @@ void _recordTimelineTests() {
     expect(find.text('오늘 화면으로 돌아가기'), findsOneWidget);
   });
 
-  test('날짜 카드는 놓친 날만 붉게 말한다', () {
+  test('기록 탭은 달성률·주간칸·달력만 둔다', () {
     final source = File(
       'lib/features/dashboard/presentation/screens/medication_record_screen.dart',
     ).readAsStringSync();
-    // 화면당 위험색은 하나다.
-    expect(source.contains('data.missed ? AppColors.danger'), isTrue);
-    // 오늘 기록을 시각별로 늘어놓던 카드는 타임라인이 대신한다.
+    // 날짜를 하나씩 카드로 늘어놓으면 화면이 길어지고, 같은 내용을
+    // 달력에서 또 본다. 날짜별로 보는 일은 달력 화면이 맡는다.
+    expect(source.contains('class _DayCard'), isFalse);
     expect(source.contains('class _TodayCard'), isFalse);
+    // 남는 것: 한 달 달성률, 이번 주 요일칸, 달력으로 가는 길.
+    expect(source.contains('class _MonthCard'), isTrue);
+    expect(source.contains('class _WeekCard'), isTrue);
+    expect(source.contains('MonthCalendarScreen('), isTrue);
+  });
+
+  testWidgets('달력에서 날짜를 누르면 그날 결과가 아래에 나온다', (tester) async {
+    await tester.pumpWidget(
+      ProviderScope(
+        child: MaterialApp(
+          theme: AppTheme.build(),
+          home: MonthCalendarScreen(
+            year: 2026,
+            month: 3,
+            leadingBlanks: 0,
+            days: const [
+              CalendarDay(
+                1,
+                DayMark.done,
+                slots: [
+                  CalendarSlot(slot: '아침', taken: true),
+                  CalendarSlot(slot: '저녁', taken: true),
+                ],
+              ),
+              CalendarDay(
+                2,
+                DayMark.missed,
+                slots: [
+                  CalendarSlot(slot: '아침', taken: true),
+                  CalendarSlot(slot: '저녁', taken: false),
+                ],
+              ),
+            ],
+            missed: const [],
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    // 처음에는 오늘을 보여준다.
+    expect(find.textContaining('날짜를 누르면'), findsOneWidget);
+
+    await tester.tap(find.text('2'));
+    await tester.pump();
+
+    expect(find.text('3월 2일'), findsOneWidget);
+    // 지난 날이므로 아직 오지 않은 때가 아니라 빠뜨린 것으로 읽는다.
+    expect(find.text('드셨어요'), findsOneWidget);
+    expect(find.text('못 드셨어요'), findsOneWidget);
+
+    await tester.tap(find.text('1'));
+    await tester.pump();
+    expect(find.text('3월 1일'), findsOneWidget);
+    expect(find.text('드셨어요'), findsNWidgets(2));
   });
 }
 
@@ -1161,13 +1228,17 @@ void _medicinesByTimeTests() {
     expect(slotBadgeFor(const ['알 수 없음']), isNull);
   });
 
-  test('목록은 시간대를 앞세워 안내한다', () {
+  test('목록은 약 이름 하나만 내놓는다', () {
+    // 한 줄에 배지·주성분·용량까지 얹으면 고를 것이 네 개로 보인다.
+    // 자세한 것은 눌러서 들어간 약 설명이 맡는다 (프로토타입 23번).
     final source = File(
       'lib/features/medicines/presentation/screens/my_medicines_screen.dart',
     ).readAsStringSync();
-    expect(source.contains('언제 드시는 약인지로 묶었어요'), isTrue);
+    expect(source.contains('약을 누르면 설명이 나와요'), isTrue);
     // 홈과 같은 사진 자리를 쓴다. 다른 모양이면 다른 약으로 읽힌다.
-    expect(source.contains('PillPhoto(size: 60)'), isTrue);
+    expect(source.contains('PillPhoto(size: 56)'), isTrue);
+    // 지금 안 드시는 약은 줄 하나로 접어 둔다.
+    expect(source.contains('이전에 등록한 약'), isTrue);
   });
 }
 
@@ -1239,7 +1310,10 @@ void _colorTokenTests() {
     final offenders = <String>[];
     for (final file in Directory('lib').listSync(recursive: true)) {
       if (file is! File || !file.path.endsWith('.dart')) continue;
-      if (file.path.endsWith('core/constants/app_colors.dart')) continue;
+      // 윈도우는 경로를 역슬래시로 준다. 맞춰 두지 않으면 색 토큰을
+      // 정의한 파일 자신이 위반으로 잡힌다.
+      final path = file.path.replaceAll(r'\', '/');
+      if (path.endsWith('core/constants/app_colors.dart')) continue;
       final text = file.readAsStringSync();
       for (final match in RegExp(
         r'Color\(0x[0-9A-Fa-f]{8}\)',

@@ -20,7 +20,15 @@ class WeekDateStrip extends StatelessWidget {
     this.onSelect,
   });
 
-  static const List<String> _weekdayLabels = ['월', '화', '수', '목', '금', '토', '일'];
+  static const List<String> _weekdayLabels = [
+    '월',
+    '화',
+    '수',
+    '목',
+    '금',
+    '토',
+    '일',
+  ];
 
   @override
   Widget build(BuildContext context) {
@@ -67,7 +75,8 @@ class _DayCell extends StatelessWidget {
     return Semantics(
       button: onTap != null,
       selected: isToday,
-      label: '${date.month}월 ${date.day}일 $weekdayLabel요일${isToday ? ', 오늘' : ''}',
+      label:
+          '${date.month}월 ${date.day}일 $weekdayLabel요일${isToday ? ', 오늘' : ''}',
       child: InkResponse(
         onTap: onTap == null ? null : () => onTap!(date),
         radius: 34,
@@ -87,10 +96,9 @@ class _DayCell extends StatelessWidget {
                   ),
                   child: Text(
                     weekdayLabel,
-                    style: AppText.tab(active: true).copyWith(
-                      fontSize: 14,
-                      color: Colors.white,
-                    ),
+                    style: AppText.tab(
+                      active: true,
+                    ).copyWith(fontSize: 14, color: Colors.white),
                   ),
                 )
               else
@@ -120,7 +128,7 @@ class _DayCell extends StatelessWidget {
                   style: TextStyle(
                     fontSize: 19,
                     height: 1,
-                    fontWeight: isToday ? FontWeight.w900 : FontWeight.w700,
+                    fontWeight: isToday ? FontWeight.w700 : FontWeight.w700,
                     color: isToday ? Colors.white : AppColors.inkGray,
                     fontFamily: AppText.fontFamily,
                     fontFamilyFallback: AppText.fontFallback,

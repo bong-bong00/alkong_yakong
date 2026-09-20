@@ -1,5 +1,6 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
-import 'package:flutter_tabler_icons/flutter_tabler_icons.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -19,15 +20,7 @@ class ManualMedicineScreen extends ConsumerStatefulWidget {
   final VoidCallback? onBack;
   final VoidCallback? onSaved;
 
-  /// 사진으로 넣는 쪽으로 갈아타기. 손으로 적다 막히면 여기로 나간다.
-  final VoidCallback? onUseCamera;
-
-  const ManualMedicineScreen({
-    super.key,
-    this.onBack,
-    this.onSaved,
-    this.onUseCamera,
-  });
+  const ManualMedicineScreen({super.key, this.onBack, this.onSaved});
 
   @override
   ConsumerState<ManualMedicineScreen> createState() =>
@@ -49,8 +42,12 @@ class _ManualMedicineScreenState extends ConsumerState<ManualMedicineScreen> {
   bool _searching = false;
   bool _saving = false;
 
+  /// 글자를 멈추면 알아서 찾는다. 버튼을 하나 더 누르게 하지 않는다.
+  Timer? _debounce;
+
   @override
   void dispose() {
+    _debounce?.cancel();
     _query.dispose();
     _amount.dispose();
     super.dispose();
@@ -60,10 +57,23 @@ class _ManualMedicineScreenState extends ConsumerState<ManualMedicineScreen> {
   void _showError(String message) =>
       showSeniorSnackbar(context, message, error: true);
 
-  Future<void> _search() async {
+  void _searchLater() {
+    _debounce?.cancel();
+    if (_query.text.trim().length < 2) {
+      setState(() => _hits = const []);
+      return;
+    }
+    _debounce = Timer(
+      const Duration(milliseconds: 500),
+      () => _search(quiet: true),
+    );
+  }
+
+  Future<void> _search({bool quiet = false}) async {
+    _debounce?.cancel();
     final q = _query.text.trim();
     if (q.length < 2) {
-      _showError('약 이름을 두 글자 이상 적어 주세요.');
+      if (!quiet) _showError('약 이름을 두 글자 이상 적어 주세요.');
       return;
     }
     ScaffoldMessenger.of(context).hideCurrentSnackBar();
@@ -87,13 +97,13 @@ class _ManualMedicineScreenState extends ConsumerState<ManualMedicineScreen> {
         _hits = hits;
         _searching = false;
       });
-      if (hits.isEmpty) {
+      if (hits.isEmpty && !quiet) {
         _showError('공식 약 이름을 찾지 못했어요. 처방전 사진으로 등록해 주세요.');
       }
     } catch (error) {
       if (!mounted) return;
       setState(() => _searching = false);
-      _showError('약 이름을 찾지 못했어요. 잠시 후 다시 시도해 주세요.');
+      if (!quiet) _showError('약 이름을 찾지 못했어요. 잠시 후 다시 시도해 주세요.');
     }
   }
 
@@ -155,10 +165,7 @@ class _ManualMedicineScreenState extends ConsumerState<ManualMedicineScreen> {
         onSaved();
         return;
       }
-      context.push(
-        '/schedule-days',
-        extra: MvpSession.latestPrescriptionId,
-      );
+      context.push('/schedule-days', extra: MvpSession.latestPrescriptionId);
     } catch (_) {
       if (!mounted) return;
       setState(() => _saving = false);
@@ -211,131 +218,152 @@ class _ManualMedicineScreenState extends ConsumerState<ManualMedicineScreen> {
                   ),
                 ),
                 const SizedBox(height: 16),
-                TextField(
-                  controller: _query,
-                  style: AppText.body(size: 20),
-                  textInputAction: TextInputAction.search,
-                  onSubmitted: (_) => _search(),
-                  decoration: const InputDecoration(
-                    labelText: '약 이름',
-                    hintText: '예: 부루펜',
-                    border: OutlineInputBorder(),
+                SeniorCard(
+                  padding: const EdgeInsets.all(20),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      SeniorField(
+                        label: '약 이름',
+                        controller: _query,
+                        hint: '예: 메트포르민',
+                        onChanged: (_) => _searchLater(),
+                      ),
+                      if (_searching) ...[
+                        const SizedBox(height: 12),
+                        Text(
+                          '약 이름을 찾는 중이에요…',
+                          style: AppText.caption(size: 16),
+                        ),
+                      ],
+                      if (_hits.isNotEmpty) ...[
+                        const SizedBox(height: 14),
+                        Wrap(
+                          spacing: 10,
+                          runSpacing: 10,
+                          children: [
+                            for (final hit in _hits)
+                              _NameChip(
+                                label:
+                                    hit['display_name']?.toString() ??
+                                    hit['product_name']?.toString() ??
+                                    '약',
+                                selected:
+                                    _picked?['medicine_code'] ==
+                                    hit['medicine_code'],
+                                onTap: () => setState(() => _picked = hit),
+                              ),
+                          ],
+                        ),
+                      ],
+                    ],
                   ),
                 ),
                 const SizedBox(height: 12),
-                SeniorButton(
-                  label: _searching ? '찾는 중…' : '약 이름 찾기',
-                  kind: SeniorButtonKind.secondary,
-                  onPressed: _searching ? () {} : _search,
+                SeniorCard(
+                  padding: const EdgeInsets.all(20),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      SeniorField(
+                        label: '한 번에 먹는 양',
+                        controller: _amount,
+                        hint: '예: 1알 또는 0.5정',
+                      ),
+                      const SizedBox(height: 18),
+                      Text('하루 복용 횟수', style: AppText.label(size: 18)),
+                      const SizedBox(height: 10),
+                      Row(
+                        children: [
+                          for (
+                            int i = 0;
+                            i < _frequencyOptions.length;
+                            i++
+                          ) ...[
+                            if (i > 0) const SizedBox(width: 10),
+                            Expanded(
+                              child: _OptionChip(
+                                label: '${_frequencyOptions[i]}번',
+                                selected: _frequency == _frequencyOptions[i],
+                                onTap: () => setState(
+                                  () => _frequency = _frequencyOptions[i],
+                                ),
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                      const SizedBox(height: 18),
+                      Text('며칠분', style: AppText.label(size: 18)),
+                      const SizedBox(height: 10),
+                      Row(
+                        children: [
+                          for (int i = 0; i < _dayOptions.length; i++) ...[
+                            if (i > 0) const SizedBox(width: 10),
+                            Expanded(
+                              child: _OptionChip(
+                                label: '${_dayOptions[i]}일',
+                                selected: _days == _dayOptions[i],
+                                onTap: () =>
+                                    setState(() => _days = _dayOptions[i]),
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ],
+                  ),
                 ),
-                for (final hit in _hits) ...[
-                  const SizedBox(height: 10),
-                  SeniorCard(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 18,
-                      vertical: 14,
-                    ),
-                    onTap: () => setState(() => _picked = hit),
-                    borderColor:
-                        _picked?['medicine_code'] == hit['medicine_code']
-                        ? AppColors.point
-                        : null,
-                    child: Text(
-                      hit['display_name']?.toString() ??
-                          hit['product_name']?.toString() ??
-                          '약',
-                      style: AppText.cardTitle(),
-                    ),
-                  ),
-                ],
-                if (_picked != null) ...[
-                  const SizedBox(height: 18),
-                  TextField(
-                    controller: _amount,
-                    style: AppText.body(size: 20),
-                    decoration: const InputDecoration(
-                      labelText: '한 번에 먹는 양',
-                      hintText: '예: 1알 또는 0.5정',
-                      border: OutlineInputBorder(),
-                    ),
-                  ),
-                  const SizedBox(height: 14),
-                  DropdownButtonFormField<int>(
-                    initialValue: _frequency,
-                    style: AppText.body(size: 20, color: AppColors.textPrimary),
-                    decoration: const InputDecoration(
-                      labelText: '하루 복용 횟수',
-                      border: OutlineInputBorder(),
-                    ),
-                    items: const [
-                      DropdownMenuItem(value: 1, child: Text('하루 1번')),
-                      DropdownMenuItem(value: 2, child: Text('하루 2번')),
-                      DropdownMenuItem(value: 3, child: Text('하루 3번')),
-                    ],
-                    onChanged: (value) {
-                      setState(() => _frequency = value);
-                    },
-                  ),
-                  const SizedBox(height: 14),
-                  DropdownButtonFormField<int>(
-                    initialValue: _days,
-                    style: AppText.body(size: 20, color: AppColors.textPrimary),
-                    decoration: const InputDecoration(
-                      labelText: '며칠분',
-                      border: OutlineInputBorder(),
-                    ),
-                    items: const [
-                      DropdownMenuItem(value: 3, child: Text('3일')),
-                      DropdownMenuItem(value: 7, child: Text('7일')),
-                      DropdownMenuItem(value: 14, child: Text('14일')),
-                      DropdownMenuItem(value: 30, child: Text('30일')),
-                    ],
-                    onChanged: (value) {
-                      setState(() => _days = value);
-                    },
-                  ),
-                  const SizedBox(height: 18),
-                  Text(
-                    '드시는 때 (여러 개 고를 수 있어요)',
-                    style: AppText.cardTitle(size: 20),
-                  ),
-                  const SizedBox(height: 12),
-                  IntrinsicHeight(
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        for (int i = 0; i < _slotLabels.length; i++) ...[
-                          if (i > 0) const SizedBox(width: 10),
+                const SizedBox(height: 12),
+                SeniorCard(
+                  padding: const EdgeInsets.all(20),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.baseline,
+                        textBaseline: TextBaseline.alphabetic,
+                        children: [
+                          Text('드시는 때', style: AppText.cardTitle(size: 20)),
+                          const SizedBox(width: 6),
                           Expanded(
-                            child: _SlotChip(
-                              label: _slotLabels[i],
-                              selected: _slots.contains(_slotLabels[i]),
-                              onTap: () => setState(() {
-                                if (!_slots.remove(_slotLabels[i])) {
-                                  _slots.add(_slotLabels[i]);
-                                }
-                              }),
+                            child: Text(
+                              '(여러 개 고를 수 있어요)',
+                              style: AppText.caption(size: 16),
                             ),
                           ),
                         ],
-                      ],
-                    ),
+                      ),
+                      const SizedBox(height: 12),
+                      IntrinsicHeight(
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            for (int i = 0; i < _slotLabels.length; i++) ...[
+                              if (i > 0) const SizedBox(width: 10),
+                              Expanded(
+                                child: _SlotChip(
+                                  label: _slotLabels[i],
+                                  selected: _slots.contains(_slotLabels[i]),
+                                  onTap: () => setState(() {
+                                    if (!_slots.remove(_slotLabels[i])) {
+                                      _slots.add(_slotLabels[i]);
+                                    }
+                                  }),
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                    ],
                   ),
-                  const SizedBox(height: 16),
-                  SeniorButton(
-                    label: _saving ? '등록 중…' : '이 약 등록하기',
-                    onPressed: _saving ? () {} : _save,
-                  ),
-                  const SizedBox(height: 12),
-                  SeniorButton(
-                    label: '사진으로 넣기',
-                    icon: TablerIcons.camera,
-                    kind: SeniorButtonKind.secondary,
-                    minHeight: 62,
-                    fontSize: 20,
-                    onPressed: widget.onUseCamera,
-                  ),
-                ],
+                ),
+                const SizedBox(height: 18),
+                SeniorButton(
+                  label: _saving ? '등록 중…' : '이 약 등록하기',
+                  onPressed: _saving ? () {} : _save,
+                ),
               ],
             ),
           ),
@@ -345,9 +373,99 @@ class _ManualMedicineScreenState extends ConsumerState<ManualMedicineScreen> {
   }
 }
 
-
 /// 드시는 때 후보. 한 번에 여러 개를 고를 수 있다.
 const List<String> _slotLabels = ['아침', '점심', '저녁'];
+
+/// 하루 몇 번, 며칠분. 목록을 펼치게 하지 않고 눌러서 고른다.
+const List<int> _frequencyOptions = [1, 2, 3];
+const List<int> _dayOptions = [3, 7, 14, 30];
+
+/// 찾은 약 이름 한 알. 고르면 파란 테두리가 생긴다.
+class _NameChip extends StatelessWidget {
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const _NameChip({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      button: true,
+      selected: selected,
+      child: GestureDetector(
+        onTap: onTap,
+        child: Container(
+          constraints: const BoxConstraints(minHeight: 56),
+          alignment: Alignment.center,
+          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+          decoration: BoxDecoration(
+            color: selected ? AppColors.pointTint : AppColors.surface,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: selected ? AppColors.point : AppColors.strongLine,
+              width: 2,
+            ),
+          ),
+          child: Text(
+            label,
+            style: AppText.label(
+              size: 18,
+              color: selected ? AppColors.point : AppColors.textPrimary,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// 숫자 하나를 고르는 칸. 고른 것만 파란 글씨·테두리다.
+class _OptionChip extends StatelessWidget {
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const _OptionChip({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      button: true,
+      selected: selected,
+      child: GestureDetector(
+        onTap: onTap,
+        child: Container(
+          constraints: const BoxConstraints(minHeight: 62),
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: selected ? AppColors.pointTint : AppColors.surface,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: selected ? AppColors.point : AppColors.strongLine,
+              width: 2,
+            ),
+          ),
+          child: Text(
+            label,
+            style: AppText.cardTitle(
+              size: 19,
+              color: selected ? AppColors.point : AppColors.textPrimary,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
 
 /// 3분할 칩. 고르면 파랑으로 채워진다.
 class _SlotChip extends StatelessWidget {
