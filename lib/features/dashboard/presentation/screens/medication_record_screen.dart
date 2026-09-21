@@ -4,11 +4,13 @@ import 'package:flutter_tabler_icons/flutter_tabler_icons.dart';
 
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
+import '../../../../core/widgets/senior_button.dart';
 import '../../../../core/widgets/senior_card.dart';
 import '../../../../core/widgets/senior_header.dart';
 import '../../../medication/application/medication_controller.dart';
 import '../../../dur_analysis/presentation/screens/dur_analysis_screen.dart';
 import '../../application/medication_history_provider.dart';
+import '../widgets/day_dose_detail.dart';
 import '../../../medication/domain/medication_models.dart';
 import 'month_calendar_screen.dart';
 
@@ -29,9 +31,13 @@ class MedicationRecordScreen extends ConsumerWidget {
   /// 보호자가 볼 어르신 id. null이면 로그인한 본인의 기록이다.
   final String? patientUserId;
 
+  /// 오늘 화면으로 돌아가는 길. 탭 루트일 때만 쓴다.
+  final VoidCallback? onBackToToday;
+
   const MedicationRecordScreen({
     super.key,
     this.patientName,
+    this.onBackToToday,
     this.showBack = false,
     this.patientUserId,
   });
@@ -66,6 +72,18 @@ class MedicationRecordScreen extends ConsumerWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
+                // 기록에서 홈으로 돌아가는 길이 탭바뿐이면 길을 잃는다.
+                if (patientId == null && onBackToToday != null) ...[
+                  SeniorButton(
+                    label: '오늘 화면으로 돌아가기',
+                    icon: TablerIcons.calendar_event,
+                    minHeight: 72,
+                    fontSize: 23,
+                    elevated: true,
+                    onPressed: onBackToToday,
+                  ),
+                  const SizedBox(height: 12),
+                ],
                 _MonthCard(rate: _monthRate(today, history)),
                 const SizedBox(height: 12),
                 _WeekCard(
@@ -78,33 +96,40 @@ class MedicationRecordScreen extends ConsumerWidget {
                   ),
                 ),
                 const SizedBox(height: 12),
-                _TodayCard(rows: _todayRows(today)),
+                DayDoseDetail(
+                  dayLabel:
+                      '${DateTime.now().month}월 ${DateTime.now().day}일 오늘',
+                  doses: today.doses,
+                  footnote: '날짜를 누르면 그날 결과가 여기에 나와요.',
+                ),
                 // 함께먹기 주의 화면은 로그인한 본인 약만 분석한다.
                 if (patientId == null) ...[
-                const SizedBox(height: 12),
-                SeniorCard(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 22,
-                    vertical: 4,
-                  ),
-                  child: SeniorListRow(
-                    label: '약 함께먹기 주의',
-                    icon: TablerIcons.alert_triangle,
-                    iconColor: interactionCount > 0
-                        ? AppColors.danger
-                        : AppColors.textTertiary,
-                    value: interactionCount > 0 ? '$interactionCount건' : '없어요',
-                    valueColor: interactionCount > 0
-                        ? AppColors.danger
-                        : AppColors.textTertiary,
-                    trailing: const SeniorChevron(),
-                    onTap: () => Navigator.of(context).push(
-                      MaterialPageRoute<void>(
-                        builder: (_) => const DurAnalysisScreen(),
+                  const SizedBox(height: 12),
+                  SeniorCard(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 22,
+                      vertical: 4,
+                    ),
+                    child: SeniorListRow(
+                      label: '약 함께먹기 주의',
+                      icon: TablerIcons.alert_triangle,
+                      iconColor: interactionCount > 0
+                          ? AppColors.danger
+                          : AppColors.textTertiary,
+                      value: interactionCount > 0
+                          ? '$interactionCount건'
+                          : '없어요',
+                      valueColor: interactionCount > 0
+                          ? AppColors.danger
+                          : AppColors.textTertiary,
+                      trailing: const SeniorChevron(),
+                      onTap: () => Navigator.of(context).push(
+                        MaterialPageRoute<void>(
+                          builder: (_) => const DurAnalysisScreen(),
+                        ),
                       ),
                     ),
                   ),
-                ),
                 ],
               ],
             ),
@@ -175,25 +200,6 @@ class MedicationRecordScreen extends ConsumerWidget {
         }(),
     ];
   }
-
-  List<_RecordRow> _todayRows(TodayMedication today) {
-    return [
-      for (final dose in today.doses)
-        _RecordRow(
-          time: dose.slot.spokenTime,
-          medicines: [
-            for (final med in dose.medicines)
-              _RecordMedicine(
-                name: med.displayName,
-                ingredientLabel: med.ingredientLabel,
-                spoken: med.cardSpoken,
-                amount: med.amount,
-              ),
-          ],
-          taken: dose.taken,
-        ),
-    ];
-  }
 }
 
 class _DayStatus {
@@ -217,31 +223,6 @@ class _DayStatus {
   /// 지난 날인데 약 일정이 없었던 날. 다 드신 날로도 빠뜨린 날로도 치지 않는다.
   bool get noRecord => !isFuture && !isToday && total == 0;
   bool get partial => total > 0 && taken < total;
-}
-
-class _RecordMedicine {
-  final String name;
-  final String? ingredientLabel;
-  final String? spoken;
-  final String amount;
-
-  const _RecordMedicine({
-    required this.name,
-    this.ingredientLabel,
-    this.spoken,
-    this.amount = '',
-  });
-}
-
-class _RecordRow {
-  final String time;
-  final List<_RecordMedicine> medicines;
-  final bool taken;
-  const _RecordRow({
-    required this.time,
-    required this.medicines,
-    required this.taken,
-  });
 }
 
 /// 카드 1 — 이번 달.
@@ -322,7 +303,9 @@ class _WeekCard extends StatelessWidget {
   String get _summary {
     final missed = days.where((d) => d.partial && !d.isToday).toList();
     if (missed.isEmpty) return '이번 주는 빠뜨린 약이 없어요.';
-    final names = missed.map((d) => '${_labels[d.date.weekday - 1]}요일').join(', ');
+    final names = missed
+        .map((d) => '${_labels[d.date.weekday - 1]}요일')
+        .join(', ');
     return '$names 약을 한 번 못 드셨어요.';
   }
 
@@ -375,10 +358,11 @@ class _WeekCard extends StatelessWidget {
           ),
           const SizedBox(height: 13),
           Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               for (int i = 0; i < days.length; i++)
-                _WeekDay(status: days[i], label: _labels[i]),
+                Expanded(
+                  child: _WeekDay(status: days[i], label: _labels[i]),
+                ),
             ],
           ),
           const SizedBox(height: 13),
@@ -432,21 +416,30 @@ class _WeekDay extends StatelessWidget {
     }
 
     return Semantics(
-      label: '${status.date.day}일 $label요일, '
-          '${status.future ? '아직 오지 않은 날' : status.noRecord ? '기록 없음' : '${status.total}번 중 ${status.taken}번'}',
+      label:
+          '${status.date.day}일 $label요일, '
+          '${status.future
+              ? '아직 오지 않은 날'
+              : status.noRecord
+              ? '기록 없음'
+              : '${status.total}번 중 ${status.taken}번'}',
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Container(
-            width: 38,
-            height: 38,
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-              color: background,
-              shape: BoxShape.circle,
-              border: border,
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 38, maxHeight: 38),
+            child: AspectRatio(
+              aspectRatio: 1,
+              child: Container(
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: background,
+                  shape: BoxShape.circle,
+                  border: border,
+                ),
+                child: FittedBox(fit: BoxFit.scaleDown, child: mark),
+              ),
             ),
-            child: mark,
           ),
           const SizedBox(height: 6),
           Text(
@@ -455,128 +448,6 @@ class _WeekDay extends StatelessWidget {
                 ? AppText.cardTitle(size: 16, color: AppColors.point)
                 : AppText.label(size: 16, color: AppColors.textTertiary),
           ),
-        ],
-      ),
-    );
-  }
-}
-
-/// 카드 3 — 오늘 기록.
-class _TodayCard extends StatelessWidget {
-  final List<_RecordRow> rows;
-  const _TodayCard({required this.rows});
-
-  @override
-  Widget build(BuildContext context) {
-    return SeniorCard(
-      padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 18),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          IconTitle(
-            icon: TablerIcons.list_check,
-            text: '오늘 기록',
-            style: AppText.cardTitle(),
-          ),
-          const SizedBox(height: 12),
-          for (int i = 0; i < rows.length; i++) ...[
-            if (i > 0) ...[
-              const SizedBox(height: 12),
-              const SeniorDivider(),
-              const SizedBox(height: 12),
-            ],
-            _TodayRow(row: rows[i]),
-          ],
-        ],
-      ),
-    );
-  }
-}
-
-class _TodayRow extends StatelessWidget {
-  final _RecordRow row;
-  const _TodayRow({required this.row});
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Row(
-          children: [
-            Expanded(
-              child: Text(
-                row.time,
-                style: AppText.cardTitle(size: 19),
-              ),
-            ),
-            Text(
-              row.taken ? '드셨어요' : '아직이에요',
-              style: AppText.cardTitle(
-                size: 17,
-                color: row.taken ? AppColors.point : AppColors.textTertiary,
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 8),
-        for (int i = 0; i < row.medicines.length; i++) ...[
-          if (i > 0) const SeniorDivider(),
-          _RecordMedicineLine(medicine: row.medicines[i]),
-        ],
-      ],
-    );
-  }
-}
-
-class _RecordMedicineLine extends StatelessWidget {
-  final _RecordMedicine medicine;
-
-  const _RecordMedicineLine({required this.medicine});
-
-  @override
-  Widget build(BuildContext context) {
-    final ingredient = medicine.ingredientLabel?.trim() ?? '';
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  medicine.name,
-                  style: AppText.cardTitle(size: 21),
-                ),
-                if (ingredient.isNotEmpty) ...[
-                  const SizedBox(height: 2),
-                  Text(
-                    '주성분: $ingredient',
-                    style: AppText.caption(
-                      size: 16.5,
-                      color: AppColors.textSecondary,
-                    ),
-                  ),
-                ],
-                if ((medicine.spoken ?? '').trim().isNotEmpty) ...[
-                  const SizedBox(height: 2),
-                  Text(
-                    medicine.spoken!,
-                    style: AppText.caption(size: 17),
-                  ),
-                ],
-              ],
-            ),
-          ),
-          if (medicine.amount.trim().isNotEmpty) ...[
-            const SizedBox(width: 10),
-            Text(
-              medicine.amount,
-              style: AppText.cardTitle(size: 20, color: AppColors.point),
-            ),
-          ],
         ],
       ),
     );
