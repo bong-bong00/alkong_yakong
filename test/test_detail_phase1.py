@@ -23,6 +23,7 @@ class DetailPhase1Test(unittest.TestCase):
         self.medicine = {'medicine_code': 'synthetic', 'product_name': '합성 제품',
                          'ingredient': '합성성분', 'manufacturer': '합성', 'usage': '1회 0.5 mL를 바른다.'}
         self.profile = {'status': 'READY', 'review_status': 'REVIEWED',
+                        'source_hash': detail.official_source_hash(self.medicine),
                         'ingredient_explanation': '합성성분은 정해진 작용을 돕는 성분이에요.',
                         'approved_uses': ['증상 가: 성인에 한하여 증상 가에 사용한다. 소아에는 사용하지 않는다.'],
                         'source_verified': True}
@@ -32,7 +33,7 @@ class DetailPhase1Test(unittest.TestCase):
         def execute(sql, params):
             self.assertTrue(sql.lstrip().upper().startswith('SELECT'))
             self.assertIn('normalized_key=?', sql)
-            row = {'explanation': self.profile['ingredient_explanation'],
+            row = {'ingredient_name': '합성성분', 'explanation': self.profile['ingredient_explanation'],
                    'use_help': '정해진 작용을 돕는', 'role_explanation': ''}
             return Mock(fetchone=lambda: row if params == ('합성성분',) else None)
         self.cursor.execute.side_effect = execute

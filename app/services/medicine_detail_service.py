@@ -32,9 +32,9 @@ _STRENGTH = re.compile(
     re.I,
 )
 _SPACE = re.compile(r"\s+")
-_HTML = re.compile(r"<[^>]+>")
+_HTML = re.compile(r"<\s*/?\s*[A-Za-z][^>]*>")
 _LEADING_MARK = re.compile(r"^(?:\d+[.)]|[가-하][.)]|[-•·※]+)\s*")
-PARSER_VERSION = "3.0"
+PARSER_VERSION = "4.0"
 _BOILERPLATE_PURPOSES = (
     "다음 질환에도 사용할 수 있다",
     "다음 질환에 사용할 수 있다",
@@ -143,11 +143,23 @@ def ensure_medicine_detail(cursor, medicine_code: str) -> dict[str, Any] | None:
     )
 
     try:
-        profile = _build_profile(cursor, medicine)
         existing = cursor.execute(
             "SELECT source_hash, content_version FROM medicine_detail_profiles WHERE medicine_code=?",
             (code,),
         ).fetchone()
+        # A reviewed card without a matching official snapshot has no proven
+        # connection to today's product. Never promote it merely by rebuilding.
+        source_hash = official_source_hash(medicine)
+        if not existing or existing["source_hash"] != source_hash:
+            cursor.execute(
+                "UPDATE ai_explanation_cards SET review_status='OUTDATED' "
+                "WHERE medicine_code=? AND review_status='REVIEWED'", (code,)
+            )
+            cursor.execute(
+                "UPDATE medicines SET explanation_review_status='UNREVIEWED' "
+                "WHERE medicine_code=?", (code,)
+            )
+        profile = _build_profile(cursor, medicine)
         if (
             existing
             and str(existing["source_hash"] or "")
@@ -317,17 +329,6 @@ def _build_profile(cursor, medicine: dict[str, Any]) -> dict[str, Any]:
     ).fetchone()
     card = dict(reviewed_card_row) if reviewed_card_row else None
 
-    if card and len(ingredients) == 1:
-        reviewed_text = str(card.get("ingredient_explanation") or "").strip()
-        if is_displayable_ingredient_explanation(reviewed_text):
-            _store_reviewed_ingredient(
-                cursor,
-                ingredients[0],
-                reviewed_text,
-                source=str(card.get("source") or "식약처 의약품 허가정보"),
-                generated_by=str(card.get("content_generated_by") or card.get("generated_by") or "manual"),
-            )
-
     ingredient_explanation = ""
     reviewed_by_key = find_reviewed_ingredient_explanations(cursor, ingredients)
     ingredient_provider_names: set[str] = set()
@@ -340,11 +341,15 @@ def _build_profile(cursor, medicine: dict[str, Any]) -> dict[str, Any]:
             ingredients,
             reviewed_by_key,
         )
+    if card and ingredients and is_displayable_ingredient_explanation(card.get("ingredient_explanation")):
+        # A product review bound to the current snapshot may supply product copy,
+        # but must never be copied into a global ingredient dictionary.
+        ingredient_explanation = clean_ingredient_explanation(card["ingredient_explanation"])
 
     quality_flags: list[str] = []
     if card:
         all_approved_uses = _deduplicate_items(_load_list(card.get("approved_uses")))
-        approved_uses = all_approved_uses[:3]
+        approved_uses = all_approved_uses if len(all_approved_uses) <= 3 else []
         approved_summary = str(card.get("approved_use_summary") or "").strip()
         approved_uses = _without_summary_duplicate(approved_uses, approved_summary)
     else:
@@ -376,9 +381,8 @@ def _build_profile(cursor, medicine: dict[str, Any]) -> dict[str, Any]:
         str(medicine.get(key) or "").strip()
         for key in ("efficacy", "usage", "precautions", "ingredient")
     )
-    fully_reviewed = bool(card) or (
-        bool(ingredients) and len(reviewed_by_key) == len(ingredients)
-    )
+    # Reviewed ingredient copy is not a review of the entire product/indications.
+    fully_reviewed = bool(card)
     if fully_reviewed:
         status = "READY"
     elif quality_flags:
@@ -386,16 +390,6 @@ def _build_profile(cursor, medicine: dict[str, Any]) -> dict[str, Any]:
     else:
         status = "OFFICIAL_ONLY" if has_official else "PENDING"
     review_status = "REVIEWED" if fully_reviewed else "UNREVIEWED"
-    source_material = {
-        "medicine_code": code,
-        "ingredient": medicine.get("ingredient"),
-        "efficacy": medicine.get("efficacy"),
-        "usage": medicine.get("usage"),
-        "precautions": medicine.get("precautions"),
-        "reviewed_card_version": card.get("content_version") if card else None,
-        "ingredient_keys": [item["key"] for item in ingredients],
-        "parser_version": PARSER_VERSION,
-    }
     return {
         "status": status,
         "ingredient_keys": [item["key"] for item in ingredients],
@@ -423,9 +417,7 @@ def _build_profile(cursor, medicine: dict[str, Any]) -> dict[str, Any]:
             or ("ingredient-provider" if ingredient_provider_names else "official-parser")
         ),
         "quality_flags": quality_flags,
-        "source_hash": hashlib.sha256(
-            json.dumps(source_material, ensure_ascii=False, sort_keys=True).encode("utf-8")
-        ).hexdigest(),
+        "source_hash": official_source_hash(medicine),
     }
 
 
@@ -433,15 +425,15 @@ def _hydrate_from_local_permission(cursor, medicine: dict[str, Any]) -> dict[str
     """Fill missing official fields from the local MFDS mirror only."""
     try:
         from app.services.mfds_drug_permission.db import (
-            find_permission_product,
+            find_permission_product_by_item_seq,
             product_to_medicine,
         )
 
-        row = find_permission_product(str(medicine.get("product_name") or ""))
+        row = find_permission_product_by_item_seq(str(medicine.get("medicine_code") or ""))
         official = product_to_medicine(row) if row else {}
     except Exception:
         official = {}
-    if not official:
+    if not official or str(official.get("medicine_code") or "") != str(medicine.get("medicine_code") or ""):
         return medicine
 
     merged = dict(medicine)
@@ -526,21 +518,9 @@ def _parse_official_purposes(value: Any) -> dict[str, list[str]]:
     if not cleaned:
         return {"representative": [], "all": [], "flags": ["missing_purpose"]}
 
-    for phrase in _BOILERPLATE_PURPOSES:
-        cleaned = re.sub(
-            rf"(?:^|\n|[.!?]\s*){re.escape(phrase)}\s*[.:：]?",
-            "\n",
-            cleaned,
-            flags=re.I,
-        )
-
-    chunks: list[str] = []
-    for block in re.split(r"\n+|[;；]", cleaned):
-        for item in _split_top_level_commas(block):
-            text = _clean_purpose_item(item)
-            if text:
-                chunks.append(text)
-    all_items = _deduplicate_items(chunks)
+    # Without a structured source, a heading/exception can qualify later lines.
+    # Keep the entire document together instead of splitting commas or clauses.
+    all_items = [cleaned]
     flags: list[str] = []
     if not all_items:
         flags.append("unparsed_purpose")
@@ -549,20 +529,9 @@ def _parse_official_purposes(value: Any) -> dict[str, list[str]]:
     if len(all_items) == 1 and len(all_items[0]) > 120:
         flags.append("unparsed_long_text")
 
-    representative: list[str] = []
-    joined = " ".join(all_items)
-    for pattern, sentence in _PURPOSE_GROUPS:
-        if pattern.search(joined) and sentence not in representative:
-            representative.append(sentence)
-        if len(representative) == 3:
-            break
-
-    if not representative:
-        representative = [
-            item
-            for item in all_items
-            if len(item) <= 80 and not _looks_like_heading(item)
-        ][:3]
+    # No keyword-generated indications or partial selection that could drop an
+    # age restriction/exception. Long official lists remain in the full list.
+    representative = all_items if len(all_items) <= 3 else []
     if not representative and all_items:
         flags.append("no_representative_purpose")
     return {
@@ -588,6 +557,9 @@ def _compose_reviewed_ingredient_explanation(
         len(ingredients) > 1
         and len(group_keys) == 1
         and len(group_texts) == 1
+        and all(str(row.get("role_group") or "").strip()
+                and clean_ingredient_explanation(row.get("group_explanation"))
+                for row in rows)
     ):
         grouped = next(iter(group_texts))
         if is_displayable_ingredient_explanation(grouped):
@@ -654,10 +626,10 @@ def _deduplicate_items(values: list[str]) -> list[str]:
     keys: list[str] = []
     for raw in values:
         value = str(raw or "").strip()
-        key = _purpose_key(value)
+        key = value
         if not key:
             continue
-        if any(key == old or (len(key) >= 12 and key in old) for old in keys):
+        if key in keys:
             continue
         keys.append(key)
         result.append(value)
@@ -665,22 +637,29 @@ def _deduplicate_items(values: list[str]) -> list[str]:
 
 
 def _without_summary_duplicate(values: list[str], summary: str) -> list[str]:
-    summary_key = _purpose_key(summary)
+    summary_key = summary.strip()
     if not summary_key:
         return values
     return [
         value
         for value in values
-        if _purpose_key(value) != summary_key
-        and not (
-            len(_purpose_key(value)) >= 12
-            and _purpose_key(value) in summary_key
-        )
+        if value.strip() != summary_key
     ]
 
 
 def _purpose_key(value: str) -> str:
     return re.sub(r"[^0-9A-Za-z가-힣]", "", str(value or "")).casefold()
+
+
+def official_source_hash(medicine: dict[str, Any]) -> str:
+    """Versioned exact official snapshot; no number/condition normalization."""
+    material = {key: str(medicine.get(key) or "").strip() for key in (
+        "medicine_code", "product_name", "manufacturer", "ingredient",
+        "efficacy", "usage", "precautions",
+    )}
+    return "official-v1:" + hashlib.sha256(
+        json.dumps(material, ensure_ascii=False, sort_keys=True).encode("utf-8")
+    ).hexdigest()
 
 
 def _complete_user_text(value: str) -> bool:

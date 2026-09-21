@@ -7,7 +7,10 @@ import '../../../../core/theme/app_typography.dart';
 import '../../../../core/widgets/senior_button.dart';
 import '../../../../core/widgets/senior_card.dart';
 import '../../../../core/widgets/senior_header.dart';
+import '../../../dashboard/presentation/screens/patient_home_screen.dart';
 import '../../../profile/application/current_user_controller.dart';
+import '../widgets/dose_flow_sheets.dart';
+import '../widgets/dose_guard_sheets.dart';
 import '../../application/medication_controller.dart';
 import '../../domain/medication_models.dart';
 
@@ -28,22 +31,15 @@ class DoseDoneScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final today = ref.watch(medicationProvider);
     final dose = today.doseOf(slot);
+    // 아직 남은 시간대가 있으면 그 약을 먼저 말한다. 방금 기록한 것은
+    // 아래 "오늘 복약" 줄의 체크로 이미 보인다.
+    final pending = today.nextDose;
 
     return Column(
       children: [
-        SeniorHeader(
-          child: Row(
-            children: [
-              Expanded(
-                child: Text('복약 기록', style: AppText.screenTitle(size: 24)),
-              ),
-              InitialAvatar(
-                name: ref.watch(currentUserNameProvider),
-                size: 52,
-                background: AppColors.bg,
-              ),
-            ],
-          ),
+        HomeTopBar(
+          userName: ref.watch(currentUserNameProvider),
+          date: DateTime.now(),
         ),
         Expanded(
           child: SingleChildScrollView(
@@ -51,7 +47,12 @@ class DoseDoneScreen extends ConsumerWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                if (dose.taken)
+                if (pending != null)
+                  _PendingCard(
+                    slot: pending.slot,
+                    onTake: () => _takeDose(context, ref, pending.slot),
+                  )
+                else if (dose.taken)
                   _SuccessCard(
                     slot: slot,
                     allTaken: today.allTaken,
@@ -61,9 +62,25 @@ class DoseDoneScreen extends ConsumerWidget {
                     },
                   )
                 else
-                  _PendingCard(slot: slot),
+                  _PendingCard(
+                    slot: slot,
+                    onTake: () => _takeDose(context, ref, slot),
+                  ),
                 const SizedBox(height: 12),
                 _TodayStrip(today: today),
+                if (pending != null && dose.taken) ...[
+                  const SizedBox(height: 12),
+                  SeniorButton(
+                    label: '잘못 눌렀어요 · 되돌리기',
+                    kind: SeniorButtonKind.neutral,
+                    minHeight: 58,
+                    fontSize: 19,
+                    onPressed: () {
+                      ref.read(medicationProvider.notifier).undo(slot);
+                      onUndone?.call();
+                    },
+                  ),
+                ],
                 const SizedBox(height: 12),
                 _GuardianCard(
                   guardianTitle: today.guardianTitle,
@@ -76,6 +93,23 @@ class DoseDoneScreen extends ConsumerWidget {
         ),
       ],
     );
+  }
+}
+
+Future<void> _takeDose(
+  BuildContext context,
+  WidgetRef ref,
+  DoseSlot slot,
+) async {
+  final controller = ref.read(medicationProvider.notifier);
+  // 홈과 같은 순서다. 센서를 차셨는지 먼저 묻고 기록한다.
+  final choice = await showWearSensorSheet(context);
+  if (!context.mounted || choice == WearChoice.cancel) return;
+  final outcome = await controller.take(slot);
+  if (!context.mounted) return;
+  if (outcome == DoseCheckOutcome.tooLate) {
+    final proceed = await showLateDoseSheet(context: context, slot: slot);
+    if (proceed && context.mounted) await controller.takeAnyway(slot);
   }
 }
 
@@ -135,7 +169,9 @@ class _SuccessCard extends StatelessWidget {
 
 class _PendingCard extends StatelessWidget {
   final DoseSlot slot;
-  const _PendingCard({required this.slot});
+  final VoidCallback onTake;
+
+  const _PendingCard({required this.slot, required this.onTake});
 
   @override
   Widget build(BuildContext context) {
@@ -160,10 +196,15 @@ class _PendingCard extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 14),
+          Text('${slot.label} 약이 남아 있어요', style: AppText.screenTitle(size: 28)),
+          const SizedBox(height: 8),
           Text(
-            '${slot.label} 약이 남아 있어요',
-            style: AppText.screenTitle(size: 28),
+            '아직 기록하지 않았어요.\n드셨으면 아래를 눌러 주세요.',
+            textAlign: TextAlign.center,
+            style: AppText.body(size: 18, color: AppColors.textSecondary),
           ),
+          const SizedBox(height: 18),
+          SeniorButton(label: '${slot.label} 약 먹었어요', onPressed: onTake),
         ],
       ),
     );
@@ -260,7 +301,11 @@ class _GuardianCard extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 17),
       child: Row(
         children: [
-          InitialAvatar(name: guardianTitle, size: 44, background: AppColors.bg),
+          InitialAvatar(
+            name: guardianTitle,
+            size: 44,
+            background: AppColors.bg,
+          ),
           const SizedBox(width: 14),
           Expanded(
             child: Text(

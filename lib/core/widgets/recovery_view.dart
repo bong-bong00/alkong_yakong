@@ -77,7 +77,7 @@ class RecoveryView extends StatelessWidget {
                       TextSpan(
                         text: reassuranceEmphasis,
                         style: AppText.body(
-                          weight: FontWeight.w900,
+                          weight: FontWeight.w700,
                           color: AppColors.textPrimary,
                         ),
                       ),
@@ -104,7 +104,11 @@ class RecoveryView extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 12),
-                SeniorButton(label: actionLabel, fontSize: 23, onPressed: onAction),
+                SeniorButton(
+                  label: actionLabel,
+                  fontSize: 23,
+                  onPressed: onAction,
+                ),
               ],
             ),
           ),

@@ -43,16 +43,12 @@ abstract final class AppTheme {
         backgroundColor: AppColors.textPrimary,
         behavior: SnackBarBehavior.floating,
         contentTextStyle: AppText.body(color: Colors.white),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(18),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
       ),
       dialogTheme: DialogThemeData(
         backgroundColor: AppColors.surface,
         surfaceTintColor: Colors.transparent,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(24),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
         titleTextStyle: AppText.cardTitle(size: 21),
         contentTextStyle: AppText.body(),
       ),

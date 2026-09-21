@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import 'core/providers/user_role.dart';
 import 'core/session/auth_session.dart';
+import 'core/session/mvp_session.dart';
 import 'core/theme/app_theme.dart';
 import 'features/auth/presentation/screens/login_screen.dart';
 import 'features/auth/presentation/screens/signup_screen.dart';
@@ -24,14 +25,14 @@ import 'features/reminder/application/alarm_preferences.dart';
 import 'features/reminder/application/reminder_notifications.dart';
 import 'features/reminder/presentation/screens/lock_screen_alert.dart';
 
-/// 화면을 둘러보는 동안 로그인을 건너뛴다.
-///
-/// 기본은 로그인부터 시작한다.
-/// 화면만 훑어볼 때는 `flutter run --dart-define=SKIP_LOGIN=true` 로 켠다.
-const bool kSkipLogin = bool.fromEnvironment('SKIP_LOGIN');
-
 final _router = GoRouter(
-  initialLocation: kSkipLogin ? '/' : '/login',
+  initialLocation: '/login',
+  redirect: (context, state) {
+    final publicRoute = state.matchedLocation == '/login' ||
+        state.matchedLocation == '/signup';
+    if (!AuthSession.isLoggedIn) return publicRoute ? null : '/login';
+    return publicRoute ? '/' : null;
+  },
   routes: [
     GoRoute(path: '/login', builder: (context, state) => const LoginScreen()),
     GoRoute(path: '/signup', builder: (context, state) => const SignupScreen()),
@@ -104,7 +105,10 @@ final _router = GoRouter(
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await AuthSession.load();
+  // A previous device user's persisted identity must not unlock this launch.
+  // Only a successful login or signup starts the current session.
+  AuthSession.isLoggedIn = false;
+  MvpSession.userId = '';
   try {
     await ReminderNotifications.instance.initialize();
   } catch (_) {

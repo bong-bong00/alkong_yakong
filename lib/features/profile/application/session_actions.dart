@@ -16,7 +16,13 @@ import 'current_user_controller.dart';
 /// 앞사람이 보던 약·가족·기록이 남아 있으면 남의 정보가 보인다.
 /// 사람이 바뀔 때마다 사람에게 딸린 값을 모두 버리고 다시 읽는다.
 Future<void> startSession(WidgetRef ref, UserProfile user) async {
-  MvpSession.userId = user.id;
+  final id = user.id.trim();
+  final role = user.role.trim().toLowerCase();
+  if (id.isEmpty || id == 'mvp-user' ||
+      (role != 'patient' && role != 'guardian')) {
+    throw StateError('서버 사용자 정보를 확인할 수 없습니다.');
+  }
+  MvpSession.userId = id;
   MvpSession.isPregnant = user.isPregnant;
   await AuthSession.setLoggedIn(user.isGuardian ? 'guardian' : 'patient');
   ref.read(userRoleProvider.notifier).state = user.isGuardian
@@ -46,4 +52,10 @@ void resetUserScopedData(WidgetRef ref) {
 Future<void> endSession(WidgetRef ref) async {
   await ref.read(appModeProvider.notifier).set(AppMode.normal);
   await AuthSession.logout();
+  MvpSession.medicineCode = '';
+  MvpSession.latestOcrItems = <Map<String, dynamic>>[];
+  MvpSession.latestOcrRegisteredAt = null;
+  MvpSession.latestPrescriptionId = null;
+  MvpSession.latestScheduleDates = <String>{};
+  resetUserScopedData(ref);
 }

@@ -33,10 +33,7 @@ Future<EasyMenuResult?> showEasyMenuSheet(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text('$userName 님', style: AppText.cardTitle(size: 23)),
-                Text(
-                  '누르면 그 화면으로 바로 갑니다',
-                  style: AppText.caption(size: 17),
-                ),
+                Text('누르면 그 화면으로 바로 갑니다', style: AppText.caption(size: 17)),
               ],
             ),
           ),
@@ -105,9 +102,7 @@ class EasyMenuResult {
 
   const EasyMenuResult.go(EasyScreen this.screen) : leaveEasyMode = false;
 
-  const EasyMenuResult.leaveEasy()
-      : screen = null,
-        leaveEasyMode = true;
+  const EasyMenuResult.leaveEasy() : screen = null, leaveEasyMode = true;
 }
 
 class _MenuTile extends StatelessWidget {

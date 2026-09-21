@@ -20,6 +20,7 @@ from app.services.medicine_display import split_ingredients
 from app.services.medicine_detail_service import (
     get_medicine_detail_profile,
     ingredient_entries,
+    official_source_hash,
 )
 from app.services.medicine_detail_providers import find_reviewed_ingredient_explanations
 
@@ -33,6 +34,8 @@ def _ingredient_highlight(cursor, medicine: dict[str, Any], explanation: str) ->
     if not explanation:
         return ""
     entries = ingredient_entries(medicine.get("ingredient"))
+    if len(entries) != 1:
+        return ""
     reviewed = find_reviewed_ingredient_explanations(cursor, entries)
     for entry in entries:
         row = reviewed.get(entry["key"], {})
@@ -126,7 +129,10 @@ def reviewed_detail_payload(cursor, medicine: dict[str, Any]) -> dict[str, Any]:
     """
     code = str(medicine.get("medicine_code") or "").strip()
     profile = get_medicine_detail_profile(cursor, code)
-    card = _get_latest_reviewed_card(cursor, code) if profile is None else None
+    # An unbound legacy card must not bypass official snapshot validation.
+    card = None
+    if profile and profile.get("source_hash") != official_source_hash(medicine):
+        profile = {**profile, "status": "OUTDATED", "review_status": "UNREVIEWED"}
     status = str((profile or {}).get("status") or ("READY" if card else "PENDING"))
     if status not in {
         "READY",
@@ -194,6 +200,11 @@ def reviewed_detail_payload(cursor, medicine: dict[str, Any]) -> dict[str, Any]:
         approved_use_summary = ""
         approved_uses = []
         all_approved_uses = []
+        reviewed = False
+        official_usage = str(medicine.get("usage") or "").strip()
+        key_cautions = []
+        side_effects = []
+        ask_doctor_when = []
     ingredient_highlight = _ingredient_highlight(cursor, medicine, ingredient_explanation)
     treatment_uses = _treatment_use_items(
         approved_use_summary, approved_uses, all_approved_uses

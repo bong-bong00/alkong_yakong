@@ -40,9 +40,7 @@ class RoundedGradientAppBar extends StatelessWidget
     return Container(
       decoration: const BoxDecoration(
         color: AppColors.headerBg,
-        border: Border(
-          bottom: BorderSide(color: AppColors.border, width: 1),
-        ),
+        border: Border(bottom: BorderSide(color: AppColors.border, width: 1)),
       ),
       child: SafeArea(
         bottom: false,
@@ -55,10 +53,7 @@ class RoundedGradientAppBar extends StatelessWidget
               children: [
                 if (leading != null) ...[leading!, const SizedBox(width: 10)],
                 Expanded(
-                  child: Text(
-                    title,
-                    style: AppText.screenTitle(size: 24),
-                  ),
+                  child: Text(title, style: AppText.screenTitle(size: 24)),
                 ),
                 ...actions,
               ],

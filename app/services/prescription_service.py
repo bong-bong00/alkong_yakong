@@ -288,11 +288,11 @@ def _upsert_official_medicine(cursor, official: dict) -> tuple[str, str]:
                 THEN excluded.ingredient
                 ELSE medicines.ingredient
             END,
-            manufacturer = excluded.manufacturer,
-            efficacy = excluded.efficacy,
-            usage = excluded.usage,
-            precautions = excluded.precautions,
-            image_url = excluded.image_url,
+            manufacturer = COALESCE(NULLIF(trim(excluded.manufacturer), ''), medicines.manufacturer),
+            efficacy = COALESCE(NULLIF(trim(excluded.efficacy), ''), medicines.efficacy),
+            usage = COALESCE(NULLIF(trim(excluded.usage), ''), medicines.usage),
+            precautions = COALESCE(NULLIF(trim(excluded.precautions), ''), medicines.precautions),
+            image_url = COALESCE(NULLIF(trim(excluded.image_url), ''), medicines.image_url),
             easy_category = COALESCE(
                 NULLIF(trim(medicines.easy_category), ''),
                 excluded.easy_category
@@ -1117,7 +1117,7 @@ def _analyze_registered_medicines_locally(user_id: str) -> dict:
             "risk_level": "UNKNOWN",
             "assessment_status": "INCOMPLETE",
             "analysis_complete": False,
-            "has_risk": False,
+            "has_risk": None,
             "total_matches": 0,
             "total_count": 0,
             "representative_type": None,
@@ -1145,10 +1145,32 @@ def _registration_result(
     duplicate: bool = False,
 ) -> dict:
     dur_result = _analyze_registered_medicines_locally(user_id)
+    if not isinstance(dur_result, dict):
+        dur_result = {}
+    matches = dur_result.get("matches")
+    complete = (
+        dur_result.get("analysis_complete") is True
+        and dur_result.get("incomplete") is not True
+        and isinstance(dur_result.get("assessment_status"), str)
+        and dur_result.get("assessment_status") in {"SAFE", "RISK_FOUND"}
+        and isinstance(matches, list)
+        and all(isinstance(m, dict) and isinstance(m.get("type"), str) and m["type"] for m in matches)
+        and isinstance(dur_result.get("has_risk"), bool)
+        and dur_result["has_risk"] == bool(matches)
+        and dur_result["assessment_status"] == ("RISK_FOUND" if matches else "SAFE")
+    )
+    if not complete:
+        dur_result = {**dur_result, "analysis_complete": False,
+                      "assessment_status": "INCOMPLETE", "incomplete": True,
+                      "has_risk": None}
     # 최신 식약처 조회는 등록 응답과 분리해 별도 스레드에서 수행한다.
     from app.services.dur_sync_service import start_background_user_dur_refresh
 
-    refresh_started = start_background_user_dur_refresh(user_id)
+    try:
+        refresh_started = start_background_user_dur_refresh(user_id)
+    except Exception:
+        # The registration is already committed; refresh is not registration.
+        refresh_started = False
     return {
         "prescription_id": prescription_id,
         "user_id": user_id,

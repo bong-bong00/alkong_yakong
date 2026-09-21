@@ -37,17 +37,15 @@ class PlannedReminder {
 /// 알림 설정 → 예약할 알림 목록. 순수 계산만 한다.
 abstract final class ReminderPlan {
   /// id를 고정해 두어야 예약을 바꿀 때 예전 것을 정확히 지울 수 있다.
-  static const morningId = 7001;
-  static const eveningId = 7002;
-  static const morningFollowUpId = 7011;
-  static const eveningFollowUpId = 7012;
+  /// 정시 알림 id는 7001부터, 10분 뒤 다시 알림은 7101부터 차례로 쓴다.
+  static const baseId = 7001;
+  static const followUpBaseId = 7101;
 
   /// 다시 맞출 때마다 전부 지운다. 꺼 둔 알림이 남아서 울리면 안 된다.
-  static const allIds = [
-    morningId,
-    eveningId,
-    morningFollowUpId,
-    eveningFollowUpId,
+  /// 시각을 지웠을 때 그 자리 알림도 같이 지워져야 하므로 자리 수만큼 돈다.
+  static List<int> get allIds => [
+    for (int i = 0; i < AlarmPreferences.maxHours; i++) baseId + i,
+    for (int i = 0; i < AlarmPreferences.maxHours; i++) followUpBaseId + i,
   ];
 
   static const followUpMinutes = 10;
@@ -56,13 +54,12 @@ abstract final class ReminderPlan {
 
   static List<PlannedReminder> forPrefs(AlarmPreferences prefs) {
     if (!prefs.autoAlarm) return const [];
+    final hours = prefs.hours;
     return [
-      _onTime(morningId, prefs.morningHour),
-      _onTime(eveningId, prefs.eveningHour),
-      if (prefs.repeatOnce) ...[
-        _followUp(morningFollowUpId, prefs.morningHour),
-        _followUp(eveningFollowUpId, prefs.eveningHour),
-      ],
+      for (int i = 0; i < hours.length; i++) _onTime(baseId + i, hours[i]),
+      if (prefs.repeatOnce)
+        for (int i = 0; i < hours.length; i++)
+          _followUp(followUpBaseId + i, hours[i]),
     ];
   }
 
@@ -71,7 +68,7 @@ abstract final class ReminderPlan {
     hour: hour,
     minute: 0,
     title: title,
-    body: '${AlarmPreferences.spoken(hour)} 약을 물과 함께 드세요.',
+    body: '${AlarmPreferences.clock(hour)} 약을 물과 함께 드세요.',
   );
 
   static PlannedReminder _followUp(int id, int hour) {
@@ -82,7 +79,7 @@ abstract final class ReminderPlan {
       hour: total ~/ 60,
       minute: total % 60,
       title: followUpTitle,
-      body: '${AlarmPreferences.spoken(hour)} 약, 아직 안 드셨다면 지금 드세요.',
+      body: '${AlarmPreferences.clock(hour)} 약, 아직 안 드셨다면 지금 드세요.',
     );
   }
 
@@ -121,6 +118,18 @@ class ReminderNotifications {
   /// main()에서 초기화한 것과 provider가 같은 객체를 쓰게 한다.
   static final instance = ReminderNotifications();
 
+  /// 잠금화면 단추 이름. 알림에서 바로 누른다.
+  static const takeActionId = 'take';
+  static const snoozeActionId = 'snooze';
+
+  /// 잠금화면에서 누른 단추. 오늘 화면이 이것을 보고 대신 처리한다.
+  ///
+  /// 알림을 받은 곳(백그라운드)에서는 서버에 기록할 수 없다. 앱이 올라온 뒤
+  /// 같은 자리에서 처리해야 기록이 어긋나지 않는다.
+  static final ValueNotifier<String?> pendingAction = ValueNotifier<String?>(
+    null,
+  );
+
   static const _channelId = 'medication_reminder';
   static const _channelName = '복약 알림';
   static const _channelDescription = '약 드실 시간을 소리로 알려드려요';
@@ -148,6 +157,7 @@ class ReminderNotifications {
 
       final plugin = FlutterLocalNotificationsPlugin();
       await plugin.initialize(
+        onDidReceiveNotificationResponse: _onResponse,
         settings: const InitializationSettings(
           android: AndroidInitializationSettings('@mipmap/ic_launcher'),
           // 앱을 켜자마자 권한 창을 띄우지 않는다. 알림이 필요할 때 따로 묻는다.
@@ -168,10 +178,24 @@ class ReminderNotifications {
           playSound: true,
         ),
       );
+      // 알림 단추로 앱이 켜졌으면 그 단추도 받아 둔다.
+      final launch = await plugin.getNotificationAppLaunchDetails();
+      final launchAction = launch?.notificationResponse?.actionId;
+      if (launch?.didNotificationLaunchApp == true &&
+          launchAction != null &&
+          launchAction.isNotEmpty) {
+        pendingAction.value = launchAction;
+      }
       _ready = true;
     } catch (e) {
       debugPrint('복약 알림 초기화 실패: $e');
     }
+  }
+
+  static void _onResponse(NotificationResponse response) {
+    final action = response.actionId;
+    if (action == null || action.isEmpty) return;
+    pendingAction.value = action;
   }
 
   static Future<tz.Location> _localLocation() async {
@@ -297,6 +321,19 @@ class ReminderNotifications {
           category: AndroidNotificationCategory.reminder,
           // 글자를 크게 쓰는 분도 문장이 잘리지 않게 펼쳐 보인다.
           styleInformation: BigTextStyleInformation(reminder.body),
+          // 앱을 열지 않아도 여기서 끝낼 수 있게 두 단추를 둔다.
+          actions: const [
+            AndroidNotificationAction(
+              takeActionId,
+              '먹었어요',
+              showsUserInterface: true,
+            ),
+            AndroidNotificationAction(
+              snoozeActionId,
+              '30분 뒤에 다시',
+              showsUserInterface: true,
+            ),
+          ],
         ),
         iOS: const DarwinNotificationDetails(
           presentAlert: true,

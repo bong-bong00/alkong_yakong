@@ -7,9 +7,8 @@ import '../../../../core/theme/app_typography.dart';
 import '../../../../core/widgets/senior_card.dart';
 import '../../../../core/widgets/senior_feedback.dart';
 import '../../../../core/widgets/senior_header.dart';
+import '../../../../core/widgets/senior_wheel.dart';
 import '../../../medication/application/medication_controller.dart';
-import '../../../medication/domain/medication_models.dart';
-import '../../../profile/application/current_user_controller.dart';
 import '../../application/alarm_preferences.dart';
 import '../../application/reminder_notifications.dart';
 
@@ -18,33 +17,102 @@ import '../../application/reminder_notifications.dart';
 /// **소리로 알려주기만 한다.** 말로 대답해서 기록하는 기능은 없다 —
 /// 잘못 들으면 그대로 오기록이 되기 때문이다.
 ///
+/// 알림 시각은 몇 개든 둘 수 있다. ＋로 더하고 휴지통으로 지운다.
 /// 고른 값은 저장돼서 내 정보 목록의 한 줄과 같이 바뀐다.
-class AlarmSettingsScreen extends ConsumerWidget {
+class AlarmSettingsScreen extends ConsumerStatefulWidget {
   const AlarmSettingsScreen({super.key});
 
-  static String _namesFor(TodayMedication today, DoseSlot slot) {
-    final names = [
-      for (final med in today.doseOf(slot).medicines)
-        if (med.displayName.trim().isNotEmpty) med.displayName.trim(),
-    ];
-    if (names.isEmpty) return '등록된 약이 없어요';
-    return names.join(' · ');
+  @override
+  ConsumerState<AlarmSettingsScreen> createState() =>
+      _AlarmSettingsScreenState();
+}
+
+class _AlarmSettingsScreenState extends ConsumerState<AlarmSettingsScreen> {
+  /// 휴지통을 누르면 켜진다. 시간 칸이 밀리고 빼기 단추가 나온다.
+  bool _editing = false;
+
+  Future<void> _addHour(
+    BuildContext context,
+    AlarmPreferences prefs,
+    AlarmPreferencesController notifier,
+  ) async {
+    if (prefs.hours.length >= AlarmPreferences.maxHours) {
+      showSeniorSnackbar(
+        context,
+        '알림 시간은 ${AlarmPreferences.maxHours}개까지 둘 수 있어요',
+      );
+      return;
+    }
+    final picked = await showSeniorTimeWheel(
+      context: context,
+      title: '알림 시간을 더할까요?',
+      initialHour: 9,
+    );
+    if (picked == null || !context.mounted) return;
+    if (prefs.hours.contains(picked)) {
+      showSeniorSnackbar(
+        context,
+        '이미 ${AlarmPreferences.clock(picked)} 알림이 있어요',
+      );
+      return;
+    }
+    notifier.update(prefs.withHour(picked));
+  }
+
+  Future<void> _changeHour(
+    BuildContext context,
+    AlarmPreferences prefs,
+    AlarmPreferencesController notifier,
+    int hour,
+  ) async {
+    final picked = await showSeniorTimeWheel(
+      context: context,
+      title: '몇 시에 알려드릴까요?',
+      initialHour: hour,
+    );
+    if (picked == null || picked == hour || !context.mounted) return;
+    if (prefs.hours.contains(picked)) {
+      showSeniorSnackbar(
+        context,
+        '이미 ${AlarmPreferences.clock(picked)} 알림이 있어요',
+      );
+      return;
+    }
+    notifier.update(prefs.replaceHour(hour, picked));
+  }
+
+  /// 휴지통을 누르면 지우는 중으로 들어가고, 한 번 더 누르면 나온다.
+  void _toggleEditing(BuildContext context, AlarmPreferences prefs) {
+    if (!_editing && prefs.hours.length <= 1) {
+      showSeniorSnackbar(context, '알림 시간은 적어도 하나는 있어야 해요');
+      return;
+    }
+    setState(() => _editing = !_editing);
+  }
+
+  /// 빼기 단추로 그 자리 시간을 바로 지운다.
+  void _removeHour(
+    BuildContext context,
+    AlarmPreferences prefs,
+    AlarmPreferencesController notifier,
+    int hour,
+  ) {
+    if (prefs.hours.length <= 1) {
+      showSeniorSnackbar(context, '알림 시간은 적어도 하나는 있어야 해요');
+      return;
+    }
+    notifier.update(prefs.withoutHour(hour));
+    showSeniorSnackbar(context, '${AlarmPreferences.clock(hour)} 알림을 지웠어요');
+    // 하나만 남으면 더 지울 것이 없다. 지우는 중에서 나온다.
+    if (prefs.hours.length - 1 <= 1) setState(() => _editing = false);
   }
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget build(BuildContext context) {
     final today = ref.watch(medicationProvider);
     final prefs = ref.watch(alarmPreferencesProvider);
-    final userName = ref.watch(currentUserNameProvider);
     final notifier = ref.read(alarmPreferencesProvider.notifier);
     final notifications = ref.read(reminderNotificationsProvider);
-
-    final morning = AlarmPreferences.spoken(prefs.morningHour);
-    final evening = AlarmPreferences.spoken(prefs.eveningHour);
-    final morningNames = _namesFor(today, DoseSlot.morning);
-    final eveningNames = today.doseOf(DoseSlot.dinner).medicines.isNotEmpty
-        ? _namesFor(today, DoseSlot.dinner)
-        : _namesFor(today, DoseSlot.lunch);
 
     return Scaffold(
       backgroundColor: AppColors.bg,
@@ -84,7 +152,7 @@ class AlarmSettingsScreen extends ConsumerWidget {
                               ),
                               Text(
                                 prefs.autoAlarm
-                                    ? '켜짐 · $morning, $evening에 소리로 알려드려요'
+                                    ? '켜짐 · ${prefs.hours.map(AlarmPreferences.clock).join(', ')}에 소리로 알려드려요'
                                     : '꺼짐 · 화면에서 눌러야 들을 수 있어요',
                                 style: AppText.caption(size: 17),
                               ),
@@ -128,43 +196,66 @@ class AlarmSettingsScreen extends ConsumerWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        Text('알림 시간', style: AppText.cardTitle(size: 20)),
-                        const SizedBox(height: 14),
-                        // 아침 7~10시, 저녁 5~8시를 돌아가며 고른다.
-                        _TimeRow(
-                          time: morning,
-                          medicines: morningNames,
-                          onChange: () => notifier.update(
-                            prefs.copyWith(
-                              morningHour: prefs.morningHour >= 10
-                                  ? 7
-                                  : prefs.morningHour + 1,
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                '알림 시간',
+                                style: AppText.label(
+                                  size: 18,
+                                  color: AppColors.textSecondary,
+                                ),
+                              ),
+                            ),
+                            if (!_editing) ...[
+                              _IconBox(
+                                icon: TablerIcons.plus,
+                                label: '알림 시간 더하기',
+                                onTap: () => _addHour(context, prefs, notifier),
+                              ),
+                              const SizedBox(width: 10),
+                            ],
+                            _IconBox(
+                              icon: _editing
+                                  ? TablerIcons.check
+                                  : TablerIcons.trash,
+                              label: _editing ? '다 지웠어요' : '알림 시간 지우기',
+                              color: _editing
+                                  ? AppColors.point
+                                  : AppColors.danger,
+                              onTap: () => _toggleEditing(context, prefs),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        for (int i = 0; i < prefs.hours.length; i++) ...[
+                          if (i > 0) const SizedBox(height: 10),
+                          _TimeRow(
+                            time: AlarmPreferences.clock(prefs.hours[i]),
+                            editing: _editing,
+                            onChange: () => _changeHour(
+                              context,
+                              prefs,
+                              notifier,
+                              prefs.hours[i],
+                            ),
+                            onRemove: () => _removeHour(
+                              context,
+                              prefs,
+                              notifier,
+                              prefs.hours[i],
                             ),
                           ),
-                        ),
-                        const SeniorDivider(),
-                        _TimeRow(
-                          time: evening,
-                          medicines: eveningNames,
-                          onChange: () => notifier.update(
-                            prefs.copyWith(
-                              eveningHour: prefs.eveningHour >= 20
-                                  ? 17
-                                  : prefs.eveningHour + 1,
-                            ),
-                          ),
-                        ),
+                        ],
                         const SizedBox(height: 12),
                         Text(
                           '이 시간이 되면 화면이 꺼져 있어도 '
-                          '전화기가 먼저 말해드려요.',
-                          style: AppText.body(size: 16.5),
+                          '전화기가 먼저 알려드려요.',
+                          style: AppText.caption(size: 16),
                         ),
                       ],
                     ),
                   ),
-                  const SizedBox(height: 12),
-                  _SpokenExample(userName: userName, evening: evening),
                   const SizedBox(height: 12),
                   SeniorCard(
                     padding: const EdgeInsets.symmetric(
@@ -174,7 +265,7 @@ class AlarmSettingsScreen extends ConsumerWidget {
                     child: Column(
                       children: [
                         _LadderRow(
-                          title: '10분 뒤에 한 번 더',
+                          title: '못 들으셨으면 10분 뒤에 한 번 더',
                           description: '최대 두 번까지 다시 알려드려요',
                           value: prefs.repeatOnce,
                           onChanged: (v) =>
@@ -203,99 +294,153 @@ class AlarmSettingsScreen extends ConsumerWidget {
   }
 }
 
-class _TimeRow extends StatelessWidget {
-  final String time;
-  final String medicines;
-  final VoidCallback onChange;
+/// 카드 머리의 네모 단추. ＋와 휴지통 둘뿐이라 글자 없이 둔다.
+class _IconBox extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final Color color;
+  final VoidCallback onTap;
 
-  const _TimeRow({
-    required this.time,
-    required this.medicines,
-    required this.onChange,
+  const _IconBox({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+    this.color = AppColors.textPrimary,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      constraints: const BoxConstraints(minHeight: 56),
-      padding: const EdgeInsets.symmetric(vertical: 14),
-      child: LabelValueRow(
-        label: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(time, style: AppText.screenTitle(size: 24)),
-            Text(medicines, style: AppText.caption(size: 17)),
-          ],
-        ),
-        value: Semantics(
-          button: true,
-          label: '$time 바꾸기',
-          child: GestureDetector(
-            onTap: onChange,
-            child: Container(
-              constraints: const BoxConstraints(minHeight: 48),
-              alignment: Alignment.center,
-              padding: const EdgeInsets.symmetric(horizontal: 14),
-              decoration: BoxDecoration(
-                color: AppColors.pointTint,
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Text(
-                '바꾸기',
-                style: AppText.cardTitle(size: 16.5, color: AppColors.point),
-              ),
-            ),
+    return Semantics(
+      button: true,
+      label: label,
+      child: GestureDetector(
+        onTap: onTap,
+        child: Container(
+          width: 60,
+          height: 60,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: AppColors.surface,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: AppColors.strongLine, width: 2),
           ),
+          child: ExcludeSemantics(child: Icon(icon, size: 28, color: color)),
         ),
       ),
     );
   }
 }
 
-/// 어떤 말로 알려주는지 그대로 보여준다. 듣기 전에 읽어볼 수 있게.
-class _SpokenExample extends StatelessWidget {
-  final String userName;
-  final String evening;
+/// 알림 시간 한 줄. 회색 칸 안에 큰 시각, 오른쪽에 "바꾸기 >".
+///
+/// 지우는 중에는 칸이 왼쪽으로 밀리고 빈 자리에 빼기 단추가 선다.
+class _TimeRow extends StatelessWidget {
+  final String time;
+  final bool editing;
+  final VoidCallback onChange;
+  final VoidCallback onRemove;
 
-  const _SpokenExample({required this.userName, required this.evening});
+  const _TimeRow({
+    required this.time,
+    required this.onChange,
+    required this.onRemove,
+    this.editing = false,
+  });
+
+  /// 빼기 단추가 차지하는 폭. 옆 여백까지 합친 값이다.
+  static const double _removeWidth = 74;
 
   @override
   Widget build(BuildContext context) {
-    final greeting = userName.trim().isEmpty ? '' : '${userName.trim()} 님, ';
-    return SeniorCard(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Text(
-            '$evening에 이렇게 알려드려요',
-            style: AppText.label(size: 18, color: AppColors.textSecondary),
-          ),
-          const SizedBox(height: 12),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
-            decoration: BoxDecoration(
-              color: AppColors.bg,
-              borderRadius: BorderRadius.circular(18),
-            ),
-            child: Text(
-              '$greeting$evening예요.\n'
-              '지금 드실 약을 물과 함께 드세요.',
-              style: AppText.body(
-                size: 21,
-                color: AppColors.textPrimary,
-                weight: FontWeight.w700,
+    return Row(
+      children: [
+        Expanded(
+          child: Semantics(
+            button: true,
+            label: '$time · 바꾸기',
+            child: ExcludeSemantics(
+              child: GestureDetector(
+                // 지우는 중에는 시간을 바꾸지 않는다. 한 번에 한 가지만.
+                onTap: editing ? null : onChange,
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 220),
+                  curve: Curves.easeOut,
+                  constraints: const BoxConstraints(minHeight: 72),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 18,
+                    vertical: 14,
+                  ),
+                  decoration: BoxDecoration(
+                    color: AppColors.bg,
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          time,
+                          style: AppText.screenTitle(size: 23),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      if (!editing) ...[
+                        const SizedBox(width: 10),
+                        Text('바꾸기', style: AppText.label(size: 17)),
+                        const SizedBox(width: 4),
+                        const SeniorChevron(),
+                      ],
+                    ],
+                  ),
+                ),
               ),
             ),
           ),
-          const SizedBox(height: 10),
-          Text(
-            '복약은 알림을 눌러서 기록합니다. 말로 대답하는 기능은 없어요.',
-            style: AppText.body(size: 16.5),
+        ),
+        // 밀려난 자리에 빼기 단추가 미끄러져 들어온다.
+        AnimatedContainer(
+          duration: const Duration(milliseconds: 220),
+          curve: Curves.easeOut,
+          width: editing ? _removeWidth : 0,
+          height: 72,
+          child: ClipRect(
+            child: OverflowBox(
+              alignment: Alignment.centerRight,
+              maxWidth: _removeWidth,
+              child: Padding(
+                padding: const EdgeInsets.only(left: 14),
+                child: AnimatedOpacity(
+                  duration: const Duration(milliseconds: 180),
+                  opacity: editing ? 1 : 0,
+                  child: Semantics(
+                    button: true,
+                    label: '$time 알림 빼기',
+                    child: ExcludeSemantics(
+                      child: GestureDetector(
+                        onTap: editing ? onRemove : null,
+                        child: Container(
+                          width: 60,
+                          height: 60,
+                          alignment: Alignment.center,
+                          decoration: const BoxDecoration(
+                            color: AppColors.danger,
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(
+                            TablerIcons.minus,
+                            size: 30,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 }

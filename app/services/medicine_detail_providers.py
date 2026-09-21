@@ -65,7 +65,7 @@ class LocalReviewedIngredientProvider:
         for ingredient in ingredients:
             row = cursor.execute(
                 """
-                SELECT explanation, role_explanation, use_help,
+                SELECT ingredient_name, explanation, role_explanation, use_help,
                        role_group, group_explanation,
                        source, source_verified, content_version
                 FROM ingredient_explanations
@@ -74,7 +74,11 @@ class LocalReviewedIngredientProvider:
                 """,
                 (ingredient["key"],),
             ).fetchone()
-            if row and is_displayable_ingredient_explanation(row["explanation"]):
+            # A reuse key (which may omit strength) is not identity evidence.
+            # Require the reviewed official ingredient name as well; no aliases.
+            if (row and str(row["ingredient_name"]).strip().casefold()
+                    == ingredient["name"].strip().casefold()
+                    and is_displayable_ingredient_explanation(row["explanation"])):
                 result[ingredient["key"]] = dict(row)
         return result
 

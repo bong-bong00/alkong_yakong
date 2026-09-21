@@ -1,10 +1,14 @@
 import 'package:flutter/material.dart';
+import '../../../../core/widgets/senior_header.dart';
 import 'package:flutter/cupertino.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/network/api_client.dart';
+import '../../../../core/theme/app_typography.dart';
+import '../../../../core/widgets/senior_button.dart';
+import '../../../../core/widgets/senior_card.dart';
 import '../../../../core/widgets/senior_feedback.dart';
+import '../../../../core/widgets/senior_wheel.dart';
 import '../../../auth/presentation/screens/login_screen.dart';
 import '../../../guardian/application/guardians_provider.dart';
 import '../../../guardian/data/guardian_repository.dart';
@@ -99,7 +103,7 @@ class _ProfileEditScreenState extends ConsumerState<ProfileEditScreen> {
     _gender = user.gender;
     _blood = user.bloodType;
     _pregnancy = user.pregnancyStatus;
-    _smoking = user.smoking;
+    _smoking = _normalizeSmoking(user.smoking);
     _drinking = user.drinking;
     _allergens
       ..clear()
@@ -120,10 +124,6 @@ class _ProfileEditScreenState extends ConsumerState<ProfileEditScreen> {
 
   /// 아바타는 이모지 대신 이름 첫 글자를 쓴다.
   /// 이모지는 기기마다 모양이 달라지고 의미 학습이 되지 않는다.
-  String _avatarInitial() {
-    final name = _name.text.trim();
-    return name.isEmpty ? '님' : name.substring(0, 1);
-  }
 
   void _toast(String message, {bool error = false}) =>
       showSeniorSnackbar(context, message, error: error);
@@ -230,7 +230,7 @@ class _ProfileEditScreenState extends ConsumerState<ProfileEditScreen> {
             child: const Text(
               '연결 해제',
               style: TextStyle(
-                color: Color(0xFFE24B4A),
+                color: AppColors.legacyRed,
                 fontWeight: FontWeight.w700,
               ),
             ),
@@ -241,6 +241,14 @@ class _ProfileEditScreenState extends ConsumerState<ProfileEditScreen> {
   }
 
   // 한글 년/월/일 휠 선택기
+  /// 옛 버전이 저장해 둔 "안 펴요"를 지금 칸 이름으로 옮겨 읽는다.
+  static String? _normalizeSmoking(String? raw) => switch (raw?.trim()) {
+    null || '' => null,
+    '안 펴요' => '안 폈어요',
+    '펴요' => '폈어요',
+    final value => value,
+  };
+
   Future<void> _pickBirth() async {
     final now = DateTime.now();
     int y = _birth?.year ?? (now.year - 60);
@@ -250,81 +258,80 @@ class _ProfileEditScreenState extends ConsumerState<ProfileEditScreen> {
 
     await showModalBottomSheet(
       context: context,
-      backgroundColor: Colors.white,
+      backgroundColor: AppColors.surface,
+      isScrollControlled: true,
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
       builder: (ctx) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 14, 20, 14),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  const Text(
-                    '생년월일',
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w800,
-                      color: kText,
-                    ),
+        child: SizedBox(
+          // 굴림판이 손가락으로 굴릴 만큼 커야 한다. 화면 절반을 쓴다.
+          height: MediaQuery.sizeOf(ctx).height * 0.56,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 20, 20, 16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text('생년월일을 고르세요', style: AppText.emphasis(size: 24)),
+                const SizedBox(height: 6),
+                Text('위아래로 굴려서 고르세요', style: AppText.caption(size: 16)),
+                const SizedBox(height: 12),
+                Expanded(
+                  child: Row(
+                    children: [
+                      Expanded(
+                        flex: 3,
+                        child: _wheel(
+                          years,
+                          years.indexOf(y),
+                          (i) => y = years[i],
+                          '년',
+                        ),
+                      ),
+                      Expanded(
+                        flex: 2,
+                        child: _wheel(
+                          List.generate(12, (k) => k + 1),
+                          m - 1,
+                          (i) => m = i + 1,
+                          '월',
+                        ),
+                      ),
+                      Expanded(
+                        flex: 2,
+                        child: _wheel(
+                          List.generate(31, (k) => k + 1),
+                          d - 1,
+                          (i) => d = i + 1,
+                          '일',
+                        ),
+                      ),
+                    ],
                   ),
-                  GestureDetector(
-                    onTap: () {
-                      final maxDay = DateUtils.getDaysInMonth(y, m);
-                      if (d > maxDay) d = maxDay;
-                      setState(() => _birth = DateTime(y, m, d));
-                      Navigator.pop(ctx);
-                    },
-                    child: const Text(
-                      '확인',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w800,
-                        color: kPrimary,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              SizedBox(
-                height: 180,
-                child: Row(
-                  children: [
-                    Expanded(
-                      flex: 3,
-                      child: _wheel(
-                        years,
-                        years.indexOf(y),
-                        (i) => y = years[i],
-                        '년',
-                      ),
-                    ),
-                    Expanded(
-                      flex: 2,
-                      child: _wheel(
-                        List.generate(12, (k) => k + 1),
-                        m - 1,
-                        (i) => m = i + 1,
-                        '월',
-                      ),
-                    ),
-                    Expanded(
-                      flex: 2,
-                      child: _wheel(
-                        List.generate(31, (k) => k + 1),
-                        d - 1,
-                        (i) => d = i + 1,
-                        '일',
-                      ),
-                    ),
-                  ],
                 ),
-              ),
-            ],
+                const SizedBox(height: 14),
+                SeniorButton(
+                  label: '이 날짜로 정하기',
+                  minHeight: 64,
+                  fontSize: 20,
+                  onPressed: () {
+                    // 2월 31일 같은 날은 그 달의 마지막 날로 내린다.
+                    final maxDay = DateUtils.getDaysInMonth(y, m);
+                    if (d > maxDay) d = maxDay;
+                    setState(() => _birth = DateTime(y, m, d));
+                    Navigator.pop(ctx);
+                  },
+                ),
+                const SizedBox(height: 8),
+                SeniorButton(
+                  label: '그만두기',
+                  kind: SeniorButtonKind.neutral,
+                  minHeight: 58,
+                  fontSize: 18,
+                  onPressed: () => Navigator.pop(ctx),
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -341,16 +348,21 @@ class _ProfileEditScreenState extends ConsumerState<ProfileEditScreen> {
       scrollController: FixedExtentScrollController(
         initialItem: initialIndex < 0 ? 0 : initialIndex,
       ),
-      itemExtent: 38,
+      itemExtent: 64,
+      squeeze: 1.1,
+      // 가운데 칸을 우리 굴림판과 같은 파란 띠로 표시한다.
+      selectionOverlay: Container(
+        margin: const EdgeInsets.symmetric(horizontal: 4),
+        decoration: BoxDecoration(
+          color: AppColors.pointTint,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: AppColors.point, width: 2),
+        ),
+      ),
       onSelectedItemChanged: onChanged,
       children: [
         for (final it in items)
-          Center(
-            child: Text(
-              '$it$suffix',
-              style: const TextStyle(fontSize: 18, color: kText),
-            ),
-          ),
+          Center(child: Text('$it$suffix', style: AppText.cardTitle(size: 24))),
       ],
     );
   }
@@ -452,9 +464,12 @@ class _ProfileEditScreenState extends ConsumerState<ProfileEditScreen> {
                                 },
                               ),
                             // 저장돼 있던 값이 보기에 없으면 그것도 목록에 보인다.
-                            for (final o in {...filtered, ...selected.where(
-                              (s) => q.isEmpty || s.contains(q),
-                            )})
+                            for (final o in {
+                              ...filtered,
+                              ...selected.where(
+                                (s) => q.isEmpty || s.contains(q),
+                              ),
+                            })
                               CheckboxListTile(
                                 value: selected.contains(o),
                                 activeColor: kPrimary,
@@ -499,21 +514,16 @@ class _ProfileEditScreenState extends ConsumerState<ProfileEditScreen> {
     final accent = _isGuardian ? kGuardian : kPrimary;
     return Scaffold(
       backgroundColor: kBackground,
-      appBar: AppBar(
-        backgroundColor: kBackground,
-        elevation: 0,
-        foregroundColor: kText,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new_rounded),
-          onPressed: () => Navigator.of(context).maybePop(),
-        ),
-        title: const Text(
-          '내 정보',
-          style: TextStyle(fontWeight: FontWeight.w800),
-        ),
-      ),
+      // 라벨 없는 화살표 아이콘은 어르신이 버튼으로 인식하지 못한다.
       body: SafeArea(
-        child: _original == null ? _buildLoading() : _buildForm(accent),
+        child: Column(
+          children: [
+            const SeniorBackHeader(title: '내 정보 고치기'),
+            Expanded(
+              child: _original == null ? _buildLoading() : _buildForm(accent),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -549,581 +559,425 @@ class _ProfileEditScreenState extends ConsumerState<ProfileEditScreen> {
   }
 
   Widget _buildForm(Color accent) {
+    final birth = _birth;
     return SingleChildScrollView(
-      padding: const EdgeInsets.fromLTRB(20, 8, 20, 28),
+      padding: const EdgeInsets.fromLTRB(20, 16, 20, 28),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // ── 나이·성별 아바타 ──
-          Center(
+          // ── 기본 정보 (프로토타입 43번) ──
+          SeniorCard(
+            padding: const EdgeInsets.all(20),
             child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Container(
-                  width: 88,
-                  height: 88,
-                  decoration: BoxDecoration(
-                    color: _isGuardian ? kGuardianLight : kPrimaryLight,
-                    shape: BoxShape.circle,
-                  ),
-                  child: Center(
-                    child: Text(
-                      _avatarInitial(),
-                      style: const TextStyle(fontSize: 44),
-                    ),
-                  ),
+                SeniorField(label: '이름', controller: _name, hint: '이름'),
+                const SizedBox(height: 18),
+                SeniorField(
+                  label: '휴대폰번호',
+                  controller: _phone,
+                  hint: '010-0000-0000',
+                  keyboardType: TextInputType.phone,
+                  inputFormatters: [PhoneNumberFormatter()],
                 ),
-                const SizedBox(height: 10),
-                Text(
-                  _name.text.isEmpty ? '이름' : _name.text,
-                  style: const TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w800,
-                    color: kText,
-                  ),
+                const SizedBox(height: 18),
+                Text('생년월일', style: AppText.label(size: 18)),
+                const SizedBox(height: 8),
+                _PickRow(
+                  value: birth == null
+                      ? '아직 안 고르셨어요'
+                      : '${birth.year}년 ${birth.month}월 ${birth.day}일',
+                  empty: birth == null,
+                  onTap: _pickBirth,
                 ),
-                if (_isGuardian) ...[
-                  const SizedBox(height: 4),
-                  Text(
-                    '보호자',
-                    style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w700,
-                      color: kGuardian,
-                    ),
-                  ),
-                ],
-              ],
-            ),
-          ),
-          const SizedBox(height: 24),
-
-          _section('이름'),
-          _field(_name, hint: '이름', accent: accent),
-          const SizedBox(height: 18),
-
-          _section('휴대폰번호'),
-          _field(
-            _phone,
-            hint: '010-0000-0000',
-            keyboard: TextInputType.phone,
-            formatter: PhoneNumberFormatter(),
-            accent: accent,
-          ),
-          const SizedBox(height: 18),
-
-          _section('생년월일'),
-          GestureDetector(
-            onTap: _pickBirth,
-            child: Container(
-              height: 54,
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              alignment: Alignment.centerLeft,
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: Colors.grey[300]!),
-              ),
-              child: Row(
-                children: [
-                  Icon(
-                    Icons.calendar_today_rounded,
-                    size: 18,
-                    color: Colors.grey[500],
-                  ),
-                  const SizedBox(width: 10),
-                  Text(
-                    _birth == null
-                        ? '생년월일 선택'
-                        : '${_birth!.year}년 ${_birth!.month}월 ${_birth!.day}일',
-                    style: TextStyle(
-                      fontSize: 15,
-                      color: _birth == null ? Colors.grey[500] : kText,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(height: 18),
-
-          _section('성별'),
-          Row(
-            children: [
-              Expanded(
-                child: _pill(
-                  '남성',
-                  _gender == 'M',
-                  () => setState(() => _gender = 'M'),
-                  accent,
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: _pill(
-                  '여성',
-                  _gender == 'F',
-                  () => setState(() => _gender = 'F'),
-                  accent,
-                ),
-              ),
-            ],
-          ),
-
-          // ══════════════════════════════════════════════
-          //  연결된 환자 관리 — 보호자만
-          // ══════════════════════════════════════════════
-          if (_isGuardian) ...[
-            const SizedBox(height: 24),
-            Row(
-              children: [
-                _section('연결된 환자'),
-                const Spacer(),
-                Text(
-                  '${ref.watch(careOverviewProvider).valueOrNull?.patients.length ?? 0}명',
-                  style: const TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w700,
-                    color: kGuardian,
-                  ),
-                ),
-              ],
-            ),
-            for (final p
-                in ref.watch(careOverviewProvider).valueOrNull?.patients ??
-                    const <CarePatient>[]) ...[
-              Container(
-                margin: const EdgeInsets.only(bottom: 10),
-                padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(14),
-                  border: Border.all(color: Colors.grey[300]!),
-                ),
-                child: Row(
+                const SizedBox(height: 18),
+                Text('성별', style: AppText.label(size: 18)),
+                const SizedBox(height: 8),
+                Row(
                   children: [
-                    Container(
-                      width: 40,
-                      height: 40,
-                      decoration: BoxDecoration(
-                        color: kGuardianLight,
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Center(
-                        child: Text(
-                          p.name.isEmpty ? '님' : p.name.substring(0, 1),
-                          style: const TextStyle(fontSize: 20),
-                        ),
+                    Expanded(
+                      child: _ChoiceBox(
+                        label: '여자',
+                        selected: _gender == 'F',
+                        onTap: () => setState(() => _gender = 'F'),
                       ),
                     ),
                     const SizedBox(width: 12),
                     Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            p.title,
-                            style: const TextStyle(
-                              fontSize: 15,
-                              fontWeight: FontWeight.w800,
-                              color: kText,
-                            ),
-                          ),
-                          const SizedBox(height: 2),
-                          Text(
-                            p.age == null ? '나이 정보 없음' : '${p.age}세',
-                            style: const TextStyle(
-                              fontSize: 12.5,
-                              color: kTextSub,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    TextButton(
-                      onPressed: () => _confirmUnlink(p),
-                      style: TextButton.styleFrom(
-                        foregroundColor: const Color(0xFFE24B4A),
-                        padding: const EdgeInsets.symmetric(horizontal: 8),
-                        minimumSize: const Size(0, 0),
-                      ),
-                      child: const Text(
-                        '연결 해제',
-                        style: TextStyle(
-                          fontSize: 12.5,
-                          fontWeight: FontWeight.w700,
-                        ),
+                      child: _ChoiceBox(
+                        label: '남자',
+                        selected: _gender == 'M',
+                        onTap: () => setState(() => _gender = 'M'),
                       ),
                     ),
                   ],
                 ),
-              ),
-            ],
-            const SizedBox(height: 4),
-            OutlinedButton.icon(
-              style: OutlinedButton.styleFrom(
-                foregroundColor: kGuardian,
-                side: BorderSide(color: kGuardian.withValues(alpha: 0.4)),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 12,
-                ),
-                minimumSize: const Size(double.infinity, 48),
-              ),
-              onPressed: () => Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const PatientLinkScreen()),
-              ),
-              icon: const Icon(Icons.add, size: 18),
-              label: const Text(
-                '환자 연결하기',
-                style: TextStyle(fontWeight: FontWeight.w700),
+              ],
+            ),
+          ),
+
+          // ── 연결된 어르신 — 보호자만 ──
+          if (_isGuardian) ...[
+            const SizedBox(height: 12),
+            SeniorCard(
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text('연결된 어르신', style: AppText.cardTitle(size: 20)),
+                  const SizedBox(height: 12),
+                  for (final p
+                      in ref
+                              .watch(careOverviewProvider)
+                              .valueOrNull
+                              ?.patients ??
+                          const <CarePatient>[]) ...[
+                    Container(
+                      margin: const EdgeInsets.only(bottom: 10),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 14,
+                      ),
+                      decoration: BoxDecoration(
+                        color: AppColors.sunken,
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  p.title,
+                                  style: AppText.cardTitle(size: 19),
+                                ),
+                                Text(
+                                  p.age == null ? '나이 정보 없음' : '${p.age}세',
+                                  style: AppText.caption(size: 16),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          SeniorTextButton(
+                            label: '연결 해제',
+                            expand: false,
+                            fontSize: 18,
+                            color: AppColors.danger,
+                            onPressed: () => _confirmUnlink(p),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                  SeniorButton(
+                    label: '어르신 연결하기',
+                    kind: SeniorButtonKind.secondary,
+                    minHeight: 60,
+                    fontSize: 19,
+                    onPressed: () => Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => const PatientLinkScreen(),
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
           ],
 
-          // ══════════════════════════════════════════════
-          //  건강정보 — 환자만 (보호자는 전부 숨김)
-          // ══════════════════════════════════════════════
+          // ── 건강 정보 — 어르신만 (프로토타입 44번) ──
           if (!_isGuardian) ...[
-            const SizedBox(height: 18),
-            _section('키 / 몸무게'),
-            Row(
-              children: [
-                Expanded(
-                  child: _field(
-                    _height,
-                    hint: '키',
-                    keyboard: const TextInputType.numberWithOptions(
-                      decimal: true,
-                    ),
-                    suffixText: 'cm',
-                    accent: accent,
+            const SizedBox(height: 12),
+            SeniorCard(
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('키 / 몸무게', style: AppText.label(size: 18)),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: SeniorField(
+                          controller: _height,
+                          hint: '156 cm',
+                          keyboardType: const TextInputType.numberWithOptions(
+                            decimal: true,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: SeniorField(
+                          controller: _weight,
+                          hint: '54 kg',
+                          keyboardType: const TextInputType.numberWithOptions(
+                            decimal: true,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: _field(
-                    _weight,
-                    hint: '몸무게',
-                    keyboard: const TextInputType.numberWithOptions(
-                      decimal: true,
-                    ),
-                    suffixText: 'kg',
-                    accent: accent,
+                  const SizedBox(height: 18),
+                  Text('혈액형', style: AppText.label(size: 18)),
+                  const SizedBox(height: 8),
+                  _PickRow(
+                    value: _blood ?? '아직 안 고르셨어요',
+                    empty: _blood == null,
+                    onTap: _pickBlood,
                   ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 18),
-
-            _section('혈액형'),
-            _grid(
-              const [
-                'RH+ A',
-                'RH- A',
-                'RH+ B',
-                'RH- B',
-                'RH+ O',
-                'RH- O',
-                'RH+ AB',
-                'RH- AB',
-              ],
-              _blood,
-              (v) => setState(() => _blood = v),
-              accent,
-            ),
-            const SizedBox(height: 8),
-
-            if (_gender == 'F') ...[
-              _section('임신 상태'),
-              _grid(
-                const ['계획 없음', '임신 준비중', '임신 중', '수유 중'],
-                _pregnancy,
-                (v) => setState(() => _pregnancy = v),
-                accent,
+                  const SizedBox(height: 18),
+                  Text('담배', style: AppText.label(size: 18)),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      for (int i = 0; i < _smokingOptions.length; i++) ...[
+                        if (i > 0) const SizedBox(width: 10),
+                        Expanded(
+                          child: _ChoiceBox(
+                            label: _smokingOptions[i],
+                            selected: _smoking == _smokingOptions[i],
+                            onTap: () =>
+                                setState(() => _smoking = _smokingOptions[i]),
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                  const SizedBox(height: 18),
+                  Text('약물 알레르기', style: AppText.label(size: 18)),
+                  const SizedBox(height: 8),
+                  _ChipEditor(
+                    items: _allergens,
+                    onAdd: () =>
+                        _openPicker('약물 알레르기', _allergens, _allergyOptions),
+                    onRemove: (item) => setState(() => _allergens.remove(item)),
+                  ),
+                  const SizedBox(height: 18),
+                  Text('현재 질환 / 만성질환', style: AppText.label(size: 18)),
+                  const SizedBox(height: 8),
+                  _ChipEditor(
+                    items: _diseases,
+                    onAdd: () =>
+                        _openPicker('현재 질환', _diseases, _diseaseOptions),
+                    onRemove: (item) => setState(() => _diseases.remove(item)),
+                  ),
+                ],
               ),
-              const SizedBox(height: 8),
-            ],
-
-            _section('흡연'),
-            _vlist(
-              const ['아니요', '예', '과거에 폈지만 끊었어요'],
-              _smoking,
-              (v) => setState(() => _smoking = v),
-              accent,
             ),
-            const SizedBox(height: 18),
-
-            _section('음주'),
-            _grid(
-              const ['거의 안 마심', '주 1~2일', '주 3~4일', '주 5~7일'],
-              _drinking,
-              (v) => setState(() => _drinking = v),
-              accent,
-            ),
-            const SizedBox(height: 8),
-
-            _section('약물 알레르기'),
-            _chipEditor(
-              _allergens,
-              '알레르기 추가',
-              () => _openPicker('약물 알레르기', _allergens, _allergyOptions),
-            ),
-            const SizedBox(height: 20),
-
-            _section('현재 질환 / 만성질환'),
-            _chipEditor(
-              _diseases,
-              '질환 추가',
-              () => _openPicker('현재 질환', _diseases, _diseaseOptions),
-            ),
-            const SizedBox(height: 20),
-
-            _section('과거력'),
-            _yesNo(_pastYes, (v) => setState(() => _pastYes = v), accent),
-            const SizedBox(height: 18),
-
-            _section('가족력'),
-            _yesNo(_familyYes, (v) => setState(() => _familyYes = v), accent),
           ],
-
-          const SizedBox(height: 28),
-
-          SizedBox(
-            height: 56,
-            child: FilledButton(
-              style: FilledButton.styleFrom(
-                backgroundColor: accent,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16),
-                ),
-              ),
-              onPressed: _saving ? null : _save,
-              child: Text(
-                _saving ? '저장하는 중...' : '저장하기',
-                style: const TextStyle(
-                  fontSize: 17,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ),
+          const SizedBox(height: 18),
+          SeniorButton(
+            label: _saving ? '저장하는 중…' : '이대로 저장하기',
+            onPressed: _saving ? null : _save,
           ),
         ],
       ),
     );
   }
 
-  // ── 공통 위젯 ─────────────────────────────────────────────
-  Widget _section(String t) => Padding(
-    padding: const EdgeInsets.only(bottom: 10, left: 2),
-    child: Text(
-      t,
-      style: const TextStyle(
-        fontSize: 15,
-        fontWeight: FontWeight.w800,
-        color: kText,
-      ),
-    ),
-  );
-
-  Widget _field(
-    TextEditingController c, {
-    String? hint,
-    TextInputType? keyboard,
-    TextInputFormatter? formatter,
-    String? suffixText,
-    int lines = 1,
-    Color accent = kPrimary,
-  }) {
-    return TextField(
-      controller: c,
-      keyboardType: keyboard,
-      inputFormatters: formatter == null ? null : [formatter],
-      maxLines: lines,
-      style: const TextStyle(fontSize: 16),
-      decoration: InputDecoration(
-        hintText: hint,
-        filled: true,
-        fillColor: Colors.white,
-        suffixText: suffixText,
-        contentPadding: const EdgeInsets.symmetric(
-          horizontal: 16,
-          vertical: 16,
-        ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(14),
-          borderSide: BorderSide(color: Colors.grey[300]!),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(14),
-          borderSide: BorderSide(color: accent, width: 1.5),
-        ),
-      ),
+  /// 혈액형은 여덟 가지뿐이다. 칸을 여덟 개 깔지 않고 굴려서 고른다.
+  Future<void> _pickBlood() async {
+    final at = _bloodOptions.indexOf(_blood ?? '');
+    final picked = await showSeniorWheel(
+      context: context,
+      title: '혈액형을 고르세요',
+      options: _bloodOptions,
+      selectedIndex: at < 0 ? 0 : at,
+      confirmLabel: '이걸로 정하기',
     );
+    if (picked == null) return;
+    setState(() => _blood = _bloodOptions[picked]);
   }
+}
 
-  Widget _pill(String label, bool selected, VoidCallback onTap, Color accent) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        height: 52,
-        alignment: Alignment.center,
-        decoration: BoxDecoration(
-          color: selected ? accent.withValues(alpha: 0.08) : Colors.white,
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(
-            color: selected ? accent : Colors.grey[300]!,
-            width: selected ? 1.5 : 1,
-          ),
-        ),
-        child: Text(
-          label,
-          style: TextStyle(
-            fontSize: 15,
-            fontWeight: FontWeight.w700,
-            color: selected ? accent : kText,
-          ),
-        ),
-      ),
-    );
-  }
+const List<String> _bloodOptions = [
+  'RH+ A',
+  'RH- A',
+  'RH+ B',
+  'RH- B',
+  'RH+ O',
+  'RH- O',
+  'RH+ AB',
+  'RH- AB',
+];
 
-  // 선택된 항목 = 삭제 가능한 칩, + 추가 버튼
-  Widget _chipEditor(Set<String> items, String addLabel, VoidCallback onAdd) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        if (items.isNotEmpty)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 10),
-            child: Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                for (final it in items)
-                  Container(
-                    padding: const EdgeInsets.fromLTRB(14, 9, 10, 9),
-                    decoration: BoxDecoration(
-                      color: kPrimaryLight,
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          it,
-                          style: const TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w600,
-                            color: kPrimary,
-                          ),
-                        ),
-                        const SizedBox(width: 6),
-                        GestureDetector(
-                          onTap: () => setState(() => items.remove(it)),
-                          child: const Icon(
-                            Icons.close,
-                            size: 16,
-                            color: kPrimary,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-              ],
+const List<String> _smokingOptions = ['안 폈어요', '폈어요', '끊었어요'];
+
+/// 눌러서 고르는 줄 — 값은 왼쪽, "고르기"는 오른쪽 (프로토타입 43번).
+class _PickRow extends StatelessWidget {
+  final String value;
+  final bool empty;
+  final VoidCallback onTap;
+
+  const _PickRow({
+    required this.value,
+    required this.onTap,
+    this.empty = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      button: true,
+      label: '$value · 고르기',
+      child: ExcludeSemantics(
+        child: GestureDetector(
+          onTap: onTap,
+          child: Container(
+            constraints: const BoxConstraints(minHeight: 66),
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+            decoration: BoxDecoration(
+              color: AppColors.sunken,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: AppColors.strongLine, width: 2),
             ),
-          ),
-        OutlinedButton.icon(
-          style: OutlinedButton.styleFrom(
-            foregroundColor: kPrimary,
-            side: BorderSide(color: kPrimary.withValues(alpha: 0.4)),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-            ),
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-          ),
-          onPressed: onAdd,
-          icon: const Icon(Icons.add, size: 18),
-          label: Text(
-            addLabel,
-            style: const TextStyle(fontWeight: FontWeight.w700),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _grid(
-    List<String> options,
-    String? selected,
-    ValueChanged<String> onSelect,
-    Color accent,
-  ) {
-    return Column(
-      children: [
-        for (int i = 0; i < options.length; i += 2)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 12),
             child: Row(
               children: [
                 Expanded(
-                  child: _pill(
-                    options[i],
-                    selected == options[i],
-                    () => onSelect(options[i]),
-                    accent,
+                  child: Text(
+                    value,
+                    style: AppText.label(
+                      size: 21,
+                      color: empty ? AppColors.chevron : AppColors.textPrimary,
+                    ),
                   ),
                 ),
-                const SizedBox(width: 12),
-                if (i + 1 < options.length)
-                  Expanded(
-                    child: _pill(
-                      options[i + 1],
-                      selected == options[i + 1],
-                      () => onSelect(options[i + 1]),
-                      accent,
-                    ),
-                  )
-                else
-                  const Expanded(child: SizedBox()),
+                const SizedBox(width: 10),
+                Text('고르기', style: AppText.label(size: 17)),
               ],
             ),
           ),
-      ],
+        ),
+      ),
     );
   }
+}
 
-  Widget _vlist(
-    List<String> options,
-    String? selected,
-    ValueChanged<String> onSelect,
-    Color accent,
-  ) {
-    return Column(
-      children: [
-        for (final o in options)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 10),
-            child: SizedBox(
-              width: double.infinity,
-              child: _pill(o, selected == o, () => onSelect(o), accent),
+/// 둘·셋 중 하나를 고르는 칸. 고른 것만 파란 테두리·파란 글씨다.
+class _ChoiceBox extends StatelessWidget {
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const _ChoiceBox({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      button: true,
+      selected: selected,
+      child: ExcludeSemantics(
+        child: GestureDetector(
+          onTap: onTap,
+          child: Container(
+            constraints: const BoxConstraints(minHeight: 64),
+            alignment: Alignment.center,
+            padding: const EdgeInsets.symmetric(horizontal: 6),
+            decoration: BoxDecoration(
+              color: selected ? AppColors.pointTint : AppColors.surface,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                color: selected ? AppColors.point : AppColors.strongLine,
+                width: 2,
+              ),
+            ),
+            child: Text(
+              label,
+              textAlign: TextAlign.center,
+              style: AppText.cardTitle(
+                size: 19,
+                color: selected ? AppColors.point : AppColors.textPrimary,
+              ),
             ),
           ),
-      ],
+        ),
+      ),
     );
   }
+}
 
-  Widget _yesNo(bool? value, ValueChanged<bool> onSelect, Color accent) {
-    return Row(
+/// 고른 것은 칩으로 남고, "+ 더 넣기"로 더한다 (프로토타입 44번).
+class _ChipEditor extends StatelessWidget {
+  final Set<String> items;
+  final VoidCallback onAdd;
+  final ValueChanged<String> onRemove;
+
+  const _ChipEditor({
+    required this.items,
+    required this.onAdd,
+    required this.onRemove,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Wrap(
+      spacing: 10,
+      runSpacing: 10,
       children: [
-        Expanded(
-          child: _pill('아니요', value == false, () => onSelect(false), accent),
-        ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: _pill('예', value == true, () => onSelect(true), accent),
+        for (final item in items)
+          Semantics(
+            button: true,
+            label: '$item 빼기',
+            child: ExcludeSemantics(
+              child: GestureDetector(
+                onTap: () => onRemove(item),
+                child: Container(
+                  constraints: const BoxConstraints(minHeight: 56),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 10,
+                  ),
+                  decoration: BoxDecoration(
+                    color: AppColors.pointTint,
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: AppColors.point, width: 2),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        item,
+                        style: AppText.label(size: 18, color: AppColors.point),
+                      ),
+                      const SizedBox(width: 8),
+                      const Icon(
+                        Icons.close_rounded,
+                        size: 22,
+                        color: AppColors.point,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        Semantics(
+          button: true,
+          child: ExcludeSemantics(
+            child: GestureDetector(
+              onTap: onAdd,
+              child: Container(
+                constraints: const BoxConstraints(minHeight: 56),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 10,
+                ),
+                decoration: BoxDecoration(
+                  color: AppColors.surface,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: AppColors.strongLine, width: 2),
+                ),
+                child: Text('+ 더 넣기', style: AppText.label(size: 18)),
+              ),
+            ),
+          ),
         ),
       ],
     );

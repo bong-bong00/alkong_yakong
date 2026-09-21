@@ -86,7 +86,7 @@ void main() {
     },
   );
 
-  Future<void> show(WidgetTester tester, Map<String, dynamic> raw) async {
+  Future<void> show(WidgetTester tester, Map<String, dynamic> raw, {double scale = 1}) async {
     tester.view.physicalSize = const Size(1200, 2400);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
@@ -97,8 +97,12 @@ void main() {
         overrides: [
           userMedicinesProvider.overrideWith(() => FakeDetails(medicine)),
         ],
-        child: const MaterialApp(
-          home: DrugDetailScreen(medicineCode: 'synthetic'),
+        child: MaterialApp(
+          builder: (context, child) => MediaQuery(
+            data: MediaQuery.of(context).copyWith(textScaler: TextScaler.linear(scale)),
+            child: child!,
+          ),
+          home: const DrugDetailScreen(medicineCode: 'synthetic'),
         ),
       ),
     );
@@ -122,6 +126,24 @@ void main() {
     expect(find.text('기존 사용 목적'), findsOneWidget);
     expect(find.text('· 기존 조건'), findsOneWidget);
     expect(find.text('정해진 작용을 돕는 성분이에요.'), findsOneWidget);
+  });
+
+  testWidgets('long explanation remains complete with large text', (tester) async {
+    final body = List.filled(15, '성분의 확인된 설명을 그대로 표시해요.').join(' ');
+    await show(tester, {...data(), 'ingredient_explanation':body}, scale:2);
+    final text = tester.widget<Text>(find.text(body));
+    expect(text.maxLines,isNull);
+    expect(text.overflow,isNot(TextOverflow.ellipsis));
+    expect(text.data,body);
+    expect(tester.takeException(),isNull);
+  });
+
+  testWidgets('missing explanation is not described as missing official source', (tester) async {
+    await show(tester, {...data(), 'ingredient_explanation':''});
+    expect(find.text('주성분의 쉬운 설명을 아직 확인하지 못했어요. 공식 정보가 없다는 뜻은 아니에요.'),findsOneWidget);
+    await tester.pumpWidget(const SizedBox.shrink());
+    await show(tester, {...data(), 'detail_status':'FAILED', 'ingredient_explanation':''});
+    expect(find.text('주성분 설명을 불러오지 못했어요. 잠시 후 다시 확인해 주세요.'),findsOneWidget);
   });
 
   testWidgets('matched phrase alone is bold green and purposes displayed', (

@@ -47,11 +47,7 @@ class CareFamilyScreen extends ConsumerWidget {
     // 서버가 받아 준 뒤에만 목록에 올린다. 실패했는데 올려 두면
     // 어르신은 요청을 받은 적이 없는데 보호자만 기다리게 된다.
     if (!result.isSent) {
-      showSeniorSnackbar(
-        context,
-        result.error ?? '연결을 요청하지 못했어요',
-        error: true,
-      );
+      showSeniorSnackbar(context, result.error ?? '연결을 요청하지 못했어요', error: true);
       return;
     }
     ref.invalidate(careOverviewProvider);
@@ -117,7 +113,8 @@ class CareFamilyScreen extends ConsumerWidget {
                     )
                   else if (patients.isEmpty && pending.isEmpty)
                     const _InfoCard(
-                      text: '아직 연결된 어르신이 없어요. 아래 "돌보는 분 추가하기"에서 '
+                      text:
+                          '아직 연결된 어르신이 없어요. 아래 "돌보는 분 추가하기"에서 '
                           '어르신 전화번호로 연결을 요청해 주세요.',
                     ),
                   if (needAttention.isNotEmpty) ...[
@@ -136,6 +133,30 @@ class CareFamilyScreen extends ConsumerWidget {
                     _PendingCard(
                       invite: invite,
                       onCancel: () => _cancel(context, ref, invite),
+                    ),
+                  ],
+                  if (patients.isNotEmpty) ...[
+                    const SizedBox(height: 12),
+                    SeniorCard(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 20,
+                        vertical: 18,
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            '한 분씩 따로 설정돼요',
+                            style: AppText.cardTitle(size: 20),
+                          ),
+                          const SizedBox(height: 6),
+                          Text(
+                            '알림 시간, 재알림 사다리, 전화 대상은 어르신마다 따로 저장됩니다. '
+                            '형제·자매가 같은 어르신을 함께 볼 수도 있어요.',
+                            style: AppText.body(size: 17.5),
+                          ),
+                        ],
+                      ),
                     ),
                   ],
                   const SizedBox(height: 16),
@@ -247,13 +268,16 @@ class _PatientCard extends StatelessWidget {
   const _PatientCard({required this.patient, required this.onTap});
 
   String get _status {
-    if (patient.totalCount == 0) return '오늘 드실 약이 등록돼 있지 않아요.';
-    if (patient.needsAttention) {
-      return '${patient.nextDoseLabel} 기록이 아직 오지 않았어요.';
-    }
-    return patient.heartRateNormal == true
-        ? '오늘 약을 다 드셨어요. 심장 박동도 정상입니다.'
-        : '오늘 약을 다 드셨어요.';
+    if (patient.totalCount == 0) return '오늘 드실 약이 등록돼 있지 않아요';
+    if (patient.needsAttention) return '${patient.nextDoseLabel} 약이 남아 있어요';
+    return '오늘 ${_spokenCount(patient.totalCount)} 다 드셨어요';
+  }
+
+  /// "세 번"처럼 읽어 준다. 숫자보다 말이 먼저 들어온다.
+  static String _spokenCount(int count) {
+    const words = ['', '한 번', '두 번', '세 번', '네 번', '다섯 번'];
+    if (count >= 1 && count < words.length) return words[count];
+    return '$count번';
   }
 
   @override

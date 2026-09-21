@@ -22,6 +22,7 @@ import '../../../onboarding/presentation/screens/first_run_screen.dart';
 import 'add_medicine_screen.dart';
 import 'manual_medicine_screen.dart';
 import '../widgets/fix_name_sheet.dart';
+import '../../domain/registration_result.dart';
 
 /// 처방전 등록 흐름의 단계.
 enum PrescriptionStep {
@@ -271,7 +272,7 @@ class _PrescriptionScreenState extends ConsumerState<PrescriptionScreen> {
           'ocr_text': _result?['ocr_text'],
         },
       );
-      if (response is Map) {
+      if (response is Map && response['registered'] == true) {
         final prescriptionId = response['prescription_id']?.toString().trim();
         debugPrint(
           '[PRESCRIPTION_DIAG] '
@@ -283,14 +284,9 @@ class _PrescriptionScreenState extends ConsumerState<PrescriptionScreen> {
           confirmResponse: response,
           ocrItems: editedItems,
         );
-        if (response['dur_result'] is Map) {
-          durResult = Map<String, dynamic>.from(response['dur_result'] as Map);
-        }
+        durResult = registrationDurResult(response['dur_result']);
       } else {
-        debugPrint(
-          '[PRESCRIPTION_DIAG] '
-          'prescription_id_present=false schedule_count=unknown',
-        );
+        throw const ApiException('약 등록 결과를 확인하지 못했어요.');
       }
     } catch (error) {
       debugPrint(
@@ -306,7 +302,7 @@ class _PrescriptionScreenState extends ConsumerState<PrescriptionScreen> {
     var refreshFailed = false;
     try {
       await Future.wait<void>([
-        ref.read(medicationProvider.notifier).refreshFromServer(),
+        ref.read(medicationProvider.notifier).refreshFromServer(throwOnError: true),
         ref.read(userMedicinesProvider.notifier).refresh(),
       ]);
     } catch (_) {
@@ -332,7 +328,7 @@ class _PrescriptionScreenState extends ConsumerState<PrescriptionScreen> {
       );
     }
 
-    if (!_hasPairConflict(durResult)) {
+    if (registrationDurComplete(durResult) && !_hasPairConflict(durResult)) {
       openScheduleDays();
       return;
     }
@@ -344,7 +340,7 @@ class _PrescriptionScreenState extends ConsumerState<PrescriptionScreen> {
     }
     context.push(
       '/dur-analysis',
-      extra: {...?durResult, 'open_schedule_days': true},
+      extra: {...durResult, 'open_schedule_days': true},
     );
   }
 
@@ -371,10 +367,14 @@ class _PrescriptionScreenState extends ConsumerState<PrescriptionScreen> {
       case PrescriptionStep.manual:
         return ManualMedicineScreen(
           onBack: () => setState(() => _step = PrescriptionStep.pickMethod),
-          onSaved: () {
+          onSaved: (result) {
             final onCompleted = widget.onCompleted;
             if (onCompleted != null) {
-              onCompleted(null);
+              onCompleted(result);
+              return;
+            }
+            if (!registrationDurComplete(result) || _hasPairConflict(result)) {
+              context.push('/dur-analysis', extra: {...result, 'open_schedule_days': true});
               return;
             }
             final onOpenScheduleDays = widget.onOpenScheduleDays;

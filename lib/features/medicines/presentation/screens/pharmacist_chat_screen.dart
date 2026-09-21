@@ -4,8 +4,12 @@ import 'package:flutter_tabler_icons/flutter_tabler_icons.dart';
 
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
+import '../../../../core/widgets/senior_card.dart';
 import '../../../../core/widgets/senior_header.dart';
+import '../../../../core/widgets/senior_sheet.dart';
+import '../../../../core/widgets/senior_button.dart';
 import '../../../profile/application/current_user_controller.dart';
+import '../../application/user_medicines_controller.dart';
 import '../../domain/drug_info.dart';
 
 /// 22 / 23 · AI 약사 상담.
@@ -28,6 +32,44 @@ class _PharmacistChatScreenState extends ConsumerState<PharmacistChatScreen> {
   final ScrollController _scroll = ScrollController();
   late final List<_Message> _messages = [_Message.bot(_greeting())];
 
+  /// 어떤 약에 대해 묻는지. null이면 드시는 약 전체다.
+  String? _subject;
+
+  /// 물어볼 약을 고른다. 약을 고르면 질문 앞에 그 이름이 붙는다.
+  Future<void> _pickSubject() async {
+    final medicines = ref.read(userMedicinesProvider).valueOrNull ?? const [];
+    final names = [
+      for (final medicine in medicines)
+        if (medicine.displayName.trim().isNotEmpty) medicine.displayName.trim(),
+    ];
+    final picked = await SeniorSheet.show<String>(
+      context: context,
+      builder: (sheetContext) => SeniorSheet(
+        title: '어떤 약을 물어볼까요?',
+        body: SeniorSheetBody.plain('고른 약에 맞춰 답해 드려요.'),
+        actions: [
+          SeniorButton(
+            label: '약 전체',
+            kind: SeniorButtonKind.secondary,
+            minHeight: 62,
+            fontSize: 20,
+            onPressed: () => Navigator.of(sheetContext).pop('전체'),
+          ),
+          for (final name in names)
+            SeniorButton(
+              label: name,
+              kind: SeniorButtonKind.secondary,
+              minHeight: 62,
+              fontSize: 20,
+              onPressed: () => Navigator.of(sheetContext).pop(name),
+            ),
+        ],
+      ),
+    );
+    if (picked == null || !mounted) return;
+    setState(() => _subject = picked == '전체' ? null : picked);
+  }
+
   String _greeting() {
     final String signedIn = ref.read(currentUserNameProvider);
     final name = (widget.userName ?? signedIn).trim();
@@ -42,9 +84,11 @@ class _PharmacistChatScreenState extends ConsumerState<PharmacistChatScreen> {
     super.dispose();
   }
 
-  void _ask(String question) {
+  void _ask(String rawQuestion) {
+    final subject = _subject;
+    final question = subject == null ? rawQuestion : '$subject · $rawQuestion';
     final match = PharmacistAnswer.suggested
-        .where((a) => a.question == question)
+        .where((a) => a.question == rawQuestion)
         .firstOrNull;
     setState(() {
       _messages.add(_Message.user(question));
@@ -87,10 +131,7 @@ class _PharmacistChatScreenState extends ConsumerState<PharmacistChatScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        '무엇이든 물어보세요',
-                        style: AppText.screenTitle(size: 24),
-                      ),
+                      Text('무엇이든 물어보세요', style: AppText.screenTitle(size: 24)),
                       Text(
                         '약 이야기를 쉬운 말로 알려드려요',
                         style: AppText.caption(size: 16.5),
@@ -106,12 +147,29 @@ class _PharmacistChatScreenState extends ConsumerState<PharmacistChatScreen> {
               controller: _scroll,
               padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
               children: [
+                SeniorCard(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 20,
+                    vertical: 4,
+                  ),
+                  child: SeniorListRow(
+                    label: '물어볼 약',
+                    subtitle: _subject ?? '약 전체',
+                    value: '바꾸기',
+                    valueColor: AppColors.point,
+                    trailing: const SeniorChevron(),
+                    onTap: _pickSubject,
+                  ),
+                ),
+                const SizedBox(height: 14),
                 for (final message in _messages) ...[
                   _Bubble(message: message),
                   const SizedBox(height: 12),
                 ],
                 if (showSuggestions) ...[
                   const SizedBox(height: 4),
+                  Text('이렇게 물어보셔도 돼요', style: AppText.caption(size: 17)),
+                  const SizedBox(height: 10),
                   for (final item in PharmacistAnswer.suggested) ...[
                     _SuggestionCard(
                       question: item.question,
@@ -141,12 +199,9 @@ class _Message {
   final bool fromBot;
   final bool withDisclaimer;
 
-  const _Message.bot(this.text, {this.withDisclaimer = false})
-      : fromBot = true;
+  const _Message.bot(this.text, {this.withDisclaimer = false}) : fromBot = true;
 
-  const _Message.user(this.text)
-      : fromBot = false,
-        withDisclaimer = false;
+  const _Message.user(this.text) : fromBot = false, withDisclaimer = false;
 }
 
 class _Bubble extends StatelessWidget {
@@ -238,10 +293,10 @@ class _SuggestionCard extends StatelessWidget {
             borderRadius: BorderRadius.circular(18),
             border: Border.all(color: AppColors.border, width: 2),
           ),
-          child: Text(question, style: AppText.label(
-            size: 19,
-            color: AppColors.textPrimary,
-          )),
+          child: Text(
+            question,
+            style: AppText.label(size: 19, color: AppColors.textPrimary),
+          ),
         ),
       ),
     );

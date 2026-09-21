@@ -102,9 +102,9 @@ class UserMedicinesController extends AsyncNotifier<List<UserMedicine>> {
   Future<List<UserMedicine>> _loadMedicines() async {
     final userId = Uri.encodeComponent(MvpSession.userId);
     final response = await _api.get('/api/v1/users/$userId/medicines');
-    if (response is! Map) return const [];
+    if (response is! Map) throw const ApiException('내 약 목록을 읽을 수 없습니다.');
     final raw = response['medicines'];
-    if (raw is! List) return const [];
+    if (raw is! List) throw const ApiException('내 약 목록을 읽을 수 없습니다.');
     return [
       for (final item in raw)
         if (item is Map) UserMedicine.fromJson(Map<String, dynamic>.from(item)),

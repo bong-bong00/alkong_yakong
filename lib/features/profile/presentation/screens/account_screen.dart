@@ -42,7 +42,7 @@ class AccountScreen extends ConsumerWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        Text('이 전화기에서 나가기', style: AppText.cardTitle()),
+                        Text('로그아웃', style: AppText.cardTitle(size: 21)),
                         const SizedBox(height: 6),
                         Text(
                           '다시 들어오시려면 휴대폰 번호와 비밀번호가 필요해요. '
@@ -51,7 +51,7 @@ class AccountScreen extends ConsumerWidget {
                         ),
                         const SizedBox(height: 16),
                         SeniorButton(
-                          label: '나가기',
+                          label: '로그아웃',
                           kind: SeniorButtonKind.secondary,
                           minHeight: 62,
                           fontSize: 21,
@@ -75,18 +75,21 @@ class AccountScreen extends ConsumerWidget {
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
                         Text(
-                          '아주 그만두기',
-                          style: AppText.cardTitle(color: AppColors.danger),
+                          '탈퇴',
+                          style: AppText.cardTitle(
+                            size: 21,
+                            color: AppColors.danger,
+                          ),
                         ),
                         const SizedBox(height: 6),
                         Text(
-                          '그만두시면 복약 기록과 등록한 약이 모두 지워지고 '
+                          '탈퇴하시면 복약 기록과 등록한 약이 모두 지워지고 '
                           '되돌릴 수 없어요. 가족에게도 더 이상 알림이 가지 않아요.',
                           style: AppText.body(),
                         ),
                         const SizedBox(height: 16),
                         SeniorButton(
-                          label: '그만두기',
+                          label: '탈퇴',
                           kind: SeniorButtonKind.danger,
                           minHeight: 62,
                           fontSize: 21,
@@ -115,7 +118,7 @@ class AccountScreen extends ConsumerWidget {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Text('정말 그만두시겠어요?', style: AppText.emphasis(size: 25)),
+              Text('정말 탈퇴하시겠어요?', style: AppText.emphasis(size: 25)),
               const SizedBox(height: 10),
               Text(
                 '지금까지의 복약 기록이 모두 지워져요. '
@@ -131,7 +134,7 @@ class AccountScreen extends ConsumerWidget {
               ),
               const SizedBox(height: 10),
               SeniorButton(
-                label: '네, 그만둘게요',
+                label: '네, 탈퇴할게요',
                 kind: SeniorButtonKind.secondary,
                 minHeight: 58,
                 fontSize: 20,

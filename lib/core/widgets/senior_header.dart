@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_tabler_icons/flutter_tabler_icons.dart';
 
 import '../constants/app_colors.dart';
 import '../theme/app_typography.dart';
@@ -28,16 +29,13 @@ class SeniorHeader extends StatelessWidget {
       decoration: BoxDecoration(
         color: background ?? AppColors.surface,
         border: Border(
-          bottom: BorderSide(
-            color: borderColor ?? AppColors.border,
-            width: 1,
-          ),
+          bottom: BorderSide(color: borderColor ?? AppColors.border, width: 1),
         ),
       ),
       child: SafeArea(
         bottom: false,
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(22, 14, 22, 15),
+          padding: const EdgeInsets.fromLTRB(18, 12, 18, 14),
           child: child,
         ),
       ),
@@ -66,7 +64,7 @@ class SeniorTitleHeader extends StatelessWidget {
   }
 }
 
-/// 상단 바 (B형 · 하위 화면). 뒤로가기 44×44 원형 + 제목 24px/900.
+/// 상단 바 (B형 · 하위 화면). 왼쪽에 뒤로가기, 가운데에 제목.
 class SeniorBackHeader extends StatelessWidget {
   final String title;
   final VoidCallback? onBack;
@@ -86,16 +84,18 @@ class SeniorBackHeader extends StatelessWidget {
     final row = Row(
       children: [
         SeniorBackButton(onTap: onBack, onDark: onDark),
-        const SizedBox(width: 14),
         Expanded(
           child: Text(
             title,
+            textAlign: TextAlign.center,
             style: AppText.screenTitle(
               size: 24,
               color: onDark ? Colors.white : AppColors.textPrimary,
             ),
           ),
         ),
+        // 제목이 진짜 가운데에 오도록 뒤로가기만큼 오른쪽을 비워 둔다.
+        const SizedBox(width: 56),
       ],
     );
 
@@ -111,45 +111,45 @@ class SeniorBackHeader extends StatelessWidget {
   }
 }
 
-/// 44×44 원형 뒤로가기. 탭 영역은 48×48 이상으로 잡는다.
+/// 뒤로 버튼. 화살표 하나.
+///
+/// 누르는 자리는 56×56으로 넉넉히 두되, 칸을 그리지는 않는다.
+/// 글자는 빼고, [label]은 화면에 그리지 않고 스크린리더에만 읽힌다.
 class SeniorBackButton extends StatelessWidget {
   final VoidCallback? onTap;
   final bool onDark;
 
-  const SeniorBackButton({super.key, this.onTap, this.onDark = false});
+  /// 스크린리더가 읽을 이름. 기본 "뒤로".
+  final String label;
+
+  const SeniorBackButton({
+    super.key,
+    this.onTap,
+    this.onDark = false,
+    this.label = '뒤로',
+  });
 
   @override
   Widget build(BuildContext context) {
-    // 쉬운 모드처럼 화면이 쉘 안에 얹혀 있으면 돌아갈 곳이 없다.
-    // 눌러도 아무 일이 없는 버튼은 그리지 않는다.
+    // 쉘 안에 얹혀 돌아갈 곳이 없으면 그리지 않는다.
     if (onTap == null && !Navigator.of(context).canPop()) {
-      return const SizedBox(width: 4);
+      return const SizedBox.shrink();
     }
 
+    final fg = onDark ? Colors.white : AppColors.textPrimary;
     return Semantics(
       button: true,
-      label: '뒤로 가기',
-      child: InkResponse(
+      label: '$label 가기',
+      child: GestureDetector(
         onTap: onTap ?? () => Navigator.of(context).maybePop(),
-        radius: 32,
-        child: Container(
-          width: 48,
-          height: 48,
-          alignment: Alignment.center,
-          child: Container(
-            width: 44,
-            height: 44,
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-              color: onDark ? AppColors.camChip : AppColors.surface,
-              shape: BoxShape.circle,
-            ),
-            child: Text(
-              '‹',
-              style: AppText.cardTitle(
-                size: 22,
-                color: onDark ? Colors.white : AppColors.textPrimary,
-              ),
+        behavior: HitTestBehavior.opaque,
+        child: SizedBox(
+          width: 56,
+          height: 56,
+          child: Align(
+            alignment: Alignment.centerLeft,
+            child: ExcludeSemantics(
+              child: Icon(TablerIcons.chevron_left, size: 40, color: fg),
             ),
           ),
         ),
@@ -170,7 +170,7 @@ class InitialAvatar extends StatelessWidget {
     required this.name,
     this.size = 52,
     this.background = AppColors.surface,
-    this.foreground = const Color(0xFF4A4A52),
+    this.foreground = AppColors.inkGray,
   });
 
   @override
@@ -197,9 +197,6 @@ class SeniorChevron extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Text(
-      '›',
-      style: AppText.label(size: 22, color: color),
-    );
+    return Text('›', style: AppText.label(size: 22, color: color));
   }
 }

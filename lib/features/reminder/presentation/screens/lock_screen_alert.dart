@@ -55,10 +55,7 @@ class LockScreenAlert extends StatelessWidget {
               Center(
                 child: Text(
                   '${now.month}월 ${now.day}일 ${_weekdays[now.weekday - 1]}',
-                  style: AppText.body(
-                    size: 22,
-                    color: const Color(0xFFB6B8C4),
-                  ),
+                  style: AppText.body(size: 22, color: AppColors.onDarkDate),
                 ),
               ),
               const SizedBox(height: 6),
@@ -135,7 +132,7 @@ class LockScreenAlert extends StatelessWidget {
               Center(
                 child: Text(
                   '앱을 열지 않아도 여기서 끝낼 수 있어요',
-                  style: AppText.caption(color: const Color(0xFF8A8CA0)),
+                  style: AppText.caption(color: AppColors.onDarkFootnote),
                 ),
               ),
             ],

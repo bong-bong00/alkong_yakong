@@ -167,6 +167,18 @@ class _DetailBody extends StatelessWidget {
               ],
             ),
           ),
+          if (!medicine.hasDetailContent || medicine.ingredientExplanation.trim().isEmpty) ...[
+            const SizedBox(height: 12),
+            SeniorCard(
+              padding: const EdgeInsets.all(22),
+              child: Text(
+                medicine.detailStatus.toUpperCase() == 'FAILED'
+                    ? '주성분 설명을 불러오지 못했어요. 잠시 후 다시 확인해 주세요.'
+                    : '주성분의 쉬운 설명을 아직 확인하지 못했어요. 공식 정보가 없다는 뜻은 아니에요.',
+                style: AppText.body(),
+              ),
+            ),
+          ],
           if (medicine.hasDetailContent) ...[
             if (medicine.ingredientExplanation.trim().isNotEmpty) ...[
               const SizedBox(height: 12),
@@ -494,8 +506,8 @@ class _DetailBody extends StatelessWidget {
   static String _detailStatusMessage(String status) {
     return switch (status.toUpperCase()) {
       'FAILED' => '자세한 설명을 불러오지 못했지만 제품 기본 정보는 볼 수 있어요.',
-      'OUTDATED' => '기존 안전 정보는 볼 수 있어요. 최신 공식 정보로 갱신 중이에요.',
-      'NEEDS_REVIEW' => '공식 정보에서 안전하게 정리한 기본 설명을 보여드려요.',
+      'OUTDATED' => '공식 정보가 바뀌었거나 기존 설명의 근거를 다시 확인해야 해요.',
+      'NEEDS_REVIEW' => '공식 사용 목적과 검토된 성분 설명을 구분해서 보여드려요.',
       _ => '현재 확인할 수 있는 제품 기본 정보를 보여드려요.',
     };
   }

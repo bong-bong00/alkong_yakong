@@ -103,7 +103,7 @@ def refresh_app_medicines_from_permission() -> int:
     try:
         rows = conn.execute(
             """
-            SELECT id, product_name FROM medicines
+            SELECT id, medicine_code, product_name FROM medicines
             WHERE trim(coalesce(product_name, '')) != ''
             """
         ).fetchall()
@@ -114,13 +114,21 @@ def refresh_app_medicines_from_permission() -> int:
             except Exception:
                 continue
             med = (official or {}).get("medicine") or {}
+            if str(med.get("medicine_code") or "").strip() != str(row["medicine_code"]):
+                continue
             efficacy = str(med.get("efficacy") or "").strip()
             if not efficacy:
                 continue
+            from app.services.pharmacist.ingredient import clean_ingredient_text
+
+            ingredient = clean_ingredient_text(med.get("ingredient"))
+            if ingredient == str(med.get("product_name") or name).strip():
+                ingredient = ""
             conn.execute(
                 """
                 UPDATE medicines SET
                     efficacy = ?,
+                    ingredient = COALESCE(NULLIF(?, ''), ingredient),
                     usage = COALESCE(NULLIF(?, ''), usage),
                     precautions = COALESCE(NULLIF(?, ''), precautions),
                     manufacturer = COALESCE(NULLIF(?, ''), manufacturer),
@@ -130,6 +138,7 @@ def refresh_app_medicines_from_permission() -> int:
                 """,
                 (
                     efficacy,
+                    ingredient,
                     str(med.get("usage") or "").strip(),
                     str(med.get("cautions") or med.get("precautions") or "").strip(),
                     str(med.get("manufacturer") or "").strip(),
@@ -215,11 +224,11 @@ def upsert_official_app_medicine(official: dict[str, Any]) -> str | None:
                     THEN excluded.ingredient
                     ELSE medicines.ingredient
                 END,
-                manufacturer = excluded.manufacturer,
-                efficacy = excluded.efficacy,
-                usage = excluded.usage,
-                precautions = excluded.precautions,
-                image_url = excluded.image_url,
+                manufacturer = COALESCE(NULLIF(trim(excluded.manufacturer), ''), medicines.manufacturer),
+                efficacy = COALESCE(NULLIF(trim(excluded.efficacy), ''), medicines.efficacy),
+                usage = COALESCE(NULLIF(trim(excluded.usage), ''), medicines.usage),
+                precautions = COALESCE(NULLIF(trim(excluded.precautions), ''), medicines.precautions),
+                image_url = COALESCE(NULLIF(trim(excluded.image_url), ''), medicines.image_url),
                 easy_category = COALESCE(
                     NULLIF(trim(medicines.easy_category), ''),
                     excluded.easy_category
