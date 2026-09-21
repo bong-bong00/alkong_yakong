@@ -75,10 +75,10 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
       'intent': 'side_effects',
     },
     {
-      'label': '다른 약과 같이 먹기',
+      'label': '다른 약과 함께 먹어도 되나요?',
       'prompt':
           '이 약을 제가 먹고 있는 약들과 같이 먹어도 되는지 확인해 주세요. 같은 성분이나 비슷한 역할의 약이 겹치는지도 알려주세요.',
-      'display': '다른 약과 함께 쓸 때 조심하거나 겹치는 약이 있나요?',
+      'display': '다른 약과 함께 먹어도 되나요?',
       'intent': 'combination',
     },
     {

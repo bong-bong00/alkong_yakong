@@ -263,7 +263,7 @@ void main() {
       '어떻게 먹나요?': '이 약은 보통 어떻게 먹나요? 제가 등록한 복용 방법과 제품의 일반적인 사용법을 구분해서 알려주세요.',
       '무엇을 조심해야 하나요?': '이 약을 먹을 때 무엇을 조심해야 하나요?',
       '먹고 불편하면 어떻게 하나요?': '이 약을 먹고 불편한 증상이 생기면 어떻게 해야 하나요?',
-      '다른 약과 같이 먹기':
+      '다른 약과 함께 먹어도 되나요?':
           '이 약을 제가 먹고 있는 약들과 같이 먹어도 되는지 확인해 주세요. 같은 성분이나 비슷한 역할의 약이 겹치는지도 알려주세요.',
       '나이에 따라 조심할 점': '제 나이에 이 약을 사용할 때 조심할 점이 있나요?',
       '임신 중에 조심할 점': '임신 중에 이 약을 사용할 때 조심할 점이 있나요?',
@@ -273,7 +273,7 @@ void main() {
       '어떻게 먹나요?': 'dosage',
       '무엇을 조심해야 하나요?': 'precautions',
       '먹고 불편하면 어떻게 하나요?': 'side_effects',
-      '다른 약과 같이 먹기': 'combination',
+      '다른 약과 함께 먹어도 되나요?': 'combination',
       '나이에 따라 조심할 점': 'age',
       '임신 중에 조심할 점': 'pregnancy',
     };
@@ -315,12 +315,12 @@ void main() {
 
     await tester.pumpWidget(appWith(client));
     await tester.pumpAndSettle();
-    expect(find.widgetWithText(ChoiceChip, '다른 약과 같이 먹기'), findsOneWidget);
+    expect(find.widgetWithText(ChoiceChip, '다른 약과 함께 먹어도 되나요?'), findsOneWidget);
     expect(find.text('같이 먹는 약'), findsNothing);
     expect(find.text('비슷한 약 중복'), findsNothing);
     expect(find.textContaining('#'), findsNothing);
 
-    final button = find.widgetWithText(ChoiceChip, '다른 약과 같이 먹기');
+    final button = find.widgetWithText(ChoiceChip, '다른 약과 함께 먹어도 되나요?');
     await tester.ensureVisible(button);
     await tester.tap(button);
     await tester.pumpAndSettle();
@@ -335,7 +335,13 @@ void main() {
       requests.single['message'],
       '이 약을 제가 먹고 있는 약들과 같이 먹어도 되는지 확인해 주세요. 같은 성분이나 비슷한 역할의 약이 겹치는지도 알려주세요.',
     );
-    expect(find.text('다른 약과 함께 쓸 때 조심하거나 겹치는 약이 있나요?'), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byType(ListView).first,
+        matching: find.text('다른 약과 함께 먹어도 되나요?'),
+      ),
+      findsOneWidget,
+    );
     for (final term in ['DUR', '병용금기', '효능군중복', '중복성분']) {
       expect(find.textContaining(term), findsNothing);
     }
@@ -377,6 +383,15 @@ void main() {
 
       final first = find.widgetWithText(ChoiceChip, '어디에 쓰는 약인가요?');
       expect(tester.getTopLeft(first).dx, greaterThanOrEqualTo(0));
+      final combination = find.widgetWithText(
+        ChoiceChip,
+        '다른 약과 함께 먹어도 되나요?',
+      );
+      await tester.ensureVisible(combination);
+      await tester.pumpAndSettle();
+      expect(tester.getTopLeft(combination).dx, greaterThanOrEqualTo(0));
+      expect(tester.getBottomRight(combination).dx, lessThanOrEqualTo(width));
+
       final last = find.widgetWithText(ChoiceChip, '임신 중에 조심할 점');
       await tester.ensureVisible(last);
       await tester.pumpAndSettle();

@@ -240,20 +240,6 @@ class _HeartScreenState extends State<HeartScreen> {
                       onPressed: () => unawaited(_openMeasure()),
                     ),
                   ],
-                  const SizedBox(height: 12),
-                  // 지난 기록은 한 달 화면이 맡는다. 위 세그먼트와 같은 곳으로
-                  // 가지만, 아래까지 내려온 자리에서도 길이 보여야 한다.
-                  SeniorCard(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 20,
-                      vertical: 4,
-                    ),
-                    child: SeniorListRow(
-                      label: '지난 기록 보기',
-                      trailing: const SeniorChevron(),
-                      onTap: () => unawaited(_openMonthly()),
-                    ),
-                  ),
                   if (!_viewingOther) ...[
                     const SizedBox(height: 12),
                     _SensorRow(

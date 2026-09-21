@@ -3,6 +3,8 @@ import 'dart:convert';
 
 import 'package:alkong_yakong/core/network/api_client.dart';
 import 'package:alkong_yakong/core/theme/app_theme.dart';
+import 'package:alkong_yakong/core/widgets/senior_card.dart';
+import 'package:alkong_yakong/core/widgets/senior_feedback.dart';
 import 'package:alkong_yakong/features/biosignal/data/heart_repository.dart';
 import 'package:alkong_yakong/features/biosignal/domain/heart_data.dart';
 import 'package:alkong_yakong/features/biosignal/domain/heart_time.dart';
@@ -146,6 +148,13 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.textContaining('98회/분'), findsOneWidget);
       expect(find.textContaining('비교할 자료는 부족'), findsOneWidget);
+      expect(find.text('지난 기록 보기'), findsNothing);
+      expect(find.byType(SeniorListRow), findsNothing);
+      expect(find.widgetWithText(SeniorSegmented, '이번 주'), findsOneWidget);
+      expect(find.widgetWithText(SeniorSegmented, '한 달'), findsOneWidget);
+      expect(find.text('지금 측정'), findsOneWidget);
+      expect(find.text('폴라 센서'), findsOneWidget);
+      expect(find.text('보호자 자동 알림은\n아직 지원하지 않아요'), findsOneWidget);
       expect(gets, 1);
       await tester.tap(find.text('한 달'));
       await tester.pumpAndSettle();
