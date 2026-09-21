@@ -15,6 +15,7 @@ import '../../../../core/widgets/senior_card.dart';
 import '../../../../core/widgets/senior_feedback.dart';
 import '../../../../core/widgets/senior_header.dart';
 import '../../../medication/application/medication_controller.dart';
+import '../../../prescription/domain/registration_result.dart';
 
 const _pairTypes = {'병용금기', '중복성분', '효능군중복'};
 
@@ -107,13 +108,13 @@ class _DurAnalysisScreenState extends ConsumerState<DurAnalysisScreen> {
     final incompleteTypes = incompleteTypesRaw is List
         ? incompleteTypesRaw.map((e) => e.toString()).toSet()
         : <String>{};
-    final incomplete = response['incomplete'] == true;
+    final incomplete = !registrationDurComplete(response);
 
     void assign() {
       _matches = parsedMatches;
       _incomplete = incomplete;
       _assessmentStatus =
-          response['assessment_status']?.toString() ??
+          incomplete ? 'INCOMPLETE' : response['assessment_status']?.toString() ??
           (parsedMatches.isNotEmpty
               ? 'RISK_FOUND'
               : (incomplete ? 'INCOMPLETE' : 'SAFE'));
@@ -173,13 +174,15 @@ class _DurAnalysisScreenState extends ConsumerState<DurAnalysisScreen> {
   }
 
   String get _footerNote {
+    if (_incomplete) {
+      return '함께먹기 확인을 모두 마치지 못했어요. 표시된 정보 외의 항목은 확인이 필요해요.';
+    }
     final hasAge = _matches.any((m) => (m['type'] ?? '') == '연령금기');
     final hasPregnancy = _matches.any((m) => (m['type'] ?? '') == '임부금기');
     if (hasAge || hasPregnancy) {
       return '나이·임신 관련 주의는 따로 확인해 주세요.';
     }
-    if (_incomplete ||
-        _incompleteTypes.contains('연령금기') ||
+    if (_incompleteTypes.contains('연령금기') ||
         _incompleteTypes.contains('임부금기')) {
       return '나이·임신 항목은 이번엔 못 봤어요.';
     }
@@ -259,7 +262,8 @@ class _DurAnalysisScreenState extends ConsumerState<DurAnalysisScreen> {
               borderRadius: BorderRadius.circular(20),
             ),
             child: Text(
-              pairs.isNotEmpty ? '같이 먹으면 안 되는 약이 있어요' : '지금 같이 보는 약끼리 부딪히는 것은 없어요',
+              pairs.isNotEmpty ? '같이 먹으면 안 되는 약이 있어요' :
+                  (_incomplete ? '약은 등록됐지만 함께먹기 확인을 마치지 못했어요.' : '확인한 범위에서 약끼리 함께먹기 주의 항목은 없어요.'),
               style: AppText.cardTitle(
                 color: pairs.isNotEmpty ? AppColors.danger : AppColors.point,
               ),

@@ -63,15 +63,18 @@ class MedicationController extends Notifier<TodayMedication> {
     );
   }
 
-  Future<void> refreshFromServer() async {
+  Future<void> refreshFromServer({bool throwOnError = false}) async {
     try {
       final userId = Uri.encodeComponent(MvpSession.userId);
       final response = await _api.get('/api/v1/users/$userId/today-medicines');
-      if (response is! Map) return;
+      if (response is! Map || response['doses'] is! List) {
+        throw const ApiException('오늘 복약을 받지 못했어요.');
+      }
       final parsed = parse(Map<String, dynamic>.from(response));
       // 서버가 정상 응답했으면 비어 있어도 그대로 반영 (데모 유지 금지)
       state = parsed;
     } catch (_) {
+      if (throwOnError) rethrow;
       // 서버 불가면 현재 상태(최초엔 데모) 유지
     }
   }

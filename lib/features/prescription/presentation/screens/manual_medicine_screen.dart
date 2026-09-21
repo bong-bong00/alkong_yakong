@@ -12,11 +12,12 @@ import '../../../../core/widgets/senior_feedback.dart';
 import '../../../../core/widgets/senior_header.dart';
 import '../../../medication/application/medication_controller.dart';
 import '../../../medicines/application/user_medicines_controller.dart';
+import '../../domain/registration_result.dart';
 
 /// 처방전 없이 공식 약 이름을 찾아 등록한다.
 class ManualMedicineScreen extends ConsumerStatefulWidget {
   final VoidCallback? onBack;
-  final VoidCallback? onSaved;
+  final ValueChanged<Map<String, dynamic>>? onSaved;
 
   const ManualMedicineScreen({super.key, this.onBack, this.onSaved});
 
@@ -86,6 +87,7 @@ class _ManualMedicineScreenState extends ConsumerState<ManualMedicineScreen> {
   }
 
   Future<void> _save() async {
+    if (_saving) return;
     final picked = _picked;
     final code = picked?['medicine_code']?.toString().trim() ?? '';
     if (code.isEmpty) {
@@ -106,8 +108,9 @@ class _ManualMedicineScreenState extends ConsumerState<ManualMedicineScreen> {
     final userId = MvpSession.userId.trim().isEmpty
         ? 'mvp-user'
         : MvpSession.userId.trim();
+    dynamic response;
     try {
-      final response = await _api.post(
+      response = await _api.post(
         '/api/v1/prescriptions/confirm',
         body: {
           'user_id': userId,
@@ -126,35 +129,50 @@ class _ManualMedicineScreenState extends ConsumerState<ManualMedicineScreen> {
           ],
         },
       );
-      if (response is Map) {
-        MvpSession.rememberPrescriptionSchedules(
-          prescriptionId: response['prescription_id']?.toString(),
-          confirmResponse: response,
-          ocrItems: [
-            {
-              'duration_days': _days,
-              'frequency_per_day': _frequency,
-            },
-          ],
-        );
+      if (response is! Map || response['registered'] != true) {
+        throw const ApiException('약 등록 결과를 확인하지 못했어요.');
       }
-      await ref.read(medicationProvider.notifier).refreshFromServer();
-      await ref.read(userMedicinesProvider.notifier).refresh();
-      if (!mounted) return;
-      final onSaved = widget.onSaved;
-      if (onSaved != null) {
-        onSaved();
-        return;
-      }
-      context.push(
-        '/schedule-days',
-        extra: MvpSession.latestPrescriptionId,
-      );
     } catch (_) {
       if (!mounted) return;
       setState(() => _saving = false);
       _showError('공식 약으로 확인되지 않아 등록하지 못했어요.');
+      return;
     }
+    MvpSession.rememberPrescriptionSchedules(
+      prescriptionId: response['prescription_id']?.toString(),
+      confirmResponse: response,
+      ocrItems: [
+        {'duration_days': _days, 'frequency_per_day': _frequency},
+      ],
+    );
+    var refreshFailed = false;
+    try {
+      await Future.wait<void>([
+        ref.read(medicationProvider.notifier).refreshFromServer(throwOnError: true),
+        ref.read(userMedicinesProvider.notifier).refresh(),
+      ]);
+    } catch (_) {
+      refreshFailed = true;
+    }
+    refreshFailed = refreshFailed || ref.read(userMedicinesProvider).hasError;
+    if (!mounted) return;
+    if (refreshFailed) {
+      showSeniorSnackbar(context, '약은 등록됐지만 목록을 다시 불러와야 해요.');
+    }
+    final durResult = registrationDurResult(response['dur_result']);
+    final onSaved = widget.onSaved;
+    if (onSaved != null) {
+      onSaved(durResult);
+      return;
+    }
+    if (!registrationDurComplete(durResult) ||
+        (durResult['matches'] as List).isNotEmpty) {
+      context.push('/dur-analysis',
+        extra: {...durResult, 'open_schedule_days': true},
+      );
+      return;
+    }
+    context.push('/schedule-days', extra: MvpSession.latestPrescriptionId);
   }
 
   @override
