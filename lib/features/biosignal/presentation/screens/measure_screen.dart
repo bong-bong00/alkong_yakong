@@ -144,7 +144,7 @@ class _MeasureScreenState extends State<MeasureScreen> {
       backgroundColor: AppColors.bg,
       body: Column(
         children: [
-          SeniorBackHeader(title: _done ? '측정이 끝났어요' : '심박수 재는 중'),
+          SeniorBackHeader(title: _done ? '측정이 끝났어요' : '심박수 측정 중'),
           Expanded(
             child: SingleChildScrollView(
               padding: const EdgeInsets.fromLTRB(20, 16, 20, 28),
@@ -165,7 +165,7 @@ class _MeasureScreenState extends State<MeasureScreen> {
                         ? '저장 확인 중이에요'
                         : !_sensor.measuring
                         ? '심박 신호를 기다려요'
-                        : '재고 있어요 · 움직이지 마세요',
+                        : '측정 중이에요 · 움직이지 마세요',
                   ),
                   const SizedBox(height: 12),
                   if (!_done && !_saveFailed) ...[
@@ -178,7 +178,7 @@ class _MeasureScreenState extends State<MeasureScreen> {
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
                           Text(
-                            '재는 동안 이렇게 해주세요',
+                            '측정하는 동안 이렇게 해주세요',
                             style: AppText.cardTitle(size: 20),
                           ),
                           const SizedBox(height: 14),
@@ -256,7 +256,7 @@ class _MeasureScreenState extends State<MeasureScreen> {
                     ),
                     const SizedBox(height: 16),
                     SeniorButton(
-                      label: '다시 재기',
+                      label: '다시 측정',
                       icon: TablerIcons.refresh,
                       minHeight: 70,
                       fontSize: 23,

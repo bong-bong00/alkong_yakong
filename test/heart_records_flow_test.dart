@@ -160,7 +160,7 @@ void main() {
       await tester.tap(find.text('한 달'));
       await tester.pumpAndSettle();
       expect(find.text('심박수 기록을 불러오지 못했어요'), findsOneWidget);
-      expect(find.text('아직 잰 기록이 없어요'), findsNothing);
+      expect(find.text('아직 측정 기록이 없어요'), findsNothing);
       expect(find.textContaining('같이 보고 있어요'), findsNothing);
     },
   );
@@ -217,9 +217,9 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      expect(find.text('아직 잰 기록이 없어요'), findsOneWidget);
-      await tester.ensureVisible(find.text('지금 재기'));
-      await tester.tap(find.text('지금 재기'));
+      expect(find.text('아직 측정 기록이 없어요'), findsOneWidget);
+      await tester.ensureVisible(find.text('지금 측정'));
+      await tester.tap(find.text('지금 측정'));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 400));
       await rig.widgetWindow(tester);

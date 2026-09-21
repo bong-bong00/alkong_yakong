@@ -180,7 +180,7 @@ void main() {
     await tester.pumpAndSettle();
     // 기록보다 시트가 먼저다. 띠를 차고 계시면 심박수를 잴 기회이기 때문이다.
     expect(find.textContaining('심박 센서를'), findsOneWidget);
-    expect(find.text('차고 있어요 · 재기'), findsOneWidget);
+    expect(find.text('차고 있어요 · 측정'), findsOneWidget);
     expect(find.text('안 차고 있어요 · 복약만 기록'), findsOneWidget);
     expect(find.text('그만두기'), findsOneWidget);
   });
@@ -693,7 +693,7 @@ void _sensorTests() {
     await tester.tap(find.text('다시 불러오기'));
     await tester.pump();
     await tester.pump();
-    expect(find.text('오늘 잰 것'), findsOneWidget);
+    expect(find.text('오늘 측정'), findsOneWidget);
     expect(find.text('78'), findsOneWidget);
     expect(find.text('72'), findsOneWidget);
   });
@@ -703,8 +703,8 @@ void _sensorTests() {
       wrap(HeartScreen(repository: _FakeHeartRepository(_heartEmpty))),
     );
     await tester.pump();
-    expect(find.text('아직 잰 기록이 없어요'), findsOneWidget);
-    expect(find.text('오늘 잰 것'), findsNothing);
+    expect(find.text('아직 측정 기록이 없어요'), findsOneWidget);
+    expect(find.text('오늘 측정'), findsNothing);
   });
 
   testWidgets('보호자가 어르신 id로 열면 그 기록을 읽고 재기 버튼은 없다 (24)', (tester) async {
@@ -714,7 +714,7 @@ void _sensorTests() {
     );
     await tester.pump();
     expect(repository.lastUserId, 'patient-1');
-    expect(find.text('지금 재기'), findsNothing);
+    expect(find.text('지금 측정'), findsNothing);
   });
 
   test('측정 전에는 최저·최고 값을 지어내지 않는다', () {

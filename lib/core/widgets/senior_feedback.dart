@@ -5,46 +5,38 @@ import 'package:flutter_tabler_icons/flutter_tabler_icons.dart';
 import '../constants/app_colors.dart';
 import '../theme/app_typography.dart';
 import 'senior_button.dart';
+import 'senior_sheet.dart';
 
 /// 예 / 아니요를 세로로 묻는 상태 안내창.
 Future<bool> showSeniorYesNoDialog({
   required BuildContext context,
   required String title,
   String? message,
+  String yesLabel = '예',
+  String noLabel = '아니요',
 }) async {
-  final confirmed = await showDialog<bool>(
+  final confirmed = await SeniorSheet.show<bool>(
     context: context,
-    builder: (dialogContext) => Dialog(
-      insetPadding: const EdgeInsets.symmetric(horizontal: 24),
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(22, 24, 22, 22),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Text(title, style: AppText.emphasis(size: 25)),
-            if (message != null && message.isNotEmpty) ...[
-              const SizedBox(height: 10),
-              Text(message, style: AppText.body()),
-            ],
-            const SizedBox(height: 20),
-            SeniorButton(
-              label: '예',
-              minHeight: 62,
-              fontSize: 22,
-              onPressed: () => Navigator.of(dialogContext).pop(true),
-            ),
-            const SizedBox(height: 10),
-            SeniorButton(
-              label: '아니요',
-              kind: SeniorButtonKind.secondary,
-              minHeight: 62,
-              fontSize: 22,
-              onPressed: () => Navigator.of(dialogContext).pop(false),
-            ),
-          ],
+    builder: (sheetContext) => SeniorSheet(
+      title: title,
+      body: (message == null || message.isEmpty)
+          ? null
+          : Text(message, style: AppText.body()),
+      actions: [
+        SeniorButton(
+          label: yesLabel,
+          minHeight: 66,
+          fontSize: 22,
+          onPressed: () => Navigator.of(sheetContext).pop(true),
         ),
-      ),
+        SeniorButton(
+          label: noLabel,
+          kind: SeniorButtonKind.secondary,
+          minHeight: 62,
+          fontSize: 21,
+          onPressed: () => Navigator.of(sheetContext).pop(false),
+        ),
+      ],
     ),
   );
   return confirmed ?? false;
@@ -276,6 +268,10 @@ class SeniorField extends StatelessWidget {
   /// 글자를 다듬는 규칙. 휴대폰 번호 하이픈 같은 것.
   final List<TextInputFormatter>? inputFormatters;
 
+  /// 자판의 "완료"를 눌렀을 때.
+  final ValueChanged<String>? onSubmitted;
+  final TextInputAction? textInputAction;
+
   /// 오류가 있으면 테두리가 붉어진다.
   final bool hasError;
 
@@ -289,6 +285,8 @@ class SeniorField extends StatelessWidget {
     this.suffix,
     this.onChanged,
     this.inputFormatters,
+    this.onSubmitted,
+    this.textInputAction,
     this.hasError = false,
   });
 
@@ -321,6 +319,8 @@ class SeniorField extends StatelessWidget {
                   obscureText: obscure,
                   keyboardType: keyboardType,
                   inputFormatters: inputFormatters,
+                  textInputAction: textInputAction,
+                  onSubmitted: onSubmitted,
                   onChanged: onChanged,
                   style: AppText.label(size: 21, color: AppColors.textPrimary),
                   decoration: InputDecoration(

@@ -73,7 +73,7 @@ class _PolarScreenState extends State<PolarScreen> {
                     _InfoCard(sensor: _sensor),
                     const SizedBox(height: 16),
                     SeniorButton(
-                      label: '지금 재기',
+                      label: '지금 측정',
                       minHeight: 70,
                       fontSize: 24,
                       onPressed: () => Navigator.of(context).push(

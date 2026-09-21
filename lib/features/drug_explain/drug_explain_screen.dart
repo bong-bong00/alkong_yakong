@@ -10,6 +10,7 @@ import '../../core/widgets/senior_button.dart';
 import '../../core/widgets/senior_card.dart';
 import '../../core/widgets/senior_feedback.dart';
 import '../../core/widgets/senior_header.dart';
+import '../../core/widgets/senior_sheet.dart';
 import '../../core/widgets/senior_wheel.dart';
 
 class DrugExplainScreen extends StatefulWidget {
@@ -334,7 +335,7 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
   }
 
   Future<void> _enterOtherMedicine() async {
-    final medicine = await showDialog<_DrugSearchCandidate>(
+    final medicine = await SeniorSheet.show<_DrugSearchCandidate>(
       context: context,
       builder: (_) => _OtherMedicineDialog(apiClient: _apiClient),
     );
@@ -826,43 +827,44 @@ class _OtherMedicineDialogState extends State<_OtherMedicineDialog> {
         .clamp(120.0, 368.0)
         .toDouble();
 
-    return AlertDialog(
-      title: const Text('다른 약 검색하기'),
-      content: ConstrainedBox(
+    return SeniorSheet(
+      title: '다른 약 검색하기',
+      body: ConstrainedBox(
         constraints: BoxConstraints(maxHeight: maxContentHeight),
-        child: SizedBox(
-          width: double.maxFinite,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                key: const Key('otherMedicineSearchField'),
-                controller: _controller,
-                autofocus: true,
-                textInputAction: TextInputAction.search,
-                decoration: const InputDecoration(
-                  hintText: '약 이름을 입력하세요',
-                  border: OutlineInputBorder(),
-                  prefixIcon: Icon(Icons.search_rounded),
-                ),
-                onChanged: _onQueryChanged,
-                onSubmitted: _searchNow,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            TextField(
+              key: const Key('otherMedicineSearchField'),
+              controller: _controller,
+              autofocus: true,
+              textInputAction: TextInputAction.search,
+              decoration: const InputDecoration(
+                hintText: '약 이름을 입력하세요',
+                border: OutlineInputBorder(),
+                prefixIcon: Icon(Icons.search_rounded),
               ),
-              const SizedBox(height: 12),
-              Flexible(
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxHeight: 300),
-                  child: _buildSearchContent(),
-                ),
+              onChanged: _onQueryChanged,
+              onSubmitted: _searchNow,
+            ),
+            const SizedBox(height: 12),
+            Flexible(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxHeight: 300),
+                child: _buildSearchContent(),
               ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
       actions: [
-        TextButton(
+        SeniorButton(
+          label: '취소',
+          kind: SeniorButtonKind.neutral,
+          minHeight: 62,
+          fontSize: 20,
           onPressed: () => Navigator.of(context).pop(),
-          child: const Text('취소'),
         ),
       ],
     );
@@ -901,20 +903,37 @@ class _OtherMedicineDialogState extends State<_OtherMedicineDialog> {
       separatorBuilder: (_, _) => const Divider(height: 1),
       itemBuilder: (context, index) {
         final candidate = _candidates[index];
-        return ListTile(
+        return GestureDetector(
           key: ValueKey(
             'drugCandidate:${candidate.itemSeq ?? candidate.itemName}',
           ),
-          contentPadding: const EdgeInsets.symmetric(horizontal: 4),
-          title: Text(
-            candidate.itemName,
-            style: const TextStyle(fontWeight: FontWeight.w600),
-          ),
-          subtitle: candidate.manufacturer == null
-              ? null
-              : Text(candidate.manufacturer!),
-          trailing: const Icon(Icons.chevron_right_rounded),
+          behavior: HitTestBehavior.opaque,
           onTap: () => _select(candidate),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 14),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        candidate.itemName,
+                        style: AppText.cardTitle(size: 19),
+                      ),
+                      if (candidate.manufacturer != null)
+                        Text(
+                          candidate.manufacturer!,
+                          style: AppText.caption(size: 16),
+                        ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 10),
+                const SeniorChevron(),
+              ],
+            ),
+          ),
         );
       },
     );

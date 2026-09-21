@@ -21,8 +21,9 @@ import 'package:http/testing.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
-  setUp(() {
+  setUp(() async {
     SharedPreferences.setMockInitialValues({});
+    await AuthSession.load();
     AuthSession.isLoggedIn = false;
     AuthSession.role = 'patient';
     MvpSession.userId = '';
@@ -100,6 +101,74 @@ void main() {
       throwsA(isA<ApiException>()),
     );
     expect(AuthSession.isLoggedIn, isFalse);
+  });
+
+  test('app restart restores only a matching server UUID and server role',
+      () async {
+    SharedPreferences.setMockInitialValues({
+      'isLoggedIn': true,
+      'userId': 'saved-user-uuid',
+      'role': 'patient',
+    });
+    var calls = 0;
+    final repository = UserRepository(
+      apiClient: ApiClient(client: MockClient((request) async {
+        calls++;
+        expect(request.method, 'GET');
+        expect(request.url.path, '/api/v1/users/saved-user-uuid');
+        return http.Response(
+          jsonEncode({
+            'id': 'saved-user-uuid',
+            'name': '검증용 보호자',
+            'role': 'guardian',
+            'is_pregnant': false,
+          }),
+          200,
+          headers: {'content-type': 'application/json'},
+        );
+      })),
+    );
+
+    final user = await restorePersistedSession(repository);
+    expect(calls, 1);
+    expect(user?.id, 'saved-user-uuid');
+    expect(user?.role, 'guardian');
+    expect(AuthSession.isLoggedIn, isTrue);
+    expect(AuthSession.role, 'guardian');
+    expect(MvpSession.userId, 'saved-user-uuid');
+  });
+
+  test('app restart rejects a mismatched or unavailable server identity',
+      () async {
+    SharedPreferences.setMockInitialValues({
+      'isLoggedIn': true,
+      'userId': 'saved-user-uuid',
+      'role': 'guardian',
+    });
+    final mismatch = UserRepository(
+      apiClient: ApiClient(client: MockClient((request) async =>
+          http.Response(
+            jsonEncode({
+              'id': 'different-user-uuid',
+              'name': '다른 사용자',
+              'role': 'guardian',
+            }),
+            200,
+            headers: {'content-type': 'application/json'},
+          ))),
+    );
+    expect(await restorePersistedSession(mismatch), isNull);
+    expect(AuthSession.isLoggedIn, isFalse);
+    expect(MvpSession.userId, isEmpty);
+
+    final unavailable = UserRepository(
+      apiClient: ApiClient(client: MockClient((request) async =>
+          http.Response('{"detail":"not found"}', 404,
+              headers: {'content-type': 'application/json'}))),
+    );
+    expect(await restorePersistedSession(unavailable), isNull);
+    expect(AuthSession.isLoggedIn, isFalse);
+    expect(MvpSession.userId, isEmpty);
   });
 
   testWidgets('a new server user replaces the previous role and identity',

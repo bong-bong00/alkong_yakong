@@ -286,7 +286,7 @@ class _PatientHomeScreenState extends ConsumerState<PatientHomeScreen> {
                         ),
                         const SizedBox(height: 14),
                         SeniorButton(
-                          label: '처방전 사진 찍기',
+                          label: '처방전 등록하기',
                           onPressed: widget.onOpenPrescription,
                         ),
                       ],

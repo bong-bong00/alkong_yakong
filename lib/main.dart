@@ -4,7 +4,6 @@ import 'package:go_router/go_router.dart';
 
 import 'core/providers/user_role.dart';
 import 'core/session/auth_session.dart';
-import 'core/session/mvp_session.dart';
 import 'core/theme/app_theme.dart';
 import 'features/auth/presentation/screens/login_screen.dart';
 import 'features/auth/presentation/screens/signup_screen.dart';
@@ -21,6 +20,8 @@ import 'features/onboarding/presentation/screens/first_run_screen.dart';
 import 'features/prescription/presentation/screens/manual_medicine_screen.dart';
 import 'features/prescription/presentation/screens/prescription_screen.dart';
 import 'features/prescription/presentation/screens/schedule_days_screen.dart';
+import 'features/profile/application/session_actions.dart';
+import 'features/profile/data/user_repository.dart';
 import 'features/reminder/application/alarm_preferences.dart';
 import 'features/reminder/application/reminder_notifications.dart';
 import 'features/reminder/presentation/screens/lock_screen_alert.dart';
@@ -28,8 +29,8 @@ import 'features/reminder/presentation/screens/lock_screen_alert.dart';
 final _router = GoRouter(
   initialLocation: '/login',
   redirect: (context, state) {
-    final publicRoute = state.matchedLocation == '/login' ||
-        state.matchedLocation == '/signup';
+    final publicRoute =
+        state.matchedLocation == '/login' || state.matchedLocation == '/signup';
     if (!AuthSession.isLoggedIn) return publicRoute ? null : '/login';
     return publicRoute ? '/' : null;
   },
@@ -105,16 +106,18 @@ final _router = GoRouter(
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  // A previous device user's persisted identity must not unlock this launch.
-  // Only a successful login or signup starts the current session.
-  AuthSession.isLoggedIn = false;
-  MvpSession.userId = '';
+  final restoredUser = await restorePersistedSession(UserRepository());
   try {
     await ReminderNotifications.instance.initialize();
   } catch (_) {
     // 알림을 못 켜도 앱은 떠야 한다.
   }
   final container = ProviderContainer();
+  if (restoredUser != null) {
+    container.read(userRoleProvider.notifier).state = restoredUser.isGuardian
+        ? UserRole.guardian
+        : UserRole.patient;
+  }
   // 알림 설정을 미리 읽어 두어야 내 정보 화면을 열지 않아도 약 시간 알림이 예약된다.
   container.read(alarmPreferencesProvider);
   runApp(
