@@ -252,22 +252,20 @@ class _DurAnalysisScreenState extends ConsumerState<DurAnalysisScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
-            decoration: BoxDecoration(
-              color: pairs.isNotEmpty
-                  ? AppColors.dangerBorder.withValues(alpha: 0.25)
-                  : AppColors.pointTint,
-              borderRadius: BorderRadius.circular(20),
-            ),
-            child: Text(
-              pairs.isNotEmpty ? '같이 먹으면 안 되는 약이 있어요' : '지금 같이 보는 약끼리 부딪히는 것은 없어요',
-              style: AppText.cardTitle(
-                color: pairs.isNotEmpty ? AppColors.danger : AppColors.point,
+          if (pairs.isNotEmpty) ...[
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
+              decoration: BoxDecoration(
+                color: AppColors.dangerBorder.withValues(alpha: 0.25),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Text(
+                '같이 먹으면 안 되는 약이 있어요',
+                style: AppText.cardTitle(color: AppColors.danger),
               ),
             ),
-          ),
-          const SizedBox(height: 14),
+            const SizedBox(height: 14),
+          ],
           for (final match in pairs) ...[
             _ConflictCard(match: match),
             const SizedBox(height: 12),

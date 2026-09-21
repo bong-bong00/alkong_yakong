@@ -109,7 +109,7 @@ class MedicationRecordScreen extends ConsumerWidget {
                   footnote: '날짜를 누르면 그날 결과가 여기에 나와요.',
                 ),
                 // 함께먹기 주의 화면은 로그인한 본인 약만 분석한다.
-                if (patientId == null) ...[
+                if (patientId == null && interactionCount > 0) ...[
                   const SizedBox(height: 12),
                   SeniorCard(
                     padding: const EdgeInsets.symmetric(
@@ -119,9 +119,7 @@ class MedicationRecordScreen extends ConsumerWidget {
                     child: SeniorListRow(
                       label: '약 함께먹기 주의',
                       // 건수보다 무엇을 해야 하는지가 먼저다.
-                      subtitle: interactionCount > 0
-                          ? '확인이 필요한 약이 있어요'
-                          : '부딪히는 약은 없어요',
+                      subtitle: '확인이 필요한 약이 있어요',
                       trailing: const SeniorChevron(),
                       onTap: () => Navigator.of(context).push(
                         MaterialPageRoute<void>(
