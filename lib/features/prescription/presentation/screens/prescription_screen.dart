@@ -302,7 +302,9 @@ class _PrescriptionScreenState extends ConsumerState<PrescriptionScreen> {
     var refreshFailed = false;
     try {
       await Future.wait<void>([
-        ref.read(medicationProvider.notifier).refreshFromServer(throwOnError: true),
+        ref
+            .read(medicationProvider.notifier)
+            .refreshFromServer(throwOnError: true),
         ref.read(userMedicinesProvider.notifier).refresh(),
       ]);
     } catch (_) {
@@ -322,10 +324,7 @@ class _PrescriptionScreenState extends ConsumerState<PrescriptionScreen> {
         onOpenScheduleDays();
         return;
       }
-      context.push(
-        '/schedule-days',
-        extra: MvpSession.latestPrescriptionId,
-      );
+      context.push('/schedule-days', extra: MvpSession.latestPrescriptionId);
     }
 
     if (registrationDurComplete(durResult) && !_hasPairConflict(durResult)) {
@@ -374,7 +373,10 @@ class _PrescriptionScreenState extends ConsumerState<PrescriptionScreen> {
               return;
             }
             if (!registrationDurComplete(result) || _hasPairConflict(result)) {
-              context.push('/dur-analysis', extra: {...result, 'open_schedule_days': true});
+              context.push(
+                '/dur-analysis',
+                extra: {...result, 'open_schedule_days': true},
+              );
               return;
             }
             final onOpenScheduleDays = widget.onOpenScheduleDays;
@@ -1416,8 +1418,11 @@ class _DrugCard extends StatelessWidget {
             const SizedBox(height: 8),
             Text(
               explanation!,
-              style: AppText.body(size: 17, color: AppColors.textSecondary),
-              maxLines: expanded ? null : 2,
+              style: AppText.body(
+                size: 20,
+                color: AppColors.detailEmphasis,
+              ).copyWith(fontWeight: FontWeight.w700),
+              maxLines: expanded ? null : 3,
               overflow: expanded ? null : TextOverflow.ellipsis,
             ),
           ],
@@ -1499,7 +1504,10 @@ class _DrugCard extends StatelessWidget {
             const SizedBox(height: 14),
             _DetailLine(label: '사진에서 읽은 이름', value: rawOcrName),
             const SizedBox(height: 8),
-            _DetailLine(label: '공식 제품명', value: officialName),
+            _DetailLine(
+              label: '공식 제품명',
+              value: _productNameLines(officialName),
+            ),
             if (medicineCode.isNotEmpty) ...[
               const SizedBox(height: 8),
               _DetailLine(label: '공식 의약품 코드', value: medicineCode),
@@ -1513,7 +1521,7 @@ class _DrugCard extends StatelessWidget {
               const SizedBox(height: 4),
               Text(
                 purposeLabel!,
-                style: AppText.label(size: 18, color: AppColors.point),
+                style: AppText.body(size: 20, color: AppColors.point),
               ),
               const SizedBox(height: 4),
               Text(
@@ -1527,8 +1535,13 @@ class _DrugCard extends StatelessWidget {
             if ((keyCaution ?? '').trim().isNotEmpty) ...[
               const SizedBox(height: 12),
               Text(
-                '주의: $keyCaution',
-                style: AppText.label(size: 17, color: AppColors.danger),
+                '주의',
+                style: AppText.label(size: 17, color: AppColors.textSecondary),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                _cautionLines(keyCaution!),
+                style: AppText.body(size: 18, color: AppColors.danger),
               ),
             ],
             if (fieldConfidences.isNotEmpty) ...[
@@ -1537,32 +1550,42 @@ class _DrugCard extends StatelessWidget {
                 '항목별 글자 인식률',
                 style: AppText.label(size: 17, color: AppColors.textSecondary),
               ),
-              const SizedBox(height: 4),
-              Text(
-                _confidenceSummary(fieldConfidences),
-                style: AppText.caption(
-                  size: 16,
-                  color: AppColors.textSecondary,
-                ),
-              ),
-            ],
-            const SizedBox(height: 14),
-            Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton(
-                    onPressed: onFixName,
-                    child: const Text('약 이름 다시 확인'),
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: OutlinedButton(
-                    onPressed: onEditDosing,
-                    child: const Text('복용 정보 고치기'),
+              const SizedBox(height: 8),
+              for (final row in _confidenceRows(fieldConfidences)) ...[
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 4),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          row.label,
+                          style: AppText.caption(
+                            size: 16,
+                            color: AppColors.textSecondary,
+                          ),
+                        ),
+                      ),
+                      Text('${row.percent}%', style: AppText.body(size: 18)),
+                    ],
                   ),
                 ),
               ],
+            ],
+            const SizedBox(height: 14),
+            SeniorButton(
+              label: '약 이름 다시 확인',
+              kind: SeniorButtonKind.outline,
+              minHeight: 68,
+              fontSize: 22,
+              onPressed: onFixName,
+            ),
+            const SizedBox(height: 10),
+            SeniorButton(
+              label: '복용 정보 고치기',
+              kind: SeniorButtonKind.outline,
+              minHeight: 68,
+              fontSize: 22,
+              onPressed: onEditDosing,
             ),
           ] else ...[
             const SizedBox(height: 8),
@@ -1576,17 +1599,35 @@ class _DrugCard extends StatelessWidget {
     );
   }
 
-  static String _confidenceSummary(Map<String, int> values) {
+  static String _productNameLines(String raw) {
+    final text = raw.trim();
+    final index = text.indexOf('(');
+    if (index <= 0) return text;
+    return '${text.substring(0, index).trim()}\n${text.substring(index)}';
+  }
+
+  static String _cautionLines(String raw) {
+    var text = raw.trim();
+    if (text.startsWith('주의:')) {
+      text = text.substring(3).trim();
+    }
+    return text.replaceAll('. ', '.\n');
+  }
+
+  static List<({String label, int percent})> _confidenceRows(
+    Map<String, int> values,
+  ) {
     const labels = {
       'drug_name': '약 이름',
       'dose_amount': '1회 투약량',
       'frequency_per_day': '1일 투여횟수',
       'duration_days': '투약일수',
     };
-    return values.entries
-        .where((entry) => labels.containsKey(entry.key))
-        .map((entry) => '${labels[entry.key]} ${entry.value}%')
-        .join(' · ');
+    return [
+      for (final entry in values.entries)
+        if (labels.containsKey(entry.key))
+          (label: labels[entry.key]!, percent: entry.value),
+    ];
   }
 }
 
@@ -1643,10 +1684,10 @@ class _DetailLine extends StatelessWidget {
       children: [
         Text(
           label,
-          style: AppText.caption(size: 16, color: AppColors.textSecondary),
+          style: AppText.label(size: 17, color: AppColors.textSecondary),
         ),
-        const SizedBox(height: 2),
-        Text(value, style: AppText.body(size: 17)),
+        const SizedBox(height: 4),
+        Text(value, style: AppText.body(size: 19)),
       ],
     );
   }
