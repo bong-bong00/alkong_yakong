@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/network/api_client.dart';
+import '../../../core/network/api_config.dart';
 import '../../../core/session/mvp_session.dart';
 import '../../medication/domain/medication_models.dart';
 
@@ -58,10 +59,12 @@ Future<Map<DateTime, DayAdherence>> fetchMedicationHistory(
       '${d.year}-${d.month.toString().padLeft(2, '0')}-'
       '${d.day.toString().padLeft(2, '0')}';
 
-  final response = await (apiClient ?? ApiClient()).get(
-    '/api/v1/users/${Uri.encodeComponent(id)}/medication-history'
-    '?start=${day(start)}&end=${day(today)}',
-  );
+  final response =
+      await (apiClient ?? ApiClient(baseUrl: ApiConfig.localFeatureBaseUrl))
+          .get(
+            '/api/v1/users/${Uri.encodeComponent(id)}/medication-history'
+            '?start=${day(start)}&end=${day(today)}',
+          );
   final rows = response is Map ? response['days'] : null;
   if (rows is! List) return const {};
 

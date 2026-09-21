@@ -123,33 +123,36 @@ class _DetailBody extends StatelessWidget {
               children: [
                 Text(
                   medicine.displayName,
-                  style: AppText.screenTitle(size: 24),
+                  style: AppText.screenTitle(size: 26),
                 ),
                 if (medicine.manufacturer.trim().isNotEmpty) ...[
-                  const SizedBox(height: 4),
+                  const SizedBox(height: 6),
                   Text(
                     '제조사: ${medicine.manufacturer}',
-                    style: AppText.caption(color: AppColors.textSecondary),
+                    style: AppText.caption(
+                      size: 18,
+                      color: AppColors.textSecondary,
+                    ),
                   ),
                 ],
                 if (ingredients.isNotEmpty) ...[
-                  const SizedBox(height: 8),
-                  Text('주성분', style: AppText.label(size: 17)),
+                  const SizedBox(height: 10),
+                  Text('주성분', style: AppText.label(size: 19)),
                   const SizedBox(height: 4),
                   for (int index = 0; index < ingredients.length; index++)
                     Text(
                       '${ingredients.length > 1 ? '· ' : ''}${ingredients[index]}${index == 0 && medicine.ingredientStrength.trim().isNotEmpty ? ' · ${medicine.ingredientStrength.trim()}' : ''}',
-                      style: AppText.caption(
-                        size: 17,
+                      style: AppText.body(
+                        size: 20,
                         color: AppColors.textSecondary,
                       ),
                     ),
                 ],
-                if (medicine.cardSpoken != null) ...[
-                  const SizedBox(height: 10),
+                if (medicine.detailSpoken != null) ...[
+                  const SizedBox(height: 12),
                   Text(
-                    medicine.cardSpoken!,
-                    style: AppText.body(size: 19, color: AppColors.textBody),
+                    medicine.detailSpoken!,
+                    style: AppText.body(size: 21, color: AppColors.textBody),
                   ),
                 ],
                 if (medicine.easyPurposes.any(isCardPurposeLabel)) ...[
@@ -178,18 +181,21 @@ class _DetailBody extends StatelessWidget {
                     IconTitle(
                       icon: Icons.science_outlined,
                       text: easyMode ? '이 성분은 어떤 역할을 하나요?' : '주성분 설명',
-                      style: AppText.cardTitle(),
+                      style: AppText.cardTitle(size: 22),
                     ),
                     const SizedBox(height: 12),
-                    Text(
-                      medicine.ingredientExplanation,
-                      style: AppText.body(size: 18),
+                    _EmphasizedBodyText(
+                      text: medicine.ingredientExplanation,
+                      highlight: medicine.ingredientHighlight,
+                      ingredient: medicine.ingredientName,
+                      fallbackHighlight: medicine.approvedUseSummary,
                     ),
                   ],
                 ),
               ),
             ],
-            if (medicine.approvedUseSummary.trim().isNotEmpty ||
+            if (medicine.treatmentUses.isNotEmpty ||
+                medicine.approvedUseSummary.trim().isNotEmpty ||
                 medicine.approvedUses.isNotEmpty) ...[
               const SizedBox(height: 12),
               SeniorCard(
@@ -200,23 +206,49 @@ class _DetailBody extends StatelessWidget {
                     IconTitle(
                       icon: Icons.medical_information_outlined,
                       text: '어떤 치료에 쓰이나요?',
-                      style: AppText.cardTitle(),
+                      style: AppText.cardTitle(size: 22),
                     ),
-                    if (medicine.approvedUseSummary.trim().isNotEmpty) ...[
-                      const SizedBox(height: 12),
-                      Text(
-                        medicine.approvedUseSummary,
-                        style: AppText.body(size: 18),
-                      ),
-                    ],
-                    for (final purpose in medicine.approvedUses) ...[
-                      const SizedBox(height: 8),
-                      Text('· $purpose', style: AppText.body(size: 18)),
+                    if (medicine.treatmentUses.isNotEmpty)
+                      for (final use in medicine.treatmentUses) ...[
+                        const SizedBox(height: 12),
+                        Text(
+                          '· ${use.title}',
+                          style: AppText.body(
+                            size: 20,
+                            color: AppColors.detailEmphasis,
+                          ).copyWith(fontWeight: FontWeight.w800),
+                        ),
+                        if (use.description.isNotEmpty) ...[
+                          const SizedBox(height: 4),
+                          Padding(
+                            padding: const EdgeInsets.only(left: 14),
+                            child: Text(
+                              use.description,
+                              style: AppText.body(size: 20),
+                            ),
+                          ),
+                        ],
+                      ]
+                    else ...[
+                      if (medicine.approvedUseSummary.trim().isNotEmpty) ...[
+                        const SizedBox(height: 12),
+                        Text(
+                          medicine.approvedUseSummary,
+                          style: AppText.body(size: 20),
+                        ),
+                      ],
+                      for (final purpose in medicine.approvedUses) ...[
+                        const SizedBox(height: 8),
+                        Text('· $purpose', style: AppText.body(size: 20)),
+                      ],
                     ],
                     const SizedBox(height: 10),
                     Text(
                       '실제 처방 이유는 의료진에게 확인해 주세요.',
-                      style: AppText.caption(color: AppColors.textSecondary),
+                      style: AppText.caption(
+                        size: 18,
+                        color: AppColors.textSecondary,
+                      ),
                     ),
                   ],
                 ),
@@ -238,13 +270,16 @@ class _DetailBody extends StatelessWidget {
                     childrenPadding: const EdgeInsets.fromLTRB(22, 0, 22, 22),
                     title: Text(
                       easyMode ? '더 자세한 사용 목적 보기' : '전체 허가 목적',
-                      style: AppText.cardTitle(),
+                      style: AppText.cardTitle(size: 22),
                     ),
                     children: [
                       for (final purpose in extraOfficialUses) ...[
                         Align(
                           alignment: Alignment.centerLeft,
-                          child: Text('· $purpose', style: AppText.body(size: 17)),
+                          child: Text(
+                            '· $purpose',
+                            style: AppText.body(size: 20),
+                          ),
                         ),
                         const SizedBox(height: 8),
                       ],
@@ -259,7 +294,7 @@ class _DetailBody extends StatelessWidget {
               padding: const EdgeInsets.all(20),
               child: Text(
                 _detailStatusMessage(medicine.detailStatus),
-                style: AppText.body(size: 18, color: AppColors.textSecondary),
+                style: AppText.body(size: 20, color: AppColors.textSecondary),
               ),
             ),
           ],
@@ -274,13 +309,13 @@ class _DetailBody extends StatelessWidget {
                     icon: TablerIcons.alert_triangle,
                     color: AppColors.danger,
                     text: '꼭 기억해 주세요',
-                  style: AppText.cardTitle(color: AppColors.danger),
+                    style: AppText.cardTitle(size: 22, color: AppColors.danger),
                   ),
                   const SizedBox(height: 12),
                   for (final caution in cautions) ...[
                     Text(
                       '· $caution',
-                      style: AppText.body(size: 18, color: AppColors.textBody),
+                      style: AppText.body(size: 20, color: AppColors.textBody),
                     ),
                     const SizedBox(height: 8),
                   ],
@@ -301,32 +336,32 @@ class _DetailBody extends StatelessWidget {
                     icon: TablerIcons.alert_triangle,
                     color: AppColors.danger,
                     text: '함께먹기 주의가 있어요',
-                    style: AppText.cardTitle(color: AppColors.danger),
+                    style: AppText.cardTitle(size: 22, color: AppColors.danger),
                   ),
                   const SizedBox(height: 10),
                   if (medicine.interactionPairLabel.trim().isNotEmpty) ...[
                     Text(
                       medicine.interactionPairLabel,
-                      style: AppText.body(size: 18),
+                      style: AppText.body(size: 20),
                     ),
                     const SizedBox(height: 8),
                   ],
                   Text(
                     medicine.interactionSummary!,
-                    style: AppText.body(size: 18),
+                    style: AppText.body(size: 20),
                   ),
                   if (medicine.interactionRiskFactor.trim().isNotEmpty) ...[
                     const SizedBox(height: 10),
                     Text(
                       '성분 위험요소: ${medicine.interactionRiskFactor}',
-                      style: AppText.label(size: 17),
+                      style: AppText.label(size: 19),
                     ),
                   ],
                   if (!medicine.interactionSummary!.contains('확인해')) ...[
                     const SizedBox(height: 8),
                     Text(
                       '약국이나 병원에 한 번 확인해 주세요.',
-                      style: AppText.label(size: 17, color: AppColors.danger),
+                      style: AppText.label(size: 19, color: AppColors.danger),
                     ),
                   ],
                 ],
@@ -342,20 +377,20 @@ class _DetailBody extends StatelessWidget {
                 IconTitle(
                   icon: TablerIcons.clock,
                   text: '내가 처방받은 복용 방법',
-                  style: AppText.cardTitle(),
+                  style: AppText.cardTitle(size: 22),
                 ),
                 const SizedBox(height: 12),
                 Text(
                   '한 번에 ${medicine.doseAction} 양 ${medicine.dosageLabel}',
-                  style: AppText.body(size: 19),
+                  style: AppText.body(size: 21),
                 ),
                 const SizedBox(height: 6),
-                Text(medicine.frequencyLabel, style: AppText.body(size: 19)),
+                Text(medicine.frequencyLabel, style: AppText.body(size: 21)),
                 if (medicine.administrationTimes.isNotEmpty) ...[
                   const SizedBox(height: 6),
                   Text(
                     '시간: ${medicine.administrationTimes.join(' · ')}',
-                    style: AppText.caption(size: 17),
+                    style: AppText.caption(size: 18),
                   ),
                 ],
               ],
@@ -377,7 +412,7 @@ class _DetailBody extends StatelessWidget {
                   childrenPadding: const EdgeInsets.fromLTRB(22, 0, 22, 22),
                   title: Text(
                     easyMode ? '공식 복용 안내 보기' : '제품 공식 용법·용량',
-                    style: AppText.cardTitle(),
+                    style: AppText.cardTitle(size: 22),
                   ),
                   children: [
                     Align(
@@ -386,7 +421,10 @@ class _DetailBody extends StatelessWidget {
                         medicine.officialUsageNotice.trim().isNotEmpty
                             ? medicine.officialUsageNotice
                             : '제품 설명서의 일반적인 사용법이에요. 실제로는 처방전과 의료진의 안내대로 복용하세요.',
-                        style: AppText.caption(color: AppColors.textSecondary),
+                        style: AppText.caption(
+                        size: 18,
+                        color: AppColors.textSecondary,
+                      ),
                       ),
                     ),
                     const SizedBox(height: 10),
@@ -394,7 +432,7 @@ class _DetailBody extends StatelessWidget {
                       alignment: Alignment.centerLeft,
                       child: Text(
                         formatOfficialUsage(medicine.officialUsage),
-                        style: AppText.body(size: 17),
+                        style: AppText.body(size: 20),
                       ),
                     ),
                   ],
@@ -412,11 +450,11 @@ class _DetailBody extends StatelessWidget {
                   IconTitle(
                     icon: Icons.contact_support_outlined,
                     text: '언제 의료진에게 알려야 하나요?',
-                    style: AppText.cardTitle(),
+                    style: AppText.cardTitle(size: 22),
                   ),
                   const SizedBox(height: 12),
                   for (final situation in medicine.askDoctorWhen) ...[
-                    Text('· $situation', style: AppText.body(size: 18)),
+                    Text('· $situation', style: AppText.body(size: 20)),
                     const SizedBox(height: 8),
                   ],
                 ],
@@ -430,11 +468,14 @@ class _DetailBody extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('정보 출처', style: AppText.label(size: 17)),
+                  Text('정보 출처', style: AppText.label(size: 19)),
                   const SizedBox(height: 6),
                   Text(
                     '식약처 의약품 허가정보',
-                    style: AppText.caption(color: AppColors.textSecondary),
+                    style: AppText.caption(
+                      size: 18,
+                      color: AppColors.textSecondary,
+                    ),
                   ),
                 ],
               ),
@@ -446,7 +487,10 @@ class _DetailBody extends StatelessWidget {
               padding: const EdgeInsets.all(20),
               child: Text(
                 medicine.purposeNotice!,
-                style: AppText.caption(color: AppColors.textSecondary),
+                style: AppText.caption(
+                  size: 18,
+                  color: AppColors.textSecondary,
+                ),
               ),
             ),
           ],
@@ -474,6 +518,96 @@ class _DetailBody extends StatelessWidget {
   }
 }
 
+class _EmphasizedBodyText extends StatelessWidget {
+  final String text;
+  final String highlight;
+  final String ingredient;
+  final String fallbackHighlight;
+
+  const _EmphasizedBodyText({
+    required this.text,
+    required this.highlight,
+    required this.ingredient,
+    required this.fallbackHighlight,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final bodyStyle = AppText.body(size: 20);
+    final effect = _effectTarget();
+    final ranges = <_EmphasisRange>[];
+    final ingredientTarget = ingredient.trim();
+    final ingredientStart = ingredientTarget.isEmpty
+        ? -1
+        : text.indexOf(ingredientTarget);
+    if (ingredientStart >= 0) {
+      ranges.add(
+        _EmphasisRange(
+          ingredientStart,
+          ingredientStart + ingredientTarget.length,
+          bodyStyle.copyWith(fontWeight: FontWeight.w800),
+        ),
+      );
+    }
+    final effectStart = effect.isEmpty ? -1 : text.indexOf(effect);
+    if (effectStart >= 0) {
+      ranges.add(
+        _EmphasisRange(
+          effectStart,
+          effectStart + effect.length,
+          bodyStyle.copyWith(
+            color: AppColors.detailEmphasis,
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+      );
+    }
+    ranges.sort((a, b) => a.start.compareTo(b.start));
+    if (ranges.isEmpty) {
+      return Text(text, style: bodyStyle);
+    }
+    final spans = <TextSpan>[];
+    var cursor = 0;
+    for (final range in ranges) {
+      if (range.start < cursor) continue;
+      if (range.start > cursor) {
+        spans.add(TextSpan(text: text.substring(cursor, range.start)));
+      }
+      spans.add(
+        TextSpan(
+          text: text.substring(range.start, range.end),
+          style: range.style,
+        ),
+      );
+      cursor = range.end;
+    }
+    if (cursor < text.length) {
+      spans.add(TextSpan(text: text.substring(cursor)));
+    }
+    return Text.rich(TextSpan(style: bodyStyle, children: spans));
+  }
+
+  String _effectTarget() {
+    final reviewed = highlight.trim();
+    if (reviewed.isNotEmpty && text.contains(reviewed)) return reviewed;
+    var fallback = fallbackHighlight.trim();
+    if (fallback.startsWith('이 약은 ')) fallback = fallback.substring(5);
+    fallback = fallback.replaceFirst(
+      RegExp(r'\s*(사용해요|사용돼요|사용될 수 있어요|도움을 줘요)\.?$'),
+      '',
+    );
+    return fallback.isNotEmpty && text.contains(fallback) ? fallback : '';
+  }
+}
+
+class _EmphasisRange {
+  final int start;
+  final int end;
+  final TextStyle style;
+
+  const _EmphasisRange(this.start, this.end, this.style);
+}
+
 class _TagChip extends StatelessWidget {
   final String label;
 
@@ -482,14 +616,14 @@ class _TagChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
       decoration: BoxDecoration(
         color: AppColors.pointTint,
         borderRadius: BorderRadius.circular(14),
       ),
       child: Text(
         label,
-        style: AppText.caption(size: 16, color: AppColors.point),
+        style: AppText.label(size: 18, color: AppColors.point),
       ),
     );
   }

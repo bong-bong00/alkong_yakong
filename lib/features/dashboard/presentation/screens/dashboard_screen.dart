@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/network/api_client.dart';
+import '../../../../core/network/api_config.dart';
 import '../../../../core/session/mvp_session.dart';
 import '../../../../core/widgets/rounded_gradient_app_bar.dart';
 
@@ -13,7 +14,7 @@ class DashboardScreen extends StatefulWidget {
 }
 
 class _DashboardScreenState extends State<DashboardScreen> {
-  final _apiClient = ApiClient();
+  final _apiClient = ApiClient(baseUrl: ApiConfig.localFeatureBaseUrl);
 
   bool _isLoading = false;
   int? _submittingScheduleId;
@@ -99,9 +100,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   Widget build(BuildContext context) {
     // 처음 불러오는 동안에는 빈 화면 대신 그렇다고 말한다.
     if (_isLoading && _dashboard == null) {
-      return const Scaffold(
-        body: Center(child: CircularProgressIndicator()),
-      );
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
     final medication = _asMap(_dashboard?['medication_summary']);
     final todayMedications = _dashboard?['today_medications'];
@@ -128,9 +127,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
         .toList();
     final visiblePrescription =
         visiblePrescriptionMedicines.isEmpty && sessionSchedules.isEmpty
-            ? null
-            : prescription;
-    final displayedPrescriptionMedicines = visiblePrescriptionMedicines.isNotEmpty
+        ? null
+        : prescription;
+    final displayedPrescriptionMedicines =
+        visiblePrescriptionMedicines.isNotEmpty
         ? visiblePrescriptionMedicines
         : sessionSchedules
               .map((item) => _text(item['drug_name'], fallback: ''))
@@ -147,15 +147,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 visiblePrescription['created_at'],
             fallback: MvpSession.latestOcrRegisteredAt?.toString() ?? '방금 등록',
           );
-    final displayedCompleted = schedules
-        .where((schedule) {
-          final item = _asMap(schedule);
-          if (item == null) return false;
-          return _locallyTakenScheduleKeys.contains(_scheduleKey(item)) ||
-              _text(item['status'], fallback: 'PENDING').toUpperCase() ==
-                  'TAKEN';
-        })
-        .length;
+    final displayedCompleted = schedules.where((schedule) {
+      final item = _asMap(schedule);
+      if (item == null) return false;
+      return _locallyTakenScheduleKeys.contains(_scheduleKey(item)) ||
+          _text(item['status'], fallback: 'PENDING').toUpperCase() == 'TAKEN';
+    }).length;
 
     return Scaffold(
       backgroundColor: kBackground,
@@ -234,8 +231,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                             status: effectiveStatus,
                             isSubmitting:
                                 scheduleId != null &&
-                                _submittingScheduleId ==
-                                scheduleId,
+                                _submittingScheduleId == scheduleId,
                             onTaken: scheduleId == null
                                 ? () {
                                     setState(() {
@@ -625,7 +621,10 @@ String _scheduleKey(Map<String, dynamic> item) {
   if (id != null) return 'id:$id';
 
   final time = _text(item['time'] ?? item['scheduled_time'], fallback: '');
-  final drugName = _text(item['drug_name'] ?? item['product_name'], fallback: '');
+  final drugName = _text(
+    item['drug_name'] ?? item['product_name'],
+    fallback: '',
+  );
   final ingredient = _text(item['ingredient'], fallback: '');
   return 'local:$time|$drugName|$ingredient';
 }

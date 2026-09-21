@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/network/api_client.dart';
+import '../../../core/network/api_config.dart';
 import '../../../core/session/mvp_session.dart';
 import '../domain/display_policy.dart';
 import '../domain/user_medicine_models.dart';
@@ -12,7 +13,7 @@ final userMedicinesProvider =
 
 /// 활성 내 약 목록·상세를 서버에서 불러온다.
 class UserMedicinesController extends AsyncNotifier<List<UserMedicine>> {
-  final _api = ApiClient();
+  final _localApi = ApiClient(baseUrl: ApiConfig.localFeatureBaseUrl);
 
   @override
   Future<List<UserMedicine>> build() async {
@@ -30,7 +31,7 @@ class UserMedicinesController extends AsyncNotifier<List<UserMedicine>> {
       throw const ApiException('약 코드가 없습니다.');
     }
     final userId = Uri.encodeComponent(MvpSession.userId);
-    final response = await _api.get(
+    final response = await _localApi.get(
       '/api/v1/users/$userId/medicines/${Uri.encodeComponent(code)}',
     );
     if (response is! Map) {
@@ -46,9 +47,11 @@ class UserMedicinesController extends AsyncNotifier<List<UserMedicine>> {
       data['short_explanation'] =
           explanation['short_explanation'] ?? data['short_explanation'];
       data['ingredient_explanation'] = explanation['ingredient_explanation'];
+      data['ingredient_highlight'] = explanation['ingredient_highlight'];
       data['approved_use_summary'] = explanation['approved_use_summary'];
       data['approved_uses'] = explanation['approved_uses'];
       data['all_approved_uses'] = explanation['all_approved_uses'];
+      data['treatment_uses'] = explanation['treatment_uses'];
       data['detail_review_status'] = explanation['review_status'];
       data['detail_status'] = explanation['status'];
     }
@@ -59,8 +62,7 @@ class UserMedicinesController extends AsyncNotifier<List<UserMedicine>> {
       data['frequency_per_day'] =
           patientDosage['frequency_per_day'] ?? data['frequency_per_day'];
       data['administration_times'] =
-          patientDosage['administration_times'] ??
-          data['administration_times'];
+          patientDosage['administration_times'] ?? data['administration_times'];
     }
     final officialUsage = response['official_usage'];
     if (officialUsage is Map) {
@@ -99,7 +101,7 @@ class UserMedicinesController extends AsyncNotifier<List<UserMedicine>> {
 
   Future<List<UserMedicine>> _loadMedicines() async {
     final userId = Uri.encodeComponent(MvpSession.userId);
-    final response = await _api.get('/api/v1/users/$userId/medicines');
+    final response = await _localApi.get('/api/v1/users/$userId/medicines');
     if (response is! Map) return const [];
     final raw = response['medicines'];
     if (raw is! List) return const [];

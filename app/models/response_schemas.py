@@ -258,9 +258,11 @@ class DrugExplanationContentResponse(ApiResponse):
     content_available: bool
     short_explanation: str = ""
     ingredient_explanation: str = ""
+    ingredient_highlight: str = ""
     approved_use_summary: str = ""
     approved_uses: list[str] = Field(default_factory=list)
     all_approved_uses: list[str] = Field(default_factory=list)
+    treatment_uses: list[dict[str, str]] = Field(default_factory=list)
     review_status: str
     status: str = "PENDING"
     quality_flags: list[str] = Field(default_factory=list)

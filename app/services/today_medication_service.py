@@ -22,6 +22,11 @@ from app.services.medicine_display import (
     split_take_amount,
 )
 from app.services.ocr.parser import take_amount_for_display
+from app.services.seed_mvp_medicines import (
+    MVP_USER_ID,
+    ensure_mvp_codarone_available,
+    ensure_user_codarone_available,
+)
 from app.services.pharmacist.easy_category import (
     derive_easy_spoken_from_medicine,
     display_product_name,
@@ -80,6 +85,12 @@ def get_today_medicines(user_id: str, target_date: str | None = None) -> dict[st
     uid = (user_id or "").strip()
     if not uid:
         raise HTTPException(status_code=422, detail="user_id가 필요합니다.")
+    if uid == MVP_USER_ID:
+        # Render에서 DEMO_SEED_ENABLED가 꺼져 있어도 체험 홈의 기준약을 유지한다.
+        # 추가로 등록한 OCR·수기 약은 변경하지 않는다.
+        ensure_mvp_codarone_available()
+    else:
+        ensure_user_codarone_available(uid)
     day = target_date or date.today().isoformat()
     conn = get_connection()
     try:

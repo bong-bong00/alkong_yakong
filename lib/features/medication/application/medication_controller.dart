@@ -2,6 +2,7 @@ import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/network/api_client.dart';
+import '../../../core/network/api_config.dart';
 import '../../../core/session/mvp_session.dart';
 import '../../medicines/domain/display_policy.dart';
 import '../../reminder/domain/reminder_ladder.dart';
@@ -24,9 +25,9 @@ final patientTodayProvider = FutureProvider.family<TodayMedication, String>((
   ref,
   userId,
 ) async {
-  final response = await ApiClient().get(
-    '/api/v1/users/${Uri.encodeComponent(userId)}/today-medicines',
-  );
+  final response = await ApiClient(
+    baseUrl: ApiConfig.localFeatureBaseUrl,
+  ).get('/api/v1/users/${Uri.encodeComponent(userId)}/today-medicines');
   if (response is! Map) {
     throw const ApiException('오늘 복약을 받지 못했어요.');
   }
@@ -49,7 +50,7 @@ String resolveGuardianTitle(BuildContext context, String? given) {
 /// (빈 응답인데 데모를 남기면 가짜 약이 실약처럼 보임)
 /// 네트워크 실패 시에만 기존(또는 데모) 상태를 유지한다.
 class MedicationController extends Notifier<TodayMedication> {
-  final _api = ApiClient();
+  final _api = ApiClient(baseUrl: ApiConfig.localFeatureBaseUrl);
 
   @override
   TodayMedication build() {

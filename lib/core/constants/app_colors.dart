@@ -34,6 +34,10 @@ abstract final class AppColors {
   /// 본문.
   static const Color textBody = Color(0xFF3A3A42);
 
+  /// 약 상세에서 사용자가 먼저 읽을 핵심 효과·치료 목적에만 사용.
+  /// 안전·완료 상태를 뜻하지 않으며 굵은 핵심 구절 외에는 사용하지 않는다.
+  static const Color detailEmphasis = Color(0xFF176B45);
+
   /// 라벨.
   static const Color textSecondary = Color(0xFF5C5C66);
 

@@ -11,6 +11,7 @@ from fastapi import HTTPException
 from app.database import get_connection
 from app.services.drug_explain_service import reviewed_detail_payload
 from app.services.dur_service import pair_card_fields, person_cautions_for_medicine
+from app.services.seed_mvp_medicines import ensure_user_codarone_available
 from app.services.today_medication_service import _visible_medicine_item
 
 
@@ -275,6 +276,8 @@ def get_user_medicines(user_id: str) -> dict[str, Any]:
     if not uid:
         raise HTTPException(status_code=422, detail="user_id가 필요합니다.")
 
+    ensure_user_codarone_available(uid)
+
     conn = get_connection()
     try:
         user = conn.execute("SELECT id FROM users WHERE id = ?", (uid,)).fetchone()
@@ -311,6 +314,8 @@ def get_user_medicine(user_id: str, medicine_code: str) -> dict[str, Any]:
         raise HTTPException(status_code=422, detail="user_id가 필요합니다.")
     if not code:
         raise HTTPException(status_code=422, detail="medicine_code가 필요합니다.")
+
+    ensure_user_codarone_available(uid)
 
     conn = get_connection()
     try:

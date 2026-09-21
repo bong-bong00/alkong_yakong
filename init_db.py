@@ -379,6 +379,16 @@ TABLE_DEFINITIONS = {
             updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
         )
     """,
+    "ingredient_aliases": """
+        CREATE TABLE ingredient_aliases (
+            alias_key TEXT PRIMARY KEY,
+            canonical_key TEXT NOT NULL,
+            display_name TEXT,
+            source TEXT NOT NULL DEFAULT 'official-merge',
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+    """,
     "medicine_detail_profiles": """
         CREATE TABLE medicine_detail_profiles (
             medicine_code TEXT PRIMARY KEY,
@@ -471,6 +481,7 @@ INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_notifications_user_created ON notifications(user_id, created_at)",
     "CREATE INDEX IF NOT EXISTS idx_notifications_schedule ON notifications(schedule_id, notification_type)",
     "CREATE INDEX IF NOT EXISTS idx_ingredient_explanations_review ON ingredient_explanations(review_status, normalized_key)",
+    "CREATE INDEX IF NOT EXISTS idx_ingredient_aliases_canonical ON ingredient_aliases(canonical_key)",
     "CREATE INDEX IF NOT EXISTS idx_medicine_detail_profiles_status ON medicine_detail_profiles(status, updated_at)",
     "CREATE INDEX IF NOT EXISTS idx_medicine_detail_jobs_status ON medicine_detail_jobs(status, requested_at)",
 ]
@@ -690,6 +701,35 @@ def _invalidate_unusable_ingredient_explanations(cursor: sqlite3.Cursor) -> None
         )
 
 
+def _remove_source_preambles_from_ingredient_copy(cursor: sqlite3.Cursor) -> None:
+    """Keep attribution in source columns, not inside user-facing explanations."""
+    from app.services.medicine_detail_providers import clean_ingredient_explanation
+
+    for table, key_column in (
+        ("ingredient_explanations", "normalized_key"),
+        ("medicine_detail_profiles", "medicine_code"),
+    ):
+        rows = cursor.execute(
+            f"SELECT {key_column}, ingredient_explanation FROM {table}"
+            if table == "medicine_detail_profiles"
+            else f"SELECT {key_column}, explanation FROM {table}"
+        ).fetchall()
+        value_column = (
+            "ingredient_explanation"
+            if table == "medicine_detail_profiles"
+            else "explanation"
+        )
+        for key, original in rows:
+            cleaned = clean_ingredient_explanation(original)
+            if not cleaned or cleaned == str(original or "").strip():
+                continue
+            cursor.execute(
+                f"UPDATE {table} SET {value_column}=?, updated_at=CURRENT_TIMESTAMP "
+                f"WHERE {key_column}=?",
+                (cleaned, key),
+            )
+
+
 def _seed_reviewed_ingredient_explanations(cursor: sqlite3.Cursor) -> None:
     """Seed reusable ingredient-level copy without product-specific branches."""
     from app.services.medicine_detail_service import normalize_ingredient_key
@@ -830,6 +870,7 @@ def seed_reviewed_detail_explanations(cursor: sqlite3.Cursor) -> None:
 
 def initialize_database() -> None:
     conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
     cursor = conn.cursor()
     suffix = datetime.now().strftime("%Y%m%d%H%M%S")
@@ -856,6 +897,7 @@ def initialize_database() -> None:
         cursor.execute(statement)
 
     _seed_reviewed_home_explanations(cursor)
+    _remove_source_preambles_from_ingredient_copy(cursor)
     _invalidate_unusable_ingredient_explanations(cursor)
     _seed_reviewed_ingredient_explanations(cursor)
     seed_reviewed_detail_explanations(cursor)

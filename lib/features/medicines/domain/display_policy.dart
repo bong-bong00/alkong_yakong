@@ -142,29 +142,39 @@ String? cardSpokenOf(String? text) {
   return value;
 }
 
+/// 상세 화면은 검토된 한 문장 설명을 보여 준다.
+/// 홈·목록의 중복 제거 규칙(`목적으로 처방`)을 적용하지 않는다.
+String? detailSpokenOf(String? text) {
+  var value = (text ?? '').trim();
+  value = _spokenAliases[value] ?? value;
+  if (value.isEmpty || value == _placeholderSpoken) return null;
+  return value;
+}
+
 final _usageNumbered = RegExp(r'(?<!\d)(\d+\.\s+)(?=[가-힣○•])');
-final _usagePersonLabel = RegExp(r'(?<=\S)\s+(성인|소아|고령자)\s*[:：]');
+final _usageStandaloneNumber = RegExp(r'^\s*(\d+\.)\s*\n+\s*', multiLine: true);
+final _usagePersonLabel = RegExp(
+  r'(?<!\d\.)(?<=\S)[ \t]+(신기능부전 환자|신기능 저하 환자|간기능 저하 환자|성인|소아|고령자)\s*[:：]',
+);
 final _usageBullet = RegExp(r'\s*[○•]\s*');
 final _usageSentenceEnd = RegExp(r'(한다\.|이다\.)\s+');
 
 /// 허가 용법 원문은 그대로 두고, 항·문장 앞에서만 줄을 나눈다.
 String formatOfficialUsage(String? raw) {
   var text = (raw ?? '').replaceAll('\r\n', '\n').replaceAll('\r', '\n');
+  text = text.replaceAllMapped(
+    _usageStandaloneNumber,
+    (match) => '${match[1]} ',
+  );
   text = text.replaceAll(RegExp(r'[ \t]+'), ' ');
   text = text.replaceAll(RegExp(r' *\n *'), '\n');
   text = text.replaceAll(_usageBullet, '\n\n○ ');
-  text = text.replaceAllMapped(
-    _usageNumbered,
-    (match) => '\n\n${match[1]}',
-  );
+  text = text.replaceAllMapped(_usageNumbered, (match) => '\n\n${match[1]}');
   text = text.replaceAllMapped(
     _usagePersonLabel,
     (match) => '\n\n${match[1]} : ',
   );
-  text = text.replaceAllMapped(
-    _usageSentenceEnd,
-    (match) => '${match[1]}\n\n',
-  );
+  text = text.replaceAllMapped(_usageSentenceEnd, (match) => '${match[1]}\n\n');
   text = text.replaceAll(RegExp(r' : +'), ' : ');
   text = text.replaceAllMapped(
     RegExp(r'\s+(고령자)\s+(이 약은)'),

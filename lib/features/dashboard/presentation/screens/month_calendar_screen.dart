@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/network/api_client.dart';
+import '../../../../core/network/api_config.dart';
 import '../../../../core/session/mvp_session.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../core/widgets/senior_button.dart';
@@ -126,9 +127,10 @@ class _MonthCalendarScreenState extends ConsumerState<MonthCalendarScreen> {
           ? widget.patientUserId!.trim()
           : MvpSession.userId.trim();
       final userId = Uri.encodeComponent(rawUserId);
-      final response = await ApiClient().get(
-        '/api/v1/users/$userId/medication-calendar?year=$_year&month=$_month',
-      );
+      final response = await ApiClient(baseUrl: ApiConfig.localFeatureBaseUrl)
+          .get(
+            '/api/v1/users/$userId/medication-calendar?year=$_year&month=$_month',
+          );
       if (!mounted || response is! Map) {
         if (mounted) setState(() => _loading = false);
         return;

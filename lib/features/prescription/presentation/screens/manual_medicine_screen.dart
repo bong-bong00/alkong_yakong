@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/network/api_client.dart';
+import '../../../../core/network/api_config.dart';
 import '../../../../core/session/mvp_session.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../core/widgets/senior_button.dart';
@@ -16,7 +17,7 @@ import '../../../medicines/application/user_medicines_controller.dart';
 /// 처방전 없이 공식 약 이름을 찾아 등록한다.
 class ManualMedicineScreen extends ConsumerStatefulWidget {
   final VoidCallback? onBack;
-  final VoidCallback? onSaved;
+  final ValueChanged<Map<String, dynamic>?>? onSaved;
 
   const ManualMedicineScreen({super.key, this.onBack, this.onSaved});
 
@@ -26,7 +27,7 @@ class ManualMedicineScreen extends ConsumerStatefulWidget {
 }
 
 class _ManualMedicineScreenState extends ConsumerState<ManualMedicineScreen> {
-  final _api = ApiClient();
+  final _api = ApiClient(baseUrl: ApiConfig.localFeatureBaseUrl);
   final _query = TextEditingController();
   final _amount = TextEditingController();
 
@@ -58,6 +59,7 @@ class _ManualMedicineScreenState extends ConsumerState<ManualMedicineScreen> {
     setState(() {
       _searching = true;
       _picked = null;
+      _hits = const [];
     });
     try {
       final response = await _api.get(
@@ -106,6 +108,7 @@ class _ManualMedicineScreenState extends ConsumerState<ManualMedicineScreen> {
     final userId = MvpSession.userId.trim().isEmpty
         ? 'mvp-user'
         : MvpSession.userId.trim();
+    Map<String, dynamic> mapped;
     try {
       final response = await _api.post(
         '/api/v1/prescriptions/confirm',
@@ -126,35 +129,64 @@ class _ManualMedicineScreenState extends ConsumerState<ManualMedicineScreen> {
           ],
         },
       );
-      if (response is Map) {
-        MvpSession.rememberPrescriptionSchedules(
-          prescriptionId: response['prescription_id']?.toString(),
-          confirmResponse: response,
-          ocrItems: [
-            {
-              'duration_days': _days,
-              'frequency_per_day': _frequency,
-            },
-          ],
-        );
+      if (response is! Map || response['registered'] != true) {
+        throw const ApiException('약 등록 완료를 확인하지 못했어요.');
       }
-      await ref.read(medicationProvider.notifier).refreshFromServer();
-      await ref.read(userMedicinesProvider.notifier).refresh();
-      if (!mounted) return;
-      final onSaved = widget.onSaved;
-      if (onSaved != null) {
-        onSaved();
-        return;
-      }
-      context.push(
-        '/schedule-days',
-        extra: MvpSession.latestPrescriptionId,
-      );
+      mapped = Map<String, dynamic>.from(response);
     } catch (_) {
       if (!mounted) return;
       setState(() => _saving = false);
       _showError('공식 약으로 확인되지 않아 등록하지 못했어요.');
+      return;
     }
+
+    MvpSession.rememberPrescriptionSchedules(
+      prescriptionId: mapped['prescription_id']?.toString(),
+      confirmResponse: mapped,
+      ocrItems: [
+        {'duration_days': _days, 'frequency_per_day': _frequency},
+      ],
+    );
+    final durRaw = mapped['dur_result'];
+    final durResult = durRaw is Map ? Map<String, dynamic>.from(durRaw) : null;
+    var refreshFailed = false;
+    try {
+      await Future.wait<void>([
+        ref.read(medicationProvider.notifier).refreshFromServer(),
+        ref.read(userMedicinesProvider.notifier).refresh(),
+      ]);
+    } catch (_) {
+      refreshFailed = true;
+    }
+    if (ref.read(userMedicinesProvider).hasError) {
+      refreshFailed = true;
+    }
+    if (!mounted) return;
+    if (refreshFailed) {
+      showSeniorSnackbar(context, '약은 등록됐어요. 목록은 홈에서 다시 불러와 주세요.');
+    }
+    final onSaved = widget.onSaved;
+    if (onSaved != null) {
+      onSaved(durResult);
+      return;
+    }
+    if (_hasPairConflict(durResult)) {
+      context.push(
+        '/dur-analysis',
+        extra: {...?durResult, 'open_schedule_days': true},
+      );
+      return;
+    }
+    context.push('/schedule-days', extra: MvpSession.latestPrescriptionId);
+  }
+
+  static bool _hasPairConflict(Map<String, dynamic>? durResult) {
+    const pairTypes = {'병용금기', '중복성분', '효능군중복'};
+    final matches = durResult?['matches'];
+    if (matches is! List) return false;
+    return matches.any(
+      (item) => item is Map && pairTypes.contains(item['type']?.toString()),
+    );
   }
 
   @override
