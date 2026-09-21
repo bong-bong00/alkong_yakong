@@ -127,7 +127,7 @@ class _EmptyMonthCard extends StatelessWidget {
           ),
           const SizedBox(height: 12),
           Text(
-            '$month월에는 아직 잰 기록이 없어요',
+            '$month월에는 아직 측정 기록이 없어요',
             textAlign: TextAlign.center,
             style: AppText.cardTitle(size: 21),
           ),

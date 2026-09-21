@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import '../../../../core/widgets/senior_header.dart';
-import 'package:flutter/cupertino.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/network/api_client.dart';
@@ -250,121 +249,12 @@ class _ProfileEditScreenState extends ConsumerState<ProfileEditScreen> {
   };
 
   Future<void> _pickBirth() async {
-    final now = DateTime.now();
-    int y = _birth?.year ?? (now.year - 60);
-    int m = _birth?.month ?? 1;
-    int d = _birth?.day ?? 1;
-    final years = [for (int yy = 1920; yy <= now.year; yy++) yy];
-
-    await showModalBottomSheet(
+    final picked = await showSeniorDateWheel(
       context: context,
-      backgroundColor: AppColors.surface,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      builder: (ctx) => SafeArea(
-        child: SizedBox(
-          // 굴림판이 손가락으로 굴릴 만큼 커야 한다. 화면 절반을 쓴다.
-          height: MediaQuery.sizeOf(ctx).height * 0.56,
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(20, 20, 20, 16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Text('생년월일을 고르세요', style: AppText.emphasis(size: 24)),
-                const SizedBox(height: 6),
-                Text('위아래로 굴려서 고르세요', style: AppText.caption(size: 16)),
-                const SizedBox(height: 12),
-                Expanded(
-                  child: Row(
-                    children: [
-                      Expanded(
-                        flex: 3,
-                        child: _wheel(
-                          years,
-                          years.indexOf(y),
-                          (i) => y = years[i],
-                          '년',
-                        ),
-                      ),
-                      Expanded(
-                        flex: 2,
-                        child: _wheel(
-                          List.generate(12, (k) => k + 1),
-                          m - 1,
-                          (i) => m = i + 1,
-                          '월',
-                        ),
-                      ),
-                      Expanded(
-                        flex: 2,
-                        child: _wheel(
-                          List.generate(31, (k) => k + 1),
-                          d - 1,
-                          (i) => d = i + 1,
-                          '일',
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 14),
-                SeniorButton(
-                  label: '이 날짜로 정하기',
-                  minHeight: 64,
-                  fontSize: 20,
-                  onPressed: () {
-                    // 2월 31일 같은 날은 그 달의 마지막 날로 내린다.
-                    final maxDay = DateUtils.getDaysInMonth(y, m);
-                    if (d > maxDay) d = maxDay;
-                    setState(() => _birth = DateTime(y, m, d));
-                    Navigator.pop(ctx);
-                  },
-                ),
-                const SizedBox(height: 8),
-                SeniorButton(
-                  label: '그만두기',
-                  kind: SeniorButtonKind.neutral,
-                  minHeight: 58,
-                  fontSize: 18,
-                  onPressed: () => Navigator.pop(ctx),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
+      initialDate: _birth,
     );
-  }
-
-  Widget _wheel(
-    List<int> items,
-    int initialIndex,
-    ValueChanged<int> onChanged,
-    String suffix,
-  ) {
-    return CupertinoPicker(
-      scrollController: FixedExtentScrollController(
-        initialItem: initialIndex < 0 ? 0 : initialIndex,
-      ),
-      itemExtent: 64,
-      squeeze: 1.1,
-      // 가운데 칸을 우리 굴림판과 같은 파란 띠로 표시한다.
-      selectionOverlay: Container(
-        margin: const EdgeInsets.symmetric(horizontal: 4),
-        decoration: BoxDecoration(
-          color: AppColors.pointTint,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: AppColors.point, width: 2),
-        ),
-      ),
-      onSelectedItemChanged: onChanged,
-      children: [
-        for (final it in items)
-          Center(child: Text('$it$suffix', style: AppText.cardTitle(size: 24))),
-      ],
-    );
+    if (picked == null) return;
+    setState(() => _birth = picked);
   }
 
   // 칩 + 검색 추가 시트
@@ -786,7 +676,6 @@ class _ProfileEditScreenState extends ConsumerState<ProfileEditScreen> {
       title: '혈액형을 고르세요',
       options: _bloodOptions,
       selectedIndex: at < 0 ? 0 : at,
-      confirmLabel: '이걸로 정하기',
     );
     if (picked == null) return;
     setState(() => _blood = _bloodOptions[picked]);

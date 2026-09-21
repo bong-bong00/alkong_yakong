@@ -25,11 +25,9 @@ void main() {
   setUp(() => MvpSession.userId = 'u1');
 
   test('서버가 받아 주면 보낸 것으로 본다', () async {
-    final result = await repositoryReturning({'id': 'g1'}).invite(
-      name: '김지안',
-      relation: '딸',
-      phone: '010-1111-2222',
-    );
+    final result = await repositoryReturning({
+      'id': 'g1',
+    }).invite(name: '김지안', relation: '딸', phone: '010-1111-2222');
 
     expect(result.isSent, isTrue);
     expect(result.invite!.name, '김지안');
@@ -38,10 +36,9 @@ void main() {
   });
 
   test('서버가 거절하면 보낸 것으로 치지 않는다', () async {
-    final result = await repositoryReturning(
-      {'detail': '사용자가 없습니다.'},
-      status: 404,
-    ).invite(name: '김지안', relation: '딸', phone: '010-1111-2222');
+    final result = await repositoryReturning({
+      'detail': '사용자가 없습니다.',
+    }, status: 404).invite(name: '김지안', relation: '딸', phone: '010-1111-2222');
 
     expect(result.isSent, isFalse);
     expect(result.invite, isNull);
@@ -50,11 +47,9 @@ void main() {
 
   test('로그인 전에는 부르지 않는다', () async {
     MvpSession.userId = '';
-    final result = await repositoryReturning({'id': 'g1'}).invite(
-      name: '김지안',
-      relation: '딸',
-      phone: '010-1111-2222',
-    );
+    final result = await repositoryReturning({
+      'id': 'g1',
+    }).invite(name: '김지안', relation: '딸', phone: '010-1111-2222');
 
     expect(result.isSent, isFalse);
     expect(result.error, '로그인이 필요해요');

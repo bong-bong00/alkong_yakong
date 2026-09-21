@@ -30,12 +30,12 @@ Future<WearChoice> showWearSensorSheet(BuildContext context) async {
       title: '심박 센서를 차고 계신가요?',
       body: const SeniorSheetBody([
         '차고 계시면 약을 드신 뒤 ',
-        '심박수를 한 번 재드립니다.',
+        '심박수를 한 번 측정해 드립니다.',
         ' 안 차고 계셔도 복약은 그대로 기록돼요.',
       ]),
       actions: [
         SeniorButton(
-          label: '차고 있어요 · 재기',
+          label: '차고 있어요 · 측정',
           icon: TablerIcons.activity_heartbeat,
           minHeight: 74,
           fontSize: 24,
@@ -66,7 +66,7 @@ Future<WearChoice> showWearSensorSheet(BuildContext context) async {
 
 /// 처방이 끝날 때 무엇을 할지.
 enum RefillChoice {
-  /// 새 처방전을 사진으로 들인다.
+  /// 새 처방전을 사진으로 등록한다.
   addPrescription,
 
   /// 아직 못 받았다 — 가족에게 알린다.
@@ -92,14 +92,14 @@ Future<RefillChoice> showRefillSheet(
       body: SeniorSheetBody([
         '$startedOn에 받으신 ',
         '$totalDays일치',
-        '가 오늘까지예요. 새 처방전을 사진으로 들이시면 '
+        '가 오늘까지예요. 새 처방전을 사진으로 등록하시면 '
             '약 이름과 시간을 ',
         '자동으로 읽어',
         ' 드려요.',
       ]),
       actions: [
         SeniorButton(
-          label: '새 처방전 들이기',
+          label: '새 처방전 등록',
           subLabel: '사진 한 장이면 됩니다',
           icon: TablerIcons.camera,
           minHeight: 78,

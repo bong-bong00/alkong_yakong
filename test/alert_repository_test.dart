@@ -71,8 +71,10 @@ void main() {
   });
 
   test('못 읽으면 null — 데모로 갈아끼우지 않는다', () async {
-    expect(await repositoryReturning({'detail': 'x'}, status: 500).fetch('u1'),
-        isNull);
+    expect(
+      await repositoryReturning({'detail': 'x'}, status: 500).fetch('u1'),
+      isNull,
+    );
     expect(await repositoryReturning(<dynamic>[]).fetch(''), isNull);
   });
 }

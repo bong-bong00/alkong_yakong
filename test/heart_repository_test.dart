@@ -116,7 +116,9 @@ void main() {
   });
 
   test('서버가 실패하면 null — 데모로 조용히 갈아끼우지 않는다', () async {
-    final data = await repositoryReturning({'detail': '없음'}, status: 500).fetch();
+    final data = await repositoryReturning({
+      'detail': '없음',
+    }, status: 500).fetch();
     expect(data, isNull);
   });
 

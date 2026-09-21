@@ -105,7 +105,7 @@ class SavedScreen extends StatelessWidget {
                     title: '심박수 기록',
                     description: fromAlert
                         ? '$bpm회 / 분 · 빠르게 뛴 기록으로 따로 표시했어요'
-                        : '$bpm회 / 분 · 1분 동안 잰 결과',
+                        : '$bpm회 / 분 · 1분 동안 측정한 결과',
                   ),
                   const SizedBox(height: 12),
                   Container(

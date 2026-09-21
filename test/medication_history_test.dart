@@ -65,19 +65,14 @@ void main() {
         ],
         child: MaterialApp(
           theme: AppTheme.build(),
-          home: Scaffold(
-            body: MedicationRecordScreen(onBackToToday: _noop),
-          ),
+          home: Scaffold(body: MedicationRecordScreen(onBackToToday: _noop)),
         ),
       ),
     );
     await tester.pump();
     await tester.pump();
 
-    expect(
-      find.bySemanticsLabel(RegExp(r'일 .*요일, 약 있는 날')),
-      findsOneWidget,
-    );
+    expect(find.bySemanticsLabel(RegExp(r'일 .*요일, 약 있는 날')), findsOneWidget);
   });
 }
 

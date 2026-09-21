@@ -190,7 +190,7 @@ class _ValueCard extends StatelessWidget {
               const SizedBox(width: 8),
               Flexible(
                 child: Text(
-                  '방금 잰 심박수',
+                  '방금 측정한 심박수',
                   style: AppText.cardTitle(size: 19, color: AppColors.danger),
                 ),
               ),
@@ -198,7 +198,7 @@ class _ValueCard extends StatelessWidget {
           ),
           const SizedBox(height: 10),
           Semantics(
-            label: '방금 잰 심박수 $bpm회, $headline',
+            label: '방금 측정한 심박수 $bpm회, $headline',
             child: ExcludeSemantics(
               // 68pt 숫자와 단위를 한 줄에 둔다. 좁은 화면이나 큰 글자에서는
               // 줄을 통째로 줄여 잘리지 않게 한다.
