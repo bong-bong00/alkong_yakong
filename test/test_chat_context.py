@@ -905,6 +905,59 @@ class ChatContextTest(unittest.TestCase):
                 for value in source.values():
                     self.assertIn(value, prompt)
 
+    def test_prompt_requires_short_plain_text_without_losing_official_meaning(self):
+        prompt = build_grounded_chat_prompt(
+            message="어디에 쓰나요?",
+            intents={"efficacy"},
+            official_contexts=[{"efficacy": "공식 자료의 합성 효능"}],
+            dur_result={"status": "not_required", "items": []},
+        )
+        for rule in (
+            "핵심 답을 첫 문장에",
+            "한 문장에는 한 가지 내용",
+            "일반 텍스트로만",
+            "Markdown 제목(#)",
+            "HTML 태그를 쓰지 마세요",
+            "긴 공식 문장을 첫 답변에 그대로 나열하지 마세요",
+            "공식 조건·금지·심각한 위험",
+            "공식 효능 자료에 확인된 의미 안에서",
+            "개인 처방 정보 없이 개인 복용량을 새로 정하지 말고",
+            "정상적으로 확인한 0건과 자료 부족·조회 실패·미완료를 혼동하지 마세요",
+        ):
+            self.assertIn(rule, prompt)
+        self.assertNotIn("DUR 안내, 다음 안내", prompt)
+
+    def test_plain_chat_reply_removes_only_markup_and_is_idempotent(self):
+        raw = (
+            "# 쉽게 말하면\n"
+            "**제품_AB-12정**의 주성분은 __성분_X__예요.\n"
+            "- 1~2 mg, 0.5 mg, 1일 2회, 5% 이하·10% 초과\n"
+            "*꼭 확인할 점*은 다음과 같아요.\n"
+            "* `-0.5 mg`은 음수 표기예요.\n\n\n"
+            "`공식 제품명`은 그대로 둬요.\n```0.5 mg```도 유지해요."
+        )
+        expected = (
+            "쉽게 말하면\n"
+            "제품_AB-12정의 주성분은 성분_X예요.\n"
+            "• 1~2 mg, 0.5 mg, 1일 2회, 5% 이하·10% 초과\n"
+            "꼭 확인할 점은 다음과 같아요.\n"
+            "• -0.5 mg은 음수 표기예요.\n\n"
+            "공식 제품명은 그대로 둬요.\n0.5 mg도 유지해요."
+        )
+        cleaned = gemini_service._plain_chat_reply(raw)
+        self.assertEqual(cleaned, expected)
+        self.assertEqual(gemini_service._plain_chat_reply(cleaned), cleaned)
+
+    def test_generated_reply_is_plain_text_without_changing_reply_contract(self):
+        response = SimpleNamespace(
+            text="## 쉽게 말하면\n**공식 근거를 확인했어요.** 1일 2회예요.",
+            candidates=[], usage_metadata=None,
+        )
+        self.assertEqual(
+            gemini_service._finalize_chat_response(response),
+            "쉽게 말하면\n공식 근거를 확인했어요. 1일 2회예요.",
+        )
+
     def test_fixed_replies_preserve_missing_stale_and_zero_result_meanings(self):
         for intent in ("combination", "age", "pregnancy", "duplicate"):
             with self.subTest(intent=intent):

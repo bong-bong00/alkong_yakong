@@ -405,7 +405,7 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
 
       if (!mounted) return;
       setState(() {
-        _messages.add({'isMe': false, 'text': reply});
+        _messages.add({'isMe': false, 'text': _plainAiReply(reply)});
       });
     } on ApiException catch (error) {
       if (!mounted) return;
@@ -1001,4 +1001,37 @@ String _apiError(ApiException error) {
   return error.statusCode == null
       ? error.message
       : '${error.message} (HTTP ${error.statusCode})';
+}
+
+String _plainAiReply(String value) {
+  var text = value.replaceAll('\r\n', '\n').replaceAll('\r', '\n');
+  text = text.replaceAll(
+    RegExp(r'^[ \t]*```(?:[A-Za-z][A-Za-z0-9_-]*)?[ \t]*$', multiLine: true),
+    '',
+  );
+  text = text.replaceAll(
+    RegExp(r'^[ \t]{0,3}#{1,6}[ \t]+', multiLine: true),
+    '',
+  );
+  text = text.replaceAll(
+    RegExp(r'^[ \t]{0,3}[-*+][ \t]+', multiLine: true),
+    '• ',
+  );
+  text = text.replaceAllMapped(
+    RegExp(r'\*\*([^*\n]+)\*\*'),
+    (match) => match.group(1)!,
+  );
+  text = text.replaceAllMapped(
+    RegExp(r'__([^\n]+?)__'),
+    (match) => match.group(1)!,
+  );
+  text = text.replaceAllMapped(
+    RegExp(r'(?<![A-Za-z0-9가-힣_*])\*([^*\s\n](?:[^*\n]*?[^*\s\n])?)\*(?!\*)'),
+    (match) => match.group(1)!,
+  );
+  text = text.replaceAllMapped(
+    RegExp(r'(?<![A-Za-z0-9가-힣_])_([^_\s\n](?:[^_\n]*?[^_\s\n])?)_(?!_)'),
+    (match) => match.group(1)!,
+  );
+  return text.replaceAll('`', '').replaceAll(RegExp(r'\n{3,}'), '\n\n').trim();
 }

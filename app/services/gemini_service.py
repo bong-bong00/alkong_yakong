@@ -2,6 +2,7 @@
 
 import json
 import logging
+import re
 import time
 from pathlib import Path
 from typing import Any
@@ -371,6 +372,20 @@ def _finish_reasons(response) -> list[str]:
     return reasons
 
 
+def _plain_chat_reply(value: str) -> str:
+    """Remove AI reply markup only; preserve medicine text and clinical values."""
+    text = value.replace("\r\n", "\n").replace("\r", "\n")
+    text = re.sub(r"(?m)^[ \t]*```(?:[A-Za-z][A-Za-z0-9_-]*)?[ \t]*$", "", text)
+    text = re.sub(r"(?m)^[ \t]{0,3}#{1,6}[ \t]+", "", text)
+    text = re.sub(r"(?m)^[ \t]{0,3}[-*+][ \t]+", "• ", text)
+    text = re.sub(r"\*\*([^*\n]+)\*\*", r"\1", text)
+    text = re.sub(r"__([^\n]+?)__", r"\1", text)
+    text = re.sub(r"(?<![\w*])\*([^*\s\n](?:[^*\n]*?[^*\s\n])?)\*(?!\*)", r"\1", text)
+    text = re.sub(r"(?<![\w_])_([^_\s\n](?:[^_\n]*?[^_\s\n])?)_(?!_)", r"\1", text)
+    text = text.replace("`", "")
+    return re.sub(r"\n{3,}", "\n\n", text).strip()
+
+
 def _finalize_chat_response(response) -> str:
     response_text = _read_response_text(response)
     logger.debug("Gemini response.text length: %d", len(response_text))
@@ -379,7 +394,9 @@ def _finalize_chat_response(response) -> str:
     if reasons:
         logger.debug("Gemini finish_reason: %s", ", ".join(reasons))
 
-    reply = _complete_response_text(response, response_text=response_text)
+    reply = _plain_chat_reply(
+        _complete_response_text(response, response_text=response_text)
+    )
     logger.debug("Gemini final reply length: %d", len(reply))
 
     has_valid_ending = reply.endswith((".", "요", "다", "니다"))

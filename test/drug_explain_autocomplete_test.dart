@@ -404,6 +404,66 @@ void main() {
     });
   }
 
+  for (final width in [320.0, 360.0]) {
+    testWidgets('AI 답변 표시만 Markdown을 걷어내고 질문과 수치는 보존한다 (${width.toInt()}px)', (
+      tester,
+    ) async {
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = Size(width, 800);
+      addTearDown(tester.view.reset);
+      const question = '**이 약**을 물어볼게요.';
+      const rawReply =
+          '## 쉽게 말하면\n**공식 제품_A정**의 주성분은 __성분_X__예요.\n'
+          '- 1~2 mg, 0.5 mg, 1일 2회, 5% 이하·10% 초과\n'
+          '*확인할 점*은 `공식 자료`에 있어요.\n\n'
+          '마지막 문장도 끝까지 읽을 수 있어요.';
+      const plainReply =
+          '쉽게 말하면\n공식 제품_A정의 주성분은 성분_X예요.\n'
+          '• 1~2 mg, 0.5 mg, 1일 2회, 5% 이하·10% 초과\n'
+          '확인할 점은 공식 자료에 있어요.\n\n'
+          '마지막 문장도 끝까지 읽을 수 있어요.';
+      final client = MockClient((request) async {
+        if (request.url.path.endsWith('/dashboard')) {
+          return jsonResponse({
+            'latest_prescription': null,
+            'today_medications': [],
+          });
+        }
+        expect(jsonDecode(request.body)['message'], question);
+        return jsonResponse({'reply': rawReply});
+      });
+
+      await tester.pumpWidget(
+        MediaQuery(
+          data: MediaQueryData.fromView(
+            tester.view,
+          ).copyWith(textScaler: const TextScaler.linear(1.3)),
+          child: appWith(client),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField), question);
+      await tester.tap(find.byIcon(Icons.send_rounded));
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+      await tester.drag(find.byType(ListView).first, const Offset(0, 700));
+      await tester.pumpAndSettle();
+      expect(find.text(question), findsOneWidget);
+      await tester.drag(find.byType(ListView).first, const Offset(0, -700));
+      await tester.pumpAndSettle();
+      expect(find.text(rawReply), findsNothing);
+      expect(find.text(plainReply), findsOneWidget);
+      await tester.ensureVisible(find.text(plainReply));
+      await tester.pumpAndSettle();
+      await tester.drag(find.byType(ListView).first, const Offset(0, -700));
+      await tester.pumpAndSettle();
+      expect(
+        tester.getBottomRight(find.text(plainReply)).dy,
+        lessThan(tester.getTopLeft(find.byType(TextField)).dy),
+      );
+    });
+  }
+
   testWidgets('자유 질문 전송에는 explicit intent를 포함하지 않는다', (tester) async {
     Map<String, dynamic>? chatBody;
     final client = MockClient((request) async {
