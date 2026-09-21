@@ -2,7 +2,6 @@ from datetime import date
 
 from fastapi import HTTPException
 
-from app.core.kst import today_kst
 from app.database import get_connection
 from app.models.schemas import MedicationReminderRequest
 
@@ -10,7 +9,7 @@ from app.models.schemas import MedicationReminderRequest
 def generate_medication_reminders(
     request: MedicationReminderRequest,
 ) -> dict:
-    target_date = request.target_date or today_kst().isoformat()
+    target_date = request.target_date or date.today().isoformat()
     conn = get_connection()
     try:
         cursor = conn.cursor()

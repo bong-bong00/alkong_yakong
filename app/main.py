@@ -38,11 +38,8 @@ async def lifespan(_: FastAPI):
     initialize_easy_category_map_db()
     if DEMO_SEED_ENABLED:
         ensure_mvp_demo_medicines()
-    # 로컬 개발 중에는 전체 DB 갱신 스레드가 OCR·목록 요청의 SQLite 쓰기와
-    # 경쟁하지 않게 한다. 운영 Render에서만 자동 동기화를 시작한다.
-    if APP_ENV == "production":
-        start_background_medicine_detail_refresh()
-        start_background_dur_sync()
+    start_background_medicine_detail_refresh()
+    start_background_dur_sync()
     yield
 
 

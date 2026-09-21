@@ -20,15 +20,20 @@ import 'features/onboarding/presentation/screens/first_run_screen.dart';
 import 'features/prescription/presentation/screens/manual_medicine_screen.dart';
 import 'features/prescription/presentation/screens/prescription_screen.dart';
 import 'features/prescription/presentation/screens/schedule_days_screen.dart';
+import 'features/profile/application/session_actions.dart';
+import 'features/profile/data/user_repository.dart';
 import 'features/reminder/application/alarm_preferences.dart';
 import 'features/reminder/application/reminder_notifications.dart';
 import 'features/reminder/presentation/screens/lock_screen_alert.dart';
 
-/// 로그인을 건너뛰지 않는다. `flutter run` 해도 로그인 화면부터 연다.
-const bool kSkipLogin = false;
-
 final _router = GoRouter(
-  initialLocation: kSkipLogin ? '/' : '/login',
+  initialLocation: '/login',
+  redirect: (context, state) {
+    final publicRoute =
+        state.matchedLocation == '/login' || state.matchedLocation == '/signup';
+    if (!AuthSession.isLoggedIn) return publicRoute ? null : '/login';
+    return publicRoute ? '/' : null;
+  },
   routes: [
     GoRoute(path: '/login', builder: (context, state) => const LoginScreen()),
     GoRoute(path: '/signup', builder: (context, state) => const SignupScreen()),
@@ -101,13 +106,18 @@ final _router = GoRouter(
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await AuthSession.load();
+  final restoredUser = await restorePersistedSession(UserRepository());
   try {
     await ReminderNotifications.instance.initialize();
   } catch (_) {
     // 알림을 못 켜도 앱은 떠야 한다.
   }
   final container = ProviderContainer();
+  if (restoredUser != null) {
+    container.read(userRoleProvider.notifier).state = restoredUser.isGuardian
+        ? UserRole.guardian
+        : UserRole.patient;
+  }
   // 알림 설정을 미리 읽어 두어야 내 정보 화면을 열지 않아도 약 시간 알림이 예약된다.
   container.read(alarmPreferencesProvider);
   runApp(
@@ -165,9 +175,9 @@ class LockScreenAlertRoute extends ConsumerWidget {
     return LockScreenAlert(
       dose: dose,
       now: DateTime.now(),
-      onTake: () {
-        ref.read(medicationProvider.notifier).take(dose.slot);
-        context.pop();
+      onTake: () async {
+        await ref.read(medicationProvider.notifier).take(dose.slot);
+        if (context.mounted) context.pop();
       },
       onSnooze: () {
         ref.read(medicationProvider.notifier).snooze(dose.slot);

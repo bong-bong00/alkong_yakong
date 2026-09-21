@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/network/api_client.dart';
-import '../../../../core/network/api_config.dart';
 import '../../../../core/session/mvp_session.dart';
 import '../../../../core/widgets/rounded_gradient_app_bar.dart';
 
@@ -14,7 +13,7 @@ class DashboardScreen extends StatefulWidget {
 }
 
 class _DashboardScreenState extends State<DashboardScreen> {
-  final _apiClient = ApiClient(baseUrl: ApiConfig.localFeatureBaseUrl);
+  final _apiClient = ApiClient();
 
   bool _isLoading = false;
   int? _submittingScheduleId;

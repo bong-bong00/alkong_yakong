@@ -98,12 +98,10 @@ class _DetailBody extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final ingredients = ingredientParts(medicine.ingredientName);
-    final extraOfficialUses = medicine.allApprovedUses.where((purpose) {
-      final normalized = purpose.trim();
-      return normalized.isNotEmpty &&
-          normalized != medicine.approvedUseSummary.trim() &&
-          !medicine.approvedUses.any((shown) => shown.trim() == normalized);
-    }).toList();
+    final allOfficialUses = medicine.allApprovedUses
+        .where((purpose) => purpose.trim().isNotEmpty)
+        .toSet()
+        .toList();
     final cautions = <String>[
       if ((medicine.keyCaution ?? '').trim().isNotEmpty) medicine.keyCaution!,
       ...medicine.keyCautions.where(
@@ -148,14 +146,16 @@ class _DetailBody extends StatelessWidget {
                       ),
                     ),
                 ],
-                if (medicine.detailSpoken != null) ...[
-                  const SizedBox(height: 12),
+                if (medicine.detailStatus.toUpperCase() != 'OUTDATED' &&
+                    medicine.cardSpoken != null) ...[
+                  const SizedBox(height: 10),
                   Text(
-                    medicine.detailSpoken!,
+                    medicine.cardSpoken!,
                     style: AppText.body(size: 21, color: AppColors.textBody),
                   ),
                 ],
-                if (medicine.easyPurposes.any(isCardPurposeLabel)) ...[
+                if (medicine.detailStatus.toUpperCase() != 'OUTDATED' &&
+                    medicine.easyPurposes.any(isCardPurposeLabel)) ...[
                   const SizedBox(height: 12),
                   Wrap(
                     spacing: 8,
@@ -170,6 +170,18 @@ class _DetailBody extends StatelessWidget {
               ],
             ),
           ),
+          if (!medicine.hasDetailContent || medicine.ingredientExplanation.trim().isEmpty) ...[
+            const SizedBox(height: 12),
+            SeniorCard(
+              padding: const EdgeInsets.all(22),
+              child: Text(
+                medicine.detailStatus.toUpperCase() == 'FAILED'
+                    ? '주성분 설명을 불러오지 못했어요. 잠시 후 다시 확인해 주세요.'
+                    : '주성분의 쉬운 설명을 아직 확인하지 못했어요. 공식 정보가 없다는 뜻은 아니에요.',
+                style: AppText.body(),
+              ),
+            ),
+          ],
           if (medicine.hasDetailContent) ...[
             if (medicine.ingredientExplanation.trim().isNotEmpty) ...[
               const SizedBox(height: 12),
@@ -187,8 +199,6 @@ class _DetailBody extends StatelessWidget {
                     _EmphasizedBodyText(
                       text: medicine.ingredientExplanation,
                       highlight: medicine.ingredientHighlight,
-                      ingredient: medicine.ingredientName,
-                      fallbackHighlight: medicine.approvedUseSummary,
                     ),
                   ],
                 ),
@@ -254,7 +264,7 @@ class _DetailBody extends StatelessWidget {
                 ),
               ),
             ],
-            if (extraOfficialUses.isNotEmpty) ...[
+            if (allOfficialUses.isNotEmpty) ...[
               const SizedBox(height: 12),
               SeniorCard(
                 padding: EdgeInsets.zero,
@@ -270,10 +280,10 @@ class _DetailBody extends StatelessWidget {
                     childrenPadding: const EdgeInsets.fromLTRB(22, 0, 22, 22),
                     title: Text(
                       easyMode ? '더 자세한 사용 목적 보기' : '전체 허가 목적',
-                      style: AppText.cardTitle(size: 22),
+                      style: AppText.cardTitle(),
                     ),
                     children: [
-                      for (final purpose in extraOfficialUses) ...[
+                      for (final purpose in allOfficialUses) ...[
                         Align(
                           alignment: Alignment.centerLeft,
                           child: Text(
@@ -511,8 +521,8 @@ class _DetailBody extends StatelessWidget {
   static String _detailStatusMessage(String status) {
     return switch (status.toUpperCase()) {
       'FAILED' => '자세한 설명을 불러오지 못했지만 제품 기본 정보는 볼 수 있어요.',
-      'OUTDATED' => '기존 안전 정보는 볼 수 있어요. 최신 공식 정보로 갱신 중이에요.',
-      'NEEDS_REVIEW' => '공식 정보에서 안전하게 정리한 기본 설명을 보여드려요.',
+      'OUTDATED' => '공식 정보가 바뀌었거나 기존 설명의 근거를 다시 확인해야 해요.',
+      'NEEDS_REVIEW' => '공식 사용 목적과 검토된 성분 설명을 구분해서 보여드려요.',
       _ => '현재 확인할 수 있는 제품 기본 정보를 보여드려요.',
     };
   }
@@ -521,91 +531,38 @@ class _DetailBody extends StatelessWidget {
 class _EmphasizedBodyText extends StatelessWidget {
   final String text;
   final String highlight;
-  final String ingredient;
-  final String fallbackHighlight;
 
-  const _EmphasizedBodyText({
-    required this.text,
-    required this.highlight,
-    required this.ingredient,
-    required this.fallbackHighlight,
-  });
+  const _EmphasizedBodyText({required this.text, required this.highlight});
 
   @override
   Widget build(BuildContext context) {
-    final bodyStyle = AppText.body(size: 20);
-    final effect = _effectTarget();
-    final ranges = <_EmphasisRange>[];
-    final ingredientTarget = ingredient.trim();
-    final ingredientStart = ingredientTarget.isEmpty
+    final bodyStyle = AppText.body(size: 18);
+    final target = highlight.trim();
+    final start = target.isEmpty || target == text.trim()
         ? -1
-        : text.indexOf(ingredientTarget);
-    if (ingredientStart >= 0) {
-      ranges.add(
-        _EmphasisRange(
-          ingredientStart,
-          ingredientStart + ingredientTarget.length,
-          bodyStyle.copyWith(fontWeight: FontWeight.w800),
-        ),
-      );
-    }
-    final effectStart = effect.isEmpty ? -1 : text.indexOf(effect);
-    if (effectStart >= 0) {
-      ranges.add(
-        _EmphasisRange(
-          effectStart,
-          effectStart + effect.length,
-          bodyStyle.copyWith(
-            color: AppColors.detailEmphasis,
-            fontWeight: FontWeight.w800,
-          ),
-        ),
-      );
-    }
-    ranges.sort((a, b) => a.start.compareTo(b.start));
-    if (ranges.isEmpty) {
+        : text.indexOf(target);
+    if (start < 0) {
       return Text(text, style: bodyStyle);
     }
-    final spans = <TextSpan>[];
-    var cursor = 0;
-    for (final range in ranges) {
-      if (range.start < cursor) continue;
-      if (range.start > cursor) {
-        spans.add(TextSpan(text: text.substring(cursor, range.start)));
-      }
-      spans.add(
-        TextSpan(
-          text: text.substring(range.start, range.end),
-          style: range.style,
-        ),
-      );
-      cursor = range.end;
-    }
-    if (cursor < text.length) {
-      spans.add(TextSpan(text: text.substring(cursor)));
-    }
-    return Text.rich(TextSpan(style: bodyStyle, children: spans));
-  }
-
-  String _effectTarget() {
-    final reviewed = highlight.trim();
-    if (reviewed.isNotEmpty && text.contains(reviewed)) return reviewed;
-    var fallback = fallbackHighlight.trim();
-    if (fallback.startsWith('이 약은 ')) fallback = fallback.substring(5);
-    fallback = fallback.replaceFirst(
-      RegExp(r'\s*(사용해요|사용돼요|사용될 수 있어요|도움을 줘요)\.?$'),
-      '',
+    final end = start + target.length;
+    return Text.rich(
+      TextSpan(
+        style: bodyStyle,
+        children: [
+          if (start > 0) TextSpan(text: text.substring(0, start)),
+          TextSpan(
+            text: text.substring(start, end),
+            style: bodyStyle.copyWith(
+              color: AppColors.detailEmphasis,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          if (end < text.length) TextSpan(text: text.substring(end)),
+        ],
+      ),
     );
-    return fallback.isNotEmpty && text.contains(fallback) ? fallback : '';
   }
-}
 
-class _EmphasisRange {
-  final int start;
-  final int end;
-  final TextStyle style;
-
-  const _EmphasisRange(this.start, this.end, this.style);
 }
 
 class _TagChip extends StatelessWidget {

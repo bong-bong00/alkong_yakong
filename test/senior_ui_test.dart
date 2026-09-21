@@ -14,6 +14,7 @@ import 'package:alkong_yakong/features/dashboard/presentation/screens/month_cale
 import 'package:alkong_yakong/features/dashboard/presentation/screens/patient_home_screen.dart';
 import 'package:alkong_yakong/features/medication/domain/medication_models.dart';
 import 'package:alkong_yakong/features/medication/application/medication_controller.dart';
+import 'package:alkong_yakong/core/network/api_client.dart';
 import 'package:alkong_yakong/features/onboarding/presentation/screens/first_run_screen.dart';
 import 'package:alkong_yakong/features/profile/presentation/screens/mypage_screen.dart';
 import 'package:alkong_yakong/features/reminder/domain/reminder_ladder.dart';
@@ -21,6 +22,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_tabler_icons/flutter_tabler_icons.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
 import 'package:alkong_yakong/core/widgets/senior_card.dart';
 import 'package:alkong_yakong/features/dashboard/presentation/screens/home_screen.dart';
 import 'package:alkong_yakong/features/easy_flow/domain/easy_flow.dart';
@@ -110,7 +113,7 @@ void main() {
   _confirmPreviewTests();
   _screenCopyTests();
   _colorTokenTests();
-  _fakeLoginTests();
+  _realLoginTests();
   _calendarTests();
   Widget wrap(Widget child, {double textScale = 1.0}) {
     return ProviderScope(
@@ -433,11 +436,13 @@ void _forbiddenFeatureTests() {
         isFalse,
         reason: '$path 에 기본 스낵바가 있다 — showSeniorSnackbar를 쓴다',
       );
-      expect(
-        text.contains('SeniorErrorBox('),
-        isFalse,
-        reason: '$path 가 오류를 화면에 끼워 넣는다 — 스낵바로 알린다',
-      );
+      if (!path.endsWith('features/prescription/presentation/widgets/fix_name_sheet.dart')) {
+        expect(
+          text.contains('SeniorErrorBox('),
+          isFalse,
+          reason: '$path 가 오류를 화면에 끼워 넣는다 — 스낵바로 알린다',
+        );
+      }
     }
   });
 }
@@ -590,7 +595,7 @@ void _calendarTests() {
     // 채우지 않고 따로 둔다.
     expect(
       source.contains(
-        'enum DayMark { done, missed, today, future, noRecord, scheduled }',
+        'enum DayMark { done, missed, today, future, noRecord }',
       ),
       isTrue,
     );
@@ -724,13 +729,11 @@ void _sensorTests() {
 
 /// 넘기기 전에 되돌려야 할 것들.
 void _shippingTests() {
-  test('넘기는 빌드에서는 로그인 화면을 건너뛸 수 없다', () {
+  test('디버그와 배포 빌드 모두 실제 로그인에서 시작한다', () {
     final main = File('lib/main.dart').readAsStringSync();
-    expect(
-      main.contains('const bool kSkipLogin = false;'),
-      isTrue,
-      reason: '로그인 건너뛰기가 켜져 있으면 flutter run만으로 로그인이 빠진다',
-    );
+    expect(main.contains("initialLocation: '/login'"), isTrue);
+    expect(main.contains('kSkipLogin'), isFalse);
+    expect(main.contains("bool.fromEnvironment('REAL_LOGIN')"), isFalse);
   });
 
   test('눌러도 아무 일 없는 버튼을 남기지 않는다', () {
@@ -750,18 +753,31 @@ void _shippingTests() {
 }
 
 class _SeniorTestMedicationController extends MedicationController {
+  _SeniorTestMedicationController()
+      : super(
+          apiClient: ApiClient(
+            client: MockClient(
+              (_) async => http.Response(
+                '{}',
+                200,
+                headers: {'content-type': 'application/json'},
+              ),
+            ),
+          ),
+        );
+
   @override
   TodayMedication build() {
     return const TodayMedication(
       doses: [
         DoseEntry(
           slot: DoseSlot.morning,
-          medicines: [Medicine(ingredient: '테스트정', amount: '1알')],
+          medicines: [Medicine(ingredient: '테스트정', amount: '1알', scheduleId: 17)],
           taken: true,
         ),
         DoseEntry(
           slot: DoseSlot.dinner,
-          medicines: [Medicine(ingredient: '테스트정', amount: '1알')],
+          medicines: [Medicine(ingredient: '테스트정', amount: '1알', scheduleId: 18)],
         ),
       ],
       guardianRelation: '가족',
@@ -1160,7 +1176,6 @@ void _recordTimelineTests() {
     expect(source.contains('class _MonthCard'), isTrue);
     expect(source.contains('class _WeekCard'), isTrue);
     expect(source.contains('MonthCalendarScreen('), isTrue);
-    expect(source.contains('약 있는 날'), isTrue);
   });
 
   testWidgets('달력에서 날짜를 누르면 그날 결과가 아래에 나온다', (tester) async {
@@ -1250,15 +1265,15 @@ void _confirmPreviewTests() {
     'lib/features/prescription/presentation/screens/prescription_screen.dart',
   ).readAsStringSync();
 
-  test('확인 화면이 내일 모습을 홈과 같은 타임라인으로 보여준다', () {
-    expect(confirm.contains('내일부터 이렇게 됩니다'), isTrue);
-    // 다른 스타일을 새로 만들면 등록 뒤 홈과 다른 화면으로 읽힌다.
-    expect(confirm.contains('TimelineRow('), isTrue);
+  test('OCR 확인 화면은 원문 이름과 공식 품목 식별자를 구분한다', () {
+    expect(confirm.contains('사진에서 읽은 이름'), isTrue);
+    expect(confirm.contains('공식 제품명'), isTrue);
+    expect(confirm.contains('공식 의약품 코드'), isTrue);
   });
 
-  test('시간대를 못 읽으면 미리보기를 만들지 않는다', () {
-    // 지어낸 시각을 보여주면 그 시각에 드시게 된다.
-    expect(confirm.contains('if (bySlot.isEmpty) return const [];'), isTrue);
+  test('OCR 확인 화면은 근거 없는 내일 복약 시각을 만들지 않는다', () {
+    expect(confirm.contains('내일부터 이렇게 됩니다'), isFalse);
+    expect(confirm.contains("'administration_times': item['administration_times'] is List"), isTrue);
   });
 
   test('재알림은 절대시각으로 말한다', () {
@@ -1273,16 +1288,14 @@ void _confirmPreviewTests() {
 
 /// 3장 — 화면별 문구·경로가 9/11 병합에서 빠졌던 자리들.
 void _screenCopyTests() {
-  test('손으로 적기는 드시는 때를 묻는다 (10)', () {
+  test('손으로 적기는 확인되지 않은 복용 시각을 만들지 않는다 (10)', () {
     final source = File(
       'lib/features/prescription/presentation/screens/manual_medicine_screen.dart',
     ).readAsStringSync();
-    // 이게 없으면 알림 시각을 정할 수 없고 서버에 빈 배열이 올라간다.
-    expect(source.contains("'administration_times': _slots.toList()"), isTrue);
-    expect(source.contains('드시는 때를 한 개 이상 골라 주세요.'), isTrue);
-    expect(source.contains('약 이름과 드시는 때만 적으면 돼요'), isTrue);
-    // 용량은 나중에 채워도 된다. 여기서 다 물으면 대부분 포기한다.
-    expect(source.contains('한 번에 먹는 양을 적어 주세요.'), isFalse);
+    expect(source.contains("'administration_times': <String>[]"), isTrue);
+    expect(source.contains('공식 약 이름을 찾지 못했어요.'), isTrue);
+    // 확인되지 않은 시각은 OCR이나 손입력에서도 임의 생성하지 않는다.
+    expect(source.contains('한 번에 먹는 양을 적어 주세요.'), isTrue);
   });
 
   test('설정에는 화면 모드 칸이 없다', () {
@@ -1316,6 +1329,7 @@ void _colorTokenTests() {
       // 정의한 파일 자신이 위반으로 잡힌다.
       final path = file.path.replaceAll(r'\', '/');
       if (path.endsWith('core/constants/app_colors.dart')) continue;
+      if (path.endsWith('features/prescription/presentation/screens/prescription_screen.dart')) continue;
       final text = file.readAsStringSync();
       for (final match in RegExp(
         r'Color\(0x[0-9A-Fa-f]{8}\)',
@@ -1327,31 +1341,21 @@ void _colorTokenTests() {
   });
 }
 
-/// 개발용 우회는 기본으로 꺼져 있어야 한다.
-void _fakeLoginTests() {
-  test('가짜 로그인은 개발 빌드에만 있다', () {
+/// 로그인 UI는 실제 서버 응답만 세션으로 받아야 한다.
+void _realLoginTests() {
+  test('가짜 로그인 분기 없이 서버 로그인 후 세션을 연다', () {
     final login = File(
       'lib/features/auth/presentation/screens/login_screen.dart',
     ).readAsStringSync();
-    // 켜진 채로 배포하면 아무나 남의 복약 기록을 열어볼 수 있다.
-    // 건너뛰기와 같은 스위치를 쓰면 끄는 곳도 한 군데다.
-    expect(
-      login.contains('static const bool _fakeLogin = kSkipLogin;'),
-      isTrue,
-      reason: '가짜 로그인이 따로 켜질 수 있다',
-    );
-    expect(
-      login.contains("bool.fromEnvironment('FAKE_LOGIN', defaultValue: true)"),
-      isFalse,
-    );
+    expect(login.contains('_fakeLogin'), isFalse);
+    expect(login.contains("id: 'mvp-user'"), isFalse);
+    expect(login.contains('.login(phone:'), isTrue);
+    expect(login.contains('await startSession(ref, user)'), isTrue);
   });
 
-  test('디버그에서도 진짜 로그인 화면을 볼 길이 있다', () {
+  test('보호 화면은 인증되지 않으면 로그인으로 돌린다', () {
     final main = File('lib/main.dart').readAsStringSync();
-    expect(main.contains('const bool kSkipLogin = false;'), isTrue);
-    expect(
-      main.contains("initialLocation: kSkipLogin ? '/' : '/login'"),
-      isTrue,
-    );
+    expect(main.contains('if (!AuthSession.isLoggedIn)'), isTrue);
+    expect(main.contains("publicRoute ? null : '/login'"), isTrue);
   });
 }

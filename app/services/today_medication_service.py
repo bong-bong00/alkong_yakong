@@ -9,12 +9,10 @@ from typing import Any
 
 from fastapi import HTTPException
 
-from app.core.kst import today_kst
 from app.database import get_connection
 from app.services.heart_reading import latest_heart_reading
 from app.services.medicine_display import (
     card_official_name,
-    format_home_amount,
     ingredient_summary,
     ingredient_strength_from,
     infer_dosage_form,
@@ -23,11 +21,7 @@ from app.services.medicine_display import (
     split_ingredients,
     split_take_amount,
 )
-from app.services.seed_mvp_medicines import (
-    MVP_USER_ID,
-    ensure_mvp_codarone_available,
-    ensure_user_codarone_available,
-)
+from app.services.ocr.parser import take_amount_for_display
 from app.services.pharmacist.easy_category import (
     derive_easy_spoken_from_medicine,
     display_product_name,
@@ -86,13 +80,7 @@ def get_today_medicines(user_id: str, target_date: str | None = None) -> dict[st
     uid = (user_id or "").strip()
     if not uid:
         raise HTTPException(status_code=422, detail="user_id가 필요합니다.")
-    if uid == MVP_USER_ID:
-        # Render에서 DEMO_SEED_ENABLED가 꺼져 있어도 체험 홈의 기준약을 유지한다.
-        # 추가로 등록한 OCR·수기 약은 변경하지 않는다.
-        ensure_mvp_codarone_available()
-    else:
-        ensure_user_codarone_available(uid)
-    day = target_date or today_kst().isoformat()
+    day = target_date or date.today().isoformat()
     conn = get_connection()
     try:
         user = conn.execute("SELECT id, name FROM users WHERE id = ?", (uid,)).fetchone()
@@ -326,15 +314,12 @@ def _medicine_item(row, *, guidance_cursor=None) -> dict[str, Any]:
         easier = omit_placeholder_spoken(derive_easy_spoken_from_medicine(data))
         if easier:
             spoken = easier
-    dosage_form = str(data.get("dosage_form") or "").strip() or infer_dosage_form(name)
-    amount_label = format_home_amount(
-        dosage=data.get("dosage"),
+    dosage = take_amount_for_display(
+        data.get("dosage"),
         times_per_take=data.get("times_per_take"),
-        dosage_form=dosage_form,
-        product_name=name,
     )
-    dose_amount, dose_unit = split_take_amount(amount_label)
-    amount = amount_label
+    dose_amount, dose_unit = split_take_amount(dosage)
+    amount = f"{dose_amount}{dose_unit}" if dose_amount and dose_unit else ""
     ingredient_name = str(data.get("ingredient") or "").strip()
     ingredient_strength = str(data.get("ingredient_strength") or "").strip()
     if not ingredient_strength:
@@ -342,6 +327,7 @@ def _medicine_item(row, *, guidance_cursor=None) -> dict[str, Any]:
             ingredient_name,
             official_product_name,
         )
+    dosage_form = str(data.get("dosage_form") or "").strip() or infer_dosage_form(name)
     administration_route = str(data.get("administration_route") or "").strip()
     if not administration_route:
         administration_route = infer_use_route(

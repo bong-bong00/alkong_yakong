@@ -10,7 +10,6 @@ from datetime import date, timedelta
 
 from fastapi import HTTPException
 
-from app.core.kst import today_kst
 from app.database import get_connection, purge_ocr_placeholder_rows
 from app.models.schemas import (
     OCRMedicineItem,
@@ -23,10 +22,8 @@ from app.services.medicine_display import (
     ingredient_strength_from,
     infer_dosage_form,
     split_take_amount,
-    take_unit_for_form,
 )
 from app.services.medicine_detail_service import ensure_medicine_detail
-from app.services.medicine_merge import upsert_official_medicine
 from app.services.ocr.parser import (
     _clean_drug_label,
     _is_plausible_drug_candidate,
@@ -41,6 +38,7 @@ from app.services.pharmacist.easy_category import (
     sync_medicine_guidance,
 )
 from app.services.pharmacist.efficacy_display import display_efficacy_text
+from app.services.pharmacist.ingredient import clean_ingredient_text
 from app.services.pharmacist.retrieve import retrieve_official
 
 
@@ -245,6 +243,7 @@ def _upsert_official_medicine(cursor, official: dict) -> tuple[str, str]:
             status_code=422,
             detail="공식 약품 코드가 없습니다.",
         )
+    precautions = med.get("precautions") or med.get("cautions") or ""
     easy_category = derive_easy_category_from_medicine(
         {
             **med,
@@ -252,11 +251,65 @@ def _upsert_official_medicine(cursor, official: dict) -> tuple[str, str]:
             "source_text": official.get("source_text"),
         }
     )
-    upsert_official_medicine(
-        cursor,
-        medicine_code=code,
-        incoming={**med, "product_name": name},
-        easy_category=easy_category,
+    # 성분이 없거나 제품명과 같으면 DUR이 제품명으로 오탐하지 않게 빈 값/기존값 유지
+    incoming_ingredient = clean_ingredient_text(med.get("ingredient"))
+    if incoming_ingredient == name:
+        incoming_ingredient = ""
+    if not incoming_ingredient:
+        prev = cursor.execute(
+            "SELECT ingredient, product_name FROM medicines WHERE medicine_code = ?",
+            (code,),
+        ).fetchone()
+        if (
+            prev
+            and prev["ingredient"]
+            and clean_ingredient_text(prev["ingredient"])
+            and clean_ingredient_text(prev["ingredient"])
+            != clean_ingredient_text(prev["product_name"])
+        ):
+            ingredient = clean_ingredient_text(prev["ingredient"])
+        else:
+            ingredient = ""
+    else:
+        ingredient = incoming_ingredient
+
+    cursor.execute(
+        """
+        INSERT INTO medicines (
+            medicine_code, product_name, ingredient, manufacturer,
+            efficacy, usage, precautions, image_url, easy_category
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(medicine_code) DO UPDATE SET
+            product_name = excluded.product_name,
+            ingredient = CASE
+                WHEN excluded.ingredient IS NOT NULL
+                     AND trim(excluded.ingredient) != ''
+                     AND excluded.ingredient != excluded.product_name
+                THEN excluded.ingredient
+                ELSE medicines.ingredient
+            END,
+            manufacturer = COALESCE(NULLIF(trim(excluded.manufacturer), ''), medicines.manufacturer),
+            efficacy = COALESCE(NULLIF(trim(excluded.efficacy), ''), medicines.efficacy),
+            usage = COALESCE(NULLIF(trim(excluded.usage), ''), medicines.usage),
+            precautions = COALESCE(NULLIF(trim(excluded.precautions), ''), medicines.precautions),
+            image_url = COALESCE(NULLIF(trim(excluded.image_url), ''), medicines.image_url),
+            easy_category = COALESCE(
+                NULLIF(trim(medicines.easy_category), ''),
+                excluded.easy_category
+            ),
+            updated_at = CURRENT_TIMESTAMP
+        """,
+        (
+            code,
+            name,
+            ingredient,
+            med.get("manufacturer"),
+            med.get("efficacy"),
+            med.get("usage"),
+            precautions if isinstance(precautions, str) else str(precautions or ""),
+            med.get("image_url"),
+            easy_category,
+        ),
     )
     # OCR로 처음 들어온 공식 약도 기존 DB 약과 같은 상세 준비 경로를 탄다.
     # 로컬 공식 정보만 사용하므로 외부 API·Gemini를 기다리지 않는다.
@@ -392,7 +445,7 @@ def _schedule_dates(
         days = None
     if days is None or days < 1:
         return []
-    start_date = _parse_date(prescribed_date, today_kst())
+    start_date = _parse_date(prescribed_date, date.today())
     duration_end = start_date + timedelta(days=days - 1)
     if expire_date:
         # 처방 유효일이 더 멀어도 OCR에서 확인한 복용 일수보다 늘리지 않는다.
@@ -405,20 +458,6 @@ def _schedule_dates(
 
     day_count = min((end_date - start_date).days + 1, 365)
     return [start_date + timedelta(days=offset) for offset in range(day_count)]
-
-
-def _schedule_dates_for_item(
-    item,
-    prescribed_date: str | None,
-    expire_date: str | None,
-) -> list[date]:
-    """횟수가 확인된 약은 일수가 없어도 오늘만 칸을 둔다. 7일로 늘리지 않는다."""
-    dates = _schedule_dates(prescribed_date, expire_date, item.duration_days)
-    if dates:
-        return dates
-    if _clock_times_for_item(item):
-        return [today_kst()]
-    return []
 
 
 def _create_medication_schedules(
@@ -435,10 +474,10 @@ def _create_medication_schedules(
         return []
     created_schedules = []
 
-    for scheduled_date in _schedule_dates_for_item(
-        item,
+    for scheduled_date in _schedule_dates(
         prescribed_date,
         expire_date,
+        item.duration_days,
     ):
         for scheduled_time in confirmed_times:
             time_slot = _time_slot_for_clock(scheduled_time)
@@ -540,7 +579,6 @@ _TAKE_UNIT_LABELS = {
     "ML": "mL",
     "밀리리터": "mL",
     "방울": "방울",
-    "회": "회",
 }
 
 
@@ -551,12 +589,14 @@ def _format_take_number(value: str) -> str:
     return f"{number:.3f}".rstrip("0").rstrip(".")
 
 
-def _unit_from_dosage_form(
-    dosage_form: str | None,
-    product_name: str | None = None,
-) -> str | None:
-    """제형·이름에서 홈에 쓸 단위만 고른다. 액제는 알을 붙이지 않는다."""
-    return take_unit_for_form(dosage_form, product_name)
+def _unit_from_dosage_form(dosage_form: str | None) -> str | None:
+    """제형만으로 단위를 확정할 수 있는 고형제에 한해 단위를 보완한다."""
+    form = str(dosage_form or "").strip()
+    if "캡슐" in form:
+        return "캡슐"
+    if "정" in form:
+        return "정"
+    return None
 
 
 def _preview_take_fields(
@@ -600,9 +640,7 @@ def _preview_take_fields(
     }.get(raw_unit.upper())
     inferred = False
     if not unit:
-        unit = _unit_from_dosage_form(dosage_form, item.drug_name)
-        if unit == "알":
-            unit = "정"
+        unit = _unit_from_dosage_form(dosage_form)
         inferred = unit is not None
     return amount, unit, inferred
 
@@ -613,7 +651,7 @@ def _normalized_confirm_take_amount(item: PrescriptionConfirmItem) -> str | None
         str(item.dose_unit or item.unit or "").strip().upper()
     )
     if not unit_from_field:
-        unit_from_field = _unit_from_dosage_form(item.dosage_form, item.drug_name)
+        unit_from_field = _unit_from_dosage_form(item.dosage_form)
 
     if raw:
         compact = re.sub(r"\s+", "", raw)
@@ -993,7 +1031,7 @@ def _reactivate_duplicate_prescription(cursor, *, user_id: str, prescription_id:
         """,
         (prescription_id, user_id),
     ).fetchall()
-    today = today_kst().isoformat()
+    today = date.today().isoformat()
     restored: list[dict] = []
     for row in rows:
         user_medicine_id = row["user_medicine_id"]
@@ -1079,7 +1117,7 @@ def _analyze_registered_medicines_locally(user_id: str) -> dict:
             "risk_level": "UNKNOWN",
             "assessment_status": "INCOMPLETE",
             "analysis_complete": False,
-            "has_risk": False,
+            "has_risk": None,
             "total_matches": 0,
             "total_count": 0,
             "representative_type": None,
@@ -1107,10 +1145,32 @@ def _registration_result(
     duplicate: bool = False,
 ) -> dict:
     dur_result = _analyze_registered_medicines_locally(user_id)
+    if not isinstance(dur_result, dict):
+        dur_result = {}
+    matches = dur_result.get("matches")
+    complete = (
+        dur_result.get("analysis_complete") is True
+        and dur_result.get("incomplete") is not True
+        and isinstance(dur_result.get("assessment_status"), str)
+        and dur_result.get("assessment_status") in {"SAFE", "RISK_FOUND"}
+        and isinstance(matches, list)
+        and all(isinstance(m, dict) and isinstance(m.get("type"), str) and m["type"] for m in matches)
+        and isinstance(dur_result.get("has_risk"), bool)
+        and dur_result["has_risk"] == bool(matches)
+        and dur_result["assessment_status"] == ("RISK_FOUND" if matches else "SAFE")
+    )
+    if not complete:
+        dur_result = {**dur_result, "analysis_complete": False,
+                      "assessment_status": "INCOMPLETE", "incomplete": True,
+                      "has_risk": None}
     # 최신 식약처 조회는 등록 응답과 분리해 별도 스레드에서 수행한다.
     from app.services.dur_sync_service import start_background_user_dur_refresh
 
-    refresh_started = start_background_user_dur_refresh(user_id)
+    try:
+        refresh_started = start_background_user_dur_refresh(user_id)
+    except Exception:
+        # The registration is already committed; refresh is not registration.
+        refresh_started = False
     return {
         "prescription_id": prescription_id,
         "user_id": user_id,
@@ -1253,10 +1313,8 @@ def confirm_prescription(request: PrescriptionConfirmRequest) -> dict:
             official_name = str(exists["product_name"] or item.drug_name).strip()
             take_dosage = _validated_confirm_dosage(item, official_name)
             dose_amount, dose_unit = split_take_amount(take_dosage)
-            registration_date = today_kst().isoformat()
-            schedule_dates = _schedule_dates_for_item(
-                item, registration_date, None
-            )
+            registration_date = date.today().isoformat()
+            schedule_dates = _schedule_dates(registration_date, None, item.duration_days)
             if schedule_dates:
                 medicine_start_date = schedule_dates[0].isoformat()
                 medicine_end_date = schedule_dates[-1].isoformat()
@@ -1470,7 +1528,7 @@ def _refresh_user_medicine_span(cursor, user_medicine_id: int) -> None:
             (first_day, last_day, user_medicine_id),
         )
         return
-    closed = (today_kst() - timedelta(days=1)).isoformat()
+    closed = (date.today() - timedelta(days=1)).isoformat()
     cursor.execute(
         "UPDATE user_medicines SET end_date = ? WHERE id = ?",
         (closed, user_medicine_id),
@@ -1484,7 +1542,7 @@ def get_prescription_schedule_days(
     month: int | None = None,
 ) -> dict:
     """이번에 등록한 약의 약 있는 날만 돌려 준다. 먹었어요/빠뜨렸어요는 넣지 않는다."""
-    today = today_kst()
+    today = date.today()
     year = int(year or today.year)
     month = int(month or today.month)
     if month < 1 or month > 12:

@@ -8,7 +8,6 @@ from typing import Any
 
 from fastapi import HTTPException
 
-from app.core.kst import today_kst
 from app.database import get_connection
 from app.services.account_lookup import phone_digits
 from app.services.heart_reading import latest_heart_reading
@@ -86,7 +85,7 @@ def get_care_overview(guardian_user_id: str) -> dict[str, Any]:
 
 def _patient_summary(row) -> dict[str, Any]:
     patient_id = row["user_id"]
-    today = today_kst()
+    today = date.today()
     doses = get_today_medicines(patient_id).get("doses") or []
     slots = [
         {"label": _SLOT_LABELS.get(dose["slot"], dose["slot"]), "taken": bool(dose.get("taken"))}

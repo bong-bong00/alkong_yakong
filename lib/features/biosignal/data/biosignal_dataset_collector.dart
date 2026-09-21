@@ -6,7 +6,7 @@ import '../../../core/network/api_client.dart';
 
 class BiosignalDatasetCollector {
   BiosignalDatasetCollector({ApiClient? apiClient})
-    : _apiClient = apiClient ?? ApiClient();
+      : _apiClient = apiClient ?? ApiClient();
 
   static const Duration _window = Duration(seconds: 5);
 
@@ -53,8 +53,7 @@ class BiosignalDatasetCollector {
       final sessionStartedAt = DateTime.tryParse(
         active['started_at']?.toString() ?? '',
       );
-      if (sessionStartedAt == null ||
-          sessionStartedAt.isAfter(windowStartedAt)) {
+      if (sessionStartedAt == null || sessionStartedAt.isAfter(windowStartedAt)) {
         return;
       }
 

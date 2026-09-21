@@ -6,8 +6,6 @@ import re
 import threading
 from typing import Any
 
-from app.services.medicine_merge import upsert_official_medicine
-
 
 _detail_refresh_lock = threading.Lock()
 _detail_refresh_thread: threading.Thread | None = None
@@ -116,20 +114,47 @@ def refresh_app_medicines_from_permission() -> int:
             except Exception:
                 continue
             med = (official or {}).get("medicine") or {}
+            if str(med.get("medicine_code") or "").strip() != str(row["medicine_code"]):
+                continue
             efficacy = str(med.get("efficacy") or "").strip()
             if not efficacy:
                 continue
-            saved = upsert_official_medicine(
-                conn,
-                medicine_code=str(row["medicine_code"]),
-                incoming=med,
+            from app.services.pharmacist.ingredient import clean_ingredient_text
+
+            ingredient = clean_ingredient_text(med.get("ingredient"))
+            if ingredient == str(med.get("product_name") or name).strip():
+                ingredient = ""
+            conn.execute(
+                """
+                UPDATE medicines SET
+                    efficacy = ?,
+                    ingredient = COALESCE(NULLIF(?, ''), ingredient),
+                    usage = COALESCE(NULLIF(?, ''), usage),
+                    precautions = COALESCE(NULLIF(?, ''), precautions),
+                    manufacturer = COALESCE(NULLIF(?, ''), manufacturer),
+                    image_url = COALESCE(NULLIF(?, ''), image_url),
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE id = ?
+                """,
+                (
+                    efficacy,
+                    ingredient,
+                    str(med.get("usage") or "").strip(),
+                    str(med.get("cautions") or med.get("precautions") or "").strip(),
+                    str(med.get("manufacturer") or "").strip(),
+                    str(med.get("image_url") or "").strip(),
+                    row["id"],
+                ),
             )
             updated += 1
+            saved = conn.execute(
+                "SELECT * FROM medicines WHERE id = ?", (row["id"],)
+            ).fetchone()
             if saved:
                 from app.services.pharmacist.easy_category import sync_medicine_guidance
                 from app.services.medicine_detail_service import ensure_medicine_detail
 
-                sync_medicine_guidance(conn, saved)
+                sync_medicine_guidance(conn, dict(saved))
                 ensure_medicine_detail(conn, str(saved["medicine_code"]))
         from app.services.pharmacist.easy_category import backfill_all_medicine_guidance
 
@@ -171,23 +196,62 @@ def upsert_official_app_medicine(official: dict[str, Any]) -> str | None:
         derive_easy_category_from_medicine,
         sync_medicine_guidance,
     )
+    from app.services.pharmacist.ingredient import clean_ingredient_text
 
     med = (official or {}).get("medicine") or {}
     code = str(med.get("medicine_code") or "").strip()
     name = str(med.get("product_name") or med.get("medicine_name") or "").strip()
     if not code or not name:
         return None
+    ingredient = clean_ingredient_text(med.get("ingredient"))
+    if ingredient == name:
+        ingredient = ""
+    precautions = med.get("precautions") or med.get("cautions") or ""
     easy_category = derive_easy_category_from_medicine({**med, "product_name": name})
     conn = get_connection()
     try:
-        saved = upsert_official_medicine(
-            conn,
-            medicine_code=code,
-            incoming={**med, "product_name": name},
-            easy_category=easy_category,
+        conn.execute(
+            """
+            INSERT INTO medicines (
+                medicine_code, product_name, ingredient, manufacturer,
+                efficacy, usage, precautions, image_url, easy_category
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(medicine_code) DO UPDATE SET
+                product_name = excluded.product_name,
+                ingredient = CASE
+                    WHEN excluded.ingredient IS NOT NULL
+                         AND trim(excluded.ingredient) != ''
+                    THEN excluded.ingredient
+                    ELSE medicines.ingredient
+                END,
+                manufacturer = COALESCE(NULLIF(trim(excluded.manufacturer), ''), medicines.manufacturer),
+                efficacy = COALESCE(NULLIF(trim(excluded.efficacy), ''), medicines.efficacy),
+                usage = COALESCE(NULLIF(trim(excluded.usage), ''), medicines.usage),
+                precautions = COALESCE(NULLIF(trim(excluded.precautions), ''), medicines.precautions),
+                image_url = COALESCE(NULLIF(trim(excluded.image_url), ''), medicines.image_url),
+                easy_category = COALESCE(
+                    NULLIF(trim(medicines.easy_category), ''),
+                    excluded.easy_category
+                ),
+                updated_at = CURRENT_TIMESTAMP
+            """,
+            (
+                code,
+                name,
+                ingredient,
+                med.get("manufacturer"),
+                med.get("efficacy"),
+                med.get("usage"),
+                precautions if isinstance(precautions, str) else str(precautions or ""),
+                med.get("image_url"),
+                easy_category,
+            ),
         )
+        saved = conn.execute(
+            "SELECT * FROM medicines WHERE medicine_code = ?", (code,)
+        ).fetchone()
         if saved:
-            sync_medicine_guidance(conn, saved)
+            sync_medicine_guidance(conn, dict(saved))
             from app.services.medicine_detail_service import ensure_medicine_detail
 
             ensure_medicine_detail(conn, code)

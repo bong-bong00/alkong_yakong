@@ -1,3 +1,7 @@
+import pytest
+
+import app.database as database
+import init_db
 from app.services.seed_mvp_medicines import MVP_USER_ID, ensure_mvp_demo_medicines
 from app.services.today_medication_service import get_today_medicines
 from app.services.user_medicines_service import (
@@ -7,23 +11,31 @@ from app.services.user_medicines_service import (
 )
 
 
+@pytest.fixture(autouse=True)
+def isolated_medicine_db(tmp_path, monkeypatch):
+    path = str(tmp_path / "user-medicines.db")
+    monkeypatch.setattr(database, "DB_PATH", path)
+    monkeypatch.setattr(init_db, "DB_PATH", path)
+    init_db.initialize_database()
+
+
 def test_user_medicines_one_row_per_medicine_code():
     ensure_mvp_demo_medicines()
     data = get_user_medicines(MVP_USER_ID)
     assert data["user_id"] == MVP_USER_ID
     assert data["has_medicines"] is True
-    assert len(data["medicines"]) >= 3
+    assert len(data["medicines"]) == 1
 
     codes = [med["medicine_code"] for med in data["medicines"]]
     assert len(codes) == len(set(codes))
 
     names = [med["display_name"] for med in data["medicines"]]
     assert any("코다론" in name for name in names)
-    assert any("부루펜" in name for name in names)
-    assert any("게루삼" in name for name in names)
+    assert all("부루펜" not in name for name in names)
+    assert all("게루삼" not in name for name in names)
 
     active = [med for med in data["medicines"] if med["status"] == "active"]
-    assert len(active) >= 3
+    assert len(active) == 1
     for med in active:
         assert med.get("purpose_label")
         assert med.get("short_explanation")
@@ -69,7 +81,7 @@ def test_user_medicines_matches_home_card_guidance():
         assert med["purpose_label"] == home["purpose_label"]
 
 
-def test_mvp_user_has_birth_date_and_multiple_key_cautions():
+def test_mvp_user_has_birth_date_and_seeded_medicine_key_cautions():
     ensure_mvp_demo_medicines()
     from app.database import get_connection
     from app.services.pharmacist.easy_category import backfill_all_medicine_guidance
@@ -90,7 +102,7 @@ def test_mvp_user_has_birth_date_and_multiple_key_cautions():
             """,
             (MVP_USER_ID,),
         ).fetchall()
-        assert len(caution_codes) >= 3
+        assert {row["medicine_code"] for row in caution_codes} == {"200701021"}
     finally:
         conn.close()
 

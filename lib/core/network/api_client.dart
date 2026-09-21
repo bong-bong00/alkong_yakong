@@ -17,18 +17,15 @@ class ApiException implements Exception {
 
 class ApiClient {
   final http.Client _client;
-  final String _baseUrl;
   static bool _didLogEnvironment = false;
   static const Duration _defaultTimeout = Duration(seconds: 45);
 
-  ApiClient({http.Client? client, String? baseUrl})
-    : _client = client ?? http.Client(),
-      _baseUrl = (baseUrl ?? ApiConfig.baseUrl).replaceAll(RegExp(r'/$'), '') {
+  ApiClient({http.Client? client}) : _client = client ?? http.Client() {
     if (kDebugMode && !_didLogEnvironment) {
       _didLogEnvironment = true;
       debugPrint(
         '[API] environment=${ApiConfig.environmentLabel} '
-        'baseUrl=$_baseUrl',
+        'baseUrl=${ApiConfig.baseUrl}',
       );
     }
   }
@@ -73,7 +70,7 @@ class ApiClient {
 
   Uri _uri(String path) {
     final normalizedPath = path.startsWith('/') ? path : '/$path';
-    return Uri.parse('$_baseUrl$normalizedPath');
+    return Uri.parse('${ApiConfig.baseUrl}$normalizedPath');
   }
 
   dynamic _decodeResponse(http.Response response) {

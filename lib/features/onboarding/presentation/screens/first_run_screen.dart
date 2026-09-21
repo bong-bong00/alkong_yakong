@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../../core/constants/app_colors.dart';
+import '../../../../core/session/auth_session.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../core/widgets/senior_button.dart';
 import '../../../../core/widgets/senior_card.dart';
@@ -19,6 +20,10 @@ class FirstRunScreen extends StatelessWidget {
   // TODO: 가족에게 SMS/카카오톡 초대 링크 발송 → 가족이 자기 기기에서
   //       촬영·확인 → 어르신 앱에 "약이 등록됐어요" 알림.
   void _askFamily(BuildContext context) {
+    if (!AuthSession.isLoggedIn) {
+      context.go('/signup');
+      return;
+    }
     Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (_) => AddMedicineScreen(
@@ -111,7 +116,9 @@ class FirstRunScreen extends StatelessWidget {
                       kind: SeniorButtonKind.secondary,
                       minHeight: 66,
                       fontSize: 22,
-                      onPressed: () => context.push('/prescription'),
+                      onPressed: () => AuthSession.isLoggedIn
+                          ? context.push('/prescription')
+                          : context.go('/signup'),
                     ),
                   ],
                 ),
@@ -122,7 +129,9 @@ class FirstRunScreen extends StatelessWidget {
                 label: '약 이름을 손으로 적을게요',
                 color: AppColors.point,
                 fontSize: 19,
-                onPressed: () => context.push('/manual-medicine'),
+                onPressed: () => AuthSession.isLoggedIn
+                    ? context.push('/manual-medicine')
+                    : context.go('/signup'),
               ),
               const SizedBox(height: 10),
               SeniorButton(
@@ -131,7 +140,9 @@ class FirstRunScreen extends StatelessWidget {
                 kind: SeniorButtonKind.secondary,
                 minHeight: 66,
                 fontSize: 21,
-                onPressed: () => context.go('/'),
+                onPressed: () => context.go(
+                  AuthSession.isLoggedIn ? '/' : '/login',
+                ),
               ),
             ],
           ),

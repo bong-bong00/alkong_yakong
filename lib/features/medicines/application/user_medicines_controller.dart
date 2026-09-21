@@ -1,7 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/network/api_client.dart';
-import '../../../core/network/api_config.dart';
 import '../../../core/session/mvp_session.dart';
 import '../domain/display_policy.dart';
 import '../domain/user_medicine_models.dart';
@@ -13,7 +12,7 @@ final userMedicinesProvider =
 
 /// 활성 내 약 목록·상세를 서버에서 불러온다.
 class UserMedicinesController extends AsyncNotifier<List<UserMedicine>> {
-  final _localApi = ApiClient(baseUrl: ApiConfig.localFeatureBaseUrl);
+  final _api = ApiClient();
 
   @override
   Future<List<UserMedicine>> build() async {
@@ -31,7 +30,7 @@ class UserMedicinesController extends AsyncNotifier<List<UserMedicine>> {
       throw const ApiException('약 코드가 없습니다.');
     }
     final userId = Uri.encodeComponent(MvpSession.userId);
-    final response = await _localApi.get(
+    final response = await _api.get(
       '/api/v1/users/$userId/medicines/${Uri.encodeComponent(code)}',
     );
     if (response is! Map) {
@@ -62,7 +61,8 @@ class UserMedicinesController extends AsyncNotifier<List<UserMedicine>> {
       data['frequency_per_day'] =
           patientDosage['frequency_per_day'] ?? data['frequency_per_day'];
       data['administration_times'] =
-          patientDosage['administration_times'] ?? data['administration_times'];
+          patientDosage['administration_times'] ??
+          data['administration_times'];
     }
     final officialUsage = response['official_usage'];
     if (officialUsage is Map) {
@@ -101,10 +101,10 @@ class UserMedicinesController extends AsyncNotifier<List<UserMedicine>> {
 
   Future<List<UserMedicine>> _loadMedicines() async {
     final userId = Uri.encodeComponent(MvpSession.userId);
-    final response = await _localApi.get('/api/v1/users/$userId/medicines');
-    if (response is! Map) return const [];
+    final response = await _api.get('/api/v1/users/$userId/medicines');
+    if (response is! Map) throw const ApiException('내 약 목록을 읽을 수 없습니다.');
     final raw = response['medicines'];
-    if (raw is! List) return const [];
+    if (raw is! List) throw const ApiException('내 약 목록을 읽을 수 없습니다.');
     return [
       for (final item in raw)
         if (item is Map) UserMedicine.fromJson(Map<String, dynamic>.from(item)),

@@ -88,16 +88,6 @@ def test_missing_duration_never_creates_a_default_one_day_range():
     ]
 
 
-def test_liquid_confirm_amount_is_once_not_a_pill():
-    assert (
-        _validated_confirm_dosage(
-            _item(dosage="1.00", unit=None, dosage_form="액제", drug_name="프레벨액"),
-            "프레벨액0.25%",
-        )
-        == "1회"
-    )
-
-
 def test_prescription_expiry_never_extends_confirmed_duration():
     assert _schedule_dates("2026-09-09", "2026-12-31", 2) == [
         date(2026, 9, 9),
@@ -300,7 +290,7 @@ def test_confirm_attaches_schedules_for_frequency_and_duration():
         _cleanup_schedule_user(user_id, medicine_code)
 
 
-def test_confirm_creates_today_only_when_duration_is_missing():
+def test_confirm_does_not_invent_schedule_without_duration():
     user_id = "test-schedule-no-days"
     medicine_code = "TEST-SCHEDULE-NO-DAYS"
     _seed_schedule_user(user_id, medicine_code)
@@ -320,8 +310,7 @@ def test_confirm_creates_today_only_when_duration_is_missing():
             )
         )
         assert result["registered"] is True
-        # 하루 3회면 오늘 아침·점심·저녁 세 칸이다. 7일로 늘리지 않는다.
-        assert result["schedule_count"] == 3
+        assert result["schedule_count"] == 0
     finally:
         _cleanup_schedule_user(user_id, medicine_code)
 

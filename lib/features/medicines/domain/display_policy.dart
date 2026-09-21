@@ -142,15 +142,6 @@ String? cardSpokenOf(String? text) {
   return value;
 }
 
-/// 상세 화면은 검토된 한 문장 설명을 보여 준다.
-/// 홈·목록의 중복 제거 규칙(`목적으로 처방`)을 적용하지 않는다.
-String? detailSpokenOf(String? text) {
-  var value = (text ?? '').trim();
-  value = _spokenAliases[value] ?? value;
-  if (value.isEmpty || value == _placeholderSpoken) return null;
-  return value;
-}
-
 final _usageNumbered = RegExp(r'(?<!\d)(\d+\.\s+)(?=[가-힣○•])');
 final _usageStandaloneNumber = RegExp(r'^\s*(\d+\.)\s*\n+\s*', multiLine: true);
 final _usagePersonLabel = RegExp(

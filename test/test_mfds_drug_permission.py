@@ -1,3 +1,5 @@
+import app.services.mfds_drug_permission.db as permission_db
+
 from app.services.mfds_drug_permission.db import (
     count_stats,
     product_to_medicine,
@@ -5,6 +7,25 @@ from app.services.mfds_drug_permission.db import (
     xml_doc_to_text,
     xml_doc_section_to_text,
 )
+
+
+def test_permission_count_and_search_with_isolated_synthetic_database(tmp_path, monkeypatch):
+    monkeypatch.setattr(permission_db, "DB_PATH", str(tmp_path / "permission-test.db"))
+    permission_db.initialize_permission_db()
+    conn = permission_db.get_permission_connection()
+    try:
+        permission_db.upsert_list_item(
+            conn,
+            {"ITEM_SEQ": "SYNTHETIC-001", "ITEM_NAME": "프리마란정 합성 테스트"},
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    assert permission_db.count_stats()["total"] == 1
+    assert "프리마란정 합성 테스트" in permission_db.search_permission_names(
+        "프리마란", limit=5
+    )
 
 
 def test_xml_cdata_to_text():

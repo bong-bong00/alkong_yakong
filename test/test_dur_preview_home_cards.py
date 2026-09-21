@@ -1,3 +1,7 @@
+import pytest
+
+import app.database as database
+import init_db
 from app.database import get_connection
 from app.models.schemas import DurAnalyzeRequest
 from app.services.dur_service import (
@@ -11,7 +15,40 @@ ADIPAM = "197800210"
 CODARONE = "200701021"
 
 
-def test_ocr_preview_flags_adipam_against_registered_codarone():
+@pytest.fixture
+def dur_pair(tmp_path, monkeypatch):
+    """Use an isolated DB with an explicitly synthetic interaction rule."""
+    path = str(tmp_path / "dur-preview.db")
+    monkeypatch.setattr(database, "DB_PATH", path)
+    monkeypatch.setattr(init_db, "DB_PATH", path)
+    init_db.initialize_database()
+    ensure_mvp_demo_medicines()
+    conn = get_connection()
+    try:
+        conn.execute(
+            """
+            INSERT INTO medicines (medicine_code, product_name, ingredient, efficacy)
+            VALUES (?, '아디팜정', '히드록시진염산염', '합성 테스트 자료')
+            """,
+            (ADIPAM,),
+        )
+        conn.execute(
+            """
+            INSERT INTO dur_taboo (
+                ingredient_a, ingredient_b, taboo_type, severity,
+                description, source, external_id
+            ) VALUES (
+                '히드록시진염산염', '아미오다론염산염', '병용금기', 'HIGH',
+                '심부정맥 위험 증가', 'synthetic-test', 'test-adipam-codarone'
+            )
+            """
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def test_ocr_preview_flags_adipam_against_registered_codarone(dur_pair):
     ensure_mvp_demo_medicines()
     conflicts = preview_conflicts_for_codes(MVP_USER_ID, [ADIPAM])
     assert ADIPAM in conflicts
@@ -20,7 +57,7 @@ def test_ocr_preview_flags_adipam_against_registered_codarone():
     assert any("심부정맥" in str(row.get("reason") or "") for row in conflicts[ADIPAM])
 
 
-def test_preview_conflicts_do_not_save_risk_results():
+def test_preview_conflicts_do_not_save_risk_results(dur_pair):
     ensure_mvp_demo_medicines()
     conn = get_connection()
     before = conn.execute(
@@ -38,8 +75,34 @@ def test_preview_conflicts_do_not_save_risk_results():
     assert after == before
 
 
-def test_home_puts_pair_caution_cards_first():
+def test_home_puts_pair_caution_cards_first(dur_pair):
     ensure_mvp_demo_medicines()
+    conn = get_connection()
+    try:
+        conn.execute(
+            "INSERT INTO prescriptions (id, user_id, source_type) VALUES ('synthetic-ocr', ?, 'OCR')",
+            (MVP_USER_ID,),
+        )
+        item = conn.execute(
+            """
+            INSERT INTO prescription_items (
+                prescription_id, medicine_code, ocr_drug_name, match_status
+            ) VALUES ('synthetic-ocr', ?, '아디팜정', 'MATCHED')
+            """,
+            (ADIPAM,),
+        )
+        conn.execute(
+            """
+            INSERT INTO user_medicines (
+                user_id, medicine_code, prescription_item_id, dosage, frequency_per_day,
+                administration_times
+            ) VALUES (?, ?, ?, '1알', 1, '["08:00"]')
+            """,
+            (MVP_USER_ID, ADIPAM, item.lastrowid),
+        )
+        conn.commit()
+    finally:
+        conn.close()
     result = analyze_dur(
         DurAnalyzeRequest(user_id=MVP_USER_ID, medicine_codes=[ADIPAM, CODARONE]),
         persist=True,

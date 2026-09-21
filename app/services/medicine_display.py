@@ -24,7 +24,7 @@ _STRENGTH = re.compile(
     re.I,
 )
 _TAKE_AMOUNT = re.compile(
-    r"^(\d+(?:\.\d+)?)\s*(알|정|캡슐|포|개|회|mL|ml|방울)$",
+    r"^(\d+(?:\.\d+)?)\s*(알|정|캡슐|포|개|mL|ml|방울)$",
     re.I,
 )
 
@@ -94,52 +94,6 @@ def infer_dosage_form(name: str | None) -> str:
     ):
         if token in text:
             return label
-    return ""
-
-
-def take_unit_for_form(
-    dosage_form: str | None,
-    product_name: str | None = None,
-) -> str | None:
-    """홈 횟수 칸에 쓸 단위. 액·바르는 약은 알을 붙이지 않는다."""
-    form = str(dosage_form or "").strip() or infer_dosage_form(product_name)
-    if any(token in form for token in ("액", "연고", "크림", "시럽", "점안", "패치")):
-        return "회"
-    if "캡슐" in form:
-        return "캡슐"
-    if "정" in form:
-        return "알"
-    return None
-
-
-def format_home_amount(
-    *,
-    dosage: str | None,
-    times_per_take: int | float | None = None,
-    dosage_form: str | None = None,
-    product_name: str | None = None,
-) -> str:
-    """홈에 적을 1회량. 단위가 없으면 숫자를 지어 붙이지 않는다."""
-    from app.services.ocr.parser import take_amount_for_display
-
-    unit = take_unit_for_form(dosage_form, product_name)
-    displayed = take_amount_for_display(dosage, times_per_take=times_per_take)
-    amount, split_unit = split_take_amount(displayed)
-    if amount and split_unit:
-        if split_unit == "알" and unit == "회":
-            return f"{amount}회"
-        return f"{amount}{split_unit}"
-    compact = str(displayed or "").strip()
-    if re.fullmatch(r"\d+(?:\.\d+)?", compact) and unit:
-        number = f"{float(compact):.3f}".rstrip("0").rstrip(".")
-        return f"{number}{unit}"
-    if unit == "회" and times_per_take is not None:
-        try:
-            count = int(times_per_take)
-        except (TypeError, ValueError):
-            count = 0
-        if count >= 1:
-            return f"{count}회"
     return ""
 
 

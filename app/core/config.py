@@ -15,7 +15,7 @@ APP_ENV = os.getenv(
 APP_VERSION = os.getenv("APP_VERSION", "1.2.0").strip() or "1.2.0"
 DEMO_SEED_ENABLED = os.getenv(
     "DEMO_SEED_ENABLED",
-    "true" if APP_ENV in {"development", "dev", "local", "test"} else "false",
+    "false",
 ).lower() == "true"
 
 E_DRUG_API_KEY = os.getenv("E_DRUG_API_KEY") or os.getenv("MFDS_SERVICE_KEY")

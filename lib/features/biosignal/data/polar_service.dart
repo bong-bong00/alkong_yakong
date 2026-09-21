@@ -20,6 +20,9 @@ double? heartRateChangePercent({
 class PolarService {
   PolarService({Polar? polar}) : _polar = polar ?? Polar() {
     debugPrint('[POLAR_SERVICE] initialized');
+    _disconnectSubscription = _polar.deviceDisconnected.listen((_) {
+      unawaited(stopStreaming());
+    });
   }
 
   static const String defaultDeviceId = '115F4138';
@@ -35,6 +38,8 @@ class PolarService {
   final Map<String, Set<PolarSdkFeature>> _availableFeatures =
       <String, Set<PolarSdkFeature>>{};
   StreamSubscription<PolarHrData>? _hrSubscription;
+  StreamSubscription<dynamic>? _disconnectSubscription;
+  int _streamGeneration = 0;
   Timer? _averageTimer;
   bool _isAverageMonitoring = false;
   bool _isDisposed = false;
@@ -56,9 +61,7 @@ class PolarService {
     required String targetDeviceId,
     Duration timeout = const Duration(seconds: 20),
   }) async {
-    debugPrint(
-      '[POLAR_SERVICE] search start: name=$targetName, deviceId=$targetDeviceId',
-    );
+    debugPrint('[POLAR_SERVICE] search start');
     try {
       final device = await _polar
           .searchForDevice()
@@ -67,19 +70,17 @@ class PolarService {
                 device.name == targetName || device.deviceId == targetDeviceId,
           )
           .timeout(timeout);
-      debugPrint(
-        '[POLAR_SERVICE] device found: ${device.name} (${device.deviceId})',
-      );
+      debugPrint('[POLAR_SERVICE] device found');
       return device.deviceId;
     } catch (error) {
-      debugPrint('[POLAR_SERVICE] search failed: $error');
+      debugPrint('[POLAR_SERVICE] search failed');
       _emitError(error);
       rethrow;
     }
   }
 
   Future<void> connectToDevice(String deviceId) async {
-    debugPrint('[POLAR_SERVICE] connect start: $deviceId');
+    debugPrint('[POLAR_SERVICE] connect start');
     final features = <PolarSdkFeature>{};
     final hrReady = Completer<void>();
     final featureSubscription = _polar.sdkFeatureReady
@@ -92,11 +93,11 @@ class PolarService {
         });
     try {
       await _polar.connectToDevice(deviceId);
-      debugPrint('[POLAR_SERVICE] connected: $deviceId');
+      debugPrint('[POLAR_SERVICE] connected');
       try {
         await hrReady.future.timeout(const Duration(seconds: 10));
       } catch (error) {
-        debugPrint('[POLAR_SERVICE] feature check failed: $error');
+        debugPrint('[POLAR_SERVICE] feature check failed');
       }
       _availableFeatures[deviceId] = Set<PolarSdkFeature>.of(features);
       debugPrint('[POLAR_SERVICE] available features: $features');
@@ -106,7 +107,7 @@ class PolarService {
         debugPrint('[POLAR_SERVICE] HR feature NOT available');
       }
     } catch (error) {
-      debugPrint('[POLAR_SERVICE] connect failed: $error');
+      debugPrint('[POLAR_SERVICE] connect failed');
       _emitError(error);
       rethrow;
     } finally {
@@ -139,22 +140,20 @@ class PolarService {
     await stopStreaming();
     _bpmSamples.clear();
     _acceptBpmEvents = true;
+    final generation = _streamGeneration;
     debugPrint('[POLAR_SERVICE] hr stream start');
 
     _hrSubscription = _polar
         .startHrStreaming(deviceId)
         .listen(
           (data) {
+            if (generation != _streamGeneration) return;
             for (final sample in data.samples) {
               final bpm = sample.hr;
               if (bpm <= 0) continue;
               if (!_acceptBpmEvents) {
-                debugPrint(
-                  '[POLAR_SERVICE] bpm received after stopStreaming and ignored: $bpm',
-                );
                 continue;
               }
-              debugPrint('[POLAR_SERVICE] hr sample: $bpm');
               if (_isAverageMonitoring) {
                 _bpmSamples.add(bpm);
               }
@@ -164,7 +163,8 @@ class PolarService {
             }
           },
           onError: (Object error, StackTrace stackTrace) {
-            debugPrint('[POLAR_SERVICE] hr stream failed: $error');
+            if (generation != _streamGeneration) return;
+            debugPrint('[POLAR_SERVICE] hr stream failed');
             _acceptBpmEvents = false;
             _averageTimer?.cancel();
             _averageTimer = null;
@@ -174,6 +174,7 @@ class PolarService {
             _emitError(error);
           },
           onDone: () {
+            if (generation != _streamGeneration) return;
             debugPrint('[POLAR_SERVICE] hr stream stopped');
             _acceptBpmEvents = false;
             _averageTimer?.cancel();
@@ -181,12 +182,14 @@ class PolarService {
             _isAverageMonitoring = false;
             _bpmSamples.clear();
             _emitMeasurementReset();
+            _emitError(StateError('HR stream ended'));
           },
           cancelOnError: false,
         );
   }
 
   Future<void> stopStreaming() async {
+    _streamGeneration++;
     debugPrint('[POLAR_SERVICE] stopStreaming requested');
     _acceptBpmEvents = false;
     _averageTimer?.cancel();
@@ -234,6 +237,7 @@ class PolarService {
     if (_isDisposed) return;
     debugPrint('[POLAR_SERVICE] dispose requested');
     _isDisposed = true;
+    await _disconnectSubscription?.cancel();
     await stopStreaming();
     await Future.wait<void>(<Future<void>>[
       _currentBpmController.close(),
@@ -254,7 +258,7 @@ class PolarService {
 
   void _emitError(Object error) {
     if (!_errorController.isClosed) {
-      _errorController.add(error.toString());
+      _errorController.add('sensor_error');
     }
   }
 }

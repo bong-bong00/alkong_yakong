@@ -139,7 +139,7 @@ class _PolarScreenState extends State<PolarScreen> {
 
   Future<void> _search() async {
     setState(() => _searching = true);
-    await _sensor.start();
+    await _sensor.start(measure: false);
     if (!mounted) return;
     setState(() => _searching = false);
 
@@ -188,7 +188,7 @@ class _StatusCard extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           Text(
-            connected ? '센서를 차고 계시면 약 드신 뒤 심박수를 측정합니다' : '센서를 차고 아래 버튼을 눌러주세요',
+            connected ? '센서를 차고 계시면 약 드신 뒤 심박수를 잽니다' : '센서를 차고 아래 버튼을 눌러주세요',
             textAlign: TextAlign.center,
             style: AppText.body(size: 18.5, color: AppColors.textSecondary),
           ),

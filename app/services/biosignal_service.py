@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from fastapi import HTTPException
 
@@ -37,10 +37,11 @@ def save_heart_rate(request: HeartRateCreate) -> dict:
         ).fetchone()
 
         conn.commit()
+        response_time = _time_with_zone(measured_at)
         return {
             "heart_rate_log_id": log_id,
             "bpm": request.bpm,
-            "measured_at": measured_at,
+            "measured_at": response_time.isoformat() if response_time else measured_at,
             "baseline": dict(baseline) if baseline else None,
             "abnormal_event": None,
         }
@@ -125,13 +126,43 @@ def _slot_label(taken_at: datetime) -> str:
     return "저녁 약"
 
 
-def get_heart_summary(user_id: str, today: datetime | None = None) -> dict:
+def _time_with_zone(value: str, *, naive_is_utc: bool = False) -> datetime | None:
+    """Legacy writer uses server-local datetime.now(); retain that interpretation.
+
+    Explicit offsets always win. No stored timestamp is rewritten.
+    """
+    try:
+        parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+        if parsed.tzinfo is None and naive_is_utc:
+            parsed = parsed.replace(tzinfo=timezone.utc)
+        return parsed.astimezone(timezone.utc)
+    except (ValueError, TypeError):
+        return None
+
+
+def get_heart_summary(
+    user_id: str, today: datetime | None = None, *,
+    include_readings: bool = False, utc_offset_minutes: int = 0,
+) -> dict:
     """심박수 화면 하나가 쓰는 것을 한 번에 돌려준다.
 
     화면이 오늘·이번 주·한 달을 따로 부르면 요청이 세 번이 되고, 그 사이
     날짜가 바뀌면 서로 다른 기준의 숫자가 한 화면에 놓인다.
     """
     now = today or datetime.now()
+    zone = timezone(timedelta(minutes=utc_offset_minutes))
+    if include_readings:
+        now = now.astimezone(zone)
+
+    def parse(value, *, medication=False):
+        if not include_readings:
+            return _parse(value)
+        # TAKEN writer uses SQLite CURRENT_TIMESTAMP (UTC), unlike heart writer.
+        parsed = _time_with_zone(value, naive_is_utc=medication)
+        return parsed.astimezone(zone) if parsed else None
+
+    actual_readings = []
+    first_day = min(now.date().replace(day=1), now.date() - timedelta(days=now.weekday()))
     conn = get_connection()
     try:
         cursor = conn.cursor()
@@ -142,19 +173,28 @@ def get_heart_summary(user_id: str, today: datetime | None = None) -> dict:
 
         # 한 달치만 읽는다. 화면이 그 이상을 보여주지 않는다.
         since = (now - timedelta(days=31)).isoformat(timespec="seconds")
+        if include_readings:
+            # Broad lexical bound, then exact local-calendar filtering below.
+            since = (now - timedelta(days=33)).date().isoformat()
 
         readings: list[tuple[datetime, int]] = []
         for row in cursor.execute(
             """
-            SELECT measured_at, bpm FROM heart_rate_logs
+            SELECT id, measured_at, bpm FROM heart_rate_logs
             WHERE user_id = ? AND measured_at >= ?
             ORDER BY measured_at
             """,
             (user_id, since),
         ).fetchall():
-            measured_at = _parse(row["measured_at"])
+            measured_at = parse(row["measured_at"])
             if measured_at:
                 readings.append((measured_at, int(row["bpm"])))
+                if include_readings:
+                    if first_day <= measured_at.date() <= now.date():
+                        actual_readings.append({
+                            "id": row["id"], "bpm": int(row["bpm"]),
+                            "measured_at": measured_at.isoformat(),
+                        })
 
         takes: list[datetime] = []
         for row in cursor.execute(
@@ -165,7 +205,7 @@ def get_heart_summary(user_id: str, today: datetime | None = None) -> dict:
             """,
             (user_id, since),
         ).fetchall():
-            taken_at = _parse(row["taken_at"])
+            taken_at = parse(row["taken_at"], medication=True)
             if taken_at:
                 takes.append(taken_at)
     finally:
@@ -208,7 +248,7 @@ def get_heart_summary(user_id: str, today: datetime | None = None) -> dict:
             }
         )
 
-    return {
+    result = {
         "today": {
             "before": today_pair.get("before"),
             "after": today_pair.get("after"),
@@ -222,6 +262,10 @@ def get_heart_summary(user_id: str, today: datetime | None = None) -> dict:
         "best_streak_days": _best_streak(month),
         "anomaly": _anomaly(month, now),
     }
+    if include_readings:
+        result["readings"] = sorted(actual_readings, key=lambda row: row["measured_at"], reverse=True)
+        result["period_date"] = now.date().isoformat()
+    return result
 
 
 def _streak(month: list[dict]) -> int:
