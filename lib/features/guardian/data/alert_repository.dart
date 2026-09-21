@@ -7,7 +7,7 @@ import '../../dashboard/presentation/screens/patient_data.dart';
 /// **버리지 않는다** — 안 보여주면 보호자는 그런 일이 없었다고 믿는다.
 class AlertRepository {
   AlertRepository({ApiClient? apiClient})
-      : _apiClient = apiClient ?? ApiClient();
+    : _apiClient = apiClient ?? ApiClient();
 
   final ApiClient _apiClient;
 
@@ -54,21 +54,22 @@ class AlertRepository {
   }
 
   static String _titleOf(String type) => switch (_kindOf(type)) {
-        'alert' => '심장 박동이 빨라요',
-        'miss' => '약을 안 드셨어요',
-        'refill' => '약이 떨어졌어요',
-        'prescription' => '새 처방전',
-        'shared' => '어르신이 보냈어요',
-        'done' => '약 다 드셨어요',
-        _ => '알림',
-      };
+    'alert' => '심장 박동이 빨라요',
+    'miss' => '약을 안 드셨어요',
+    'refill' => '약이 떨어졌어요',
+    'prescription' => '새 처방전',
+    'shared' => '어르신이 보냈어요',
+    'done' => '약 다 드셨어요',
+    _ => '알림',
+  };
 
   /// **상대시간을 쓰지 않는다.** "15분 전"은 언제인지 다시 계산하게 만든다.
   static String _time(Object? raw) {
     final parsed = DateTime.tryParse(raw?.toString() ?? '');
     if (parsed == null) return '';
     final now = DateTime.now();
-    final sameDay = parsed.year == now.year &&
+    final sameDay =
+        parsed.year == now.year &&
         parsed.month == now.month &&
         parsed.day == now.day;
     final clock =

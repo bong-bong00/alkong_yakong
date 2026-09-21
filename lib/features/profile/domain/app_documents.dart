@@ -47,7 +47,7 @@ const List<HelpTopic> kHelpTopics = <HelpTopic>[
     steps: [
       '약 시간이 되면 "오늘" 화면에 드실 약이 나와요.',
       '약을 드신 뒤 "먹었어요"를 눌러 주세요.',
-      '"가슴 띠를 차고 계신가요?"라고 물어봐요. '
+      '"심박 센서를 차고 계신가요?"라고 물어봐요. '
           '차고 계시면 "차고 있어요 · 재기"를, '
           '아니면 "안 차고 있어요 · 복약만 기록"을 누르세요.',
       '지금 드시기 어려우면 "30분 뒤에 다시 알려주기"를 누르세요.',
@@ -63,7 +63,8 @@ const List<HelpTopic> kHelpTopics = <HelpTopic>[
       '읽어 드린 약 이름, 한 번에 드시는 양, 하루 몇 번, 며칠치인지 '
           '처방전과 꼭 비교해 보시고 "확인했어요"를 누르세요.',
     ],
-    note: '사진이 흐리면 잘못 읽을 수 있어요. 잘 안 되면 "앨범에서 고르기"나 '
+    note:
+        '사진이 흐리면 잘못 읽을 수 있어요. 잘 안 되면 "앨범에서 고르기"나 '
         '"직접 손으로 입력하기"를 써 보세요.',
   ),
   HelpTopic(
@@ -74,7 +75,8 @@ const List<HelpTopic> kHelpTopics = <HelpTopic>[
           '같은 성분이 겹치는 약 등을 알려드려요.',
       '"내 정보"에서 "약 함께먹기 주의"를 누르면 자세히 볼 수 있어요.',
     ],
-    note: '주의가 떠도 약을 마음대로 끊거나 줄이지 마세요. '
+    note:
+        '주의가 떠도 약을 마음대로 끊거나 줄이지 마세요. '
         '꼭 의사나 약사에게 여쭤보세요. '
         '"주의 없음"이라고 나와도 모든 위험이 없다는 뜻은 아니에요.',
     noteIsWarning: true,
@@ -82,13 +84,14 @@ const List<HelpTopic> kHelpTopics = <HelpTopic>[
   HelpTopic(
     title: '심박 센서 차고 연결하기',
     steps: [
-      '"내 정보"에서 "폴라 베리티 센스"를 누르세요.',
+      '"내 정보"에서 "폴라 센서"를 누르세요.',
       '전화기의 블루투스를 켜고 "기기 찾기"를 누르세요.',
       '센서를 찾지 못하면 센서의 단추를 한 번 누르고 다시 찾아 주세요.',
       '띠 안쪽 두 군데를 물로 살짝 적시고, 가슴 아래 명치 높이에 맞춰 차세요.',
       '약을 드시기 5분 전에 차 두시면 편해요.',
     ],
-    note: '재어 드린 심박수는 참고용이에요. '
+    note:
+        '재어 드린 심박수는 참고용이에요. '
         '가슴이 아프거나 숨이 많이 차면 바로 119에 전화하세요.',
     noteIsWarning: true,
   ),
@@ -99,7 +102,8 @@ const List<HelpTopic> kHelpTopics = <HelpTopic>[
       '성함, 나와의 관계, 휴대폰 번호를 적고 "초대 보내기"를 누르세요.',
       '가족은 따로 가입한 보호자 계정으로 약 드신 것과 심박수를 봐요.',
     ],
-    note: '보호자는 대신 "먹었어요"를 누를 수 없어요. '
+    note:
+        '보호자는 대신 "먹었어요"를 누를 수 없어요. '
         '직접 누르신 기록만 남아요.',
   ),
   HelpTopic(
@@ -118,7 +122,8 @@ const List<HelpTopic> kHelpTopics = <HelpTopic>[
       '궁금한 것을 적고 "보내기"를 누르세요.',
       '식약처 약 정보를 바탕으로 쉬운 말로 알려드려요.',
     ],
-    note: 'AI의 답은 틀릴 수 있어요. '
+    note:
+        'AI의 답은 틀릴 수 있어요. '
         '약을 바꾸거나 끊는 일은 꼭 의사나 약사와 정하세요.',
     noteIsWarning: true,
   ),
@@ -133,14 +138,15 @@ const List<HelpTopic> kHelpTopics = <HelpTopic>[
     note: '임신이나 수유를 하게 되면 조심할 약이 달라져요. 꼭 고쳐 주세요.',
   ),
   HelpTopic(
-    title: '로그아웃하거나 그만두기',
+    title: '로그아웃하거나 탈퇴하기',
     steps: [
       '이 전화기에서만 나가려면 "내 정보" 맨 아래 "로그아웃"을 누르세요. '
           '기록은 그대로 남아요.',
       '다시 들어오실 때는 휴대폰 번호와 비밀번호가 필요해요.',
       '아예 그만두려면 "내 정보"에서 "계정 관리"를 누르고 "그만두기"를 누르세요.',
     ],
-    note: '그만두시면 등록한 약과 복약 기록, 심박 기록, 가족 연락처가 '
+    note:
+        '그만두시면 등록한 약과 복약 기록, 심박 기록, 가족 연락처가 '
         '모두 지워지고 되돌릴 수 없어요.',
     noteIsWarning: true,
   ),
@@ -190,11 +196,15 @@ class AppDocument {
 
   final List<DocSection> sections;
 
+  /// 조문보다 먼저 읽는 쉬운 말 요약. 없으면 비워 둔다.
+  final List<DocSection> plain;
+
   const AppDocument({
     required this.title,
     required this.summary,
     required this.meta,
     required this.sections,
+    this.plain = const [],
   });
 }
 
@@ -205,13 +215,33 @@ const String kDraftNotice =
 
 const AppDocument kTermsOfService = AppDocument(
   title: '이용약관',
-  summary: '알콩약콩을 쓰시기 전에 알아 두실 약속이에요. '
-      '특히 제6조 "의료 정보에 대한 안내"를 꼭 읽어 주세요.',
-  meta: [
-    '운영자: [운영자 이름]',
-    '문의: $kContactEmail',
-    '시행일: [시행일]',
+  plain: [
+    DocSection(
+      title: '이 앱이 하는 일',
+      paragraphs: [
+        '약 드실 시간을 알려드리고, 드신 것을 기록하고, 가족이 함께 볼 수 있게 합니다. '
+            '진료나 처방을 대신하지 않습니다.',
+      ],
+    ),
+    DocSection(
+      title: '약에 대한 결정',
+      paragraphs: [
+        '함께먹기 주의와 약 설명은 참고용입니다. '
+            '약을 바꾸거나 끊는 결정은 약사·의사와 상의하세요.',
+      ],
+    ),
+    DocSection(
+      title: '탈퇴',
+      paragraphs: [
+        '"내 정보" → "계정 관리" → "탈퇴"로 언제든 그만두실 수 있습니다. '
+            '기록은 모두 지워집니다.',
+      ],
+    ),
   ],
+  summary:
+      '알콩약콩을 쓰시기 전에 알아 두실 약속이에요. '
+      '특히 제6조 "의료 정보에 대한 안내"를 꼭 읽어 주세요.',
+  meta: ['운영자: [운영자 이름]', '문의: $kContactEmail', '시행일: [시행일]'],
   sections: [
     DocSection(
       title: '제1조 (목적)',
@@ -331,16 +361,14 @@ const AppDocument kTermsOfService = AppDocument(
             '관할 법원에 제기합니다.',
       ],
     ),
-    DocSection(
-      title: '부칙',
-      paragraphs: ['이 약관은 [시행일]부터 시행합니다.'],
-    ),
+    DocSection(title: '부칙', paragraphs: ['이 약관은 [시행일]부터 시행합니다.']),
   ],
 );
 
 const AppDocument kPrivacyPolicy = AppDocument(
   title: '개인정보처리방침',
-  summary: '알콩약콩이 어떤 정보를 왜 받고, 얼마나 두고, '
+  summary:
+      '알콩약콩이 어떤 정보를 왜 받고, 얼마나 두고, '
       '누구에게 맡기는지 적은 문서예요.',
   meta: [
     '운영자: [운영자 이름]',

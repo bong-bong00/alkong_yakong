@@ -8,6 +8,7 @@ import '../../../../core/network/api_client.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../core/widgets/app_logo.dart';
 import '../../../../core/widgets/senior_button.dart';
+import '../../../../core/widgets/senior_feedback.dart';
 import '../../../onboarding/presentation/screens/first_run_screen.dart';
 import '../../../profile/application/current_user_controller.dart';
 import '../../../profile/application/session_actions.dart';
@@ -39,12 +40,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
   Future<void> _login() async {
     if (_phone.text.trim().isEmpty || _password.text.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('전화번호와 비밀번호를 넣어주세요')),
-      );
+      showSeniorSnackbar(context, '전화번호와 비밀번호를 넣어주세요', error: true);
       return;
     }
     if (_loggingIn) return;
+
     setState(() => _loggingIn = true);
     try {
       final user = await ref
@@ -55,9 +55,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       if (mounted) context.go('/');
     } on ApiException catch (error) {
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(error.message)));
+      showSeniorSnackbar(context, error.message, error: true);
     } finally {
       if (mounted) setState(() => _loggingIn = false);
     }
@@ -82,10 +80,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
               const SizedBox(height: 8),
               Text(
                 '약 드실 시간을 알려드리고,\n가족이 함께 챙겨드려요.',
-                style: AppText.body(
-                  size: 21,
-                  color: AppColors.textSecondary,
-                ),
+                style: AppText.body(size: 21, color: AppColors.textSecondary),
               ),
               const SizedBox(height: 34),
 
@@ -164,11 +159,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                 kind: SeniorButtonKind.secondary,
                 minHeight: 62,
                 fontSize: 20,
-                onPressed: () => Navigator.of(context).push(
-                  MaterialPageRoute<void>(
-                    builder: (_) => const FirstRunScreen(),
+                  onPressed: () => Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (_) => const FirstRunScreen(),
+                    ),
                   ),
-                ),
               ),
               const SizedBox(height: 10),
               Text(
@@ -268,7 +263,9 @@ class PhoneNumberFormatter extends TextInputFormatter {
 
     final buffer = StringBuffer();
     for (int i = 0; i < capped.length; i++) {
-      if (i == 3 || (i == 7 && capped.length > 10) || (i == 6 && capped.length <= 10)) {
+      if (i == 3 ||
+          (i == 7 && capped.length > 10) ||
+          (i == 6 && capped.length <= 10)) {
         buffer.write('-');
       }
       buffer.write(capped[i]);

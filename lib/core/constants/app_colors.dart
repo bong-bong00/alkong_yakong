@@ -137,6 +137,60 @@ abstract final class AppColors {
   /// 스낵바 배경과 그 안의 체크 아이콘.
   static const Color snackbarBg = Color(0xFF221F1B);
   static const Color snackbarCheck = Color(0xFF8FE3B0);
+
+  // ── 어두운 화면 위 ──────────────────────────────────────────
+  /// 잠금화면의 날짜처럼 어두운 배경 위의 흐린 글씨.
+  static const Color onDarkDate = Color(0xFFB6B8C4);
+
+  /// 어두운 화면 아래 안내 한 줄. [onDarkDate]보다 한 단계 더 물린다.
+  static const Color onDarkFootnote = Color(0xFF8A8CA0);
+
+  /// 어두운 면 위 버튼의 반투명 흰 테두리.
+  static const Color onDarkBorder = Color(0x80FFFFFF);
+
+  /// 어두운 버튼을 눌렀을 때.
+  static const Color darkPressed = Color(0xFF3A3A44);
+
+  // ── 그림자 · 가림막 ─────────────────────────────────────────
+  /// 시트를 띄울 때 뒤를 덮는 막.
+  static const Color sheetScrim = Color(0xA8141620);
+
+  /// 시트와 하단 바가 바닥에서 떠 보이게 하는 그림자.
+  static const Color sheetShadow = Color(0x2E14161E);
+
+  /// 쉬운 모드 하단 바의 그림자. 시트보다 옅다.
+  static const Color barShadow = Color(0x2914161E);
+
+  /// "강조가 필요한 하나"에만 주는 파란 그림자.
+  static const Color pointShadow = Color(0x471F42E5);
+
+  // ── 그 밖 ──────────────────────────────────────────────────
+  /// 타임라인의 "지금" 점을 감싸는 연파랑 링.
+  static const Color timelineRing = Color(0xFFC9D2FA);
+
+  /// 위험 버튼을 눌렀을 때의 연한 테두리.
+  static const Color dangerBorderSoft = Color(0xFFF3CFCA);
+
+  /// 날짜 띠처럼 진한 회색 글씨가 필요한 자리.
+  static const Color inkGray = Color(0xFF4A4A52);
+
+  // ── 아직 리디자인이 닿지 않은 화면이 쓰는 색 ────────────────
+  // TODO: 이 화면들이 새 규격으로 바뀌면 함께 지운다.
+  /// 옛 화면의 붉은 강조.
+  static const Color legacyRed = Color(0xFFE24B4A);
+
+  /// 옛 화면의 연민트 배경.
+  static const Color legacyMint = Color(0xFFEAF7F1);
+
+  /// 옛 화면의 초록 글씨.
+  static const Color legacyGreen = Color(0xFF2E7D32);
+
+  /// 옛 화면의 연회색 구분선.
+  static const Color legacyLine = Color(0xFFEDEDED);
+
+  /// 옛 화면의 파랑·보라 강조.
+  static const Color legacyBlue = Color(0xFF4A78C2);
+  static const Color legacyViolet = Color(0xFF534AB7);
 }
 
 // ════════════════════════════════════════════════════════════════

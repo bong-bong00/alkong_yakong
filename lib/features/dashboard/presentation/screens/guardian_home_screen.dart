@@ -114,10 +114,7 @@ class _NoPatientTab extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Text(
-                    '아직 연결된 어르신이 없어요',
-                    style: AppText.cardTitle(size: 21),
-                  ),
+                  Text('아직 연결된 어르신이 없어요', style: AppText.cardTitle(size: 21)),
                   const SizedBox(height: 8),
                   Text(
                     '어르신이 수락하면 여기에서 복약과 심장 박동을 볼 수 있어요.',
@@ -189,10 +186,10 @@ class GuardianStatusTab extends ConsumerWidget {
   });
 
   String get _doseNote {
-    if (patient.totalCount == 0) return '등록된 약 없음';
+    if (patient.totalCount == 0) return '등록된 약이 없어요';
     return patient.needsAttention
-        ? '${patient.nextDoseLabel} 남음'
-        : '다 드셨어요';
+        ? '${patient.nextDoseLabel} 약이 남아 있어요'
+        : '오늘 약을 다 드셨어요';
   }
 
   @override
@@ -218,10 +215,7 @@ class GuardianStatusTab extends ConsumerWidget {
                       '보호자 화면 · $total명 중 $position번째',
                       style: AppText.label(size: 17),
                     ),
-                    Text(
-                      patient.title,
-                      style: AppText.screenTitle(size: 26),
-                    ),
+                    Text(patient.title, style: AppText.screenTitle(size: 26)),
                   ],
                 ),
               ),
@@ -246,9 +240,8 @@ class GuardianStatusTab extends ConsumerWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        IconTitle(
-                          icon: TablerIcons.pill,
-                          text: '오늘 복약',
+                        Text(
+                          '오늘 복약',
                           style: AppText.label(
                             size: 19,
                             weight: FontWeight.w700,
@@ -276,7 +269,11 @@ class GuardianStatusTab extends ConsumerWidget {
                           const SizedBox(height: 14),
                           Row(
                             children: [
-                              for (int i = 0; i < patient.slots.length; i++) ...[
+                              for (
+                                int i = 0;
+                                i < patient.slots.length;
+                                i++
+                              ) ...[
                                 if (i > 0) const SizedBox(width: 10),
                                 Expanded(
                                   child: _SlotChip(
@@ -312,7 +309,7 @@ class GuardianStatusTab extends ConsumerWidget {
                         children: [
                           Expanded(
                             child: _Metric(
-                              label: '심장 박동',
+                              label: '심박수',
                               value: patient.heartRate?.toString() ?? '-',
                               note: patient.heartRate == null
                                   ? '잰 기록 없음'
@@ -328,13 +325,9 @@ class GuardianStatusTab extends ConsumerWidget {
                           ),
                           Expanded(
                             child: _Metric(
-                              label: '최근 7일',
+                              label: '이번 주',
                               value: weekRate == null ? '-' : '$weekRate%',
-                              note: weekRate == null
-                                  ? '기록 없음'
-                                  : weekRate >= 90
-                                  ? '잘 지키고 계세요'
-                                  : '조금 더 챙겨 주세요',
+                              note: weekRate == null ? '기록 없음' : '복약',
                             ),
                           ),
                         ],
@@ -357,10 +350,13 @@ class GuardianStatusTab extends ConsumerWidget {
                         children: [
                           Row(
                             children: [
-                              const Icon(
-                                TablerIcons.alert_triangle_filled,
-                                size: 21,
-                                color: AppColors.danger,
+                              Container(
+                                width: 10,
+                                height: 10,
+                                decoration: const BoxDecoration(
+                                  color: AppColors.danger,
+                                  shape: BoxShape.circle,
+                                ),
                               ),
                               const SizedBox(width: 9),
                               Expanded(
@@ -369,7 +365,7 @@ class GuardianStatusTab extends ConsumerWidget {
                                   style: AppText.cardTitle(
                                     size: 18,
                                     color: AppColors.danger,
-                                    weight: FontWeight.w900,
+                                    weight: FontWeight.w700,
                                   ),
                                 ),
                               ),
@@ -377,7 +373,7 @@ class GuardianStatusTab extends ConsumerWidget {
                           ),
                           const SizedBox(height: 8),
                           Text(
-                            '${patient.nextDoseLabel}\n아직 기록이 오지 않았어요',
+                            '${patient.nextDoseLabel} 약을 아직 안 드셨어요',
                             style: AppText.cardTitle(size: 21),
                           ),
                           const SizedBox(height: 14),
@@ -402,11 +398,7 @@ class GuardianStatusTab extends ConsumerWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        IconTitle(
-                          icon: TablerIcons.clock,
-                          text: '오늘 있었던 일',
-                          style: AppText.cardTitle(size: 19),
-                        ),
+                        Text('오늘 있었던 일', style: AppText.cardTitle(size: 20)),
                         const SizedBox(height: 12),
                         if (patient.activities.isEmpty)
                           Text(
@@ -442,6 +434,30 @@ class GuardianStatusTab extends ConsumerWidget {
                             ],
                           ),
                         ],
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+
+                  // ── 약 목록 · 처방전 대신 등록 ──
+                  SeniorCard(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 20,
+                      vertical: 18,
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          '약 목록 · 처방전 대신 등록',
+                          style: AppText.cardTitle(size: 20),
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          '보호자 계정에서는 어르신 화면이 열리지 않습니다. '
+                          '대신 등록한 약은 어르신 화면에 알림으로만 전달돼요.',
+                          style: AppText.body(size: 17.5),
+                        ),
                       ],
                     ),
                   ),
@@ -543,24 +559,37 @@ class _Metric extends StatelessWidget {
   final String value;
   final String note;
 
-  const _Metric({
-    required this.label,
-    required this.value,
-    required this.note,
-  });
+  const _Metric({required this.label, required this.value, required this.note});
 
   @override
   Widget build(BuildContext context) {
     return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(label, style: AppText.label(size: 18)),
+        Text(label, style: AppText.caption(size: 17)),
         const SizedBox(height: 4),
-        Text(value, style: AppText.bigTime(size: 36)),
-        const SizedBox(height: 4),
-        Text(
-          note,
-          textAlign: TextAlign.center,
-          style: AppText.caption(size: 17),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.baseline,
+          textBaseline: TextBaseline.alphabetic,
+          children: [
+            Flexible(
+              child: Text(
+                value,
+                style: AppText.bigTime(size: 34),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            const SizedBox(width: 6),
+            Flexible(
+              child: Text(
+                note,
+                style: AppText.caption(size: 16),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ],
         ),
       ],
     );
@@ -579,11 +608,7 @@ class GuardianAlertsTab extends StatefulWidget {
   /// 알림을 읽어 올 곳. 없으면 이 탭이 하나 만들어 쓴다.
   final AlertRepository? repository;
 
-  const GuardianAlertsTab({
-    super.key,
-    required this.patient,
-    this.repository,
-  });
+  const GuardianAlertsTab({super.key, required this.patient, this.repository});
 
   @override
   State<GuardianAlertsTab> createState() => _GuardianAlertsTabState();
@@ -620,7 +645,15 @@ class _GuardianAlertsTabState extends State<GuardianAlertsTab> {
     final alerts = _loaded;
     return Column(
       children: [
-        SeniorTitleHeader(title: '${widget.patient.name} 님 알림'),
+        SeniorHeader(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('${widget.patient.name} 님', style: AppText.label(size: 17)),
+              Text('알림', style: AppText.screenTitle(size: 28)),
+            ],
+          ),
+        ),
         Expanded(
           child: alerts == null
               ? Padding(
@@ -707,27 +740,7 @@ class _AlertCard extends StatelessWidget {
   });
 
   bool get _isDanger =>
-      alert.type == 'miss' ||
-      alert.type == 'alert' ||
-      alert.type == 'refill';
-
-  IconData get _icon {
-    switch (alert.type) {
-      case 'miss':
-      case 'alert':
-        return TablerIcons.alert_triangle_filled;
-      case 'refill':
-        return TablerIcons.pill;
-      case 'shared':
-        return TablerIcons.message_2;
-      case 'prescription':
-        return TablerIcons.file_text;
-      case 'past':
-        return TablerIcons.heart;
-      default:
-        return TablerIcons.circle_check_filled;
-    }
-  }
+      alert.type == 'miss' || alert.type == 'alert' || alert.type == 'refill';
 
   Color get _barColor {
     if (_isDanger) return AppColors.danger;
@@ -764,19 +777,14 @@ class _AlertCard extends StatelessWidget {
           Row(
             children: [
               Expanded(
-                child: IconTitle(
-                  icon: _icon,
-                  color: _barColor,
-                  text: alert.title,
+                child: Text(
+                  alert.title,
                   style: AppText.cardTitle(size: 18, color: _barColor),
                 ),
               ),
               Text(
                 alert.time,
-                style: AppText.label(
-                  size: 17,
-                  color: AppColors.textTertiary,
-                ),
+                style: AppText.label(size: 17, color: AppColors.textTertiary),
               ),
             ],
           ),

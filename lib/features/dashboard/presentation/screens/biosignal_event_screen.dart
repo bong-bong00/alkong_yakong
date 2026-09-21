@@ -38,7 +38,7 @@ class BiosignalEventScreen extends StatelessWidget {
     this.eventType = '빈맥 (빠른 맥박)',
   });
 
-  static const _danger = Color(0xFFE24B4A);
+  static const _danger = AppColors.legacyRed;
 
   /// 이 값을 넘으면 빠른 맥박으로 본다 (아래 설명 문구와 같은 값).
   static const int _tachyBpm = 100;
@@ -46,8 +46,7 @@ class BiosignalEventScreen extends StatelessWidget {
   static String _hhmm(DateTime t) =>
       '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
 
-  DateTime? _timeAt(int index) =>
-      startedAt?.add(sampleInterval * index);
+  DateTime? _timeAt(int index) => startedAt?.add(sampleInterval * index);
 
   int get _peakIndex {
     var best = 0;
@@ -77,9 +76,7 @@ class BiosignalEventScreen extends StatelessWidget {
           style: TextStyle(fontWeight: FontWeight.w800),
         ),
       ),
-      body: SafeArea(
-        child: samples.isEmpty ? _empty() : _content(),
-      ),
+      body: SafeArea(child: samples.isEmpty ? _empty() : _content()),
     );
   }
 
@@ -90,7 +87,11 @@ class BiosignalEventScreen extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.monitor_heart_outlined, size: 44, color: Colors.grey[500]),
+            Icon(
+              Icons.monitor_heart_outlined,
+              size: 44,
+              color: Colors.grey[500],
+            ),
             const SizedBox(height: 12),
             const Text(
               '표시할 심박 기록이 없어요',
@@ -153,7 +154,9 @@ class BiosignalEventScreen extends StatelessWidget {
               if (who.isNotEmpty || peakAt != null) ...[
                 const SizedBox(height: 6),
                 Text(
-                  peakAt == null ? who.replaceAll(' · ', '') : '$who${_hhmm(peakAt)} 발생',
+                  peakAt == null
+                      ? who.replaceAll(' · ', '')
+                      : '$who${_hhmm(peakAt)} 발생',
                   style: TextStyle(fontSize: 13.5, color: Colors.grey[600]),
                 ),
               ],
@@ -205,7 +208,7 @@ class BiosignalEventScreen extends StatelessWidget {
         Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            _legend(const Color(0xFFEAF7F1), '정상 범위 (60~100)'),
+            _legend(AppColors.legacyMint, '정상 범위 (60~100)'),
             const SizedBox(width: 16),
             _legend(_danger, '심박'),
           ],
@@ -257,7 +260,7 @@ class BiosignalEventScreen extends StatelessWidget {
           drawVerticalLine: false,
           horizontalInterval: 20,
           getDrawingHorizontalLine: (v) =>
-              FlLine(color: const Color(0xFFEDEDED), strokeWidth: 1),
+              FlLine(color: AppColors.legacyLine, strokeWidth: 1),
         ),
         borderData: FlBorderData(show: false),
         titlesData: FlTitlesData(
@@ -302,7 +305,7 @@ class BiosignalEventScreen extends StatelessWidget {
             HorizontalRangeAnnotation(
               y1: 60,
               y2: 100,
-              color: const Color(0xFFEAF7F1),
+              color: AppColors.legacyMint,
             ),
           ],
         ),

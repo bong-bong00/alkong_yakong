@@ -12,10 +12,10 @@ import '../widgets/heart_readings_card.dart';
 /// 26 · 한 달 기록.
 ///
 /// **주 단위로 묶어 보여준다.** 30일 × 2회를 막대 60개로 그리지 않는다.
-/// 대신 "며칠째 정상인가"와 "이상했던 날 하나"를 앞세운다.
+/// 복약 후 측정 기록이 있는 날과 저장된 단독 측정 기록을 구분해 보여준다.
 ///
 /// [data]는 심박수 관리 화면이 서버에서 읽어 넘겨준 것만 받는다.
-/// 잰 날이 하나도 없으면 "0일째 정상"을 그리지 않고 기록이 없다고 말한다.
+/// 잰 날이 하나도 없으면 기록이 없다고 말한다.
 class MonthlyHeartScreen extends StatefulWidget {
   final HeartData data;
   final String guardianTitle;
@@ -97,7 +97,7 @@ class _MonthlyHeartScreenState extends State<MonthlyHeartScreen> {
                   if (!measured)
                     _EmptyMonthCard(month: _month)
                   else if (hasComparison) ...[
-                    // 정상인 날이 이어지지 않았으면 "0일째"를 크게 쓰지 않는다.
+                    // 복약 후 측정 기록이 없으면 0일을 크게 쓰지 않는다.
                     if (data.streakDays > 0) ...[
                       _StreakCard(data: data),
                       const SizedBox(height: 12),
@@ -165,7 +165,7 @@ class _EmptyMonthCard extends StatelessWidget {
   }
 }
 
-/// 며칠째 정상인지 — 이 화면의 주인공.
+/// 복약 후 심박 기록이 있는 날의 수. 연속 일수나 정상 판정이 아니다.
 class _StreakCard extends StatelessWidget {
   final HeartData data;
   const _StreakCard({required this.data});
@@ -184,20 +184,23 @@ class _StreakCard extends StatelessWidget {
           Semantics(
             label: '복약 후 심박 기록이 있는 날은 ${data.streakDays}일이에요',
             child: ExcludeSemantics(
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Text(
-                    '${data.streakDays}',
-                    style: AppText.hero(size: 72, color: AppColors.point),
-                  ),
-                  const SizedBox(width: 6),
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 10),
-                    child: Text('일째', style: AppText.cardTitle(size: 24)),
-                  ),
-                ],
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Text(
+                      '${data.streakDays}',
+                      style: AppText.hero(size: 72, color: AppColors.point),
+                    ),
+                    const SizedBox(width: 6),
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 10),
+                      child: Text('일', style: AppText.cardTitle(size: 24)),
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
@@ -209,22 +212,15 @@ class _StreakCard extends StatelessWidget {
           ),
           const SizedBox(height: 16),
           _RecentBars(days: data.month),
-          const SizedBox(height: 12),
-          Text(
-            '가장 길었던 기록은 ${data.bestStreakDays}일이에요',
-            textAlign: TextAlign.center,
-            style: AppText.caption(size: 17.5),
-          ),
         ],
       ),
     );
   }
 }
 
-/// 최근에 **잰** 날 열흘까지. 빨랐던 날은 붉게, 정상인 날은 파랗게.
+/// 최근에 실제로 **잰** 날 열흘까지.
 ///
-/// 연속 일수로 칸 색을 거꾸로 지어내지 않는다 — 못 잰 날까지
-/// "이상했던 날"로 칠하게 되기 때문이다. 실제 날짜별 값으로만 칠한다.
+/// 연속 일수나 정상 여부를 칸 색으로 지어내지 않는다.
 class _RecentBars extends StatelessWidget {
   final List<HeartMonthDay> days;
   const _RecentBars({required this.days});
@@ -336,13 +332,19 @@ class _DayGrid extends StatelessWidget {
           Row(
             children: [
               Expanded(child: Text('날짜별로 보기', style: AppText.cardTitle())),
-              SeniorBadge(
-                label: '먹은 후 수치',
-                fontSize: 16.5,
-                radius: 11,
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 13,
-                  vertical: 7,
+              Flexible(
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.centerRight,
+                  child: SeniorBadge(
+                    label: '먹은 후 수치',
+                    fontSize: 16.5,
+                    radius: 11,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 13,
+                      vertical: 7,
+                    ),
+                  ),
                 ),
               ),
             ],

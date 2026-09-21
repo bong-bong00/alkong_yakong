@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_tabler_icons/flutter_tabler_icons.dart';
 
 import '../constants/app_colors.dart';
@@ -49,6 +50,28 @@ Future<bool> showSeniorYesNoDialog({
   return confirmed ?? false;
 }
 
+/// OCR 이름 수정 화면이 사용하는 기존 오류 안내.
+class SeniorErrorBox extends StatelessWidget {
+  final String message;
+  const SeniorErrorBox(this.message, {super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+      decoration: BoxDecoration(
+        color: AppColors.dangerBg,
+        borderRadius: BorderRadius.circular(18),
+      ),
+      child: Text(
+        message,
+        style: AppText.cardTitle(size: 18, color: AppColors.danger),
+      ),
+    );
+  }
+}
+
 /// 스낵바.
 ///
 /// **보호자에게 연락한 결과는 이것으로만 알린다.** 어르신 화면에는 전화 걸기
@@ -74,9 +97,7 @@ void showSeniorSnackbar(
       margin: EdgeInsets.fromLTRB(16, 0, 16, 26 + bottom),
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 17),
       duration: const Duration(seconds: 4),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(18),
-      ),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
       content: Row(
         children: [
           ExcludeSemantics(
@@ -252,6 +273,9 @@ class SeniorField extends StatelessWidget {
   final Widget? suffix;
   final ValueChanged<String>? onChanged;
 
+  /// 글자를 다듬는 규칙. 휴대폰 번호 하이픈 같은 것.
+  final List<TextInputFormatter>? inputFormatters;
+
   /// 오류가 있으면 테두리가 붉어진다.
   final bool hasError;
 
@@ -264,6 +288,7 @@ class SeniorField extends StatelessWidget {
     this.obscure = false,
     this.suffix,
     this.onChanged,
+    this.inputFormatters,
     this.hasError = false,
   });
 
@@ -295,11 +320,9 @@ class SeniorField extends StatelessWidget {
                   controller: controller,
                   obscureText: obscure,
                   keyboardType: keyboardType,
+                  inputFormatters: inputFormatters,
                   onChanged: onChanged,
-                  style: AppText.label(
-                    size: 21,
-                    color: AppColors.textPrimary,
-                  ),
+                  style: AppText.label(size: 21, color: AppColors.textPrimary),
                   decoration: InputDecoration(
                     border: InputBorder.none,
                     isDense: true,
@@ -316,28 +339,6 @@ class SeniorField extends StatelessWidget {
           ),
         ),
       ],
-    );
-  }
-}
-
-/// 오류 안내 블록. 붉은 연한 면에 붉은 글씨.
-class SeniorErrorBox extends StatelessWidget {
-  final String message;
-  const SeniorErrorBox(this.message, {super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-      decoration: BoxDecoration(
-        color: AppColors.dangerBg,
-        borderRadius: BorderRadius.circular(18),
-      ),
-      child: Text(
-        message,
-        style: AppText.cardTitle(size: 18, color: AppColors.danger),
-      ),
     );
   }
 }

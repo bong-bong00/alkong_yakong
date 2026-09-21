@@ -133,7 +133,7 @@ class _MeasureScreenState extends State<MeasureScreen> {
         backgroundColor: AppColors.bg,
         body: Column(
           children: [
-            const SeniorBackHeader(title: '심박수 재기'),
+            const SeniorBackHeader(title: '심박수 관리'),
             Expanded(child: _recovery()),
           ],
         ),
@@ -187,7 +187,7 @@ class _MeasureScreenState extends State<MeasureScreen> {
                             steps: [
                               '앉아서 가만히 계세요',
                               '숨을 편하게 쉬세요',
-                              '가슴 띠는 그대로 두세요',
+                              '심박 센서는 그대로 두세요',
                             ],
                           ),
                         ],
@@ -200,18 +200,37 @@ class _MeasureScreenState extends State<MeasureScreen> {
                         vertical: 17,
                       ),
                       child: LabelValueRow(
-                        label: Text(
-                          _lost
-                              ? '센서가 떨어졌어요'
-                              : _live
-                              ? '폴라 베리티 센스로 재고 있어요'
-                              : '폴라 베리티 센스를 찾고 있어요',
-                          style: AppText.cardTitle(
-                            size: 19,
-                            color: _lost
-                                ? AppColors.danger
-                                : AppColors.textPrimary,
-                          ),
+                        label: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Container(
+                              margin: const EdgeInsets.only(top: 8),
+                              width: 10,
+                              height: 10,
+                              decoration: BoxDecoration(
+                                color: _lost
+                                    ? AppColors.danger
+                                    : AppColors.point,
+                                shape: BoxShape.circle,
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            Flexible(
+                              child: Text(
+                                _lost
+                                    ? '센서가 떨어졌어요'
+                                    : _live
+                                    ? '폴라 센서로 재고 있어요'
+                                    : '폴라 센서를 찾고 있어요',
+                                style: AppText.cardTitle(
+                                  size: 19,
+                                  color: _lost
+                                      ? AppColors.danger
+                                      : AppColors.textPrimary,
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
                         value: Text(
                           _sensor.saveStatus == HeartSaveStatus.saving

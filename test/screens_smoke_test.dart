@@ -23,6 +23,14 @@ import 'package:alkong_yakong/features/medicines/presentation/screens/my_medicin
 import 'package:alkong_yakong/features/medicines/presentation/screens/pharmacist_chat_screen.dart';
 import 'package:alkong_yakong/features/prescription/presentation/screens/add_medicine_screen.dart';
 import 'package:alkong_yakong/features/prescription/presentation/screens/manual_medicine_screen.dart';
+import 'package:alkong_yakong/features/biosignal/presentation/screens/biosignal_screen.dart';
+import 'package:alkong_yakong/features/biosignal/presentation/screens/hr_alert_screen.dart';
+import 'package:alkong_yakong/features/dashboard/presentation/screens/biosignal_event_screen.dart';
+import 'package:alkong_yakong/features/dashboard/presentation/screens/biosignal_live_screen.dart';
+import 'package:alkong_yakong/features/dashboard/presentation/screens/dashboard_screen.dart';
+import 'package:alkong_yakong/features/dashboard/presentation/screens/patient_link_screen.dart';
+import 'package:alkong_yakong/features/dashboard/presentation/screens/profile_edit_screen.dart';
+import 'package:alkong_yakong/features/prescription/presentation/screens/schedule_days_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -165,6 +173,15 @@ void main() {
       onTake: () {},
       onSnooze: () {},
     ),
+    '심박 이상 알림': () => const HrAlertScreen(bpm: 104, guardianTitle: '딸 지안 님'),
+    '내 정보 고치기': () => const ProfileEditScreen(),
+    '내 정보 고치기 · 보호자': () => const ProfileEditScreen(isGuardian: true),
+    '어르신 연결 요청': () => const PatientLinkScreen(),
+    '약 먹는 날 고르기': () => const ScheduleDaysScreen(),
+    '심박 실시간 (보호자)': () => const BiosignalLiveScreen(),
+    '심박 이벤트 (보호자)': () => const BiosignalEventScreen(),
+    '복약 기록 (옛 화면)': () => const DashboardScreen(),
+    '심박 점검 (옛 화면)': () => const BiosignalScreen(),
     '연결 끊김 회복 (5e)': () => Scaffold(
       body: RecoveryView(
         title: '지금은 심장 박동을\n재지 못하고 있어요',
@@ -182,20 +199,34 @@ void main() {
     ),
   };
 
-  for (final scale in <double>[1.0, 2.0]) {
-    group('글자 배율 ${scale}x', () {
-      screens.forEach((name, build) {
-        testWidgets(name, (tester) async {
-          tester.view.physicalSize = const Size(390, 844);
-          tester.view.devicePixelRatio = 1.0;
-          addTearDown(tester.view.reset);
+  /// 시중 전화기 크기. 작은 쪽은 갤럭시 A·아이폰 SE, 큰 쪽은 프로 맥스 계열이다.
+  /// **가장 작은 화면에서 글자를 키운 조합**이 가장 험하다 — 거기서 버텨야 한다.
+  const sizes = <String, Size>{
+    '작은 폰 320x568': Size(320, 568),
+    '보급형 폰 360x640': Size(360, 640),
+    '보통 폰 390x844': Size(390, 844),
+    '큰 폰 430x932': Size(430, 932),
+  };
 
-          await tester.pumpWidget(wrap(build(), textScale: scale));
-          await tester.pump();
-          await tester.pump(const Duration(seconds: 1));
-          expect(tester.takeException(), isNull);
+  sizes.forEach((sizeName, size) {
+    for (final scale in <double>[1.0, 2.0]) {
+      group('$sizeName · 글자 배율 ${scale}x', () {
+        screens.forEach((name, build) {
+          testWidgets(name, (tester) async {
+            tester.view.physicalSize = size;
+            tester.view.devicePixelRatio = 1.0;
+            addTearDown(tester.view.reset);
+
+            await tester.pumpWidget(wrap(build(), textScale: scale));
+            await tester.pump();
+            await tester.pump(const Duration(seconds: 1));
+            expect(tester.takeException(), isNull);
+            // 글자가 하나도 없으면 사용자 눈에는 빈 화면이다.
+            // 서버를 못 읽는 상황에서도 무슨 일인지는 말해 줘야 한다.
+            expect(find.byType(Text), findsWidgets, reason: '$name 이 비어 있다');
+          });
         });
       });
-    });
-  }
+    }
+  });
 }

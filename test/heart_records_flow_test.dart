@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:alkong_yakong/core/network/api_client.dart';
 import 'package:alkong_yakong/core/theme/app_theme.dart';
 import 'package:alkong_yakong/features/biosignal/data/heart_repository.dart';
+import 'package:alkong_yakong/features/biosignal/domain/heart_data.dart';
 import 'package:alkong_yakong/features/biosignal/domain/heart_time.dart';
 import 'package:alkong_yakong/features/biosignal/presentation/screens/heart_screen.dart';
 import 'package:alkong_yakong/features/biosignal/presentation/screens/monthly_heart_screen.dart';
@@ -44,6 +45,34 @@ Widget wrap(Widget screen) => ProviderScope(
 );
 
 void main() {
+  testWidgets('monthly count is measured days, not a consecutive or normal claim',
+      (tester) async {
+    const data = HeartData(
+      today: HeartPair(),
+      todaySlotLabel: '',
+      beforeAt: '',
+      afterAt: '',
+      week: [],
+      month: [
+        HeartMonthDay(1, HeartPair(after: 81)),
+        HeartMonthDay(3, HeartPair(after: 79)),
+      ],
+      streakDays: 2,
+      bestStreakDays: 2,
+      anomaly: null,
+      sensorConnected: false,
+      sensorBattery: null,
+      sensorLastReadAt: '',
+      notifyGuardian: false,
+    );
+    await tester.pumpWidget(wrap(const MonthlyHeartScreen(data: data)));
+    await tester.pumpAndSettle();
+    expect(find.text('복약 후 심박\n기록이 있어요'), findsOneWidget);
+    expect(find.text('일째'), findsNothing);
+    expect(find.textContaining('가장 길었던 기록'), findsNothing);
+    expect(find.textContaining('정상'), findsNothing);
+  });
+
   testWidgets(
     'monthly without guardian connection shows no shared-view claim or invented name',
     (tester) async {

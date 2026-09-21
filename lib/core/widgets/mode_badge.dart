@@ -17,8 +17,7 @@ class ModeBadge extends ConsumerWidget {
     final easy = ref.watch(appModeProvider).isEasy;
     return Semantics(
       button: true,
-      label: easy ? '쉬운 화면. 누르면 일반 화면으로 바뀝니다'
-                  : '일반 화면. 누르면 쉬운 화면으로 바뀝니다',
+      label: easy ? '쉬운 화면. 누르면 일반 화면으로 바뀝니다' : '일반 화면. 누르면 쉬운 화면으로 바뀝니다',
       child: GestureDetector(
         onTap: () => ref.read(appModeProvider.notifier).toggle(),
         child: Container(
