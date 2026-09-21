@@ -18,7 +18,7 @@ import '../widgets/day_dose_detail.dart';
 /// 칸 안에 복용 횟수를 적지 않는다 —
 /// 숫자가 들어가면 한 달치를 한눈에 읽는 일이 다시 계산이 된다.
 /// 약 일정이 없던 날은 [noRecord]다. 다 드신 날로 채우지 않는다.
-enum DayMark { done, missed, today, future, noRecord }
+enum DayMark { done, missed, today, future, noRecord, scheduled }
 
 /// 달력 한 칸.
 @immutable
@@ -115,7 +115,8 @@ class _MonthCalendarScreenState extends ConsumerState<MonthCalendarScreen> {
     if (_leadingBlanks < 0) _leadingBlanks = 6;
     _missed = widget.missed ?? const [];
     if (widget.days == null) {
-      _loading = true;
+      _overlayUpcomingSchedules();
+      _loading = !_hasSchedules;
       _load();
     }
   }
@@ -141,6 +142,8 @@ class _MonthCalendarScreenState extends ConsumerState<MonthCalendarScreen> {
       'done' => DayMark.done,
       'missed' => DayMark.missed,
       'today' => DayMark.today,
+      'scheduled' => DayMark.scheduled,
+      'noRecord' => DayMark.noRecord,
       _ => DayMark.future,
     };
   }
@@ -168,7 +171,10 @@ class _MonthCalendarScreenState extends ConsumerState<MonthCalendarScreen> {
             '/api/v1/users/$userId/medication-calendar?year=$_year&month=$_month',
           );
       if (!mounted || response is! Map) {
-        if (mounted) setState(() => _loading = false);
+        if (mounted) {
+          _overlayUpcomingSchedules();
+          setState(() => _loading = false);
+        }
         return;
       }
       final daysRaw = response['days'];
@@ -202,10 +208,51 @@ class _MonthCalendarScreenState extends ConsumerState<MonthCalendarScreen> {
             : _missed;
         _loading = false;
       });
+      _overlayUpcomingSchedules();
+      if (mounted) setState(() {});
     } catch (_) {
       if (!mounted) return;
       setState(() => _loading = false);
+      _overlayUpcomingSchedules();
+      if (mounted) setState(() {});
     }
+  }
+
+  /// 아직 오지 않은 약 있는 날을 켠다. 먹었어요로 바꾸지 않는다.
+  /// 서버가 비면 OCR에서 받아 둔 날짜로 칸만 채운다.
+  void _overlayUpcomingSchedules() {
+    final now = DateTime.now();
+    final todayDate = DateTime(now.year, now.month, now.day);
+    final cached = widget.patientUserId == null
+        ? MvpSession.latestScheduleDates
+        : const <String>{};
+    final next = <CalendarDay>[];
+    for (final day in _days) {
+      if (day.day < 1) {
+        next.add(day);
+        continue;
+      }
+      final date = DateTime(_year, _month, day.day);
+      final key =
+          '${_year.toString().padLeft(4, '0')}-'
+          '${_month.toString().padLeft(2, '0')}-'
+          '${day.day.toString().padLeft(2, '0')}';
+      final upcoming =
+          date.isAfter(todayDate) &&
+          (day.mark == DayMark.scheduled ||
+              day.slots.isNotEmpty ||
+              cached.contains(key));
+      if (upcoming &&
+          (day.mark == DayMark.future ||
+              day.mark == DayMark.noRecord ||
+              day.mark == DayMark.scheduled)) {
+        next.add(CalendarDay(day.day, DayMark.scheduled, slots: day.slots));
+        _hasSchedules = true;
+      } else {
+        next.add(day);
+      }
+    }
+    _days = next;
   }
 
   int get _doneCount => _days.where((d) => d.mark == DayMark.done).length;
@@ -436,6 +483,12 @@ class _DayCell extends StatelessWidget {
         ink = AppColors.inactive;
         mark = '-';
         spoken = '기록 없는 날';
+      case DayMark.scheduled:
+        background = AppColors.surface;
+        ink = AppColors.point;
+        border = Border.all(color: AppColors.point, width: 2);
+        mark = '약';
+        spoken = '약 있는 날';
     }
 
     // 누른 칸은 파란 테두리로 표시한다. 색만 바꾸면 어떤 날을 보고 있는지
@@ -507,6 +560,11 @@ class _Legend extends StatelessWidget {
           color: AppColors.point,
           border: Border.all(color: AppColors.pointBorder, width: 2),
           label: '오늘',
+        ),
+        _LegendItem(
+          color: AppColors.surface,
+          border: Border.all(color: AppColors.point, width: 2),
+          label: '약 있는 날',
         ),
       ],
     );

@@ -11,6 +11,7 @@ import '../../../../core/widgets/senior_button.dart';
 import '../../../../core/widgets/senior_card.dart';
 import '../../../../core/widgets/senior_feedback.dart';
 import '../../../../core/widgets/senior_header.dart';
+import '../../../dashboard/application/medication_history_provider.dart';
 import '../../../medication/application/medication_controller.dart';
 import '../../../medicines/application/user_medicines_controller.dart';
 
@@ -194,10 +195,28 @@ class _ScheduleDaysScreenState extends ConsumerState<ScheduleDaysScreen> {
     _headline = count == 0 ? '투약일수를 확인해 주세요' : '오늘부터 $count일, 이 약을 드시는 날이에요';
   }
 
+  void _mergeVisibleOnDaysIntoCache() {
+    final next = Set<String>.from(MvpSession.latestScheduleDates);
+    for (final day in _days) {
+      if (day.day < 1) continue;
+      final key =
+          '${_year.toString().padLeft(4, '0')}-'
+          '${_month.toString().padLeft(2, '0')}-'
+          '${day.day.toString().padLeft(2, '0')}';
+      if (day.on) {
+        next.add(key);
+      } else {
+        next.remove(key);
+      }
+    }
+    MvpSession.latestScheduleDates = next;
+  }
+
   void _goHome() {
     if (widget.days == null) {
       ref.read(medicationProvider.notifier).refreshFromServer();
       ref.read(userMedicinesProvider.notifier).refresh();
+      ref.invalidate(medicationHistoryProvider);
     }
     final onConfirmed = widget.onConfirmed;
     if (onConfirmed != null) {
@@ -240,6 +259,7 @@ class _ScheduleDaysScreenState extends ConsumerState<ScheduleDaysScreen> {
       _saving = false;
       _busyDay = null;
     });
+    _mergeVisibleOnDaysIntoCache();
   }
 
   Future<void> _toggle(ScheduleDayCell cell) async {
@@ -262,6 +282,7 @@ class _ScheduleDaysScreenState extends ConsumerState<ScheduleDaysScreen> {
             ? '투약일수를 확인해 주세요'
             : '오늘부터 $count일, 이 약을 드시는 날이에요';
       });
+      _mergeVisibleOnDaysIntoCache();
       return;
     }
     if (!cell.on && !_hasTimes) {

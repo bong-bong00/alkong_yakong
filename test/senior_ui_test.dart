@@ -589,7 +589,9 @@ void _calendarTests() {
     // 칸이 가질 수 있는 상태는 정해져 있다. 기록이 없는 날은 다 드신 날로
     // 채우지 않고 따로 둔다.
     expect(
-      source.contains('enum DayMark { done, missed, today, future, noRecord }'),
+      source.contains(
+        'enum DayMark { done, missed, today, future, noRecord, scheduled }',
+      ),
       isTrue,
     );
     // 빠뜨린 때는 색으로 끝내지 않고 글로 다시 적는다.
@@ -723,13 +725,11 @@ void _sensorTests() {
 /// 넘기기 전에 되돌려야 할 것들.
 void _shippingTests() {
   test('넘기는 빌드에서는 로그인 화면을 건너뛸 수 없다', () {
-    // 개발 중에는 건너뛴다. 대신 그 스위치가 kDebugMode 안에 갇혀 있어야
-    // 되돌리는 걸 잊어도 배포본으로 새어 나가지 않는다.
     final main = File('lib/main.dart').readAsStringSync();
     expect(
-      main.contains('const bool kSkipLogin = kDebugMode &&'),
+      main.contains('const bool kSkipLogin = false;'),
       isTrue,
-      reason: '로그인 건너뛰기가 디버그 빌드 밖에서도 켜질 수 있다',
+      reason: '로그인 건너뛰기가 켜져 있으면 flutter run만으로 로그인이 빠진다',
     );
   });
 
@@ -1010,7 +1010,7 @@ void _homeTimelineTests() {
     expect(find.text('아스피린'), findsOneWidget);
   });
 
-  testWidgets('아직 오지 않은 약은 따로 늘어놓지 않는다', (tester) async {
+  testWidgets('아직 오지 않은 약은 오늘 다른 약에 이름만 남긴다', (tester) async {
     await tester.pumpWidget(
       home(
         doses: const [
@@ -1027,9 +1027,10 @@ void _homeTimelineTests() {
     );
     await tester.pump();
 
-    // 지금 드실 것은 아침이다. 저녁 약까지 같이 보여 주면 할 일이 둘로 보인다.
     expect(find.text('아침정'), findsOneWidget);
-    expect(find.text('저녁정'), findsNothing);
+    expect(find.text('저녁정'), findsOneWidget);
+    expect(find.text('저녁에 있어요'), findsOneWidget);
+    expect(find.text('먹었어요'), findsOneWidget);
   });
 
   test('접고 펴는 버튼에 화살표 장식을 붙이지 않는다', () {
@@ -1159,6 +1160,7 @@ void _recordTimelineTests() {
     expect(source.contains('class _MonthCard'), isTrue);
     expect(source.contains('class _WeekCard'), isTrue);
     expect(source.contains('MonthCalendarScreen('), isTrue);
+    expect(source.contains('약 있는 날'), isTrue);
   });
 
   testWidgets('달력에서 날짜를 누르면 그날 결과가 아래에 나온다', (tester) async {
@@ -1345,8 +1347,8 @@ void _fakeLoginTests() {
   });
 
   test('디버그에서도 진짜 로그인 화면을 볼 길이 있다', () {
-    // 로그인 화면 자체를 고칠 때 이 길이 없으면 확인할 방법이 없다.
     final main = File('lib/main.dart').readAsStringSync();
-    expect(main.contains("bool.fromEnvironment('REAL_LOGIN')"), isTrue);
+    expect(main.contains('const bool kSkipLogin = false;'), isTrue);
+    expect(main.contains("initialLocation: kSkipLogin ? '/' : '/login'"), isTrue);
   });
 }

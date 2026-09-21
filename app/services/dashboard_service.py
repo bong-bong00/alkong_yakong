@@ -236,7 +236,8 @@ def get_medication_calendar(user_id: str, year: int | None = None, month: int | 
         elif not slots:
             mark = "future"
         elif current > today:
-            mark = "future"
+            # 아직 오지 않은 약 있는 날. 먹었어요/빠뜨렸어요로 치지 않는다.
+            mark = "scheduled"
         else:
             taken = all(str(row["status"] or "").upper() == "TAKEN" for row in slots)
             mark = "done" if taken else "missed"

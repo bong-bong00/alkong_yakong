@@ -23,6 +23,7 @@ from app.services.medicine_display import (
     ingredient_strength_from,
     infer_dosage_form,
     split_take_amount,
+    take_unit_for_form,
 )
 from app.services.medicine_detail_service import ensure_medicine_detail
 from app.services.medicine_merge import upsert_official_medicine
@@ -406,6 +407,20 @@ def _schedule_dates(
     return [start_date + timedelta(days=offset) for offset in range(day_count)]
 
 
+def _schedule_dates_for_item(
+    item,
+    prescribed_date: str | None,
+    expire_date: str | None,
+) -> list[date]:
+    """횟수가 확인된 약은 일수가 없어도 오늘만 칸을 둔다. 7일로 늘리지 않는다."""
+    dates = _schedule_dates(prescribed_date, expire_date, item.duration_days)
+    if dates:
+        return dates
+    if _clock_times_for_item(item):
+        return [today_kst()]
+    return []
+
+
 def _create_medication_schedules(
     cursor,
     *,
@@ -420,10 +435,10 @@ def _create_medication_schedules(
         return []
     created_schedules = []
 
-    for scheduled_date in _schedule_dates(
+    for scheduled_date in _schedule_dates_for_item(
+        item,
         prescribed_date,
         expire_date,
-        item.duration_days,
     ):
         for scheduled_time in confirmed_times:
             time_slot = _time_slot_for_clock(scheduled_time)
@@ -525,6 +540,7 @@ _TAKE_UNIT_LABELS = {
     "ML": "mL",
     "밀리리터": "mL",
     "방울": "방울",
+    "회": "회",
 }
 
 
@@ -535,14 +551,12 @@ def _format_take_number(value: str) -> str:
     return f"{number:.3f}".rstrip("0").rstrip(".")
 
 
-def _unit_from_dosage_form(dosage_form: str | None) -> str | None:
-    """제형만으로 단위를 확정할 수 있는 고형제에 한해 단위를 보완한다."""
-    form = str(dosage_form or "").strip()
-    if "캡슐" in form:
-        return "캡슐"
-    if "정" in form:
-        return "정"
-    return None
+def _unit_from_dosage_form(
+    dosage_form: str | None,
+    product_name: str | None = None,
+) -> str | None:
+    """제형·이름에서 홈에 쓸 단위만 고른다. 액제는 알을 붙이지 않는다."""
+    return take_unit_for_form(dosage_form, product_name)
 
 
 def _preview_take_fields(
@@ -586,7 +600,9 @@ def _preview_take_fields(
     }.get(raw_unit.upper())
     inferred = False
     if not unit:
-        unit = _unit_from_dosage_form(dosage_form)
+        unit = _unit_from_dosage_form(dosage_form, item.drug_name)
+        if unit == "알":
+            unit = "정"
         inferred = unit is not None
     return amount, unit, inferred
 
@@ -597,7 +613,7 @@ def _normalized_confirm_take_amount(item: PrescriptionConfirmItem) -> str | None
         str(item.dose_unit or item.unit or "").strip().upper()
     )
     if not unit_from_field:
-        unit_from_field = _unit_from_dosage_form(item.dosage_form)
+        unit_from_field = _unit_from_dosage_form(item.dosage_form, item.drug_name)
 
     if raw:
         compact = re.sub(r"\s+", "", raw)
@@ -1238,7 +1254,9 @@ def confirm_prescription(request: PrescriptionConfirmRequest) -> dict:
             take_dosage = _validated_confirm_dosage(item, official_name)
             dose_amount, dose_unit = split_take_amount(take_dosage)
             registration_date = today_kst().isoformat()
-            schedule_dates = _schedule_dates(registration_date, None, item.duration_days)
+            schedule_dates = _schedule_dates_for_item(
+                item, registration_date, None
+            )
             if schedule_dates:
                 medicine_start_date = schedule_dates[0].isoformat()
                 medicine_end_date = schedule_dates[-1].isoformat()

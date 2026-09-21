@@ -14,6 +14,7 @@ from app.database import get_connection
 from app.services.heart_reading import latest_heart_reading
 from app.services.medicine_display import (
     card_official_name,
+    format_home_amount,
     ingredient_summary,
     ingredient_strength_from,
     infer_dosage_form,
@@ -22,7 +23,6 @@ from app.services.medicine_display import (
     split_ingredients,
     split_take_amount,
 )
-from app.services.ocr.parser import take_amount_for_display
 from app.services.seed_mvp_medicines import (
     MVP_USER_ID,
     ensure_mvp_codarone_available,
@@ -326,12 +326,15 @@ def _medicine_item(row, *, guidance_cursor=None) -> dict[str, Any]:
         easier = omit_placeholder_spoken(derive_easy_spoken_from_medicine(data))
         if easier:
             spoken = easier
-    dosage = take_amount_for_display(
-        data.get("dosage"),
+    dosage_form = str(data.get("dosage_form") or "").strip() or infer_dosage_form(name)
+    amount_label = format_home_amount(
+        dosage=data.get("dosage"),
         times_per_take=data.get("times_per_take"),
+        dosage_form=dosage_form,
+        product_name=name,
     )
-    dose_amount, dose_unit = split_take_amount(dosage)
-    amount = f"{dose_amount}{dose_unit}" if dose_amount and dose_unit else ""
+    dose_amount, dose_unit = split_take_amount(amount_label)
+    amount = amount_label
     ingredient_name = str(data.get("ingredient") or "").strip()
     ingredient_strength = str(data.get("ingredient_strength") or "").strip()
     if not ingredient_strength:
@@ -339,7 +342,6 @@ def _medicine_item(row, *, guidance_cursor=None) -> dict[str, Any]:
             ingredient_name,
             official_product_name,
         )
-    dosage_form = str(data.get("dosage_form") or "").strip() or infer_dosage_form(name)
     administration_route = str(data.get("administration_route") or "").strip()
     if not administration_route:
         administration_route = infer_use_route(

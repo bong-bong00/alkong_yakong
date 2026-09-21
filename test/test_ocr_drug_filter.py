@@ -73,6 +73,22 @@ def test_unknown_take_amount_is_not_replaced_with_one_pill():
     assert take_amount_for_display(None, times_per_take=2) == "2알"
 
 
+def test_liquid_home_amount_is_once_not_a_pill():
+    from app.services.medicine_display import format_home_amount
+
+    assert (
+        format_home_amount(dosage="1.00", product_name="프레벨액0.25%") == "1회"
+    )
+    assert format_home_amount(dosage="1", dosage_form="액제") == "1회"
+    assert format_home_amount(dosage=None, product_name="프레벨액") == ""
+    assert (
+        format_home_amount(
+            dosage=None, times_per_take=2, product_name="아디팜정"
+        )
+        == "2알"
+    )
+
+
 def test_product_strength_is_never_a_take_amount():
     from app.services.ocr.parser import is_strength_dosage, persistable_take_dosage
 

@@ -52,8 +52,11 @@ Future<Map<DateTime, DayAdherence>> fetchMedicationHistory(
 
   final today = dateOnly(DateTime.now());
   final monday = today.subtract(Duration(days: today.weekday - 1));
+  final sunday = monday.add(const Duration(days: 6));
   final monthStart = DateTime(today.year, today.month);
   final start = monday.isBefore(monthStart) ? monday : monthStart;
+  // 이번 주 남은 약 있는 날을 기록 칸에 그리려면 오늘 이후도 받는다.
+  final end = sunday.isAfter(today) ? sunday : today;
 
   String day(DateTime d) =>
       '${d.year}-${d.month.toString().padLeft(2, '0')}-'
@@ -63,7 +66,7 @@ Future<Map<DateTime, DayAdherence>> fetchMedicationHistory(
       await (apiClient ?? ApiClient(baseUrl: ApiConfig.localFeatureBaseUrl))
           .get(
             '/api/v1/users/${Uri.encodeComponent(id)}/medication-history'
-            '?start=${day(start)}&end=${day(today)}',
+            '?start=${day(start)}&end=${day(end)}',
           );
   final rows = response is Map ? response['days'] : null;
   if (rows is! List) return const {};
@@ -81,6 +84,29 @@ Future<Map<DateTime, DayAdherence>> fetchMedicationHistory(
       missedSlots: missed is List
           ? [for (final slot in missed) slot.toString()]
           : const [],
+    );
+  }
+  return result;
+}
+
+/// OCR 직후 달력 API가 비어도, 방금 확인한 약 있는 날로 칸을 켠다.
+/// 이미 서버에 있는 날은 숫자를 덮지 않는다. 먹었어요로 바꾸지 않는다.
+Map<DateTime, DayAdherence> mergeCachedScheduleDates(
+  Map<DateTime, DayAdherence> history,
+) {
+  final cached = MvpSession.latestScheduleDates;
+  if (cached.isEmpty) return history;
+
+  final result = Map<DateTime, DayAdherence>.from(history);
+  final today = dateOnly(DateTime.now());
+  for (final raw in cached) {
+    final parsed = DateTime.tryParse(raw);
+    if (parsed == null) continue;
+    final date = dateOnly(parsed);
+    if (date.isBefore(today)) continue;
+    result.putIfAbsent(
+      date,
+      () => DayAdherence(date: date, taken: 0, total: 1),
     );
   }
   return result;

@@ -11,6 +11,7 @@ import '../../../../core/widgets/senior_button.dart';
 import '../../../../core/widgets/senior_card.dart';
 import '../../../../core/widgets/senior_feedback.dart';
 import '../../../../core/widgets/senior_header.dart';
+import '../../../dashboard/application/medication_history_provider.dart';
 import '../../../medication/application/medication_controller.dart';
 import '../../../medicines/application/user_medicines_controller.dart';
 
@@ -158,6 +159,7 @@ class _ManualMedicineScreenState extends ConsumerState<ManualMedicineScreen> {
     } catch (_) {
       refreshFailed = true;
     }
+    ref.invalidate(medicationHistoryProvider);
     if (ref.read(userMedicinesProvider).hasError) {
       refreshFailed = true;
     }

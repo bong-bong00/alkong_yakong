@@ -448,9 +448,9 @@ class _NextDoseCard extends StatelessWidget {
             fontSize: 20,
             onPressed: onSnooze,
           ),
-          if (others.any((d) => d.taken)) ...[
+          if (others.isNotEmpty) ...[
             const SizedBox(height: 12),
-            _OtherDosesBlock(doses: others.where((d) => d.taken).toList()),
+            _OtherDosesBlock(doses: others),
           ],
         ],
       ),
@@ -508,7 +508,7 @@ class _MedicineRow extends StatelessWidget {
   }
 }
 
-/// 오늘 이미 드신 다른 약.
+/// 지금 시간대가 아닌 오늘 약. 먹었어요 단추는 두지 않는다.
 class _OtherDosesBlock extends StatelessWidget {
   final List<DoseEntry> doses;
   const _OtherDosesBlock({required this.doses});
@@ -554,17 +554,19 @@ class _OtherDosesBlock extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(width: 8),
-                    // 글자를 키우면 "아침 ✓"가 줄을 넘는다. 두 줄로 접지 않고
-                    // 필요한 만큼만 줄여 한 줄로 둔다.
                     Flexible(
                       child: FittedBox(
                         fit: BoxFit.scaleDown,
                         alignment: Alignment.centerRight,
                         child: Text(
-                          '${dose.slot.label} ✓',
+                          dose.taken
+                              ? '${dose.slot.label} ✓'
+                              : '${dose.slot.label}에 있어요',
                           style: AppText.cardTitle(
                             size: 16.5,
-                            color: AppColors.point,
+                            color: dose.taken
+                                ? AppColors.point
+                                : AppColors.textSecondary,
                           ),
                         ),
                       ),
