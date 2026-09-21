@@ -420,7 +420,32 @@ def _dur_context_unavailable_reply(
     status: str,
     reason: str | None = None,
 ) -> str:
-    if intents & {"combination", "interaction"}:
+    if "combination" in intents:
+        if reason == "official_medicine_unavailable":
+            return (
+                "선택한 약의 성분을 공식 자료에서 확인하지 못했어요. "
+                "함께 사용할 때 주의할 점과 겹치는 약을 모두 확인하지 못했으니 다시 확인이 필요해요."
+            )
+        if reason == "dur_data_unavailable":
+            return (
+                "지금은 함께 사용할 때 주의할 공식 정보와 겹치는 약 정보를 모두 확인하지 못했어요. "
+                "잠시 후 다시 확인해 주세요."
+            )
+        if status == "missing":
+            return (
+                "함께 사용할 때 주의할 점과 겹치는 약 정보를 확인한 결과를 찾지 못했어요. "
+                "현재 복용약으로 다시 확인이 필요해요."
+            )
+        if status == "stale":
+            return (
+                "복용 중인 약이 바뀌어 이전 결과를 그대로 사용하기 어려워요. "
+                "함께 사용할 때 주의할 점과 겹치는 약을 다시 확인해야 해요."
+            )
+        return (
+            "현재 복용 중인 약과 선택한 약의 함께 사용 주의 및 겹치는 약 정보를 "
+            "모두 확인하지 못했어요. 현재 복용약으로 다시 확인이 필요해요."
+        )
+    if "interaction" in intents:
         if status == "missing":
             return (
                 "현재 복용 중인 약에 함께 사용하면 안 되는 조합이 있는지 확인한 결과를 찾지 못했어요. "
@@ -479,7 +504,13 @@ def _dur_context_unavailable_reply(
 
 
 def _dur_no_match_reply(intents: set[str]) -> str:
-    if intents & {"combination", "interaction"}:
+    if "combination" in intents:
+        return (
+            "현재 저장된 약과 공식 자료를 확인한 범위에서는 함께 사용할 때 주의할 정보나 "
+            "성분·역할이 겹치는 약 정보를 찾지 못했어요. "
+            "이것만으로 안전하다고 단정할 수는 없어요."
+        )
+    if "interaction" in intents:
         risk_type = "함께 사용하면 안 되는 조합"
     elif "age" in intents:
         risk_type = "나이에 따른 약 사용 제한"
@@ -738,10 +769,19 @@ def generate_chat_response(
             else:
                 dur_result = load_latest_dur_context(user_id, intents)
 
-            if safety_question and dur_result["status"] in {"stale", "missing"}:
+            if safety_question and (
+                dur_result.get("status") in {"stale", "missing"}
+                or (
+                    "combination" in intents
+                    and (
+                        dur_result.get("status") != "current"
+                        or dur_result.get("has_risk", False) is None
+                    )
+                )
+            ):
                 return _dur_context_unavailable_reply(
                     intents,
-                    dur_result["status"],
+                    dur_result.get("status") or "missing",
                     dur_result.get("reason"),
                 )
             if (

@@ -21,7 +21,8 @@ class DrugExplainScreen extends StatefulWidget {
   State<DrugExplainScreen> createState() => _DrugExplainScreenState();
 }
 
-class _DrugExplainScreenState extends State<DrugExplainScreen> {
+class _DrugExplainScreenState extends State<DrugExplainScreen>
+    with WidgetsBindingObserver {
   late final ApiClient _apiClient;
   final TextEditingController _chatController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
@@ -52,51 +53,49 @@ class _DrugExplainScreenState extends State<DrugExplainScreen> {
 
   static const List<Map<String, String>> _keywordPrompts = [
     {
-      'label': '#약효·효능',
-      'prompt': '{medicine}의 약효와 효능을 공식 의약품 정보 기준으로 알려주세요.',
+      'label': '어디에 쓰는 약인가요?',
+      'prompt': '이 약은 어디에 쓰는 약인가요?',
       'intent': 'efficacy',
     },
     {
-      'label': '#복용방법',
-      'prompt': '{medicine}의 복용방법을 공식 의약품 정보 기준으로 알려주세요.',
+      'label': '어떻게 먹나요?',
+      'prompt': '이 약은 보통 어떻게 먹나요? 제가 등록한 복용 방법과 제품의 일반적인 사용법을 구분해서 알려주세요.',
+      'display': '이 약은 보통 어떻게 먹나요?',
       'intent': 'dosage',
     },
     {
-      'label': '#주의사항',
-      'prompt': '{medicine} 복용 시 주의사항을 알려주세요.',
+      'label': '무엇을 조심해야 하나요?',
+      'prompt': '이 약을 먹을 때 무엇을 조심해야 하나요?',
       'intent': 'precautions',
     },
     {
-      'label': '#부작용',
-      'prompt': '{medicine}의 공식 부작용을 알려주세요.',
+      'label': '먹고 불편하면 어떻게 하나요?',
+      'prompt': '이 약을 먹고 불편한 증상이 생기면 어떻게 해야 하나요?',
       'intent': 'side_effects',
     },
     {
-      'label': '#같이 먹는 약',
-      'prompt': '{medicine}과 현재 먹는 약들을 같이 복용해도 되는지 기존 DUR 병용금기 분석 결과를 설명해주세요.',
+      'label': '다른 약과 같이 먹기',
+      'prompt':
+          '이 약을 제가 먹고 있는 약들과 같이 먹어도 되는지 확인해 주세요. 같은 성분이나 비슷한 역할의 약이 겹치는지도 알려주세요.',
+      'display': '다른 약과 함께 쓸 때 조심하거나 겹치는 약이 있나요?',
       'intent': 'combination',
     },
     {
-      'label': '#나이별 주의',
-      'prompt': '{medicine}의 나이별 주의사항을 기존 DUR 연령금기 분석 결과로 설명해주세요.',
+      'label': '나이에 따라 조심할 점',
+      'prompt': '제 나이에 이 약을 사용할 때 조심할 점이 있나요?',
       'intent': 'age',
     },
     {
-      'label': '#임신 중 주의',
-      'prompt': '{medicine}의 임신 중 복용 주의사항을 기존 DUR 임부금기 분석 결과로 설명해주세요.',
+      'label': '임신 중에 조심할 점',
+      'prompt': '임신 중에 이 약을 사용할 때 조심할 점이 있나요?',
       'intent': 'pregnancy',
-    },
-    {
-      'label': '#비슷한 약 중복',
-      'prompt':
-          '{medicine}과 현재 먹는 약에 비슷한 효능의 약이 중복되는지 기존 DUR 효능군중복 분석 결과로 설명해주세요.',
-      'intent': 'duplicate',
     },
   ];
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _apiClient = widget.apiClient ?? ApiClient();
     // 초기 안내 메시지 추가
     _messages.add({
@@ -108,10 +107,16 @@ class _DrugExplainScreenState extends State<DrugExplainScreen> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _chatController.dispose();
     _scrollController.dispose();
     _chatFocusNode.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeMetrics() {
+    if (_chatFocusNode.hasFocus) _scrollToBottom();
   }
 
   Future<void> _selectKeyword(Map<String, String> keyword) async {
@@ -129,8 +134,11 @@ class _DrugExplainScreenState extends State<DrugExplainScreen> {
     }
 
     setState(() => _selectedKeyword = label);
-    final completedPrompt = prompt.replaceAll('{medicine}', medicine);
-    await _sendMessage(message: completedPrompt, intent: intent);
+    await _sendMessage(
+      message: prompt,
+      displayMessage: keyword['display'] ?? prompt,
+      intent: intent,
+    );
   }
 
   Future<void> _loadMedicines() async {
@@ -354,14 +362,18 @@ class _DrugExplainScreenState extends State<DrugExplainScreen> {
     });
   }
 
-  Future<void> _sendMessage({String? message, String? intent}) async {
+  Future<void> _sendMessage({
+    String? message,
+    String? displayMessage,
+    String? intent,
+  }) async {
     if (_isLoading) return;
 
     final text = (message ?? _chatController.text).trim();
     if (text.isEmpty) return;
 
     setState(() {
-      _messages.add({'isMe': true, 'text': text});
+      _messages.add({'isMe': true, 'text': displayMessage ?? text});
       _isLoading = true;
       _selectedKeyword = null;
     });
@@ -418,39 +430,53 @@ class _DrugExplainScreenState extends State<DrugExplainScreen> {
 
   Widget _buildKeywordBar() {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        child: Row(
-          children: _keywordPrompts.map((keyword) {
-            final label = keyword['label']!;
-            final selected = label == _selectedKeyword;
-            return Padding(
-              padding: const EdgeInsets.only(right: 8),
-              child: ChoiceChip(
-                label: Text(label),
-                selected: selected,
-                onSelected: _isLoading ? null : (_) => _selectKeyword(keyword),
-                labelStyle: AppText.label(
-                  size: 19,
-                  color: selected ? Colors.white : AppColors.textBody,
-                ),
-                backgroundColor: AppColors.surface,
-                selectedColor: AppColors.point,
-                side: BorderSide(
-                  color: selected ? AppColors.point : AppColors.strongLine,
-                  width: 2,
-                ),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(18),
-                ),
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 10,
-                  vertical: 12,
-                ),
-              ),
-            );
-          }).toList(),
+      padding: const EdgeInsets.fromLTRB(20, 4, 20, 0),
+      child: LayoutBuilder(
+        builder: (context, constraints) => Scrollbar(
+          child: SingleChildScrollView(
+            key: ValueKey(_selectedMedicine),
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: _keywordPrompts.map((keyword) {
+                final label = keyword['label']!;
+                final selected = label == _selectedKeyword;
+                return Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: ConstrainedBox(
+                    constraints: BoxConstraints(
+                      maxWidth: constraints.maxWidth - 8,
+                    ),
+                    child: ChoiceChip(
+                      label: Text(label),
+                      selected: selected,
+                      onSelected: _isLoading
+                          ? null
+                          : (_) => _selectKeyword(keyword),
+                      labelStyle: AppText.label(
+                        size: 19,
+                        color: selected ? Colors.white : AppColors.textBody,
+                      ),
+                      backgroundColor: AppColors.surface,
+                      selectedColor: AppColors.point,
+                      side: BorderSide(
+                        color: selected
+                            ? AppColors.point
+                            : AppColors.strongLine,
+                        width: 2,
+                      ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(18),
+                      ),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 12,
+                      ),
+                    ),
+                  ),
+                );
+              }).toList(),
+            ),
+          ),
         ),
       ),
     );

@@ -325,19 +325,22 @@ class ChatContextTest(unittest.TestCase):
             intent="combination",
             e_drug_result=None,
         )
-        self.assertIn("해당하는 정보를 찾지 못했어요", reply)
+        self.assertIn("함께 사용할 때 주의할 정보나", reply)
         self.assertEqual(
             analyze.call_args.kwargs["selected_medicine"]["ingredient"],
             "공식성분 100mg",
         )
-        self.assertEqual(analyze.call_args.kwargs["risk_types"], {"병용금기"})
+        self.assertEqual(
+            analyze.call_args.kwargs["risk_types"],
+            {"병용금기", "중복성분", "효능군중복"},
+        )
 
     def test_e_drug_error_uses_exact_permission_fallback(self):
         reply, analyze = self._run_permission_only_safety(
             intent="combination",
             e_drug_error=RuntimeError("upstream unavailable"),
         )
-        self.assertIn("해당하는 정보를 찾지 못했어요", reply)
+        self.assertIn("함께 사용할 때 주의할 정보나", reply)
         analyze.assert_called_once()
 
     def test_permission_only_selected_medicine_reaches_duplicate_consultation(self):
@@ -391,6 +394,77 @@ class ChatContextTest(unittest.TestCase):
         self.assertIn("공식 중복 결과", reply)
         self.assertNotIn("확인한 공식 자료에서는 찾지 못했어요", reply)
         self.assertEqual(generate.call_count, 2)
+
+    def test_combination_consults_all_three_types_in_one_analysis(self):
+        selected = {"medicine_code": "202400001", "product_name": "공식허가약정"}
+        verified = {**selected, "ingredient": "공식성분 100mg"}
+        matches = [
+            {"type": "병용금기", "reason": "공식 함께 사용 주의"},
+            {"type": "중복성분", "reason": "공식 성분 중복"},
+            {"type": "효능군중복", "reason": "공식 효과 중복"},
+        ]
+        fake_client = MagicMock()
+        fake_client.__enter__.return_value = fake_client
+        fake_client.__exit__.return_value = False
+        with (
+            patch.object(gemini_service, "GEMINI_API_KEY", "configured"),
+            patch("google.genai.Client", return_value=fake_client),
+            patch("app.services.external_api_service.fetch_e_drug_info", return_value=None),
+            patch.object(gemini_service, "_with_official_permission_ingredient", return_value=verified),
+            patch(
+                "app.services.dur_service.analyze_dur_consultation",
+                return_value={"status": "current", "items": matches, "reason": None},
+            ) as analyze,
+            patch("app.services.chat_context_service.enrich_dur_matches", side_effect=lambda items: items),
+            patch.object(
+                gemini_service,
+                "_generate_content_with_retry",
+                side_effect=[
+                    SimpleNamespace(parsed={"drug_names": []}),
+                    SimpleNamespace(text="공식 확인 결과를 쉬운 말로 설명한 답변입니다."),
+                ],
+            ) as generate,
+        ):
+            reply = gemini_service.generate_chat_response(
+                "다른 약과 같이 먹기", user_id="U1", selected_medicine=selected,
+                intent="combination",
+            )
+        self.assertIn("공식 확인 결과", reply)
+        analyze.assert_called_once()
+        self.assertEqual(
+            analyze.call_args.kwargs["risk_types"],
+            {"병용금기", "중복성분", "효능군중복"},
+        )
+        prompt = generate.call_args_list[1].kwargs["contents"]
+        for reason in ("공식 함께 사용 주의", "공식 성분 중복", "공식 효과 중복"):
+            self.assertIn(reason, prompt)
+
+    def test_combination_incomplete_or_unknown_risk_is_not_zero_match(self):
+        selected = {"medicine_code": "202400001", "product_name": "공식허가약정"}
+        verified = {**selected, "ingredient": "공식성분 100mg"}
+        for result in (
+            {"status": "incomplete", "items": [], "reason": "partial"},
+            {"status": "malformed", "items": [], "reason": "invalid_response"},
+            {"status": "current", "items": [], "has_risk": None},
+        ):
+            with self.subTest(result=result):
+                with (
+                    patch.object(gemini_service, "GEMINI_API_KEY", "configured"),
+                    patch("google.genai.Client"),
+                    patch("app.services.external_api_service.fetch_e_drug_info", return_value=None),
+                    patch.object(gemini_service, "_with_official_permission_ingredient", return_value=verified),
+                    patch.object(
+                        gemini_service, "_generate_content_with_retry",
+                        return_value=SimpleNamespace(parsed={"drug_names": []}),
+                    ),
+                    patch("app.services.dur_service.analyze_dur_consultation", return_value=result),
+                ):
+                    reply = gemini_service.generate_chat_response(
+                        "다른 약과 같이 먹기", user_id="U1",
+                        selected_medicine=selected, intent="combination",
+                    )
+                self.assertIn("모두 확인하지 못했어요", reply)
+                self.assertNotIn("정보를 찾지 못했어요. 이것만으로", reply)
 
     def test_duplicate_dur_failure_is_not_reported_as_zero_match(self):
         selected = {"medicine_code": "202400001", "product_name": "공식허가약정"}
@@ -470,7 +544,7 @@ class ChatContextTest(unittest.TestCase):
                 selected_medicine=selected,
                 intent="combination",
             )
-        self.assertIn("함께 사용하면 안 되는 조합이 있는지 확인한 결과를 찾지 못했어요", reply)
+        self.assertIn("모두 확인하지 못했으니 다시 확인이 필요해요", reply)
         analyze.assert_not_called()
 
     def test_permission_only_efficacy_uses_exact_official_document(self):
@@ -664,12 +738,15 @@ class ChatContextTest(unittest.TestCase):
                 intent="combination",
             )
 
-        self.assertIn("해당하는 정보를 찾지 못했어요", reply)
+        self.assertIn("함께 사용할 때 주의할 정보나", reply)
         self.assertEqual(
             analyze.call_args.kwargs["selected_medicine"]["ingredient"],
             "알마게이트 500mg",
         )
-        self.assertEqual(analyze.call_args.kwargs["risk_types"], {"병용금기"})
+        self.assertEqual(
+            analyze.call_args.kwargs["risk_types"],
+            {"병용금기", "중복성분", "효능군중복"},
+        )
 
     def test_question_intents_and_minimal_official_fields(self):
         self.assertIn("combination", classify_question("A약과 B약 같이 먹어도 돼?"))
@@ -682,7 +759,7 @@ class ChatContextTest(unittest.TestCase):
 
     def test_explicit_quick_intents_override_natural_language_classification(self):
         cases = {
-            "combination": {"병용금기"},
+            "combination": {"병용금기", "중복성분", "효능군중복"},
             "age": {"연령금기"},
             "pregnancy": {"임부금기"},
             "duplicate": {"중복성분", "효능군중복"},
