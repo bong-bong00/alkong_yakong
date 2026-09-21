@@ -37,7 +37,7 @@ class MyMedicinesScreen extends ConsumerWidget {
                 onAction: () =>
                     ref.read(userMedicinesProvider.notifier).refresh(),
                 stillWorksTitle: '지금도 할 수 있는 것',
-                stillWorksBody: '오늘 홈에서 복약 기록과 처방전 사진 찍기는 그대로 쓸 수 있어요.',
+                stillWorksBody: '오늘 홈에서 복약 기록과 처방전 등록은 그대로 쓸 수 있어요.',
               ),
               data: (items) => _MedicineList(items: items),
             ),
@@ -83,7 +83,7 @@ class _MedicineList extends StatelessWidget {
             ),
             const SizedBox(height: 16),
             SeniorButton(
-              label: '처방전 사진 찍기',
+              label: '처방전 등록하기',
               onPressed: () => context.push('/prescription'),
             ),
           ],

@@ -364,7 +364,11 @@ class _PrescriptionScreenState extends ConsumerState<PrescriptionScreen> {
           onPick: (method) {
             switch (method) {
               case AddMedicineMethod.camera:
-                _pick(ImageSource.camera);
+                // 카메라를 바로 열지 않고, 찍는 법부터 보여 준다.
+                setState(() {
+                  _image = null;
+                  _step = PrescriptionStep.capture;
+                });
               case AddMedicineMethod.gallery:
                 _pick(ImageSource.gallery);
               case AddMedicineMethod.manual:
@@ -404,10 +408,12 @@ class _PrescriptionScreenState extends ConsumerState<PrescriptionScreen> {
       case PrescriptionStep.capture:
         return _CaptureScreen(
           image: _image,
+          onBack: () => setState(() {
+            _image = null;
+            _step = PrescriptionStep.pickMethod;
+          }),
           onUse: _read,
           onCamera: () => _pick(ImageSource.camera),
-          onGallery: () => _pick(ImageSource.gallery),
-          onManual: () => setState(() => _step = PrescriptionStep.manual),
         );
       case PrescriptionStep.reading:
         return _ReadingScreen(image: _image);
@@ -445,15 +451,13 @@ class _CaptureScreen extends StatelessWidget {
   final File? image;
   final VoidCallback onUse;
   final VoidCallback onCamera;
-  final VoidCallback onGallery;
-  final VoidCallback onManual;
+  final VoidCallback onBack;
 
   const _CaptureScreen({
     required this.image,
+    required this.onBack,
     required this.onUse,
     required this.onCamera,
-    required this.onGallery,
-    required this.onManual,
   });
 
   @override
@@ -462,7 +466,7 @@ class _CaptureScreen extends StatelessWidget {
       backgroundColor: AppColors.cameraBg,
       body: Column(
         children: [
-          const SeniorBackHeader(title: '처방전 찍기', onDark: true),
+          SeniorBackHeader(title: '처방전 찍기', onDark: true, onBack: onBack),
           Expanded(
             child: LayoutBuilder(
               builder: (context, constraints) => SingleChildScrollView(
@@ -501,7 +505,7 @@ class _CaptureScreen extends StatelessWidget {
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Text(
-                                    '📸 이렇게 찍어 주세요',
+                                    '이렇게 찍어 주세요',
                                     style: AppText.emphasis(
                                       size: 26,
                                       color: Colors.white,
@@ -510,20 +514,17 @@ class _CaptureScreen extends StatelessWidget {
                                   const SizedBox(height: 18),
                                   _CaptureTip(
                                     number: '1',
-                                    emoji: '☀️',
                                     text: '밝은 곳에 처방전이\n잘 보이게 펼쳐 놓으세요',
                                   ),
                                   const _CaptureTipArrow(),
                                   _CaptureTip(
                                     number: '2',
-                                    emoji: '📄',
                                     text: '종이 네 모서리가\n사진에 다 나오게 하세요',
                                   ),
                                   const _CaptureTipArrow(),
                                   _CaptureTip(
                                     number: '3',
-                                    emoji: '📱',
-                                    text: '두 손으로 잡고\n흔들리지 않게, 흐리지 않게 찍으세요',
+                                    text: '두 손으로 잡고\n흔들리지 않게 찍으세요',
                                   ),
                                 ],
                               ),
@@ -545,21 +546,10 @@ class _CaptureScreen extends StatelessWidget {
                               ],
                               SeniorButton(
                                 label: image == null ? '사진 찍기' : '다시 찍기',
+                                icon: TablerIcons.camera,
                                 minHeight: 74,
                                 fontSize: 25,
                                 onPressed: onCamera,
-                              ),
-                              const SizedBox(height: 14),
-                              SeniorButton(
-                                label: '앨범에서 고르기',
-                                kind: SeniorButtonKind.dark,
-                                minHeight: 62,
-                                fontSize: 20,
-                                onPressed: onGallery,
-                              ),
-                              SeniorTextButton(
-                                label: '직접 손으로 입력하기',
-                                onPressed: onManual,
                               ),
                             ],
                           ),
@@ -580,19 +570,14 @@ class _CaptureScreen extends StatelessWidget {
 
 class _CaptureTip extends StatelessWidget {
   final String number;
-  final String emoji;
   final String text;
 
-  const _CaptureTip({
-    required this.number,
-    required this.emoji,
-    required this.text,
-  });
+  const _CaptureTip({required this.number, required this.text});
 
   @override
   Widget build(BuildContext context) {
     return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.center,
       children: [
         Container(
           width: 40,
@@ -600,7 +585,7 @@ class _CaptureTip extends StatelessWidget {
           alignment: Alignment.center,
           decoration: BoxDecoration(
             color: AppColors.point,
-            borderRadius: BorderRadius.circular(12),
+            shape: BoxShape.circle,
           ),
           child: Text(
             number,
@@ -610,7 +595,7 @@ class _CaptureTip extends StatelessWidget {
         const SizedBox(width: 14),
         Expanded(
           child: Text(
-            '$emoji  $text',
+            text,
             style: AppText.body(
               size: 22,
               color: Colors.white,
@@ -628,11 +613,22 @@ class _CaptureTipArrow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8),
-      child: Text(
-        '↓',
-        style: AppText.emphasis(size: 28, color: AppColors.onDarkMuted),
+    // 긴 화살표를 번호 동그라미(40px) 바로 아래, 같은 세로줄에 둔다.
+    return const Padding(
+      padding: EdgeInsets.symmetric(vertical: 4),
+      // 화살표 그림(48)이 동그라미 칸(40)보다 넓어, 넘치는 만큼 양쪽으로
+      // 고르게 나눠 동그라미 중심과 같은 세로줄에 맞춘다.
+      child: SizedBox(
+        width: 40,
+        height: 48,
+        child: OverflowBox(
+          maxWidth: 48,
+          child: Icon(
+            TablerIcons.arrow_narrow_down,
+            size: 48,
+            color: AppColors.onDarkMuted,
+          ),
+        ),
       ),
     );
   }
