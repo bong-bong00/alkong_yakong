@@ -121,7 +121,7 @@ class _MeasureScreenState extends State<MeasureScreen> {
           showSeniorSnackbar(context, '${widget.guardianTitle}에게 연락이 갔어요'),
       footnote: _sensor.lastReadAt == null
           ? null
-          : '마지막으로 잰 시각 · 오늘 '
+          : '마지막으로 측정한 시각 · 오늘 '
                 '${DoseSlot.absoluteTime(_sensor.lastReadAt!)}',
     );
   }
@@ -147,7 +147,7 @@ class _MeasureScreenState extends State<MeasureScreen> {
       backgroundColor: AppColors.bg,
       body: Column(
         children: [
-          SeniorBackHeader(title: _done ? '측정이 끝났어요' : '심박수 재는 중'),
+          SeniorBackHeader(title: _done ? '측정이 끝났어요' : '심박수 측정 중'),
           Expanded(
             child: SingleChildScrollView(
               padding: const EdgeInsets.fromLTRB(20, 16, 20, 28),
@@ -172,7 +172,7 @@ class _MeasureScreenState extends State<MeasureScreen> {
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
                           Text(
-                            '재는 동안 이렇게 해주세요',
+                            '측정하는 동안 이렇게 해주세요',
                             style: AppText.cardTitle(size: 20),
                           ),
                           const SizedBox(height: 14),
@@ -214,7 +214,7 @@ class _MeasureScreenState extends State<MeasureScreen> {
                                 _lost
                                     ? '센서가 떨어졌어요'
                                     : _live
-                                    ? '폴라 센서로 재고 있어요'
+                                    ? '폴라 센서로 측정하고 있어요'
                                     : '폴라 센서를 찾고 있어요',
                                 style: AppText.cardTitle(
                                   size: 19,
@@ -245,7 +245,7 @@ class _MeasureScreenState extends State<MeasureScreen> {
                     const _NoValueCard(),
                     const SizedBox(height: 16),
                     SeniorButton(
-                      label: '다시 재기',
+                      label: '다시 측정',
                       icon: TablerIcons.refresh,
                       minHeight: 70,
                       fontSize: 23,
@@ -340,7 +340,7 @@ class _MeasureCard extends StatelessWidget {
           ),
           const SizedBox(height: 14),
           Text(
-            done ? '다 됐어요' : '재고 있어요 · 움직이지 마세요',
+            done ? '다 됐어요' : '측정 중이에요 · 움직이지 마세요',
             textAlign: TextAlign.center,
             style: AppText.cardTitle(size: 20, color: AppColors.point),
           ),
@@ -368,7 +368,7 @@ class _NoValueCard extends StatelessWidget {
             steps: [
               '센서가 몸에 잘 붙어 있는지 만져보세요',
               '센서 가운데 단추를 한 번 누르세요',
-              '전화기를 센서 가까이 두고 다시 재 주세요',
+              '전화기를 센서 가까이 두고 다시 측정해 주세요',
             ],
           ),
         ],
@@ -469,7 +469,7 @@ class _ResultCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text('1분 동안 잰 결과', style: AppText.cardTitle()),
+          Text('1분 동안 측정한 결과', style: AppText.cardTitle()),
           const SizedBox(height: 14),
           Row(
             children: [

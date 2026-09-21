@@ -422,9 +422,9 @@ class _DetailBody extends StatelessWidget {
                             ? medicine.officialUsageNotice
                             : '제품 설명서의 일반적인 사용법이에요. 실제로는 처방전과 의료진의 안내대로 복용하세요.',
                         style: AppText.caption(
-                        size: 18,
-                        color: AppColors.textSecondary,
-                      ),
+                          size: 18,
+                          color: AppColors.textSecondary,
+                        ),
                       ),
                     ),
                     const SizedBox(height: 10),

@@ -97,7 +97,7 @@ class _AddMedicineScreenState extends State<AddMedicineScreen> {
                     elevated: true,
                     onPressed: () => widget.onPick(AddMedicineMethod.camera),
                   ),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 24),
                   // 나머지 길은 한 카드에 줄로 모은다. 넷이 같은 크기로
                   // 펼쳐져 있으면 무엇을 먼저 눌러야 할지 고르게 된다.
                   SeniorCard(

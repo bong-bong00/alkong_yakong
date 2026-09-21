@@ -44,7 +44,7 @@ void main() {
     }
     await tester.tap(option);
     await tester.pumpAndSettle();
-    await tester.tap(find.text('이 약으로 정하기'));
+    await tester.tap(find.text('확인'));
     await tester.pumpAndSettle();
   }
 
@@ -190,7 +190,6 @@ void main() {
 
     // "약 전체"로 돌렸다가 다시 고르면 공식 품목 코드도 함께 돌아온다.
     await pickSubject(tester, '약 전체');
-    expect(find.text('#복용방법'), findsNothing);
     await pickSubject(tester, '게보린정');
     await tester.tap(find.text('#복용방법'));
     await tester.pumpAndSettle();
@@ -208,10 +207,7 @@ void main() {
         return jsonResponse({
           'latest_prescription': null,
           'today_medications': [
-            {
-              'medicine_code': '197900145',
-              'product_name': '유한메토트렉세이트정',
-            },
+            {'medicine_code': '197900145', 'product_name': '유한메토트렉세이트정'},
           ],
         });
       }
@@ -262,22 +258,11 @@ void main() {
       '#약효·효능': '게보린정의 약효와 효능을 공식 의약품 정보 기준으로 알려주세요.',
       '#복용방법': '게보린정의 복용방법을 공식 의약품 정보 기준으로 알려주세요.',
       '#주의사항': '게보린정 복용 시 주의사항을 알려주세요.',
-      '#부작용': '게보린정의 공식 부작용을 알려주세요.',
-      '#같이 먹는 약': '게보린정과 현재 먹는 약들을 같이 복용해도 되는지 기존 DUR 병용금기 분석 결과를 설명해주세요.',
-      '#나이별 주의': '게보린정의 나이별 주의사항을 기존 DUR 연령금기 분석 결과로 설명해주세요.',
-      '#임신 중 주의': '게보린정의 임신 중 복용 주의사항을 기존 DUR 임부금기 분석 결과로 설명해주세요.',
-      '#비슷한 약 중복':
-          '게보린정과 현재 먹는 약에 비슷한 효능의 약이 중복되는지 기존 DUR 효능군중복 분석 결과로 설명해주세요.',
     };
     const expectedIntents = <String, String>{
       '#약효·효능': 'efficacy',
       '#복용방법': 'dosage',
       '#주의사항': 'precautions',
-      '#부작용': 'side_effects',
-      '#같이 먹는 약': 'combination',
-      '#나이별 주의': 'age',
-      '#임신 중 주의': 'pregnancy',
-      '#비슷한 약 중복': 'duplicate',
     };
 
     for (final entry in expected.entries) {
@@ -411,7 +396,7 @@ void main() {
     });
   });
 
-  testWidgets('약을 안 골랐으면 빠른 질문을 아예 내놓지 않는다', (tester) async {
+  testWidgets('약을 안 골랐어도 빠른 질문은 보이고 "제가 먹는 약"으로 묻는다', (tester) async {
     var chatCalls = 0;
     final client = MockClient((request) async {
       if (request.url.path.endsWith('/dashboard')) {
@@ -428,10 +413,14 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('약 전체'), findsOneWidget);
-    expect(find.text('#약효·효능'), findsNothing);
+    expect(find.text('#약효·효능'), findsOneWidget);
     expect(chatCalls, 0);
-    // 대신 바로 누를 수 있는 예시 질문이 있다.
+    // 바로 누를 수 있는 예시 질문도 함께 있다.
     expect(find.text('이 약은 무슨 약이에요?'), findsOneWidget);
+
+    await tester.tap(find.text('#약효·효능'));
+    await tester.pumpAndSettle();
+    expect(chatCalls, 1);
   });
 
   testWidgets('창에서 고른 약 하나만 물어볼 약이 된다', (tester) async {
@@ -457,9 +446,9 @@ void main() {
     await tester.pumpWidget(appWith(client));
     await tester.pumpAndSettle();
 
-    // 약이 둘이면 무엇을 물을지 먼저 고르게 한다.
+    // 약이 둘이면 무엇을 물을지 고를 수 있다. 빠른 질문은 그대로 있다.
     expect(find.text('약 전체'), findsOneWidget);
-    expect(find.text('#약효·효능'), findsNothing);
+    expect(find.text('#약효·효능'), findsOneWidget);
 
     await pickSubject(tester, '게보린정');
     expect(find.text('게보린정'), findsOneWidget);
@@ -469,7 +458,6 @@ void main() {
     expect(find.text('게보린정'), findsNothing);
 
     await pickSubject(tester, '약 전체');
-    expect(find.text('#약효·효능'), findsNothing);
     expect(chatCalls, 0);
 
     await pickSubject(tester, '게보린정');
@@ -504,13 +492,13 @@ void main() {
 
     await tester.pumpWidget(appWith(client));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('#부작용'));
+    await tester.tap(find.text('#주의사항'));
     await tester.pump();
     await tester.tap(find.text('#복용방법'), warnIfMissed: false);
     await tester.pump();
-    expect(sentMessages, ['게보린정의 공식 부작용을 알려주세요.']);
+    expect(sentMessages, ['게보린정 복용 시 주의사항을 알려주세요.']);
 
-    firstReply.complete(jsonResponse({'reply': '부작용 답변'}));
+    firstReply.complete(jsonResponse({'reply': '주의사항 답변'}));
     await tester.pumpAndSettle();
     final chatField = find.byType(TextField);
     await tester.enterText(chatField, '이 약은 식후에 먹어도 되나요?');

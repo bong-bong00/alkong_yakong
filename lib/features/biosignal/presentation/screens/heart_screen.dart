@@ -188,7 +188,7 @@ class _HeartScreenState extends State<HeartScreen> {
                   if (!_viewingOther) ...[
                     const SizedBox(height: 16),
                     SeniorButton(
-                      label: '지금 재기',
+                      label: '지금 측정',
                       minHeight: 66,
                       fontSize: 23,
                       onPressed: () => unawaited(_openMeasure()),
@@ -302,7 +302,7 @@ class _FailedCard extends StatelessWidget {
           const SizedBox(height: 8),
           Text(
             '인터넷이 연결되어 있는지 확인한 뒤 다시 눌러 주세요. '
-            '재 둔 기록은 지워지지 않았어요.',
+            '측정해 둔 기록은 지워지지 않았어요.',
             style: AppText.body(size: 18),
           ),
           const SizedBox(height: 16),
@@ -350,14 +350,14 @@ class _EmptyCard extends StatelessWidget {
           ),
           const SizedBox(height: 14),
           Text(
-            '아직 잰 기록이 없어요',
+            '아직 측정 기록이 없어요',
             textAlign: TextAlign.center,
             style: AppText.cardTitle(size: 21),
           ),
           const SizedBox(height: 6),
           Text(
             viewingOther
-                ? '센서로 재고 나면 여기에 약 먹기 전·후 값이 남아요.'
+                ? '센서로 측정하고 나면 여기에 약 먹기 전·후 값이 남아요.'
                 : '약 드시기 전과 드신 뒤에 한 번씩 재면\n여기에 남아요.',
             textAlign: TextAlign.center,
             style: AppText.body(size: 18, color: AppColors.textSecondary),
@@ -396,7 +396,7 @@ class _TodayCard extends StatelessWidget {
         children: [
           Row(
             children: [
-              Expanded(child: Text('오늘 잰 것', style: AppText.cardTitle())),
+              Expanded(child: Text('오늘 측정', style: AppText.cardTitle())),
               // 오늘 잰 것이 없으면 "저녁 약"이라고 붙일 근거도 없다.
               if (measuredToday && data.todaySlotLabel.isNotEmpty)
                 // Flexible로 두면 남은 폭을 제목과 반씩 나눠 가져
@@ -569,7 +569,7 @@ class _SensorRow extends StatelessWidget {
     final parts = <String>[
       if (sensor.battery != null) '배터리 ${sensor.battery}%',
       if (lastReadAt != null)
-        '${DoseSlot.absoluteTime(lastReadAt)}에 잰 것이 마지막이에요',
+        '${DoseSlot.absoluteTime(lastReadAt)}에 측정한 것이 마지막이에요',
     ];
     return parts.isEmpty ? '연결되어 있어요' : parts.join(' · ');
   }

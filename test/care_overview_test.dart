@@ -68,10 +68,9 @@ void main() {
   });
 
   test('없는 번호로 요청하면 보낸 것으로 치지 않는다', () async {
-    final result = await repositoryReturning(
-      {'detail': '그 번호로 가입한 어르신이 없어요.'},
-      status: 404,
-    ).requestLink(relation: '어머니', phone: '010-9999-9999');
+    final result = await repositoryReturning({
+      'detail': '그 번호로 가입한 어르신이 없어요.',
+    }, status: 404).requestLink(relation: '어머니', phone: '010-9999-9999');
 
     expect(result.isSent, isFalse);
     expect(result.error, '그 번호로 가입한 어르신이 없어요.');
@@ -79,8 +78,7 @@ void main() {
 
   test('목록을 못 읽으면 빈 목록으로 속이지 않고 실패를 올린다', () async {
     expect(
-      repositoryReturning({'detail': '서버 오류'}, status: 500)
-          .fetchCareOverview(),
+      repositoryReturning({'detail': '서버 오류'}, status: 500).fetchCareOverview(),
       throwsA(isA<ApiException>()),
     );
   });

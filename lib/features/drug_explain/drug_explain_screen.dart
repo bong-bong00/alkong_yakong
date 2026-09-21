@@ -10,6 +10,7 @@ import '../../core/widgets/senior_button.dart';
 import '../../core/widgets/senior_card.dart';
 import '../../core/widgets/senior_feedback.dart';
 import '../../core/widgets/senior_header.dart';
+import '../../core/widgets/senior_sheet.dart';
 import '../../core/widgets/senior_wheel.dart';
 
 class DrugExplainScreen extends StatefulWidget {
@@ -50,6 +51,7 @@ class _DrugExplainScreenState extends State<DrugExplainScreen> {
     },
   ];
 
+  /// 빠른 질문은 셋만 둔다. 옆으로 밀어야 보이는 칩은 눌러 보지 않는다.
   static const List<Map<String, String>> _keywordPrompts = [
     {
       'label': '#약효·효능',
@@ -65,32 +67,6 @@ class _DrugExplainScreenState extends State<DrugExplainScreen> {
       'label': '#주의사항',
       'prompt': '{medicine} 복용 시 주의사항을 알려주세요.',
       'intent': 'precautions',
-    },
-    {
-      'label': '#부작용',
-      'prompt': '{medicine}의 공식 부작용을 알려주세요.',
-      'intent': 'side_effects',
-    },
-    {
-      'label': '#같이 먹는 약',
-      'prompt': '{medicine}과 현재 먹는 약들을 같이 복용해도 되는지 기존 DUR 병용금기 분석 결과를 설명해주세요.',
-      'intent': 'combination',
-    },
-    {
-      'label': '#나이별 주의',
-      'prompt': '{medicine}의 나이별 주의사항을 기존 DUR 연령금기 분석 결과로 설명해주세요.',
-      'intent': 'age',
-    },
-    {
-      'label': '#임신 중 주의',
-      'prompt': '{medicine}의 임신 중 복용 주의사항을 기존 DUR 임부금기 분석 결과로 설명해주세요.',
-      'intent': 'pregnancy',
-    },
-    {
-      'label': '#비슷한 약 중복',
-      'prompt':
-          '{medicine}과 현재 먹는 약에 비슷한 효능의 약이 중복되는지 기존 DUR 효능군중복 분석 결과로 설명해주세요.',
-      'intent': 'duplicate',
     },
   ];
 
@@ -122,11 +98,8 @@ class _DrugExplainScreenState extends State<DrugExplainScreen> {
     final intent = keyword['intent'];
     if (label == null || prompt == null || intent == null) return;
 
-    final medicine = _selectedMedicine;
-    if (medicine == null || medicine.isEmpty) {
-      showSeniorSnackbar(context, '먼저 궁금한 약을 선택해주세요.', error: true);
-      return;
-    }
+    final picked = _selectedMedicine?.trim();
+    final medicine = (picked == null || picked.isEmpty) ? '제가 먹는 약' : picked;
 
     setState(() => _selectedKeyword = label);
     final completedPrompt = prompt.replaceAll('{medicine}', medicine);
@@ -283,7 +256,6 @@ class _DrugExplainScreenState extends State<DrugExplainScreen> {
       title: '어떤 약을 물어볼까요?',
       options: options,
       selectedIndex: current < 0 ? 0 : current,
-      confirmLabel: '이 약으로 정하기',
       extraButtons: [
         Builder(
           builder: (dialogContext) => SeniorButton(
@@ -326,7 +298,7 @@ class _DrugExplainScreenState extends State<DrugExplainScreen> {
   }
 
   Future<void> _enterOtherMedicine() async {
-    final medicine = await showDialog<_DrugSearchCandidate>(
+    final medicine = await SeniorSheet.show<_DrugSearchCandidate>(
       context: context,
       builder: (_) => _OtherMedicineDialog(apiClient: _apiClient),
     );
@@ -604,7 +576,7 @@ class _DrugExplainScreenState extends State<DrugExplainScreen> {
             ),
             // 빠른 질문은 약을 고른 뒤에만 내놓는다. 무엇에 대한 질문인지
             // 정해지지 않으면 눌러도 되묻게 된다.
-            if (subject != null && subject.isNotEmpty) _buildKeywordBar(),
+            _buildKeywordBar(),
             Padding(
               padding: const EdgeInsets.fromLTRB(20, 10, 20, 14),
               child: Row(
@@ -701,6 +673,15 @@ class _OtherMedicineDialogState extends State<_OtherMedicineDialog> {
     super.dispose();
   }
 
+  /// 자판의 "완료". 실패했던 검색어도 여기서 다시 물어본다.
+  void _searchNow(String value) {
+    _debounce?.cancel();
+    final query = value.trim();
+    if (query.length < 2) return;
+    if (query == _inFlightQuery || query == _lastCompletedQuery) return;
+    _search(query, ++_requestSequence);
+  }
+
   void _onQueryChanged(String value) {
     _debounce?.cancel();
     final sequence = ++_requestSequence;
@@ -720,14 +701,6 @@ class _OtherMedicineDialogState extends State<_OtherMedicineDialog> {
       const Duration(milliseconds: 550),
       () => _search(query, sequence),
     );
-  }
-
-  void _searchNow(String value) {
-    _debounce?.cancel();
-    final query = value.trim();
-    if (query.length < 2) return;
-    if (query == _inFlightQuery || query == _lastCompletedQuery) return;
-    _search(query, ++_requestSequence);
   }
 
   Future<void> _search(String query, int sequence) async {
@@ -800,43 +773,39 @@ class _OtherMedicineDialogState extends State<_OtherMedicineDialog> {
         .clamp(120.0, 368.0)
         .toDouble();
 
-    return AlertDialog(
-      title: const Text('다른 약 검색하기'),
-      content: ConstrainedBox(
+    return SeniorSheet(
+      title: '다른 약 검색하기',
+      body: ConstrainedBox(
         constraints: BoxConstraints(maxHeight: maxContentHeight),
-        child: SizedBox(
-          width: double.maxFinite,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                key: const Key('otherMedicineSearchField'),
-                controller: _controller,
-                autofocus: true,
-                textInputAction: TextInputAction.search,
-                decoration: const InputDecoration(
-                  hintText: '약 이름을 입력하세요',
-                  border: OutlineInputBorder(),
-                  prefixIcon: Icon(Icons.search_rounded),
-                ),
-                onChanged: _onQueryChanged,
-                onSubmitted: _searchNow,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            SeniorField(
+              key: const Key('otherMedicineSearchField'),
+              controller: _controller,
+              hint: '약 이름을 적어 주세요',
+              textInputAction: TextInputAction.search,
+              onChanged: _onQueryChanged,
+              onSubmitted: _searchNow,
+            ),
+            const SizedBox(height: 12),
+            Flexible(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxHeight: 300),
+                child: _buildSearchContent(),
               ),
-              const SizedBox(height: 12),
-              Flexible(
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxHeight: 300),
-                  child: _buildSearchContent(),
-                ),
-              ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
       actions: [
-        TextButton(
+        SeniorButton(
+          label: '취소',
+          kind: SeniorButtonKind.neutral,
+          minHeight: 62,
+          fontSize: 20,
           onPressed: () => Navigator.of(context).pop(),
-          child: const Text('취소'),
         ),
       ],
     );
@@ -875,20 +844,38 @@ class _OtherMedicineDialogState extends State<_OtherMedicineDialog> {
       separatorBuilder: (_, _) => const Divider(height: 1),
       itemBuilder: (context, index) {
         final candidate = _candidates[index];
-        return ListTile(
+        // 시트 안에서는 ListTile이 제 배경을 못 칠한다. 줄을 직접 그린다.
+        return GestureDetector(
           key: ValueKey(
             'drugCandidate:${candidate.itemSeq ?? candidate.itemName}',
           ),
-          contentPadding: const EdgeInsets.symmetric(horizontal: 4),
-          title: Text(
-            candidate.itemName,
-            style: const TextStyle(fontWeight: FontWeight.w600),
-          ),
-          subtitle: candidate.manufacturer == null
-              ? null
-              : Text(candidate.manufacturer!),
-          trailing: const Icon(Icons.chevron_right_rounded),
+          behavior: HitTestBehavior.opaque,
           onTap: () => _select(candidate),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 14),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        candidate.itemName,
+                        style: AppText.cardTitle(size: 19),
+                      ),
+                      if (candidate.manufacturer != null)
+                        Text(
+                          candidate.manufacturer!,
+                          style: AppText.caption(size: 16),
+                        ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 10),
+                const SeniorChevron(),
+              ],
+            ),
+          ),
         );
       },
     );
