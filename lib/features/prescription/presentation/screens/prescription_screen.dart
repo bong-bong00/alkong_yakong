@@ -956,7 +956,7 @@ class _ConfirmScreenState extends State<_ConfirmScreen> {
     );
 
     // 자판 대신 ─/＋ 로 고친다. 숫자를 지우고 다시 치는 일이 없다.
-    var amount = int.tryParse(amountController.text.trim()) ?? 1;
+    var amount = double.tryParse(amountController.text.trim()) ?? 1;
     var frequency = int.tryParse(frequencyController.text.trim());
     var days = int.tryParse(durationController.text.trim());
     final nameController = TextEditingController(
@@ -1031,12 +1031,12 @@ class _ConfirmScreenState extends State<_ConfirmScreen> {
               const SizedBox(height: 18),
               _Stepper(
                 label: '한 번에 몇 알',
-                value: '$amount${doseUnit ?? '알'}',
-                onMinus: amount > 1
-                    ? () => setSheetState(() => amount -= 1)
+                value: '${_formatDoseAmount(amount)}${doseUnit ?? '알'}',
+                onMinus: amount > 0.5
+                    ? () => setSheetState(() => amount -= 0.5)
                     : null,
                 onPlus: amount < 10
-                    ? () => setSheetState(() => amount += 1)
+                    ? () => setSheetState(() => amount += 0.5)
                     : null,
               ),
               const SizedBox(height: 16),
@@ -1096,9 +1096,9 @@ class _ConfirmScreenState extends State<_ConfirmScreen> {
                           '',
                       'match_status': 'MATCHED',
                     },
-                    'dose_amount': '$amount',
+                    'dose_amount': _formatDoseAmount(amount),
                     'dose_unit': doseUnit,
-                    'dosage': '$amount${doseUnit ?? '정'}',
+                    'dosage': '${_formatDoseAmount(amount)}${doseUnit ?? '정'}',
                     'unit': doseUnit,
                     'times_per_take': null,
                     'frequency_per_day': frequency,
@@ -1128,6 +1128,11 @@ class _ConfirmScreenState extends State<_ConfirmScreen> {
       _ => null,
     };
   }
+
+  static String _formatDoseAmount(double value) =>
+      value == value.roundToDouble()
+      ? value.toInt().toString()
+      : value.toStringAsFixed(1);
 
   /// 적어 넣은 이름으로 공식 의약품 목록을 찾고, 하나를 고르게 한다.
   Future<Map<String, dynamic>?> _lookupOfficialMedicine(String query) async {

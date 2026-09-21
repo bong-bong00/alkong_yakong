@@ -376,6 +376,7 @@ def _medicine_item(row, *, guidance_cursor=None) -> dict[str, Any]:
         "dose_amount": dose_amount,
         "dose_unit": dose_unit,
         "amount": amount,
+        "frequency_per_day": data.get("frequency_per_day"),
         "easy_category": spoken,
         "purpose_label": guidance["purpose_label"],
         "short_explanation": spoken,

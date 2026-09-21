@@ -81,6 +81,9 @@ class Medicine {
   /// 상세 화면 연결용 공식 약 코드.
   final String? medicineCode;
 
+  /// 처방에 적힌 하루 복용 횟수.
+  final int? frequencyPerDay;
+
   const Medicine({
     required this.ingredient,
     required this.amount,
@@ -95,6 +98,7 @@ class Medicine {
     this.efficacy,
     this.scheduleId,
     this.medicineCode,
+    this.frequencyPerDay,
   });
 
   /// 홈·OCR 카드에 보여 줄 쉬운 한 줄. 허가 원문·폴백 문장은 쓰지 않는다.

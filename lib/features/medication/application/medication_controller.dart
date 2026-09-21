@@ -119,6 +119,7 @@ class MedicationController extends Notifier<TodayMedication> {
                 efficacy: null,
                 scheduleId: scheduleId,
                 medicineCode: m['medicine_code']?.toString(),
+                frequencyPerDay: (m['frequency_per_day'] as num?)?.toInt(),
               ),
             );
           }
