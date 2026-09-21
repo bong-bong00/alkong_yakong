@@ -9,7 +9,7 @@ import '../domain/heart_data.dart';
 /// 서로 다른 기준의 숫자가 한 화면에 놓인다. 그래서 한 번에 받는다.
 class HeartRepository {
   HeartRepository({ApiClient? apiClient})
-      : _apiClient = apiClient ?? ApiClient();
+    : _apiClient = apiClient ?? ApiClient();
 
   final ApiClient _apiClient;
 

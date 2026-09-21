@@ -6,7 +6,7 @@ import os
 import sqlite3
 import uuid
 
-from fastapi import APIRouter, HTTPException, Query, Response
+from fastapi import APIRouter, Header, HTTPException, Query, Response
 
 import app.database as database
 from app.database import get_connection
@@ -204,8 +204,26 @@ def login(credentials: UserLogin):
         conn.close()
 
 
+# 회원 전체 목록의 열쇠를 담아 두는 환경변수 이름.
+_ADMIN_KEY_ENV = "ALKONGYAKONG_ADMIN_KEY"
+
+
+def _require_admin(key: str | None) -> None:
+    """회원 전체 목록은 이름·번호·생년월일이 한 번에 나온다.
+
+    앱은 이 길을 쓰지 않는다. 운영자가 열쇠를 정해 두고 그 값을 보낼 때만
+    답한다. 열쇠를 정하지 않은 서버에서는 길 자체가 없는 것으로 둔다.
+    """
+    configured = os.getenv(_ADMIN_KEY_ENV, "").strip()
+    if not configured:
+        raise HTTPException(status_code=404, detail="Not Found")
+    if not hmac.compare_digest(key or "", configured):
+        raise HTTPException(status_code=403, detail="관리자 열쇠가 필요해요.")
+
+
 @router.get("", response_model=list[UserResponse])
-def get_users():
+def get_users(x_admin_key: str | None = Header(default=None)):
+    _require_admin(x_admin_key)
     conn = get_connection()
     try:
         return [

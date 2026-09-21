@@ -6,6 +6,7 @@ import '../../../core/constants/app_colors.dart';
 import '../../../core/mode/app_mode.dart';
 import '../../../core/theme/app_typography.dart';
 import '../../../core/widgets/senior_button.dart';
+import '../../../core/widgets/senior_feedback.dart';
 import '../../biosignal/presentation/screens/heart_screen.dart';
 import '../../biosignal/presentation/screens/measure_screen.dart';
 import '../../dashboard/presentation/screens/medication_record_screen.dart';
@@ -40,6 +41,9 @@ class EasyFlowShell extends ConsumerStatefulWidget {
 class _EasyFlowShellState extends ConsumerState<EasyFlowShell> {
   EasyScreen _screen = EasyScreen.today;
   Map<String, dynamic>? _durResult;
+
+  /// 방금 기록한 시간대. 완료 화면이 저녁이라고 우기지 않게 들고 있는다.
+  DoseSlot? _recordedSlot;
 
   /// 지나온 화면. "이전"에서 하나씩 꺼낸다.
   final List<EasyScreen> _history = <EasyScreen>[];
@@ -137,9 +141,7 @@ class _EasyFlowShellState extends ConsumerState<EasyFlowShell> {
           onOpenDrug: (medicine) {
             final code = medicine.medicineCode?.trim() ?? '';
             if (code.isEmpty) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('이 약의 상세 정보를 찾지 못했어요.')),
-              );
+              showSeniorSnackbar(context, '이 약의 상세 정보를 찾지 못했어요.', error: true);
               return;
             }
             Navigator.of(context).push(
@@ -148,16 +150,21 @@ class _EasyFlowShellState extends ConsumerState<EasyFlowShell> {
               ),
             );
           },
-          onDone: () => _goTo(EasyScreen.done),
-          onMeasure: () => _goTo(EasyScreen.measure),
+          // 기록해도 오늘 화면에 남는다. 파란 띠가 대신 알린다.
+          onMeasure: (slot) {
+            _recordedSlot = slot;
+            _goTo(EasyScreen.measure);
+          },
         );
       case EasyScreen.done:
         return DoseDoneScreen(
-          slot: DoseSlot.dinner,
+          slot: _recordedSlot ?? DoseSlot.dinner,
           onUndone: () => _goTo(EasyScreen.today),
         );
       case EasyScreen.record:
-        return const MedicationRecordScreen();
+        return MedicationRecordScreen(
+          onBackToToday: () => _goTo(EasyScreen.today),
+        );
       case EasyScreen.heart:
         return const HeartScreen();
       case EasyScreen.medicines:
@@ -234,10 +241,10 @@ class _EasyFlowBar extends StatelessWidget {
     return Container(
       decoration: const BoxDecoration(
         color: AppColors.surface,
-        border: Border(top: BorderSide(color: Color(0xFFDDDDE6), width: 1)),
+        border: Border(top: BorderSide(color: AppColors.chartPast, width: 1)),
         boxShadow: [
           BoxShadow(
-            color: Color(0x2914161E),
+            color: AppColors.barShadow,
             blurRadius: 34,
             offset: Offset(0, -12),
           ),

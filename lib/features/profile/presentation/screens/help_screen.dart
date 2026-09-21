@@ -9,8 +9,7 @@ import '../../domain/app_documents.dart';
 /// 도움이 필요할 때 — 자주 묻는 것과 하는 방법.
 ///
 /// 꼭지를 모두 펼쳐 두면 화면이 너무 길어져 찾는 것을 포기한다.
-/// 제목만 보이고, 누르면 순서가 펼쳐진다. 펼침 표시는 아이콘이 아니라
-/// "펼치기 / 접기" 글자로 한다.
+/// 제목만 보이고, 누르면 순서가 펼쳐진다.
 class HelpScreen extends StatefulWidget {
   /// 모든 꼭지를 펼친 채로 연다. 글자 배율 검사에서 펼친 내용까지 그려 보려고 둔다.
   final bool openAll;
@@ -120,9 +119,14 @@ class _TopicCard extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(width: 10),
-                    Text(
-                      open ? '접기' : '펼치기',
-                      style: AppText.label(size: 18, color: AppColors.point),
+                    Semantics(
+                      label: open ? '접기' : '펼치기',
+                      child: RotatedBox(
+                        quarterTurns: open ? 1 : 0,
+                        child: SeniorChevron(
+                          color: open ? AppColors.point : AppColors.chevron,
+                        ),
+                      ),
                     ),
                   ],
                 ),
@@ -146,7 +150,7 @@ class _TopicCard extends StatelessWidget {
                           '${i + 1}.',
                           style: AppText.body(
                             color: AppColors.point,
-                            weight: FontWeight.w900,
+                            weight: FontWeight.w700,
                           ),
                         ),
                         const SizedBox(width: 10),

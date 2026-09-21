@@ -2,12 +2,16 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:alkong_yakong/main.dart' show kSkipLogin;
+
+import '../../../profile/domain/user_profile.dart';
 
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/network/api_client.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../core/widgets/app_logo.dart';
 import '../../../../core/widgets/senior_button.dart';
+import '../../../../core/widgets/senior_feedback.dart';
 import '../../../onboarding/presentation/screens/first_run_screen.dart';
 import '../../../profile/application/current_user_controller.dart';
 import '../../../profile/application/session_actions.dart';
@@ -37,14 +41,35 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     super.dispose();
   }
 
+  /// 화면만 확인할 때 쓰는 가짜 로그인. 무엇을 넣든 통과시킨다.
+  ///
+  /// 로그인 화면 건너뛰기([kSkipLogin])와 같은 스위치를 쓴다 —
+  /// 개발 중에는 켜져 있고, **릴리스·프로파일 빌드에서는 절대 켜지지 않는다.**
+  /// 켜진 채로 배포하면 아무나 남의 복약 기록을 열어볼 수 있다.
+  static const bool _fakeLogin = kSkipLogin;
+
   Future<void> _login() async {
     if (_phone.text.trim().isEmpty || _password.text.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('전화번호와 비밀번호를 넣어주세요')),
-      );
+      showSeniorSnackbar(context, '전화번호와 비밀번호를 넣어주세요', error: true);
       return;
     }
     if (_loggingIn) return;
+
+    // 서버 없이 화면만 볼 때. 무엇을 넣든 그대로 통과시킨다.
+    if (_fakeLogin) {
+      await startSession(
+        ref,
+        UserProfile(
+          id: 'mvp-user',
+          name: '김복자',
+          role: 'patient',
+          phone: _phone.text.trim(),
+        ),
+      );
+      if (mounted) context.go('/');
+      return;
+    }
+
     setState(() => _loggingIn = true);
     try {
       final user = await ref
@@ -55,9 +80,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       if (mounted) context.go('/');
     } on ApiException catch (error) {
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(error.message)));
+      showSeniorSnackbar(context, error.message, error: true);
     } finally {
       if (mounted) setState(() => _loggingIn = false);
     }
@@ -82,10 +105,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
               const SizedBox(height: 8),
               Text(
                 '약 드실 시간을 알려드리고,\n가족이 함께 챙겨드려요.',
-                style: AppText.body(
-                  size: 21,
-                  color: AppColors.textSecondary,
-                ),
+                style: AppText.body(size: 21, color: AppColors.textSecondary),
               ),
               const SizedBox(height: 34),
 
@@ -268,7 +288,9 @@ class PhoneNumberFormatter extends TextInputFormatter {
 
     final buffer = StringBuffer();
     for (int i = 0; i < capped.length; i++) {
-      if (i == 3 || (i == 7 && capped.length > 10) || (i == 6 && capped.length <= 10)) {
+      if (i == 3 ||
+          (i == 7 && capped.length > 10) ||
+          (i == 6 && capped.length <= 10)) {
         buffer.write('-');
       }
       buffer.write(capped[i]);

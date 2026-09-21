@@ -9,6 +9,7 @@ from typing import Any
 
 from fastapi import HTTPException
 
+from app.core.kst import today_kst
 from app.database import get_connection
 from app.services.heart_reading import latest_heart_reading
 from app.services.medicine_display import (
@@ -91,7 +92,7 @@ def get_today_medicines(user_id: str, target_date: str | None = None) -> dict[st
         ensure_mvp_codarone_available()
     else:
         ensure_user_codarone_available(uid)
-    day = target_date or date.today().isoformat()
+    day = target_date or today_kst().isoformat()
     conn = get_connection()
     try:
         user = conn.execute("SELECT id, name FROM users WHERE id = ?", (uid,)).fetchone()

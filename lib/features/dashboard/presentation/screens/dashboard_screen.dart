@@ -266,7 +266,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                 '등록일: $displayedPrescriptionRegisteredAt\n'
                                 '약: ${displayedPrescriptionMedicines.take(3).join(', ')}',
                       icon: Icons.description_outlined,
-                      color: const Color(0xFF4A78C2),
+                      color: AppColors.legacyBlue,
                     ),
                     const SizedBox(height: 10),
                     _DashboardCard(
@@ -352,27 +352,32 @@ class _WeeklyCalendar extends StatelessWidget {
                       ]
                     : null,
               ),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Text(
-                    dayName,
-                    style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                      color: isSelected ? Colors.white : Colors.grey[500],
+              // 칸 높이가 정해져 있어 글자를 키우면 아래로 넘친다.
+              // 칸 안에서 요일·날짜를 함께 줄인다.
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(
+                      dayName,
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: isSelected ? Colors.white : Colors.grey[500],
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    '${date.day}',
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w800,
-                      color: isSelected ? Colors.white : kText,
+                    const SizedBox(height: 8),
+                    Text(
+                      '${date.day}',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w800,
+                        color: isSelected ? Colors.white : kText,
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
           );

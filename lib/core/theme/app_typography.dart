@@ -9,9 +9,10 @@ import '../constants/app_colors.dart';
 ///
 /// weight는 400 / 500 / 700 / 900만 쓴다.
 ///
-/// 핸드오프 기준으로 **900을 많이 쓴다.** 시니어 대상에서 700은 "얇다"고
-/// 느껴지기 때문이다 — 제목·버튼·수치·카드 대제목이 모두 900이다.
-/// 대신 본문은 500, 리스트 보조는 500으로 눌러 위계를 만든다.
+/// 900은 **화면 맨 위 제목과 큰 수치에만** 쓴다. 카드 제목·강조 문장·버튼은
+/// 700으로 맞춘다 — "내 약 목록 / 복약 알림 / 폴라 센서" 줄과 같은 두께다.
+/// 900을 여기저기 쓰면 화면 전체가 굵어져서 무엇이 중요한지 없어진다.
+/// 본문은 500, 리스트 보조는 500으로 눌러 위계를 만든다.
 /// 본문 하한 18px, 화면 제목 24px, 큰 수치 40px 이상.
 abstract final class AppText {
   /// 번들한 Noto Sans KR. 400/500/700/900 네 굵기를 함께 싣는다.
@@ -90,75 +91,56 @@ abstract final class AppText {
     letterSpacingEm: -0.01,
   );
 
-  /// 강조 문장 (경고, 안내). 25–27px / 900.
+  /// 강조 문장 (경고, 안내). 25–27px / 700.
   static TextStyle emphasis({
     double size = 25,
     Color color = AppColors.textPrimary,
   }) => _base(
     size: size,
-    weight: _black,
+    weight: _bold,
     height: 1.4,
     color: color,
     letterSpacingEm: -0.01,
   );
 
-  /// 카드 대제목 / 리스트 항목. 21–22px / 900.
+  /// 카드 대제목 / 리스트 항목. 21–22px / 700.
   static TextStyle cardTitle({
     double size = 21,
     Color color = AppColors.textPrimary,
     FontWeight? weight,
-  }) => _base(
-    size: size,
-    weight: weight ?? _black,
-    height: 1.4,
-    color: color,
-  );
+  }) => _base(size: size, weight: weight ?? _bold, height: 1.4, color: color);
 
-  /// 섹션 제목. 19–20px / 900.
+  /// 섹션 제목. 19–20px / 700.
   static TextStyle section({
     double size = 19,
     Color color = AppColors.textPrimary,
-  }) => _base(size: size, weight: _black, height: 1.35, color: color);
+  }) => _base(size: size, weight: _bold, height: 1.35, color: color);
 
-  /// 버튼 라벨. 23–25px / 900. 보조 버튼은 21px / 900.
+  /// 버튼 라벨. 23–25px / 700.
   static TextStyle button({double size = 24, Color color = Colors.white}) =>
-      _base(size: size, weight: _black, height: 1, color: color);
+      _base(size: size, weight: _bold, height: 1, color: color);
 
   /// 본문. 18.5~19px / 500. 강조가 필요하면 [weight]로 700까지 올린다.
   static TextStyle body({
     double size = 19,
     Color color = AppColors.textBody,
     FontWeight? weight,
-  }) => _base(
-    size: size,
-    weight: weight ?? _medium,
-    height: 1.6,
-    color: color,
-  );
+  }) => _base(size: size, weight: weight ?? _medium, height: 1.6, color: color);
 
   /// 라벨. 18px / 700 — 입력 필드 라벨, 카드 안 작은 제목.
   static TextStyle label({
     double size = 18,
     Color color = AppColors.textSecondary,
     FontWeight? weight,
-  }) => _base(
-    size: size,
-    weight: weight ?? _bold,
-    height: 1.5,
-    color: color,
-  );
+  }) => _base(size: size, weight: weight ?? _bold, height: 1.5, color: color);
 
   /// 보조. 17–17.5px / 500. **이 아래로 내려가지 않는다.**
   static TextStyle caption({
     double size = 17.5,
     Color color = AppColors.textTertiary,
     FontWeight? weight,
-  }) => _base(
-    size: size,
-    weight: weight ?? _medium,
-    height: 1.55,
-    color: color,
-  );
+  }) =>
+      _base(size: size, weight: weight ?? _medium, height: 1.55, color: color);
 
   /// 탭 라벨. 16px, 활성 900 / 비활성 700.
   static TextStyle tab({required bool active}) => _base(

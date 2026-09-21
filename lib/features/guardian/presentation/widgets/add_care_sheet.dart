@@ -31,13 +31,7 @@ class _AddCareSheetState extends State<_AddCareSheet> {
   final TextEditingController _phone = TextEditingController();
   final TextEditingController _otherRelation = TextEditingController();
 
-  static const List<String> _relations = [
-    '어머니',
-    '아버지',
-    '장모님',
-    '장인어른',
-    '그 외',
-  ];
+  static const List<String> _relations = ['어머니', '아버지', '장모님', '장인어른', '그 외'];
 
   String? _relation;
 
@@ -143,12 +137,12 @@ class _AddCareSheetState extends State<_AddCareSheet> {
           // 아직 못 누른다는 사실이 먼저 보이는 편이 낫다.
           onPressed: _ready
               ? () => Navigator.of(context).pop(
-                    PendingInvite(
-                      name: _name.text.trim(),
-                      relation: _resolvedRelation,
-                      phone: _phone.text.trim(),
-                    ),
-                  )
+                  PendingInvite(
+                    name: _name.text.trim(),
+                    relation: _resolvedRelation,
+                    phone: _phone.text.trim(),
+                  ),
+                )
               : null,
         ),
         SeniorButton(

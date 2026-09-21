@@ -48,7 +48,10 @@ class _HrAlertScreenState extends State<HrAlertScreen> {
     // 화면에 들어오는 순간 이미 보호자에게 갔다는 사실을 알린다.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
-        showSeniorSnackbar(context, '${resolveGuardianTitle(context, widget.guardianTitle)}에게 연락이 갔어요');
+        showSeniorSnackbar(
+          context,
+          '${resolveGuardianTitle(context, widget.guardianTitle)}에게 연락이 갔어요',
+        );
       }
     });
   }
@@ -99,10 +102,7 @@ class _HrAlertScreenState extends State<HrAlertScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        Text(
-                          '지금 이렇게 해주세요',
-                          style: AppText.cardTitle(size: 20),
-                        ),
+                        Text('지금 이렇게 해주세요', style: AppText.cardTitle(size: 20)),
                         const SizedBox(height: 14),
                         const NumberedSteps(
                           boxed: false,
@@ -128,7 +128,10 @@ class _HrAlertScreenState extends State<HrAlertScreen> {
                       MaterialPageRoute(
                         builder: (_) => SavedScreen(
                           bpm: widget.bpm,
-                          guardianTitle: resolveGuardianTitle(context, widget.guardianTitle),
+                          guardianTitle: resolveGuardianTitle(
+                            context,
+                            widget.guardianTitle,
+                          ),
                           fromAlert: true,
                           savedAt: DateTime.now(),
                         ),
@@ -164,17 +167,13 @@ class _ValueCard extends StatelessWidget {
     final usualRange = this.usualRange;
     final hasUsual = usualRange != null && usualRange.isNotEmpty;
     // 평소 범위를 모르면 이 기준과 비교해 말한다.
-    final headline = hasUsual
-        ? '평소보다 빠릅니다'
-        : '기준($_fastBpm회)보다 빠릅니다';
+    final headline = hasUsual ? '평소보다 빠릅니다' : '기준($_fastBpm회)보다 빠릅니다';
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
       decoration: const BoxDecoration(
         color: AppColors.surface,
         borderRadius: BorderRadius.all(Radius.circular(22)),
-        border: Border(
-          left: BorderSide(color: AppColors.danger, width: 6),
-        ),
+        border: Border(left: BorderSide(color: AppColors.danger, width: 6)),
       ),
       child: Column(
         children: [
@@ -201,26 +200,31 @@ class _ValueCard extends StatelessWidget {
           Semantics(
             label: '방금 잰 심박수 $bpm회, $headline',
             child: ExcludeSemantics(
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Text(
-                    '$bpm',
-                    style: AppText.hero(size: 68, color: AppColors.danger),
-                  ),
-                  const SizedBox(width: 8),
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 8),
-                    child: Text(
-                      '회 / 분',
-                      style: AppText.label(
-                        size: 22,
-                        color: AppColors.dangerMuted,
+              // 68pt 숫자와 단위를 한 줄에 둔다. 좁은 화면이나 큰 글자에서는
+              // 줄을 통째로 줄여 잘리지 않게 한다.
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Text(
+                      '$bpm',
+                      style: AppText.hero(size: 68, color: AppColors.danger),
+                    ),
+                    const SizedBox(width: 8),
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 8),
+                      child: Text(
+                        '회 / 분',
+                        style: AppText.label(
+                          size: 22,
+                          color: AppColors.dangerMuted,
+                        ),
                       ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
           ),

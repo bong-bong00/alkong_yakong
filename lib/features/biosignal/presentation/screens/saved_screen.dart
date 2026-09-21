@@ -44,6 +44,9 @@ class SavedScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final at = DoseSlot.absoluteTime(savedAt ?? DateTime.now());
     final doseSummary = this.doseSummary;
+    final savedCount = (doseSummary != null && doseSummary.isNotEmpty)
+        ? '두 가지'
+        : '한 가지';
     return Scaffold(
       backgroundColor: AppColors.bg,
       body: Column(
@@ -81,7 +84,7 @@ class SavedScreen extends StatelessWidget {
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    '오늘 $at 기준으로\n아래 기록이 남았습니다.',
+                    '오늘 $at 기준으로\n아래 $savedCount가 남았습니다.',
                     textAlign: TextAlign.center,
                     style: AppText.body(
                       size: 18.5,

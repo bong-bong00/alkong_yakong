@@ -191,9 +191,26 @@ void main() {
 class _TestMedicationController extends MedicationController {
   @override
   TodayMedication build() {
-    return const TodayMedication(
+    // 타임라인이 화면보다 길어야 스크롤이 생긴다.
+    // 아침은 드신 것으로 두어 지난 행 + 심박 행까지 쌓는다.
+    return TodayMedication(
       doses: [
         DoseEntry(
+          slot: DoseSlot.morning,
+          medicines: const [Medicine(ingredient: '아침정', amount: '1알')],
+          taken: true,
+          heartCheck: DoseHeartCheck(
+            before: 78,
+            after: 72,
+            measuredAt: DateTime(2026, 9, 18, 8, 20),
+          ),
+        ),
+        const DoseEntry(
+          slot: DoseSlot.lunch,
+          medicines: [Medicine(ingredient: '점심정', amount: '1알')],
+          taken: true,
+        ),
+        const DoseEntry(
           slot: DoseSlot.dinner,
           medicines: [Medicine(ingredient: '테스트정', amount: '1알')],
         ),

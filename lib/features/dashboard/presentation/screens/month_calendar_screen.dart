@@ -6,9 +6,12 @@ import '../../../../core/network/api_client.dart';
 import '../../../../core/network/api_config.dart';
 import '../../../../core/session/mvp_session.dart';
 import '../../../../core/theme/app_typography.dart';
-import '../../../../core/widgets/senior_button.dart';
 import '../../../../core/widgets/senior_card.dart';
+import '../../../../core/widgets/senior_button.dart';
 import '../../../../core/widgets/senior_header.dart';
+import '../../../medication/application/medication_controller.dart';
+import '../../../medication/domain/medication_models.dart';
+import '../widgets/day_dose_detail.dart';
 
 /// 한 칸이 가질 수 있는 상태.
 ///
@@ -23,7 +26,27 @@ class CalendarDay {
   final int day;
   final DayMark mark;
 
-  const CalendarDay(this.day, this.mark);
+  /// 그날 시간대별 결과. 칸을 누르면 아래 카드가 이것으로 바뀐다.
+  final List<CalendarSlot> slots;
+
+  const CalendarDay(this.day, this.mark, {this.slots = const []});
+}
+
+/// 그날 한 끼. 달력 칸에는 그리지 않고, 눌렀을 때만 쓴다.
+@immutable
+class CalendarSlot {
+  /// "아침" / "점심" / "저녁"
+  final String slot;
+  final bool taken;
+
+  const CalendarSlot({required this.slot, required this.taken});
+
+  DoseSlot? get doseSlot => switch (slot) {
+    '아침' => DoseSlot.morning,
+    '점심' => DoseSlot.lunch,
+    '저녁' => DoseSlot.dinner,
+    _ => null,
+  };
 }
 
 /// 빠뜨린 날 하나. 달력 아래에 **글로 다시** 적는다.
@@ -78,6 +101,7 @@ class _MonthCalendarScreenState extends ConsumerState<MonthCalendarScreen> {
   late List<MissedDay> _missed;
   bool _hasSchedules = false;
   bool _loading = false;
+  int? _pickedDay;
 
   @override
   void initState() {
@@ -121,6 +145,18 @@ class _MonthCalendarScreenState extends ConsumerState<MonthCalendarScreen> {
     };
   }
 
+  static List<CalendarSlot> _slotsOf(dynamic raw) {
+    if (raw is! List) return const [];
+    return [
+      for (final row in raw)
+        if (row is Map && (row['slot']?.toString() ?? '').isNotEmpty)
+          CalendarSlot(
+            slot: row['slot'].toString(),
+            taken: row['taken'] == true,
+          ),
+    ];
+  }
+
   Future<void> _load() async {
     try {
       final rawUserId = widget.patientUserId?.trim().isNotEmpty == true
@@ -150,6 +186,7 @@ class _MonthCalendarScreenState extends ConsumerState<MonthCalendarScreen> {
                     CalendarDay(
                       (row['day'] as num?)?.toInt() ?? 0,
                       _markOf(row['mark']?.toString() ?? ''),
+                      slots: _slotsOf(row['slots']),
                     ),
               ].where((item) => item.day > 0).toList()
             : _days;
@@ -176,6 +213,48 @@ class _MonthCalendarScreenState extends ConsumerState<MonthCalendarScreen> {
   int get _scheduledPastCount => _days
       .where((d) => d.mark == DayMark.done || d.mark == DayMark.missed)
       .length;
+
+  /// 아래 카드가 보여줄 날. 아무것도 안 눌렀으면 오늘이다.
+  DateTime get _detailDate {
+    final today = DateTime.now();
+    final picked = _pickedDay;
+    if (picked == null) return today;
+    return DateTime(_year, _month, picked);
+  }
+
+  String get _detailLabel {
+    final date = _detailDate;
+    final today = DateTime.now();
+    final isToday =
+        date.year == today.year &&
+        date.month == today.month &&
+        date.day == today.day;
+    return '${date.month}월 ${date.day}일${isToday ? ' 오늘' : ''}';
+  }
+
+  /// 오늘은 지금 받아 둔 복약 상태를, 다른 날은 달력이 받아 온 결과를 쓴다.
+  List<DoseEntry> get _detailDoses {
+    final date = _detailDate;
+    final today = DateTime.now();
+    final isToday =
+        date.year == today.year &&
+        date.month == today.month &&
+        date.day == today.day;
+    if (isToday && _pickedDay == null) {
+      return ref.watch(medicationProvider).doses;
+    }
+    final match = _days.where((day) => day.day == date.day).toList();
+    if (match.isEmpty) return const [];
+    return [
+      for (final slot in match.first.slots)
+        if (slot.doseSlot != null)
+          DoseEntry(
+            slot: slot.doseSlot!,
+            medicines: const [],
+            taken: slot.taken,
+          ),
+    ];
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -261,7 +340,18 @@ class _MonthCalendarScreenState extends ConsumerState<MonthCalendarScreen> {
                                           child:
                                               row * 7 + col < cells.length &&
                                                   cells[row * 7 + col] != null
-                                              ? _DayCell(cells[row * 7 + col]!)
+                                              ? _DayCell(
+                                                  cells[row * 7 + col]!,
+                                                  picked:
+                                                      cells[row * 7 + col]!
+                                                          .day ==
+                                                      _pickedDay,
+                                                  onTap: () => setState(
+                                                    () => _pickedDay =
+                                                        cells[row * 7 + col]!
+                                                            .day,
+                                                  ),
+                                                )
                                               : const SizedBox.shrink(),
                                         ),
                                       ],
@@ -274,11 +364,18 @@ class _MonthCalendarScreenState extends ConsumerState<MonthCalendarScreen> {
                             ],
                           ),
                         ),
-                        if (_missed.isNotEmpty) ...[
-                          const SizedBox(height: 12),
-                          _MissedCard(missed: _missed),
-                        ],
-                        const SizedBox(height: 16),
+                        const SizedBox(height: 12),
+                        // 기록 탭과 같은 하루 상세를 둔다. 두 화면이 서로 다른
+                        // 모양으로 같은 내용을 말하면 다른 것으로 읽힌다.
+                        DayDoseDetail(
+                          dayLabel: _detailLabel,
+                          date: _detailDate,
+                          doses: _detailDoses,
+                          footnote: _pickedDay == null
+                              ? '위 달력에서 날짜를 누르면 그날 결과가 여기에 나와요.'
+                              : '다른 날짜를 누르면 그날 결과로 바뀌어요.',
+                        ),
+                        const SizedBox(height: 12),
                         SeniorButton(
                           label: '복약 기록으로 돌아가기',
                           kind: SeniorButtonKind.secondary,
@@ -298,8 +395,10 @@ class _MonthCalendarScreenState extends ConsumerState<MonthCalendarScreen> {
 
 class _DayCell extends StatelessWidget {
   final CalendarDay day;
+  final bool picked;
+  final VoidCallback? onTap;
 
-  const _DayCell(this.day);
+  const _DayCell(this.day, {this.picked = false, this.onTap});
 
   @override
   Widget build(BuildContext context) {
@@ -339,39 +438,49 @@ class _DayCell extends StatelessWidget {
         spoken = '기록 없는 날';
     }
 
+    // 누른 칸은 파란 테두리로 표시한다. 색만 바꾸면 어떤 날을 보고 있는지
+    // 아래 카드와 이어지지 않는다.
+    if (picked) {
+      border = Border.all(color: AppColors.point, width: 3);
+    }
+
     return Semantics(
       label: '${day.day}일 $spoken',
-      child: ExcludeSemantics(
-        child: Container(
-          constraints: const BoxConstraints(minHeight: 54),
-          alignment: Alignment.center,
-          padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 2),
-          decoration: BoxDecoration(
-            color: background,
-            borderRadius: BorderRadius.circular(14),
-            border: border,
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Text(
-                '${day.day}',
-                style: AppText.cardTitle(
-                  size: 18,
-                  color: ink,
-                ).copyWith(height: 1),
-              ),
-              const SizedBox(height: 2),
-              Text(
-                mark,
-                textAlign: TextAlign.center,
-                style: AppText.cardTitle(
-                  size: 15,
-                  color: ink,
-                ).copyWith(height: 1),
-              ),
-            ],
+      button: onTap != null,
+      child: GestureDetector(
+        onTap: onTap,
+        child: ExcludeSemantics(
+          child: Container(
+            constraints: const BoxConstraints(minHeight: 54),
+            alignment: Alignment.center,
+            padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 2),
+            decoration: BoxDecoration(
+              color: background,
+              borderRadius: BorderRadius.circular(14),
+              border: border,
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text(
+                  '${day.day}',
+                  style: AppText.cardTitle(
+                    size: 18,
+                    color: ink,
+                  ).copyWith(height: 1),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  mark,
+                  textAlign: TextAlign.center,
+                  style: AppText.cardTitle(
+                    size: 15,
+                    color: ink,
+                  ).copyWith(height: 1),
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -435,65 +544,6 @@ class _LegendItem extends StatelessWidget {
           style: AppText.label(size: 16.5, color: AppColors.textSecondary),
         ),
       ],
-    );
-  }
-}
-
-/// 빠뜨린 날을 글로 다시 적는다.
-class _MissedCard extends StatelessWidget {
-  final List<MissedDay> missed;
-
-  const _MissedCard({required this.missed});
-
-  /// 빠뜨린 때가 겹치면 그 사실을 짚어 준다.
-  String get _hint {
-    final slots = missed.map((m) => m.detail.split(' ').first).toSet().toList();
-    if (missed.length < 2) {
-      return '알림 소리를 더 크게 해 둘까요?';
-    }
-    return '두 번 다 ${slots.join('·')}이었어요. 알림 소리를 더 크게 해 둘까요?';
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return SeniorCard(
-      padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 18),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Text('빠뜨린 날', style: AppText.cardTitle(size: 20)),
-          const SizedBox(height: 12),
-          for (int i = 0; i < missed.length; i++) ...[
-            if (i > 0) ...[
-              const SizedBox(height: 12),
-              const SeniorDivider(),
-              const SizedBox(height: 12),
-            ],
-            LabelValueRow(
-              label: Text(
-                missed[i].label,
-                style: AppText.cardTitle(size: 19, color: AppColors.danger),
-              ),
-              value: Text(
-                missed[i].detail,
-                style: AppText.body(size: 18.5, color: AppColors.textBody),
-              ),
-            ),
-          ],
-          const SizedBox(height: 14),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
-            decoration: BoxDecoration(
-              color: AppColors.sunken,
-              borderRadius: BorderRadius.circular(16),
-            ),
-            child: Text(
-              _hint,
-              style: AppText.label(size: 18, color: AppColors.textBody),
-            ),
-          ),
-        ],
-      ),
     );
   }
 }

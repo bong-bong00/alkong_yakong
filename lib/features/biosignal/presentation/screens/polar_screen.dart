@@ -105,7 +105,7 @@ class _PolarScreenState extends State<PolarScreen> {
                         const NumberedSteps(
                           boxed: false,
                           steps: [
-                            '띠 안쪽 두 군데를 물로 살짝 적셔주세요',
+                            '센서 안쪽 두 군데를 물로 살짝 적셔주세요',
                             '가슴 아래, 명치 높이에 맞춰 차세요',
                             '약을 드시기 5분 전에 차 두시면 편해요',
                           ],
@@ -147,7 +147,7 @@ class _PolarScreenState extends State<PolarScreen> {
     final found = _sensor.status == HeartSensorStatus.streaming;
     showSeniorSnackbar(
       context,
-      found ? '폴라 베리티 센스를 찾았어요' : '센서를 찾지 못했어요. 단추를 한 번 눌러 주세요.',
+      found ? '폴라 센서를 찾았어요' : '센서를 찾지 못했어요. 단추를 한 번 눌러 주세요.',
       error: !found,
     );
   }
@@ -188,14 +188,9 @@ class _StatusCard extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           Text(
-            connected
-                ? '센서를 차고 계시면 약 드신 뒤 심박수를 잽니다'
-                : '센서를 차고 아래 버튼을 눌러주세요',
+            connected ? '센서를 차고 계시면 약 드신 뒤 심박수를 잽니다' : '센서를 차고 아래 버튼을 눌러주세요',
             textAlign: TextAlign.center,
-            style: AppText.body(
-              size: 18.5,
-              color: AppColors.textSecondary,
-            ),
+            style: AppText.body(size: 18.5, color: AppColors.textSecondary),
           ),
         ],
       ),
@@ -236,9 +231,7 @@ class _InfoCard extends StatelessWidget {
             label: '마지막 측정',
             value: Text(
               // 잰 적이 없으면 빈칸 대신 그렇다고 적는다.
-              lastReadAt == null
-                  ? '아직 없어요'
-                  : DoseSlot.absoluteTime(lastReadAt),
+              lastReadAt == null ? '아직 없어요' : DoseSlot.absoluteTime(lastReadAt),
               style: AppText.label(
                 size: 18,
                 color: lastReadAt == null

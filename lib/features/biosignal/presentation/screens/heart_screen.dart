@@ -14,7 +14,6 @@ import '../../../medication/domain/medication_models.dart';
 import '../../application/heart_sensor.dart';
 import '../../data/heart_repository.dart';
 import '../../domain/heart_data.dart';
-import '../widgets/dumbbell_chart.dart';
 import 'measure_screen.dart';
 import 'monthly_heart_screen.dart';
 import 'polar_screen.dart';
@@ -184,11 +183,31 @@ class _HeartScreenState extends State<HeartScreen> {
                     _FailedCard(onRetry: () => unawaited(_load()))
                   else if (data != null && !data.hasReadings)
                     _EmptyCard(viewingOther: _viewingOther)
-                  else if (data != null) ...[
+                  else if (data != null)
                     _TodayCard(data: data),
-                    const SizedBox(height: 12),
-                    _WeekCard(data: data),
+                  if (!_viewingOther) ...[
+                    const SizedBox(height: 16),
+                    SeniorButton(
+                      label: '지금 재기',
+                      minHeight: 66,
+                      fontSize: 23,
+                      onPressed: () => unawaited(_openMeasure()),
+                    ),
                   ],
+                  const SizedBox(height: 12),
+                  // 지난 기록은 한 달 화면이 맡는다. 위 세그먼트와 같은 곳으로
+                  // 가지만, 아래까지 내려온 자리에서도 길이 보여야 한다.
+                  SeniorCard(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 20,
+                      vertical: 4,
+                    ),
+                    child: SeniorListRow(
+                      label: '지난 기록 보기',
+                      trailing: const SeniorChevron(),
+                      onTap: () => unawaited(_openMonthly()),
+                    ),
+                  ),
                   if (!_viewingOther) ...[
                     const SizedBox(height: 12),
                     _SensorRow(
@@ -202,20 +221,13 @@ class _HeartScreenState extends State<HeartScreen> {
                   ],
                   const SizedBox(height: 12),
                   _NotifyRow(
-                    guardianTitle:
-                        resolveGuardianTitle(context, widget.guardianTitle),
+                    guardianTitle: resolveGuardianTitle(
+                      context,
+                      widget.guardianTitle,
+                    ),
                     value: _notifyGuardian,
                     onChanged: (v) => setState(() => _notifyGuardian = v),
                   ),
-                  if (!_viewingOther) ...[
-                    const SizedBox(height: 16),
-                    SeniorButton(
-                      label: '지금 재기',
-                      minHeight: 66,
-                      fontSize: 23,
-                      onPressed: () => unawaited(_openMeasure()),
-                    ),
-                  ],
                 ],
               ),
             ),
@@ -387,7 +399,12 @@ class _TodayCard extends StatelessWidget {
               Expanded(child: Text('오늘 잰 것', style: AppText.cardTitle())),
               // 오늘 잰 것이 없으면 "저녁 약"이라고 붙일 근거도 없다.
               if (measuredToday && data.todaySlotLabel.isNotEmpty)
-                Flexible(
+                // Flexible로 두면 남은 폭을 제목과 반씩 나눠 가져
+                // 때 이름이 화면 한가운데로 밀려난다. 폭 상한만 건다.
+                ConstrainedBox(
+                  constraints: BoxConstraints(
+                    maxWidth: MediaQuery.sizeOf(context).width * 0.45,
+                  ),
                   child: Text(
                     data.todaySlotLabel,
                     textAlign: TextAlign.end,
@@ -536,57 +553,6 @@ class _ValueBox extends StatelessWidget {
   }
 }
 
-/// 이번 주 덤벨 막대.
-class _WeekCard extends StatelessWidget {
-  final HeartData data;
-  const _WeekCard({required this.data});
-
-  /// 전·후를 함께 잰 날만 센다. 못 잰 날을 "비슷했다"로 치지 않는다.
-  String _summary() {
-    final complete = data.week.where((d) => d.pair.isComplete).toList();
-    if (complete.isEmpty) {
-      return '이번 주에는 전·후를 함께 잰 날이 아직 없어요';
-    }
-    final dropped = complete.where((d) => d.pair.drop! > 0).length;
-    if (dropped == complete.length) {
-      return '잰 ${complete.length}일 모두 약을 드신 뒤에 낮아졌어요';
-    }
-    return '잰 ${complete.length}일 중 $dropped일은 약을 드신 뒤에 낮아졌어요';
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return SeniorCard(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Row(
-            children: [
-              Expanded(child: Text('이번 주', style: AppText.cardTitle())),
-              const DumbbellLegend(),
-            ],
-          ),
-          const SizedBox(height: 16),
-          DumbbellChart(days: data.week),
-          const SizedBox(height: 14),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-            decoration: BoxDecoration(
-              color: AppColors.sunken,
-              borderRadius: BorderRadius.circular(16),
-            ),
-            child: Text(
-              data.allDropped ? '7일 모두 약을 드신 뒤에 낮아졌어요' : '며칠은 약을 드신 뒤에도 비슷했어요',
-              style: AppText.label(size: 18, color: AppColors.textPrimary),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 /// 센서 상태 한 줄.
 ///
 /// 연결 여부·배터리·마지막 측정은 **센서가 말한 것만** 쓴다. 이 화면이
@@ -704,43 +670,3 @@ class _NotifyRow extends StatelessWidget {
 ///
 /// 화면은 그대로 보여주되 **이 숫자가 무엇인지** 먼저 밝힌다.
 /// 예시를 진짜 기록으로 읽고 나면 그것대로 판단의 근거가 된다.
-class _ExampleNotice extends StatelessWidget {
-  const _ExampleNotice();
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-      decoration: BoxDecoration(
-        color: AppColors.sunken,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: AppColors.strongLine, width: 2),
-      ),
-      child: Row(
-        children: [
-          const ExcludeSemantics(
-            child: Icon(
-              TablerIcons.info_circle,
-              size: 26,
-              color: AppColors.textTertiary,
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('아래는 예시 화면이에요', style: AppText.cardTitle(size: 19)),
-                Text(
-                  '아직 잰 기록이 없거나 불러오지 못했어요. '
-                  '한 번 재고 나면 그 값이 여기 남습니다.',
-                  style: AppText.body(size: 17.5),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}

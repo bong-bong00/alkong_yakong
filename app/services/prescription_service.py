@@ -10,6 +10,7 @@ from datetime import date, timedelta
 
 from fastapi import HTTPException
 
+from app.core.kst import today_kst
 from app.database import get_connection, purge_ocr_placeholder_rows
 from app.models.schemas import (
     OCRMedicineItem,
@@ -390,7 +391,7 @@ def _schedule_dates(
         days = None
     if days is None or days < 1:
         return []
-    start_date = _parse_date(prescribed_date, date.today())
+    start_date = _parse_date(prescribed_date, today_kst())
     duration_end = start_date + timedelta(days=days - 1)
     if expire_date:
         # 처방 유효일이 더 멀어도 OCR에서 확인한 복용 일수보다 늘리지 않는다.
@@ -976,7 +977,7 @@ def _reactivate_duplicate_prescription(cursor, *, user_id: str, prescription_id:
         """,
         (prescription_id, user_id),
     ).fetchall()
-    today = date.today().isoformat()
+    today = today_kst().isoformat()
     restored: list[dict] = []
     for row in rows:
         user_medicine_id = row["user_medicine_id"]
@@ -1236,7 +1237,7 @@ def confirm_prescription(request: PrescriptionConfirmRequest) -> dict:
             official_name = str(exists["product_name"] or item.drug_name).strip()
             take_dosage = _validated_confirm_dosage(item, official_name)
             dose_amount, dose_unit = split_take_amount(take_dosage)
-            registration_date = date.today().isoformat()
+            registration_date = today_kst().isoformat()
             schedule_dates = _schedule_dates(registration_date, None, item.duration_days)
             if schedule_dates:
                 medicine_start_date = schedule_dates[0].isoformat()
@@ -1451,7 +1452,7 @@ def _refresh_user_medicine_span(cursor, user_medicine_id: int) -> None:
             (first_day, last_day, user_medicine_id),
         )
         return
-    closed = (date.today() - timedelta(days=1)).isoformat()
+    closed = (today_kst() - timedelta(days=1)).isoformat()
     cursor.execute(
         "UPDATE user_medicines SET end_date = ? WHERE id = ?",
         (closed, user_medicine_id),
@@ -1465,7 +1466,7 @@ def get_prescription_schedule_days(
     month: int | None = None,
 ) -> dict:
     """이번에 등록한 약의 약 있는 날만 돌려 준다. 먹었어요/빠뜨렸어요는 넣지 않는다."""
-    today = date.today()
+    today = today_kst()
     year = int(year or today.year)
     month = int(month or today.month)
     if month < 1 or month > 12:
