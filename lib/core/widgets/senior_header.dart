@@ -87,7 +87,8 @@ class SeniorBackHeader extends StatelessWidget {
         Expanded(
           child: Text(
             title,
-            textAlign: TextAlign.center,
+            // 어두운 찍기 화면은 프로토타입대로 제목이 뒤로가기 옆에 붙는다.
+            textAlign: onDark ? TextAlign.start : TextAlign.center,
             style: AppText.screenTitle(
               size: 24,
               color: onDark ? Colors.white : AppColors.textPrimary,
@@ -95,7 +96,7 @@ class SeniorBackHeader extends StatelessWidget {
           ),
         ),
         // 제목이 진짜 가운데에 오도록 뒤로가기만큼 오른쪽을 비워 둔다.
-        const SizedBox(width: 56),
+        if (!onDark) const SizedBox(width: 56),
       ],
     );
 
