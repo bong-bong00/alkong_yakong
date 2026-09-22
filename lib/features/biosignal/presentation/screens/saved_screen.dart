@@ -7,7 +7,7 @@ import '../../../../core/theme/app_typography.dart';
 import '../../../../core/widgets/senior_button.dart';
 import '../../../../core/widgets/senior_card.dart';
 import '../../../../core/widgets/senior_header.dart';
-import '../../../medication/domain/medication_models.dart';
+import '../../domain/heart_time.dart';
 
 /// 30 · 기록 저장.
 ///
@@ -42,11 +42,8 @@ class SavedScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final at = DoseSlot.absoluteTime(savedAt ?? DateTime.now());
+    final at = heartSavedTimeLabel(savedAt ?? DateTime.now());
     final doseSummary = this.doseSummary;
-    final savedCount = (doseSummary != null && doseSummary.isNotEmpty)
-        ? '두 가지'
-        : '한 가지';
     return Scaffold(
       backgroundColor: AppColors.bg,
       body: Column(
@@ -84,7 +81,7 @@ class SavedScreen extends StatelessWidget {
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    '오늘 $at 기준으로\n아래 $savedCount가 남았습니다.',
+                    '$at 기준으로\n아래 기록이 남았습니다.',
                     textAlign: TextAlign.center,
                     style: AppText.body(
                       size: 18.5,
@@ -103,9 +100,7 @@ class SavedScreen extends StatelessWidget {
                   _SavedItem(
                     icon: TablerIcons.activity_heartbeat,
                     title: '심박수 기록',
-                    description: fromAlert
-                        ? '$bpm회 / 분 · 빠르게 뛴 기록으로 따로 표시했어요'
-                        : '$bpm회 / 분 · 1분 동안 잰 결과',
+                    description: '$bpm회 / 분 · 서버에 저장된 심박수',
                   ),
                   const SizedBox(height: 12),
                   Container(
@@ -127,7 +122,7 @@ class SavedScreen extends StatelessWidget {
                         const SizedBox(width: 14),
                         Expanded(
                           child: Text(
-                            '${resolveGuardianTitle(context, guardianTitle)}에게도 전해졌어요',
+                            '보호자 자동 알림은 지원하지 않아요',
                             style: AppText.label(
                               size: 18,
                               color: AppColors.textPrimary,

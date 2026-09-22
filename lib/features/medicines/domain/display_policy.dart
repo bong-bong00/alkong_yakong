@@ -56,6 +56,69 @@ String stripEasyCategoryParen(String? name) {
   return text;
 }
 
+/// 요약 화면에서만 제품명 뒤에 중복된 주성분 괄호를 숨긴다.
+/// DB와 OCR 확인 화면의 공식 제품명은 바꾸지 않는다.
+String compactProductName(String? name, {String? ingredient}) {
+  final text = stripEasyCategoryParen(stripExportAlias(name));
+  final match = RegExp(r'\s*\(([^)]*)\)\s*$').firstMatch(text);
+  if (match == null) return text;
+  final innerKey = _ingredientCompareKey(match.group(1));
+  if (innerKey.isEmpty) return text;
+  // 서버가 오래된 이름을 보내더라도, 영문 성분값과 제품명 한글 괄호를
+  // 같은 성분으로 비교해 중복 괄호만 숨긴다. 원본 데이터는 바꾸지 않는다.
+  final preferredIngredient =
+      preferredCardIngredient(ingredient, productName: text);
+  final comparisonIngredient =
+      preferredIngredient.isNotEmpty ? preferredIngredient : ingredient;
+  final ingredientKeys = ingredientParts(
+    comparisonIngredient,
+  ).map(_ingredientCompareKey).where((key) => key.isNotEmpty).toSet();
+  if (ingredientKeys.contains(innerKey)) {
+    return text.substring(0, match.start).trim();
+  }
+  return text;
+}
+
+String _ingredientCompareKey(String? value) {
+  return (value ?? '')
+      .replaceAll(
+        RegExp(
+          r'\d+(?:\.\d+)?\s*(?:mg|mL|g|%|밀리그램|밀리그람|밀리리터)',
+          caseSensitive: false,
+        ),
+        '',
+      )
+      .toLowerCase()
+      .replaceAll(RegExp(r'[^0-9a-z가-힣]'), '');
+}
+
+/// 영문 성분명만 있을 때 제품명의 한글 성분 괄호를 우선한다.
+String preferredCardIngredient(String? ingredient, {String? productName}) {
+  final raw = (ingredient ?? '').trim();
+  final product = stripExportAlias(productName);
+  final match = RegExp(r'\(([^()]*)\)\s*$').firstMatch(product);
+  final fromProduct = match?.group(1)?.trim() ?? '';
+  final rawHasHangul = RegExp(r'[가-힣]').hasMatch(raw);
+  final productHasHangul = RegExp(r'[가-힣]').hasMatch(fromProduct);
+  if (!rawHasHangul && productHasHangul && !_isCategoryParen(fromProduct)) {
+    return fromProduct;
+  }
+  // 영문만 있고 한글 성분명을 보완할 근거가 없으면 어르신 화면에 만 노출하지 않는다.
+  return rawHasHangul ? raw : '';
+}
+
+String cardIngredientCaption(
+  String? ingredient, {
+  String? productName,
+  String? strength,
+}) {
+  final name = preferredCardIngredient(ingredient, productName: productName);
+  final dose = (strength ?? '').trim();
+  if (name.isEmpty) return '';
+  if (dose.isEmpty || name.contains(dose)) return name;
+  return '$name · $dose';
+}
+
 bool _isCategoryParen(String inner) {
   final text = normalizeEasyLabel(inner);
   if (text.contains('·') || text.contains(',')) return true;
@@ -91,7 +154,7 @@ String cardOfficialName({
 }) {
   final candidates = <String?>[productName, displayName, ingredient];
   for (final raw in candidates) {
-    final stripped = stripEasyCategoryParen(raw);
+    final stripped = compactProductName(raw, ingredient: ingredient);
     if (stripped.isEmpty) continue;
     if (looksLikePermissionProductName(raw) ||
         looksLikePermissionProductName(stripped)) {
@@ -99,7 +162,7 @@ String cardOfficialName({
     }
   }
   for (final raw in candidates) {
-    final stripped = stripEasyCategoryParen(raw);
+    final stripped = compactProductName(raw, ingredient: ingredient);
     if (stripped.isNotEmpty) return stripped;
   }
   return '약';
@@ -132,6 +195,22 @@ String? cardPurposeLabel(String? raw) {
   return unique.join(' · ');
 }
 
+/// 홈 짧은 분류. 주제는 쉼표로 모두 적고 `약`은 끝에 한 번만 붙인다.
+String? homePurposeCaption(String? raw) {
+  final labeled = cardPurposeLabel(raw);
+  if (labeled == null) return null;
+  final topics = <String>[];
+  for (final chunk in labeled.split(' · ')) {
+    var topic = chunk.replaceAll(RegExp('[·ㆍ]'), ' ');
+    topic = topic.replaceAll(RegExp(r'\s+'), ' ').trim();
+    topic = topic.replaceFirst(RegExp(r'(완화|약|제)$'), '').trim();
+    if (topic.isEmpty || topics.contains(topic)) continue;
+    topics.add(topic);
+  }
+  if (topics.isEmpty) return null;
+  return '${topics.join(', ')} 약';
+}
+
 String? cardSpokenOf(String? text) {
   var value = (text ?? '').trim();
   value = _spokenAliases[value] ?? value;
@@ -142,14 +221,30 @@ String? cardSpokenOf(String? text) {
   return value;
 }
 
+/// 상세 화면은 검토된 한 문장 설명을 보여 준다.
+/// 홈·목록의 중복 제거 규칙(`목적으로 처방`)을 적용하지 않는다.
+String? detailSpokenOf(String? text) {
+  var value = (text ?? '').trim();
+  value = _spokenAliases[value] ?? value;
+  if (value.isEmpty || value == _placeholderSpoken) return null;
+  return value;
+}
+
 final _usageNumbered = RegExp(r'(?<!\d)(\d+\.\s+)(?=[가-힣○•])');
-final _usagePersonLabel = RegExp(r'(?<=\S)\s+(성인|소아|고령자)\s*[:：]');
+final _usageStandaloneNumber = RegExp(r'^\s*(\d+\.)\s*\n+\s*', multiLine: true);
+final _usagePersonLabel = RegExp(
+  r'(?<!\d\.)(?<=\S)[ \t]+(신기능부전 환자|신기능 저하 환자|간기능 저하 환자|성인|소아|고령자)\s*[:：]',
+);
 final _usageBullet = RegExp(r'\s*[○•]\s*');
 final _usageSentenceEnd = RegExp(r'(한다\.|이다\.)\s+');
 
 /// 허가 용법 원문은 그대로 두고, 항·문장 앞에서만 줄을 나눈다.
 String formatOfficialUsage(String? raw) {
   var text = (raw ?? '').replaceAll('\r\n', '\n').replaceAll('\r', '\n');
+  text = text.replaceAllMapped(
+    _usageStandaloneNumber,
+    (match) => '${match[1]} ',
+  );
   text = text.replaceAll(RegExp(r'[ \t]+'), ' ');
   text = text.replaceAll(RegExp(r' *\n *'), '\n');
   text = text.replaceAll(_usageBullet, '\n\n○ ');

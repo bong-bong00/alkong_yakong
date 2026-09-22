@@ -10,6 +10,7 @@ import '../../core/widgets/senior_button.dart';
 import '../../core/widgets/senior_card.dart';
 import '../../core/widgets/senior_feedback.dart';
 import '../../core/widgets/senior_header.dart';
+import '../../core/widgets/senior_sheet.dart';
 import '../../core/widgets/senior_wheel.dart';
 
 class DrugExplainScreen extends StatefulWidget {
@@ -21,7 +22,8 @@ class DrugExplainScreen extends StatefulWidget {
   State<DrugExplainScreen> createState() => _DrugExplainScreenState();
 }
 
-class _DrugExplainScreenState extends State<DrugExplainScreen> {
+class _DrugExplainScreenState extends State<DrugExplainScreen>
+    with WidgetsBindingObserver {
   late final ApiClient _apiClient;
   final TextEditingController _chatController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
@@ -50,53 +52,52 @@ class _DrugExplainScreenState extends State<DrugExplainScreen> {
     },
   ];
 
+  /// 약을 선택한 뒤 일곱 가지 질문 중 필요한 것을 고른다.
   static const List<Map<String, String>> _keywordPrompts = [
     {
-      'label': '#약효·효능',
-      'prompt': '{medicine}의 약효와 효능을 공식 의약품 정보 기준으로 알려주세요.',
+      'label': '어디에 쓰는 약인가요?',
+      'prompt': '이 약은 어디에 쓰는 약인가요?',
       'intent': 'efficacy',
     },
     {
-      'label': '#복용방법',
-      'prompt': '{medicine}의 복용방법을 공식 의약품 정보 기준으로 알려주세요.',
+      'label': '어떻게 먹나요?',
+      'prompt': '이 약은 보통 어떻게 먹나요? 제가 등록한 복용 방법과 제품의 일반적인 사용법을 구분해서 알려주세요.',
+      'display': '이 약은 보통 어떻게 먹나요?',
       'intent': 'dosage',
     },
     {
-      'label': '#주의사항',
-      'prompt': '{medicine} 복용 시 주의사항을 알려주세요.',
+      'label': '무엇을 조심해야 하나요?',
+      'prompt': '이 약을 먹을 때 무엇을 조심해야 하나요?',
       'intent': 'precautions',
     },
     {
-      'label': '#부작용',
-      'prompt': '{medicine}의 공식 부작용을 알려주세요.',
+      'label': '먹고 불편하면 어떻게 하나요?',
+      'prompt': '이 약을 먹고 불편한 증상이 생기면 어떻게 해야 하나요?',
       'intent': 'side_effects',
     },
     {
-      'label': '#같이 먹는 약',
-      'prompt': '{medicine}과 현재 먹는 약들을 같이 복용해도 되는지 기존 DUR 병용금기 분석 결과를 설명해주세요.',
+      'label': '다른 약과 함께 먹어도 되나요?',
+      'prompt':
+          '이 약을 제가 먹고 있는 약들과 같이 먹어도 되는지 확인해 주세요. 같은 성분이나 비슷한 역할의 약이 겹치는지도 알려주세요.',
+      'display': '다른 약과 함께 먹어도 되나요?',
       'intent': 'combination',
     },
     {
-      'label': '#나이별 주의',
-      'prompt': '{medicine}의 나이별 주의사항을 기존 DUR 연령금기 분석 결과로 설명해주세요.',
+      'label': '나이에 따라 조심할 점',
+      'prompt': '제 나이에 이 약을 사용할 때 조심할 점이 있나요?',
       'intent': 'age',
     },
     {
-      'label': '#임신 중 주의',
-      'prompt': '{medicine}의 임신 중 복용 주의사항을 기존 DUR 임부금기 분석 결과로 설명해주세요.',
+      'label': '임신 중에 조심할 점',
+      'prompt': '임신 중에 이 약을 사용할 때 조심할 점이 있나요?',
       'intent': 'pregnancy',
-    },
-    {
-      'label': '#비슷한 약 중복',
-      'prompt':
-          '{medicine}과 현재 먹는 약에 비슷한 효능의 약이 중복되는지 기존 DUR 효능군중복 분석 결과로 설명해주세요.',
-      'intent': 'duplicate',
     },
   ];
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _apiClient = widget.apiClient ?? ApiClient();
     // 초기 안내 메시지 추가
     _messages.add({
@@ -108,10 +109,16 @@ class _DrugExplainScreenState extends State<DrugExplainScreen> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _chatController.dispose();
     _scrollController.dispose();
     _chatFocusNode.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeMetrics() {
+    if (_chatFocusNode.hasFocus) _scrollToBottom();
   }
 
   Future<void> _selectKeyword(Map<String, String> keyword) async {
@@ -129,8 +136,11 @@ class _DrugExplainScreenState extends State<DrugExplainScreen> {
     }
 
     setState(() => _selectedKeyword = label);
-    final completedPrompt = prompt.replaceAll('{medicine}', medicine);
-    await _sendMessage(message: completedPrompt, intent: intent);
+    await _sendMessage(
+      message: prompt,
+      displayMessage: keyword['display'] ?? prompt,
+      intent: intent,
+    );
   }
 
   Future<void> _loadMedicines() async {
@@ -326,7 +336,7 @@ class _DrugExplainScreenState extends State<DrugExplainScreen> {
   }
 
   Future<void> _enterOtherMedicine() async {
-    final medicine = await showDialog<_DrugSearchCandidate>(
+    final medicine = await SeniorSheet.show<_DrugSearchCandidate>(
       context: context,
       builder: (_) => _OtherMedicineDialog(apiClient: _apiClient),
     );
@@ -354,14 +364,18 @@ class _DrugExplainScreenState extends State<DrugExplainScreen> {
     });
   }
 
-  Future<void> _sendMessage({String? message, String? intent}) async {
+  Future<void> _sendMessage({
+    String? message,
+    String? displayMessage,
+    String? intent,
+  }) async {
     if (_isLoading) return;
 
     final text = (message ?? _chatController.text).trim();
     if (text.isEmpty) return;
 
     setState(() {
-      _messages.add({'isMe': true, 'text': text});
+      _messages.add({'isMe': true, 'text': displayMessage ?? text});
       _isLoading = true;
       _selectedKeyword = null;
     });
@@ -393,7 +407,7 @@ class _DrugExplainScreenState extends State<DrugExplainScreen> {
 
       if (!mounted) return;
       setState(() {
-        _messages.add({'isMe': false, 'text': reply});
+        _messages.add({'isMe': false, 'text': _plainAiReply(reply)});
       });
     } on ApiException catch (error) {
       if (!mounted) return;
@@ -418,39 +432,53 @@ class _DrugExplainScreenState extends State<DrugExplainScreen> {
 
   Widget _buildKeywordBar() {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        child: Row(
-          children: _keywordPrompts.map((keyword) {
-            final label = keyword['label']!;
-            final selected = label == _selectedKeyword;
-            return Padding(
-              padding: const EdgeInsets.only(right: 8),
-              child: ChoiceChip(
-                label: Text(label),
-                selected: selected,
-                onSelected: _isLoading ? null : (_) => _selectKeyword(keyword),
-                labelStyle: AppText.label(
-                  size: 19,
-                  color: selected ? Colors.white : AppColors.textBody,
-                ),
-                backgroundColor: AppColors.surface,
-                selectedColor: AppColors.point,
-                side: BorderSide(
-                  color: selected ? AppColors.point : AppColors.strongLine,
-                  width: 2,
-                ),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(18),
-                ),
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 10,
-                  vertical: 12,
-                ),
-              ),
-            );
-          }).toList(),
+      padding: const EdgeInsets.fromLTRB(20, 4, 20, 0),
+      child: LayoutBuilder(
+        builder: (context, constraints) => Scrollbar(
+          child: SingleChildScrollView(
+            key: ValueKey(_selectedMedicine),
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: _keywordPrompts.map((keyword) {
+                final label = keyword['label']!;
+                final selected = label == _selectedKeyword;
+                return Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: ConstrainedBox(
+                    constraints: BoxConstraints(
+                      maxWidth: constraints.maxWidth - 8,
+                    ),
+                    child: ChoiceChip(
+                      label: Text(label),
+                      selected: selected,
+                      onSelected: _isLoading
+                          ? null
+                          : (_) => _selectKeyword(keyword),
+                      labelStyle: AppText.label(
+                        size: 19,
+                        color: selected ? Colors.white : AppColors.textBody,
+                      ),
+                      backgroundColor: AppColors.surface,
+                      selectedColor: AppColors.point,
+                      side: BorderSide(
+                        color: selected
+                            ? AppColors.point
+                            : AppColors.strongLine,
+                        width: 2,
+                      ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(18),
+                      ),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 12,
+                      ),
+                    ),
+                  ),
+                );
+              }).toList(),
+            ),
+          ),
         ),
       ),
     );
@@ -701,6 +729,15 @@ class _OtherMedicineDialogState extends State<_OtherMedicineDialog> {
     super.dispose();
   }
 
+  /// 자판의 "완료". 실패했던 검색어도 여기서 다시 물어본다.
+  void _searchNow(String value) {
+    _debounce?.cancel();
+    final query = value.trim();
+    if (query.length < 2) return;
+    if (query == _inFlightQuery || query == _lastCompletedQuery) return;
+    _search(query, ++_requestSequence);
+  }
+
   void _onQueryChanged(String value) {
     _debounce?.cancel();
     final sequence = ++_requestSequence;
@@ -720,14 +757,6 @@ class _OtherMedicineDialogState extends State<_OtherMedicineDialog> {
       const Duration(milliseconds: 550),
       () => _search(query, sequence),
     );
-  }
-
-  void _searchNow(String value) {
-    _debounce?.cancel();
-    final query = value.trim();
-    if (query.length < 2) return;
-    if (query == _inFlightQuery || query == _lastCompletedQuery) return;
-    _search(query, ++_requestSequence);
   }
 
   Future<void> _search(String query, int sequence) async {
@@ -800,43 +829,39 @@ class _OtherMedicineDialogState extends State<_OtherMedicineDialog> {
         .clamp(120.0, 368.0)
         .toDouble();
 
-    return AlertDialog(
-      title: const Text('다른 약 검색하기'),
-      content: ConstrainedBox(
+    return SeniorSheet(
+      title: '다른 약 검색하기',
+      body: ConstrainedBox(
         constraints: BoxConstraints(maxHeight: maxContentHeight),
-        child: SizedBox(
-          width: double.maxFinite,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                key: const Key('otherMedicineSearchField'),
-                controller: _controller,
-                autofocus: true,
-                textInputAction: TextInputAction.search,
-                decoration: const InputDecoration(
-                  hintText: '약 이름을 입력하세요',
-                  border: OutlineInputBorder(),
-                  prefixIcon: Icon(Icons.search_rounded),
-                ),
-                onChanged: _onQueryChanged,
-                onSubmitted: _searchNow,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            SeniorField(
+              key: const Key('otherMedicineSearchField'),
+              controller: _controller,
+              hint: '약 이름을 적어 주세요',
+              textInputAction: TextInputAction.search,
+              onChanged: _onQueryChanged,
+              onSubmitted: _searchNow,
+            ),
+            const SizedBox(height: 12),
+            Flexible(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxHeight: 300),
+                child: _buildSearchContent(),
               ),
-              const SizedBox(height: 12),
-              Flexible(
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxHeight: 300),
-                  child: _buildSearchContent(),
-                ),
-              ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
       actions: [
-        TextButton(
+        SeniorButton(
+          label: '취소',
+          kind: SeniorButtonKind.neutral,
+          minHeight: 62,
+          fontSize: 20,
           onPressed: () => Navigator.of(context).pop(),
-          child: const Text('취소'),
         ),
       ],
     );
@@ -875,20 +900,38 @@ class _OtherMedicineDialogState extends State<_OtherMedicineDialog> {
       separatorBuilder: (_, _) => const Divider(height: 1),
       itemBuilder: (context, index) {
         final candidate = _candidates[index];
-        return ListTile(
+        // 시트 안에서는 ListTile이 제 배경을 못 칠한다. 줄을 직접 그린다.
+        return GestureDetector(
           key: ValueKey(
             'drugCandidate:${candidate.itemSeq ?? candidate.itemName}',
           ),
-          contentPadding: const EdgeInsets.symmetric(horizontal: 4),
-          title: Text(
-            candidate.itemName,
-            style: const TextStyle(fontWeight: FontWeight.w600),
-          ),
-          subtitle: candidate.manufacturer == null
-              ? null
-              : Text(candidate.manufacturer!),
-          trailing: const Icon(Icons.chevron_right_rounded),
+          behavior: HitTestBehavior.opaque,
           onTap: () => _select(candidate),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 14),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        candidate.itemName,
+                        style: AppText.cardTitle(size: 19),
+                      ),
+                      if (candidate.manufacturer != null)
+                        Text(
+                          candidate.manufacturer!,
+                          style: AppText.caption(size: 16),
+                        ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 10),
+                const SeniorChevron(),
+              ],
+            ),
+          ),
         );
       },
     );
@@ -975,4 +1018,37 @@ String _apiError(ApiException error) {
   return error.statusCode == null
       ? error.message
       : '${error.message} (HTTP ${error.statusCode})';
+}
+
+String _plainAiReply(String value) {
+  var text = value.replaceAll('\r\n', '\n').replaceAll('\r', '\n');
+  text = text.replaceAll(
+    RegExp(r'^[ \t]*```(?:[A-Za-z][A-Za-z0-9_-]*)?[ \t]*$', multiLine: true),
+    '',
+  );
+  text = text.replaceAll(
+    RegExp(r'^[ \t]{0,3}#{1,6}[ \t]+', multiLine: true),
+    '',
+  );
+  text = text.replaceAll(
+    RegExp(r'^[ \t]{0,3}[-*+][ \t]+', multiLine: true),
+    '• ',
+  );
+  text = text.replaceAllMapped(
+    RegExp(r'\*\*([^*\n]+)\*\*'),
+    (match) => match.group(1)!,
+  );
+  text = text.replaceAllMapped(
+    RegExp(r'__([^\n]+?)__'),
+    (match) => match.group(1)!,
+  );
+  text = text.replaceAllMapped(
+    RegExp(r'(?<![A-Za-z0-9가-힣_*])\*([^*\s\n](?:[^*\n]*?[^*\s\n])?)\*(?!\*)'),
+    (match) => match.group(1)!,
+  );
+  text = text.replaceAllMapped(
+    RegExp(r'(?<![A-Za-z0-9가-힣_])_([^_\s\n](?:[^_\n]*?[^_\s\n])?)_(?!_)'),
+    (match) => match.group(1)!,
+  );
+  return text.replaceAll('`', '').replaceAll(RegExp(r'\n{3,}'), '\n\n').trim();
 }

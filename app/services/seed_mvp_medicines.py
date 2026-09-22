@@ -28,6 +28,136 @@ _SEED_MEDS: tuple[dict, ...] = (_CODARONE,)
 _CATALOG_MEDS = (_CODARONE,)
 
 
+def ensure_user_codarone_available(user_id: str) -> bool:
+    """Keep one active Codarone row for an existing user without removing drugs."""
+    uid = str(user_id or "").strip()
+    if not uid:
+        return False
+    conn = get_connection()
+    try:
+        # 로그인은 Render를 사용하므로 로컬 DB에 아직 없는 사용자도 같은 ID로
+        # 최소 환자 행을 만든다. 실제 계정 정보나 인증정보는 복사하지 않는다.
+        conn.execute(
+            """
+            INSERT OR IGNORE INTO users (id, name, role)
+            VALUES (?, '사용자', 'PATIENT')
+            """,
+            (uid,),
+        )
+        category = derive_easy_category(
+            product_name=_CODARONE["product_name"],
+            ingredient=_CODARONE["ingredient"],
+            efficacy=_CODARONE["efficacy"],
+        )
+        conn.execute(
+            """
+            INSERT OR IGNORE INTO medicines (
+                medicine_code, product_name, ingredient, efficacy,
+                precautions, easy_category
+            ) VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (
+                _CODARONE["medicine_code"],
+                _CODARONE["product_name"],
+                _CODARONE["ingredient"],
+                _CODARONE["efficacy"],
+                _CODARONE["precautions"],
+                category,
+            ),
+        )
+        active = conn.execute(
+            """
+            SELECT 1 FROM user_medicines
+            WHERE user_id = ? AND medicine_code = ?
+              AND COALESCE(is_active, 1) = 1
+            LIMIT 1
+            """,
+            (uid, _CODARONE["medicine_code"]),
+        ).fetchone()
+        if not active:
+            conn.execute(
+                """
+                INSERT INTO user_medicines (
+                    user_id, medicine_code, dosage, frequency_per_day,
+                    administration_times, is_active, status
+                ) VALUES (?, ?, ?, ?, ?, 1, 'ACTIVE')
+                """,
+                (
+                    uid,
+                    _CODARONE["medicine_code"],
+                    _CODARONE["dosage"],
+                    _CODARONE["frequency_per_day"],
+                    _CODARONE["administration_times"],
+                ),
+            )
+        conn.commit()
+        return True
+    finally:
+        conn.close()
+
+
+def ensure_mvp_codarone_available() -> None:
+    """Keep Codarone active for the demo account without replacing user-added drugs."""
+    conn = get_connection()
+    try:
+        conn.execute(
+            """
+            INSERT OR IGNORE INTO users (id, name, role, birth_date)
+            VALUES (?, '체험환자', 'PATIENT', '1958-01-01')
+            """,
+            (MVP_USER_ID,),
+        )
+        category = derive_easy_category(
+            product_name=_CODARONE["product_name"],
+            ingredient=_CODARONE["ingredient"],
+            efficacy=_CODARONE["efficacy"],
+        )
+        conn.execute(
+            """
+            INSERT OR IGNORE INTO medicines (
+                medicine_code, product_name, ingredient, efficacy,
+                precautions, easy_category
+            ) VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (
+                _CODARONE["medicine_code"],
+                _CODARONE["product_name"],
+                _CODARONE["ingredient"],
+                _CODARONE["efficacy"],
+                _CODARONE["precautions"],
+                category,
+            ),
+        )
+        active = conn.execute(
+            """
+            SELECT id FROM user_medicines
+            WHERE user_id = ? AND medicine_code = ?
+              AND COALESCE(is_active, 1) = 1
+            LIMIT 1
+            """,
+            (MVP_USER_ID, _CODARONE["medicine_code"]),
+        ).fetchone()
+        if not active:
+            conn.execute(
+                """
+                INSERT INTO user_medicines (
+                    user_id, medicine_code, dosage, frequency_per_day,
+                    administration_times, is_active, status
+                ) VALUES (?, ?, ?, ?, ?, 1, 'ACTIVE')
+                """,
+                (
+                    MVP_USER_ID,
+                    _CODARONE["medicine_code"],
+                    _CODARONE["dosage"],
+                    _CODARONE["frequency_per_day"],
+                    _CODARONE["administration_times"],
+                ),
+            )
+        conn.commit()
+    finally:
+        conn.close()
+
+
 def ensure_mvp_demo_medicines() -> str:
     """Create mvp-user and replace active medicines with development demo data."""
     conn = get_connection()
@@ -88,7 +218,7 @@ def ensure_mvp_demo_medicines() -> str:
                     med.get("precautions"),
                     category,
                     med.get("short_explanation"),
-                    "REVIEWED" if med.get("short_explanation") else None,
+                    "REVIEWED" if med.get("short_explanation") else "UNREVIEWED",
                 ),
             )
         for med in _CATALOG_MEDS:

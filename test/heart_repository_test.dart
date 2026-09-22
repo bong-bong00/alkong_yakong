@@ -13,7 +13,11 @@ void main() {
   HeartRepository repositoryReturning(Object body, {int status = 200}) {
     final client = MockClient(
       (_) async => http.Response(
-        jsonEncode(body),
+        jsonEncode(
+          body is Map
+              ? {'readings': [], 'period_date': '2026-09-18', ...body}
+              : body,
+        ),
         status,
         headers: {'content-type': 'application/json; charset=utf-8'},
       ),
@@ -85,6 +89,11 @@ void main() {
       apiClient: ApiClient(client: client),
     ).fetch(userId: 'patient-1');
     expect(called?.path, '/api/v1/users/patient-1/biosignal/heart-summary');
+    expect(called?.queryParameters['include_readings'], 'true');
+    expect(
+      called?.queryParameters['utc_offset_minutes'],
+      '${DateTime.now().timeZoneOffset.inMinutes}',
+    );
   });
 
   test('못 잰 쪽은 비운 채로 둔다 — 숫자를 지어내지 않는다', () async {
@@ -116,7 +125,9 @@ void main() {
   });
 
   test('서버가 실패하면 null — 데모로 조용히 갈아끼우지 않는다', () async {
-    final data = await repositoryReturning({'detail': '없음'}, status: 500).fetch();
+    final data = await repositoryReturning({
+      'detail': '없음',
+    }, status: 500).fetch();
     expect(data, isNull);
   });
 
@@ -124,5 +135,63 @@ void main() {
     MvpSession.userId = '';
     final data = await repositoryReturning({'today': {}}).fetch();
     expect(data, isNull);
+  });
+
+  test('주 시작과 월 시작은 같은 현지 날짜 경계를 사용한다', () async {
+    final data = await repositoryReturning({
+      'period_date': '2026-06-01',
+      'readings': [
+        {
+          'id': 1,
+          'bpm': 98,
+          'measured_at': DateTime(2026, 6, 1).toUtc().toIso8601String(),
+        },
+        {
+          'id': 2,
+          'bpm': 71,
+          'measured_at': DateTime(
+            2026,
+            5,
+            31,
+            23,
+            59,
+          ).toUtc().toIso8601String(),
+        },
+      ],
+    }).fetch();
+    expect(data!.readingsFor(monthly: false).map((r) => r.id), [1]);
+    expect(data.readingsFor(monthly: true).map((r) => r.id), [1]);
+  });
+
+  test('단독 기록은 전후 쌍을 만들지 않고 유지한다', () async {
+    final data = await repositoryReturning({
+      'today': {},
+      'week': [],
+      'month': [],
+      'readings': [
+        {'id': 7, 'bpm': 98, 'measured_at': '2026-09-18T05:42:00Z'},
+      ],
+    }).fetch();
+    expect(data!.readings.single.bpm, 98);
+    expect(data.today.isComplete, isFalse);
+    expect(data.today.before, isNull);
+    expect(data.today.after, isNull);
+    expect(
+      data.readings.single.measuredAt,
+      DateTime.parse('2026-09-18T05:42:00Z').toLocal(),
+    );
+    expect(data.hasReadings, isTrue);
+  });
+
+  test('기록 목록 누락 또는 잘못된 시간은 빈 기록으로 간주하지 않는다', () async {
+    expect(await repositoryReturning({'readings': null}).fetch(), isNull);
+    expect(
+      await repositoryReturning({
+        'readings': [
+          {'id': 1, 'bpm': 98, 'measured_at': 'bad'},
+        ],
+      }).fetch(),
+      isNull,
+    );
   });
 }

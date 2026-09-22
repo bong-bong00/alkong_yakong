@@ -152,15 +152,14 @@ void main() {
         MonthlyHeartScreen(data: _heartSample, now: DateTime(2026, 9, 14)),
     '한 달 기록 · 기록 없음 (26)': () =>
         MonthlyHeartScreen(data: _heartEmpty, now: DateTime(2026, 9, 14)),
-    '심박수 재는 중 (27)': () => const MeasureScreen(),
+    '심박수 측정 중 (27)': () => const MeasureScreen(),
     '기록 저장 (30)': () => const SavedScreen(bpm: 72),
     '회원가입 (02~05)': () => const SignupScreen(),
     '가입 완료': () => const SignupDoneScreen(name: '김복자'),
     '이번 달 달력 (19)': () => const MonthCalendarScreen(),
     '복약 알림 (32)': () => const AlarmSettingsScreen(),
-    '돌보는 분 목록 (36)': () => Scaffold(
-      body: CareFamilyScreen(onOpenPatient: (_) {}),
-    ),
+    '돌보는 분 목록 (36)': () =>
+        Scaffold(body: CareFamilyScreen(onOpenPatient: (_) {})),
     '계정 관리': () => const AccountScreen(),
     '도움이 필요할 때': () => const HelpScreen(),
     '도움이 필요할 때 (모두 펼침)': () => const HelpScreen(openAll: true),
@@ -194,7 +193,7 @@ void main() {
         stillWorksBody: '띠가 끊겨도 복약 알림에는 영향이 없어요.',
         helperText: '그래도 안 되면\n딸 지안 님에게 도움 청하기',
         onCallHelper: () {},
-        footnote: '마지막으로 잰 시각 · 오늘 오전 11시 20분',
+        footnote: '마지막으로 측정한 시각 · 오늘 오전 11시 20분',
       ),
     ),
   };

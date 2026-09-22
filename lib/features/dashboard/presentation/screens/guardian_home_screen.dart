@@ -312,7 +312,7 @@ class GuardianStatusTab extends ConsumerWidget {
                               label: '심박수',
                               value: patient.heartRate?.toString() ?? '-',
                               note: patient.heartRate == null
-                                  ? '잰 기록 없음'
+                                  ? '측정 기록 없음'
                                   : patient.heartRateNormal == false
                                   ? '확인 필요'
                                   : '정상',

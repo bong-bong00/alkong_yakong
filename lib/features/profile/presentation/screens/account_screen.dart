@@ -107,47 +107,17 @@ class AccountScreen extends ConsumerWidget {
     );
   }
 
-  void _confirmWithdraw(BuildContext context, WidgetRef ref) {
-    showDialog<void>(
+  Future<void> _confirmWithdraw(BuildContext context, WidgetRef ref) async {
+    final go = await showSeniorYesNoDialog(
       context: context,
-      builder: (dialogContext) => Dialog(
-        insetPadding: const EdgeInsets.symmetric(horizontal: 24),
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(22, 24, 22, 22),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Text('정말 탈퇴하시겠어요?', style: AppText.emphasis(size: 25)),
-              const SizedBox(height: 10),
-              Text(
-                '지금까지의 복약 기록이 모두 지워져요. '
-                '한 번 지우면 되돌릴 수 없어요.',
-                style: AppText.body(),
-              ),
-              const SizedBox(height: 20),
-              SeniorButton(
-                label: '아니요, 그냥 둘게요',
-                minHeight: 62,
-                fontSize: 21,
-                onPressed: () => Navigator.of(dialogContext).pop(),
-              ),
-              const SizedBox(height: 10),
-              SeniorButton(
-                label: '네, 탈퇴할게요',
-                kind: SeniorButtonKind.secondary,
-                minHeight: 58,
-                fontSize: 20,
-                onPressed: () async {
-                  Navigator.of(dialogContext).pop();
-                  await _withdraw(context, ref);
-                },
-              ),
-            ],
-          ),
-        ),
-      ),
+      title: '정말 탈퇴하시겠어요?',
+      message: '지금까지의 복약 기록이 모두 지워져요. 한 번 지우면 되돌릴 수 없어요.',
+      yesLabel: '아니요, 그냥 둘게요',
+      noLabel: '네, 탈퇴할게요',
     );
+    // 위쪽(주 버튼)이 "그냥 둘게요"다. 위험한 쪽을 크게 두지 않는다.
+    if (go || !context.mounted) return;
+    await _withdraw(context, ref);
   }
 
   /// 서버에서 지워진 뒤에만 나간다. 못 지웠는데 나가면

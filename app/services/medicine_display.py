@@ -24,7 +24,7 @@ _STRENGTH = re.compile(
     re.I,
 )
 _TAKE_AMOUNT = re.compile(
-    r"^(\d+(?:\.\d+)?)\s*(알|정|캡슐|포|개|mL|ml|방울)$",
+    r"^(\d+(?:\.\d+)?)\s*(알|정|캡슐|포|개|회|mL|ml|방울)$",
     re.I,
 )
 
@@ -97,6 +97,55 @@ def infer_dosage_form(name: str | None) -> str:
     return ""
 
 
+def take_unit_for_form(
+    dosage_form: str | None,
+    product_name: str | None = None,
+) -> str | None:
+    """홈 횟수 칸에 쓸 단위. 액·바르는 약은 알을 붙이지 않는다."""
+    form = str(dosage_form or "").strip() or infer_dosage_form(product_name)
+    if any(
+        token in form
+        for token in ("액", "연고", "크림", "시럽", "점안", "패치", "외용", "도포")
+    ):
+        return "회"
+    if "캡슐" in form:
+        return "캡슐"
+    if "정" in form:
+        return "알"
+    return None
+
+
+def format_home_amount(
+    *,
+    dosage: str | None,
+    times_per_take: int | float | None = None,
+    dosage_form: str | None = None,
+    product_name: str | None = None,
+) -> str:
+    """홈에 적을 1회량. 단위가 없으면 숫자를 지어 붙이지 않는다."""
+    from app.services.ocr.parser import take_amount_for_display
+
+    unit = take_unit_for_form(dosage_form, product_name)
+    displayed = take_amount_for_display(dosage, times_per_take=times_per_take)
+    amount, split_unit = split_take_amount(displayed)
+    if amount and split_unit:
+        if split_unit == "알" and unit == "회":
+            return f"{amount}회"
+        return f"{amount}{split_unit}"
+    compact = str(displayed or "").strip()
+    if re.fullmatch(r"\d+(?:\.\d+)?", compact) and unit:
+        number = f"{float(compact):.3f}".rstrip("0").rstrip(".")
+        return f"{number}{unit}"
+    if unit == "회" and times_per_take is not None:
+        try:
+            count = int(times_per_take)
+        except (TypeError, ValueError):
+            count = 0
+        if count >= 1:
+            return f"{count}회"
+    return ""
+
+
 def strip_easy_category_paren(name: str | None) -> str:
     """이름 뒤에 붙인 분류 괄호만 뗀다. 허가명 속 성분명 괄호는 남긴다."""
     text = str(name or "").strip()
@@ -107,6 +156,40 @@ def strip_easy_category_paren(name: str | None) -> str:
     if _is_category_paren(inner):
         return text[: match.start()].strip()
     return text
+
+
+def compact_product_name(
+    name: str | None,
+    ingredient: str | None = None,
+) -> str:
+    """목록·카드용 제품명에서 주성분과 같은 마지막 괄호만 떼다.
+
+    DB의 허가 제품명은 변경하지 않는다. 성분 값과 일치하지 않는 규격·제형
+    괄호는 임의로 지우지 않는다.
+    """
+    text = strip_easy_category_paren(strip_export_alias(name))
+    match = _TRAILING_PAREN.search(text)
+    if not match:
+        return text
+    inner_key = _ingredient_compare_key(match.group(1))
+    if not inner_key:
+        return text
+    # 허가 제품명 괄호는 한글인데, 원본 DB 성분은 영문인 경우가 있다.
+    # 이때는 제품명 안의 한글 성분을 비교용으로만 사용한다. 원본 성분값은 바꾸지 않는다.
+    comparison_ingredient = preferred_card_ingredient(ingredient, text) or ingredient
+    ingredient_keys = {
+        _ingredient_compare_key(part)
+        for part in split_ingredients(comparison_ingredient)
+        if _ingredient_compare_key(part)
+    }
+    if inner_key in ingredient_keys:
+        return text[: match.start()].strip()
+    return text
+
+
+def _ingredient_compare_key(value: str | None) -> str:
+    without_strength = _STRENGTH.sub("", str(value or ""))
+    return re.sub(r"[^0-9a-z가-힣]", "", without_strength.casefold())
 
 
 def _is_category_paren(inner: str) -> bool:
@@ -135,10 +218,10 @@ def card_official_name(
     display_name: str | None = None,
     ingredient: str | None = None,
 ) -> str:
-    """허가 제품명을 제목으로 쓴다. 성분+키워드 괄호는 제목이 아니다."""
+    """허가 제품명을 우선하되 카드에서 중복되는 주성분 괄호는 숨긴다."""
     candidates = (product_name, display_name, ingredient)
     for raw in candidates:
-        stripped = strip_easy_category_paren(strip_export_alias(raw))
+        stripped = compact_product_name(raw, ingredient)
         if not stripped:
             continue
         if looks_like_permission_product_name(raw) or looks_like_permission_product_name(
@@ -146,7 +229,7 @@ def card_official_name(
         ):
             return stripped
     for raw in candidates:
-        stripped = strip_easy_category_paren(strip_export_alias(raw))
+        stripped = compact_product_name(raw, ingredient)
         if stripped:
             return stripped
     return "약"
@@ -184,6 +267,21 @@ def ingredient_summary(raw: str | None) -> str:
     if len(parts) == 1:
         return parts[0]
     return f"{parts[0]} 외 {len(parts) - 1}개"
+
+
+def preferred_card_ingredient(
+    ingredient: str | None,
+    product_name: str | None = None,
+) -> str:
+    """카드용 주성분. 영문만 있으면 제품명 한글 괄호를 쓰고, 그것도 없으면 숨긴다."""
+    summary = ingredient_summary(ingredient)
+    if re.search(r"[가-힣]", summary):
+        return summary
+    match = _TRAILING_PAREN.search(strip_export_alias(product_name))
+    inner = (match.group(1).strip() if match else "")
+    if re.search(r"[가-힣]", inner) and not _is_category_paren(inner):
+        return inner
+    return ""
 
 
 def is_card_purpose_label(label: str | None, *, review_status: str | None = None) -> bool:

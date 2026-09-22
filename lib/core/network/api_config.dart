@@ -2,12 +2,19 @@ import 'package:flutter/foundation.dart';
 
 abstract final class ApiConfig {
   static const String _overrideBaseUrl = String.fromEnvironment('API_BASE_URL');
+  static const String _overrideLocalBaseUrl = String.fromEnvironment(
+    'LOCAL_API_BASE_URL',
+  );
   static const String productionBaseUrl = 'https://alkong-yakong.onrender.com';
-  // 실제 안드로이드 기기에서 같은 로컬 네트워크의 개발 서버로 연결한다.
-  // 에뮬레이터에서는 필요할 때
-  // --dart-define=API_BASE_URL=http://10.0.2.2:8000 을 사용한다.
-  static const String androidDevelopmentBaseUrl = 'http://172.16.42.25:8000';
+  // OCR·약 등록·목록·상세·DUR·복약 기능은 개인 Render를 기본으로 쓴다.
+  // 로컬 서버가 필요할 때만 LOCAL_API_BASE_URL dart-define으로 덮어쓴다.
+  static const String medicationFeatureBaseUrl =
+      'https://alkong-yakong-j0jn.onrender.com';
   static const String desktopDevelopmentBaseUrl = 'http://localhost:8000';
+
+  static String get localFeatureBaseUrl => _overrideLocalBaseUrl.isNotEmpty
+      ? _overrideLocalBaseUrl
+      : medicationFeatureBaseUrl;
 
   static String get baseUrl {
     if (_overrideBaseUrl.isNotEmpty) {

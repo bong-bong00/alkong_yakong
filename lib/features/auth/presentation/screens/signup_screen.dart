@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/cupertino.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_tabler_icons/flutter_tabler_icons.dart';
 import 'package:go_router/go_router.dart';
@@ -7,11 +6,10 @@ import 'package:go_router/go_router.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../domain/exclusive_choice.dart';
 import '../../../../core/network/api_client.dart';
-import '../../../../core/providers/user_role.dart';
-import '../../../../core/session/auth_session.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../core/widgets/senior_button.dart';
 import '../../../../core/widgets/senior_feedback.dart';
+import '../../../../core/widgets/senior_wheel.dart';
 import '../../../../core/widgets/senior_header.dart';
 import '../../../guardian/application/guardians_provider.dart';
 import '../../../guardian/data/guardian_repository.dart';
@@ -125,114 +123,12 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
   });
 
   Future<void> _pickBirth() async {
-    final now = DateTime.now();
-    int y = _birth?.year ?? (now.year - 60);
-    int m = _birth?.month ?? 1;
-    int d = _birth?.day ?? 1;
-    final years = [for (int yy = 1920; yy <= now.year; yy++) yy];
-
-    await showModalBottomSheet(
+    final picked = await showSeniorDateWheel(
       context: context,
-      backgroundColor: AppColors.surface,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (ctx) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 14, 20, 14),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text('생년월일', style: AppText.cardTitle(size: 21)),
-                  GestureDetector(
-                    onTap: () {
-                      final maxDay = DateUtils.getDaysInMonth(y, m);
-                      if (d > maxDay) d = maxDay;
-                      setState(() => _birth = DateTime(y, m, d));
-                      Navigator.pop(ctx);
-                    },
-                    child: Container(
-                      constraints: const BoxConstraints(minHeight: 48),
-                      alignment: Alignment.center,
-                      padding: const EdgeInsets.symmetric(horizontal: 12),
-                      child: Text(
-                        '확인',
-                        style: AppText.cardTitle(
-                          size: 20,
-                          color: AppColors.point,
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              SizedBox(
-                height: 210,
-                child: Row(
-                  children: [
-                    Expanded(
-                      flex: 3,
-                      child: _wheel(
-                        years,
-                        years.indexOf(y),
-                        (i) => y = years[i],
-                        '년',
-                      ),
-                    ),
-                    Expanded(
-                      flex: 2,
-                      child: _wheel(
-                        List.generate(12, (k) => k + 1),
-                        m - 1,
-                        (i) => m = i + 1,
-                        '월',
-                      ),
-                    ),
-                    Expanded(
-                      flex: 2,
-                      child: _wheel(
-                        List.generate(31, (k) => k + 1),
-                        d - 1,
-                        (i) => d = i + 1,
-                        '일',
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
+      initialDate: _birth,
     );
-  }
-
-  Widget _wheel(
-    List<int> items,
-    int initialIndex,
-    ValueChanged<int> onChanged,
-    String suffix,
-  ) {
-    return CupertinoPicker(
-      scrollController: FixedExtentScrollController(
-        initialItem: initialIndex < 0 ? 0 : initialIndex,
-      ),
-      itemExtent: 38,
-      onSelectedItemChanged: onChanged,
-      children: [
-        for (final it in items)
-          Center(
-            child: Text(
-              '$it$suffix',
-              style: const TextStyle(fontSize: 18, color: kText),
-            ),
-          ),
-      ],
-    );
+    if (picked == null) return;
+    setState(() => _birth = picked);
   }
 
   void _next(List<_StepDef> steps) {
@@ -339,32 +235,24 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
       final body = _signupBody();
 
       final response = await _apiClient.post('/api/v1/users', body: body);
-      final userId = response is Map<String, dynamic>
-          ? response['id']?.toString()
-          : null;
-      if (userId == null || userId.isEmpty) {
-        throw const ApiException('회원가입 응답에 사용자 ID가 없습니다.');
+      if (response is! Map) {
+        throw const ApiException('회원가입 응답에서 사용자 정보를 받지 못했어요.');
       }
-
-      await AuthSession.persistUserId(userId);
-      // 가입한 역할대로 로그인 상태를 만든다. 보호자로 가입하면 보호자 화면이 열린다.
-      await AuthSession.setLoggedIn(_role);
-      if (mounted) {
-        ref.read(userRoleProvider.notifier).state = _role == 'guardian'
-            ? UserRole.guardian
-            : UserRole.patient;
-        // 방금 만든 계정으로 바뀌었으니 앞사람의 약·가족·기록은 버린다.
-        resetUserScopedData(ref);
+      final rawProfile = Map<String, dynamic>.from(response);
+      final role = rawProfile['role']?.toString().trim().toLowerCase();
+      final profile = UserProfile.fromJson(rawProfile);
+      if (profile.id.isEmpty ||
+          profile.id == 'mvp-user' ||
+          (role != 'patient' && role != 'guardian')) {
+        throw const ApiException('회원가입 응답에서 사용자 정보를 확인하지 못했어요.');
       }
+      if (!mounted) return;
+      await startSession(ref, profile);
       await _saveGuardianContact();
       if (!mounted) return;
+      // 가입 완료 화면이 다음 길(약 등록 / 나중에 하기)을 스스로 정한다.
+      // 여기서 또 옮기면 방금 연 화면이 곧바로 로그인으로 덮인다.
       await _showSignupComplete();
-      if (!mounted) return;
-      if (Navigator.of(context).canPop()) {
-        Navigator.of(context).pop();
-      } else {
-        context.go('/login');
-      }
     } catch (error) {
       if (!mounted) return;
       _showError('회원가입에 실패했습니다: $error');
@@ -583,7 +471,7 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
             title: '지금 임신 중이거나\n젖을 먹이고 계신가요?',
             subtitle: '이때는 피해야 하는 약이 있어요.',
             validate: () => _pregnancy == null ? '해당하는 것을 골라주세요' : null,
-            child: _vlist(
+            child: _grid(
               const ['임신 중이에요', '젖을 먹이고 있어요', '둘 다 아니에요'],
               _pregnancy,
               (v) => setState(() => _pregnancy = v),
@@ -1117,66 +1005,20 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
     child: Text(text, style: AppText.label(size: 18)),
   );
 
-  /// 두 칸씩 늘어놓는 단일 선택.
+  /// 두 칸씩 늘어놓는 단일 선택. 글자가 길면 그 보기만 한 줄을 다 쓴다.
   Widget _grid(
     List<String> options,
     String? selected,
     ValueChanged<String> onSelect,
   ) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        for (int i = 0; i < options.length; i += 2)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 10),
-            // 글자가 커져도 두 칸의 키가 맞는다.
-            child: IntrinsicHeight(
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Expanded(
-                    child: _pill(
-                      options[i],
-                      selected == options[i],
-                      () => onSelect(options[i]),
-                      minHeight: 64,
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  if (i + 1 < options.length)
-                    Expanded(
-                      child: _pill(
-                        options[i + 1],
-                        selected == options[i + 1],
-                        () => onSelect(options[i + 1]),
-                        minHeight: 64,
-                      ),
-                    )
-                  else
-                    const Expanded(child: SizedBox()),
-                ],
-              ),
-            ),
-          ),
-      ],
-    );
-  }
-
-  /// 한 줄에 하나씩 놓는 단일 선택. 보기가 길어 두 칸에 안 들어갈 때 쓴다.
-  Widget _vlist(
-    List<String> options,
-    String? selected,
-    ValueChanged<String> onSelect,
-  ) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        for (final o in options)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 10),
-            child: _pill(o, selected == o, () => onSelect(o), minHeight: 64),
-          ),
-      ],
+    return _OptionFlow(
+      options: options,
+      builder: (option, full) => _pill(
+        option,
+        selected == option,
+        () => onSelect(option),
+        minHeight: 64,
+      ),
     );
   }
 
@@ -1185,51 +1027,47 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
     Set<String> selected,
     void Function(String) onTap,
   ) {
-    return Wrap(
-      spacing: 8,
-      runSpacing: 8,
-      children: [
-        for (final o in options)
-          Semantics(
-            button: true,
-            selected: selected.contains(o),
-            label: '$o ${selected.contains(o) ? '고름' : '고르지 않음'}',
-            child: GestureDetector(
-              onTap: () => onTap(o),
-              child: ExcludeSemantics(
-                child: Container(
-                  constraints: const BoxConstraints(minHeight: 60),
-                  alignment: Alignment.center,
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 18,
-                    vertical: 12,
+    return _OptionFlow(
+      options: options,
+      builder: (option, full) {
+        final picked = selected.contains(option);
+        return Semantics(
+          button: true,
+          selected: picked,
+          label: '$option ${picked ? '고름' : '고르지 않음'}',
+          child: GestureDetector(
+            onTap: () => onTap(option),
+            child: ExcludeSemantics(
+              child: Container(
+                constraints: const BoxConstraints(minHeight: 64),
+                alignment: Alignment.center,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 12,
+                ),
+                decoration: BoxDecoration(
+                  color: picked ? AppColors.point : AppColors.surface,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(
+                    color: picked
+                        ? AppColors.pointBorder
+                        : AppColors.strongBorder,
+                    width: 2,
                   ),
-                  decoration: BoxDecoration(
-                    color: selected.contains(o)
-                        ? AppColors.point
-                        : AppColors.surface,
-                    borderRadius: BorderRadius.circular(30),
-                    border: Border.all(
-                      color: selected.contains(o)
-                          ? AppColors.pointBorder
-                          : AppColors.strongBorder,
-                      width: 2,
-                    ),
-                  ),
-                  child: Text(
-                    o,
-                    style: AppText.cardTitle(
-                      size: 18,
-                      color: selected.contains(o)
-                          ? Colors.white
-                          : AppColors.textBody,
-                    ),
+                ),
+                child: Text(
+                  option,
+                  textAlign: TextAlign.center,
+                  style: AppText.cardTitle(
+                    size: 18,
+                    color: picked ? Colors.white : AppColors.textBody,
                   ),
                 ),
               ),
             ),
           ),
-      ],
+        );
+      },
     );
   }
 
@@ -1397,6 +1235,79 @@ class SignupDoneScreen extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+/// 보기 칸을 두 칸씩 놓되, 한 줄로 안 들어가는 보기는 한 줄을 다 쓴다.
+///
+/// 글자를 줄이지 않고 줄바꿈을 막는 길이다. 반쪽 칸에 글자가 들어가는지
+/// 실제로 재 보고 정한다.
+class _OptionFlow extends StatelessWidget {
+  final List<String> options;
+
+  /// [full]이면 한 줄을 다 쓰는 칸이다.
+  final Widget Function(String option, bool full) builder;
+
+  const _OptionFlow({required this.options, required this.builder});
+
+  /// 이 글자가 [maxWidth] 안에 한 줄로 들어가는지.
+  static bool _fits(
+    String text,
+    TextStyle style,
+    double maxWidth,
+    double scale,
+  ) {
+    final painter = TextPainter(
+      text: TextSpan(text: text, style: style),
+      textDirection: TextDirection.ltr,
+      maxLines: 1,
+      textScaler: TextScaler.linear(scale),
+    )..layout();
+    return painter.width <= maxWidth;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final style = AppText.cardTitle(size: 19);
+    final scale = MediaQuery.textScalerOf(context).scale(1);
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        // 칸 안쪽 여백(12+12)과 테두리(2+2), 칸 사이 간격 10을 뺀 폭.
+        final half = (constraints.maxWidth - 10) / 2 - 28;
+        final rows = <Widget>[];
+        var i = 0;
+        while (i < options.length) {
+          final current = options[i];
+          final next = i + 1 < options.length ? options[i + 1] : null;
+          final pairs =
+              next != null &&
+              _fits(current, style, half, scale) &&
+              _fits(next, style, half, scale);
+          rows.add(
+            Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: IntrinsicHeight(
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: pairs
+                      ? [
+                          Expanded(child: builder(current, false)),
+                          const SizedBox(width: 10),
+                          Expanded(child: builder(next, false)),
+                        ]
+                      : [Expanded(child: builder(current, true))],
+                ),
+              ),
+            ),
+          );
+          i += pairs ? 2 : 1;
+        }
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: rows,
+        );
+      },
     );
   }
 }

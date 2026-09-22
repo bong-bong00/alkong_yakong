@@ -54,6 +54,11 @@ class AuthSession {
 
   static Future<void> logout() async {
     isLoggedIn = false;
+    role = 'patient';
     await _prefs?.setBool('isLoggedIn', false);
+    await _prefs?.remove('userId');
+    await _prefs?.remove('role');
+    MvpSession.userId = '';
+    MvpSession.isPregnant = null;
   }
 }

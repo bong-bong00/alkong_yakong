@@ -104,7 +104,7 @@ class BiosignalEventScreen extends StatelessWidget {
             ),
             const SizedBox(height: 6),
             Text(
-              '이벤트 앞뒤로 잰 값이 서버에 남아 있지 않아요.',
+              '이벤트 앞뒤로 측정한 값이 서버에 남아 있지 않아요.',
               textAlign: TextAlign.center,
               style: TextStyle(fontSize: 14, color: Colors.grey[600]),
             ),

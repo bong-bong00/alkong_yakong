@@ -73,7 +73,7 @@ class _PolarScreenState extends State<PolarScreen> {
                     _InfoCard(sensor: _sensor),
                     const SizedBox(height: 16),
                     SeniorButton(
-                      label: '지금 재기',
+                      label: '지금 측정',
                       minHeight: 70,
                       fontSize: 24,
                       onPressed: () => Navigator.of(context).push(
@@ -139,7 +139,7 @@ class _PolarScreenState extends State<PolarScreen> {
 
   Future<void> _search() async {
     setState(() => _searching = true);
-    await _sensor.start();
+    await _sensor.start(measure: false);
     if (!mounted) return;
     setState(() => _searching = false);
 

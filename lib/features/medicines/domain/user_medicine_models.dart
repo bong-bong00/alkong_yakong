@@ -3,6 +3,13 @@ library;
 
 import 'display_policy.dart';
 
+class TreatmentUse {
+  final String title;
+  final String description;
+
+  const TreatmentUse({required this.title, this.description = ''});
+}
+
 class UserMedicine {
   final String medicineCode;
   final String displayName;
@@ -23,6 +30,7 @@ class UserMedicine {
   final String amount;
   final String? purposeLabel;
   final String? shortExplanation;
+  final String? detailExplanation;
   final String? keyCaution;
   final List<String> keyCautions;
   final List<String> easyPurposes;
@@ -31,9 +39,11 @@ class UserMedicine {
   final int? frequencyPerDay;
   final List<String> administrationTimes;
   final String ingredientExplanation;
+  final String ingredientHighlight;
   final String approvedUseSummary;
   final List<String> approvedUses;
   final List<String> allApprovedUses;
+  final List<TreatmentUse> treatmentUses;
   final String officialUsage;
   final String officialUsageNotice;
   final List<String> askDoctorWhen;
@@ -66,6 +76,7 @@ class UserMedicine {
     required this.amount,
     this.purposeLabel,
     this.shortExplanation,
+    this.detailExplanation,
     this.keyCaution,
     this.keyCautions = const [],
     this.easyPurposes = const [],
@@ -74,9 +85,11 @@ class UserMedicine {
     this.frequencyPerDay,
     this.administrationTimes = const [],
     this.ingredientExplanation = '',
+    this.ingredientHighlight = '',
     this.approvedUseSummary = '',
     this.approvedUses = const [],
     this.allApprovedUses = const [],
+    this.treatmentUses = const [],
     this.officialUsage = '',
     this.officialUsageNotice = '',
     this.askDoctorWhen = const [],
@@ -91,6 +104,7 @@ class UserMedicine {
   });
 
   factory UserMedicine.fromJson(Map<String, dynamic> json) {
+    final rawShortExplanation = json['short_explanation']?.toString().trim();
     final card = resolveMyMedicineCard(
       medicineCode: json['medicine_code']?.toString(),
       productName: json['product_name']?.toString(),
@@ -125,6 +139,10 @@ class UserMedicine {
       amount: json['amount']?.toString() ?? '',
       purposeLabel: card.purposeLabel,
       shortExplanation: card.spoken,
+      // 상세 첫 문장은 홈 목록용 짧은 분류를 재사용하지 않는다.
+      // 서버가 검토된 상세 문장을 주지 않으면 이 줄 자체를 숨긴다.
+      detailExplanation:
+          (rawShortExplanation?.isNotEmpty ?? false) ? rawShortExplanation : null,
       keyCaution: json['key_caution']?.toString(),
       keyCautions: _stringList(json['key_cautions']),
       easyPurposes: _stringList(json['easy_purposes']),
@@ -133,9 +151,11 @@ class UserMedicine {
       frequencyPerDay: _intOrNull(json['frequency_per_day']),
       administrationTimes: _stringList(json['administration_times']),
       ingredientExplanation: json['ingredient_explanation']?.toString() ?? '',
+      ingredientHighlight: json['ingredient_highlight']?.toString() ?? '',
       approvedUseSummary: json['approved_use_summary']?.toString() ?? '',
       approvedUses: _stringList(json['approved_uses']),
       allApprovedUses: _stringList(json['all_approved_uses']),
+      treatmentUses: _treatmentUseList(json['treatment_uses']),
       officialUsage: json['official_usage']?.toString() ?? '',
       officialUsageNotice: json['official_usage_notice']?.toString() ?? '',
       askDoctorWhen: _stringList(json['ask_doctor_when']),
@@ -152,9 +172,11 @@ class UserMedicine {
     );
   }
 
-  String? get effect => cardPurposeLabel(purposeLabel);
+  String? get effect => homePurposeCaption(purposeLabel);
 
   String? get cardSpoken => cardSpokenOf(shortExplanation);
+
+  String? get detailSpoken => detailSpokenOf(detailExplanation);
 
   bool get hasReviewedDetail =>
       detailReviewStatus.toUpperCase() == 'REVIEWED' &&
@@ -164,15 +186,11 @@ class UserMedicine {
           allApprovedUses.isNotEmpty);
 
   bool get hasDetailContent =>
-      const {
-        'READY',
-        'OFFICIAL_ONLY',
-        'NEEDS_REVIEW',
-        'OUTDATED',
-      }.contains(detailStatus.toUpperCase()) &&
-      (ingredientExplanation.trim().isNotEmpty ||
-          approvedUseSummary.trim().isNotEmpty ||
-          approvedUses.isNotEmpty);
+      ingredientExplanation.trim().isNotEmpty ||
+      approvedUseSummary.trim().isNotEmpty ||
+      approvedUses.isNotEmpty ||
+      allApprovedUses.isNotEmpty ||
+      treatmentUses.isNotEmpty;
 
   String get ingredientLabel {
     final summary = ingredientSummary.trim().isNotEmpty
@@ -221,6 +239,21 @@ class UserMedicine {
           return value.toString();
         })
         .where((value) => value.trim().isNotEmpty)
+        .toList();
+  }
+
+  static List<TreatmentUse> _treatmentUseList(dynamic raw) {
+    if (raw is! List) return const [];
+    return raw
+        .whereType<Map>()
+        .map(
+          (item) => TreatmentUse(
+            title: item['title']?.toString().trim() ?? '',
+            description: item['description']?.toString().trim() ?? '',
+          ),
+        )
+        .where((item) => item.title.isNotEmpty)
+        .take(3)
         .toList();
   }
 

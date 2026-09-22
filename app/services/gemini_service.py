@@ -2,6 +2,7 @@
 
 import json
 import logging
+import re
 import time
 from pathlib import Path
 from typing import Any
@@ -371,6 +372,20 @@ def _finish_reasons(response) -> list[str]:
     return reasons
 
 
+def _plain_chat_reply(value: str) -> str:
+    """Remove AI reply markup only; preserve medicine text and clinical values."""
+    text = value.replace("\r\n", "\n").replace("\r", "\n")
+    text = re.sub(r"(?m)^[ \t]*```(?:[A-Za-z][A-Za-z0-9_-]*)?[ \t]*$", "", text)
+    text = re.sub(r"(?m)^[ \t]{0,3}#{1,6}[ \t]+", "", text)
+    text = re.sub(r"(?m)^[ \t]{0,3}[-*+][ \t]+", "• ", text)
+    text = re.sub(r"\*\*([^*\n]+)\*\*", r"\1", text)
+    text = re.sub(r"__([^\n]+?)__", r"\1", text)
+    text = re.sub(r"(?<![\w*])\*([^*\s\n](?:[^*\n]*?[^*\s\n])?)\*(?!\*)", r"\1", text)
+    text = re.sub(r"(?<![\w_])_([^_\s\n](?:[^_\n]*?[^_\s\n])?)_(?!_)", r"\1", text)
+    text = text.replace("`", "")
+    return re.sub(r"\n{3,}", "\n\n", text).strip()
+
+
 def _finalize_chat_response(response) -> str:
     response_text = _read_response_text(response)
     logger.debug("Gemini response.text length: %d", len(response_text))
@@ -379,7 +394,9 @@ def _finalize_chat_response(response) -> str:
     if reasons:
         logger.debug("Gemini finish_reason: %s", ", ".join(reasons))
 
-    reply = _complete_response_text(response, response_text=response_text)
+    reply = _plain_chat_reply(
+        _complete_response_text(response, response_text=response_text)
+    )
     logger.debug("Gemini final reply length: %d", len(reply))
 
     has_valid_ending = reply.endswith((".", "요", "다", "니다"))
@@ -420,84 +437,115 @@ def _dur_context_unavailable_reply(
     status: str,
     reason: str | None = None,
 ) -> str:
-    if intents & {"combination", "interaction"}:
+    if "combination" in intents:
+        if reason == "official_medicine_unavailable":
+            return (
+                "선택한 약의 성분을 공식 자료에서 확인하지 못했어요. "
+                "함께 사용할 때 주의할 점과 겹치는 약을 모두 확인하지 못했으니 다시 확인이 필요해요."
+            )
+        if reason == "dur_data_unavailable":
+            return (
+                "지금은 함께 사용할 때 주의할 공식 정보와 겹치는 약 정보를 모두 확인하지 못했어요. "
+                "잠시 후 다시 확인해 주세요."
+            )
         if status == "missing":
             return (
-                "현재 복용약 조합에 대한 DUR 병용금기 분석 결과를 확인할 수 없습니다. "
-                "최신 DUR 분석 후 확인해주세요."
+                "함께 사용할 때 주의할 점과 겹치는 약 정보를 확인한 결과를 찾지 못했어요. "
+                "현재 복용약으로 다시 확인이 필요해요."
+            )
+        if status == "stale":
+            return (
+                "복용 중인 약이 바뀌어 이전 결과를 그대로 사용하기 어려워요. "
+                "함께 사용할 때 주의할 점과 겹치는 약을 다시 확인해야 해요."
             )
         return (
-            "복용 중인 약 정보가 DUR 분석 당시와 달라 최신 병용금기 결과로 "
-            "보기 어렵습니다. DUR 재분석이 필요합니다."
+            "현재 복용 중인 약과 선택한 약의 함께 사용 주의 및 겹치는 약 정보를 "
+            "모두 확인하지 못했어요. 현재 복용약으로 다시 확인이 필요해요."
+        )
+    if "interaction" in intents:
+        if status == "missing":
+            return (
+                "현재 복용 중인 약에 함께 사용하면 안 되는 조합이 있는지 확인한 결과를 찾지 못했어요. "
+                "현재 복용약으로 다시 확인이 필요해요."
+            )
+        return (
+            "복용 중인 약이 바뀌어 이전 결과를 그대로 사용하기 어려워요. "
+            "함께 사용하면 안 되는 조합이 있는지 다시 확인이 필요해요."
         )
     if "age" in intents:
         if status == "missing":
             return (
-                "현재 사용자 기준 DUR 연령금기 분석 결과를 확인할 수 없습니다. "
-                "최신 DUR 분석 후 확인해주세요."
+                "현재 사용자 기준으로 나이에 따른 약 사용 제한을 확인한 결과를 찾지 못했어요. "
+                "현재 복용약으로 다시 확인이 필요해요."
             )
         return (
-            "현재 복용약 구성이 기존 DUR 분석 당시와 달라 최신 연령금기 결과로 "
-            "보기 어렵습니다. DUR 재분석이 필요합니다."
+            "복용 중인 약이 바뀌어 이전 결과를 그대로 사용하기 어려워요. "
+            "나이에 따른 약 사용 제한을 다시 확인해야 해요."
         )
     if "pregnancy" in intents:
         if status == "missing":
             return (
-                "현재 사용자 기준 DUR 임부금기 분석 결과를 확인할 수 없습니다. "
-                "최신 DUR 분석 후 확인해주세요."
+                "현재 사용자 기준으로 임신 중 약 사용 제한을 확인한 결과를 찾지 못했어요. "
+                "현재 복용약으로 다시 확인이 필요해요."
             )
         return (
-            "현재 복용약 구성이 기존 DUR 분석 당시와 달라 최신 임부금기 결과로 "
-            "보기 어렵습니다. DUR 재분석이 필요합니다."
+            "복용 중인 약이 바뀌어 이전 결과를 그대로 사용하기 어려워요. "
+            "임신 중 약 사용 제한을 다시 확인해야 해요."
         )
     if "duplicate" in intents:
         if reason == "official_medicine_unavailable":
             return (
-                "선택한 약의 공식 성분 정보를 확인하지 못해 중복 여부를 "
-                "확인할 수 없습니다."
+                "선택한 약의 성분을 공식 자료에서 확인하지 못했어요. "
+                "성분이나 효과가 겹치는지 확인할 수 없어요."
             )
         if reason == "dur_data_unavailable":
             return (
-                "현재 공식 DUR 정보를 확인하기 어렵습니다. "
-                "잠시 후 다시 시도해주세요."
+                "지금은 약을 함께 사용할 때 주의할 공식 정보를 확인하지 못했어요. "
+                "잠시 후 다시 시도해 주세요."
             )
         if status == "missing":
             return (
-                "현재 복용 중인 약 조합의 DUR 효능군중복 분석 결과를 확인할 수 "
-                "없습니다. 최신 DUR 분석 후 확인해주세요."
+                "현재 복용 중인 약에서 비슷한 효과가 겹치는지 확인한 결과를 찾지 못했어요. "
+                "현재 복용약으로 다시 확인이 필요해요."
             )
         return (
-            "복용 중인 약 정보가 DUR 분석 당시와 달라 최신 효능군중복 결과로 "
-            "보기 어렵습니다. DUR 재분석이 필요합니다."
+            "복용 중인 약이 바뀌어 이전 결과를 그대로 사용하기 어려워요. "
+            "비슷한 효과가 겹치는지 다시 확인이 필요해요."
         )
     return (
-        "현재 DUR 분석 결과를 확인할 수 없습니다. "
-        "최신 DUR 분석 후 확인해주세요."
+        "현재 약 사용 시 주의할 내용을 확인한 결과를 찾지 못했어요. "
+        "현재 복용약으로 다시 확인이 필요해요."
         if status == "missing"
-        else "현재 복용약 구성이 DUR 분석 당시와 달라 재분석이 필요합니다."
+        else "복용 중인 약이 바뀌어 다시 확인이 필요해요."
     )
 
 
 def _dur_no_match_reply(intents: set[str]) -> str:
-    if intents & {"combination", "interaction"}:
-        risk_type = "병용금기"
+    if "combination" in intents:
+        return (
+            "현재 저장된 약과 공식 자료를 확인한 범위에서는 함께 사용할 때 주의할 정보나 "
+            "성분·역할이 겹치는 약 정보를 찾지 못했어요. "
+            "이것만으로 안전하다고 단정할 수는 없어요."
+        )
+    if "interaction" in intents:
+        risk_type = "함께 사용하면 안 되는 조합"
     elif "age" in intents:
-        risk_type = "연령금기"
+        risk_type = "나이에 따른 약 사용 제한"
     elif "pregnancy" in intents:
-        risk_type = "임부금기"
+        risk_type = "임신 중 약 사용 제한"
     elif "duplicate" in intents:
         return (
-            "현재 복용 중인 약과 선택한 약 사이에서 공식 DUR 기준으로 확인된 "
-            "중복 성분 또는 효능군 중복 정보가 없습니다. 이는 모든 복약 위험이 "
-            "없다는 의미는 아니며, 다른 상호작용이나 개인 상태에 따른 주의사항은 "
-            "별도로 확인해야 합니다."
+            "현재 복용 중인 약과 선택한 약 사이에서 성분이나 비슷한 효과가 겹친다는 정보를 "
+            "확인한 공식 자료에서는 찾지 못했어요. 이것이 모든 위험이 없다는 뜻은 아니에요. "
+            "함께 사용할 때 생기는 다른 영향이나 개인 상태에 따른 주의사항은 "
+            "따로 확인해야 해요."
         )
     else:
-        risk_type = "DUR 주의"
+        risk_type = "약 사용 시 주의할 내용"
     return (
-        f"현재 저장된 최신 DUR 분석 결과에서는 {risk_type} 유형의 항목이 "
-        "확인되지 않았습니다. 이 결과만으로 복용이 안전하다고 단정할 수 없으므로, "
-        "정확한 복용 판단은 의사 또는 약사에게 확인해주세요."
+        f"현재 저장된 최신 확인 결과에서는 {risk_type}에 해당하는 정보를 "
+        "찾지 못했어요. 이 결과만으로 안전하다고 단정할 수는 없어요. "
+        "약 사용 여부는 의사 또는 약사에게 확인해 주세요."
     )
 
 
@@ -525,10 +573,10 @@ def generate_chat_response(
     intents = resolve_question_intents(message, intent)
     safety_question = is_safety_question(intents)
     unavailable_reply = (
-        "현재 확인된 식약처 정보만으로는 확인하기 어렵습니다. "
-        "최신 DUR 재분석 후 복용 중인 약 전체를 가지고 의사 또는 약사에게 확인해주세요."
+        "현재 확인된 식약처 정보만으로는 답변하기 어려워요. "
+        "현재 복용약으로 다시 확인하고, 복용 중인 약 전체를 의사 또는 약사에게 알려 주세요."
         if safety_question
-        else "현재 식약처 공식정보를 확인할 수 없어 답변하기 어렵습니다. 잠시 후 다시 시도해주세요."
+        else "현재 식약처 공식정보를 확인할 수 없어 답변하기 어려워요. 잠시 후 다시 시도해 주세요."
     )
     if not GEMINI_API_KEY:
         return unavailable_reply
@@ -738,10 +786,19 @@ def generate_chat_response(
             else:
                 dur_result = load_latest_dur_context(user_id, intents)
 
-            if safety_question and dur_result["status"] in {"stale", "missing"}:
+            if safety_question and (
+                dur_result.get("status") in {"stale", "missing"}
+                or (
+                    "combination" in intents
+                    and (
+                        dur_result.get("status") != "current"
+                        or dur_result.get("has_risk", False) is None
+                    )
+                )
+            ):
                 return _dur_context_unavailable_reply(
                     intents,
-                    dur_result["status"],
+                    dur_result.get("status") or "missing",
                     dur_result.get("reason"),
                 )
             if (

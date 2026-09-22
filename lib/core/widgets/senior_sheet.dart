@@ -22,12 +22,20 @@ class SeniorSheet extends StatelessWidget {
   /// 제목 위에 들어가는 내용 (기록 증거 박스, 그리드 등).
   final Widget? leading;
 
+  /// 제목 오른쪽 자리. 굴림판 창의 "확인"이 여기 붙는다.
+  final Widget? trailing;
+
+  /// 제목과 본문 사이. 굴림판처럼 본문이 넓은 창은 더 붙인다.
+  final double bodyGap;
+
   const SeniorSheet({
     super.key,
     required this.title,
     this.body,
     this.actions = const [],
     this.leading,
+    this.trailing,
+    this.bodyGap = 14,
   });
 
   /// 스크림을 눌러 닫을 수 있는 표준 방식으로 띄운다.
@@ -65,7 +73,7 @@ class SeniorSheet extends StatelessWidget {
       ),
       child: SafeArea(
         top: false,
-        child: Padding(
+        child: SingleChildScrollView(
           padding: const EdgeInsets.fromLTRB(24, 22, 24, 28),
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -83,8 +91,25 @@ class SeniorSheet extends StatelessWidget {
               ),
               const SizedBox(height: 14),
               if (leading != null) ...[leading!, const SizedBox(height: 14)],
-              Text(title, style: AppText.emphasis(size: 27)),
-              if (body != null) ...[const SizedBox(height: 14), body!],
+              if (trailing == null)
+                Text(title, style: AppText.emphasis(size: 27))
+              else
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    Flexible(
+                      child: Text(
+                        title,
+                        style: AppText.emphasis(size: 26),
+                        maxLines: 2,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    trailing!,
+                  ],
+                ),
+              if (body != null) ...[SizedBox(height: bodyGap), body!],
               for (final action in actions) ...[
                 const SizedBox(height: 14),
                 action,
@@ -114,19 +139,26 @@ class _SheetHost extends StatelessWidget {
       child: Builder(
         builder: (hostContext) => Scaffold(
           backgroundColor: Colors.transparent,
-          body: Column(
-            children: [
-              Expanded(
-                child: GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onTap: dismissible
-                      ? () => Navigator.of(hostContext).maybePop()
-                      : null,
-                  child: const SizedBox.expand(),
+          // 자판이 올라오면 Scaffold가 먼저 짧아진다. 시트는 그 남은 키를
+          // 넘지 않게 묶어 두고, 모자라면 시트 안에서 밀어 본다.
+          body: LayoutBuilder(
+            builder: (_, constraints) => Column(
+              children: [
+                Expanded(
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: dismissible
+                        ? () => Navigator.of(hostContext).maybePop()
+                        : null,
+                    child: const SizedBox.expand(),
+                  ),
                 ),
-              ),
-              Builder(builder: builder),
-            ],
+                ConstrainedBox(
+                  constraints: BoxConstraints(maxHeight: constraints.maxHeight),
+                  child: Builder(builder: builder),
+                ),
+              ],
+            ),
           ),
         ),
       ),

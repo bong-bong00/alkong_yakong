@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/network/api_client.dart';
+import '../../../../core/network/api_config.dart';
 import '../../../../core/session/mvp_session.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../core/widgets/senior_card.dart';
@@ -144,25 +145,15 @@ class _MonthCalendarScreenState extends ConsumerState<MonthCalendarScreen> {
     };
   }
 
-  static List<CalendarSlot> _slotsOf(dynamic raw) {
-    if (raw is! List) return const [];
-    return [
-      for (final row in raw)
-        if (row is Map && (row['slot']?.toString() ?? '').isNotEmpty)
-          CalendarSlot(
-            slot: row['slot'].toString(),
-            taken: row['taken'] == true,
-          ),
-    ];
-  }
-
   Future<void> _load() async {
     try {
       final rawUserId = widget.patientUserId?.trim().isNotEmpty == true
           ? widget.patientUserId!.trim()
           : MvpSession.userId.trim();
       final userId = Uri.encodeComponent(rawUserId);
-      final response = await ApiClient().get(
+      final response = await ApiClient(
+        baseUrl: ApiConfig.localFeatureBaseUrl,
+      ).get(
         '/api/v1/users/$userId/medication-calendar?year=$_year&month=$_month',
       );
       if (!mounted || response is! Map) {
@@ -184,7 +175,6 @@ class _MonthCalendarScreenState extends ConsumerState<MonthCalendarScreen> {
                     CalendarDay(
                       (row['day'] as num?)?.toInt() ?? 0,
                       _markOf(row['mark']?.toString() ?? ''),
-                      slots: _slotsOf(row['slots']),
                     ),
               ].where((item) => item.day > 0).toList()
             : _days;
@@ -264,6 +254,13 @@ class _MonthCalendarScreenState extends ConsumerState<MonthCalendarScreen> {
     final summary = !_hasSchedules && _scheduledPastCount == 0
         ? '이달 복용 칸이 아직 없어요'
         : '$_scheduledPastCount일 중 $_doneCount일 다 드셨어요';
+    final pickedDays = _pickedDay == null
+        ? <CalendarDay>[]
+        : _days.where((day) => day.day == _pickedDay).toList();
+    final pickedMark = pickedDays.isEmpty ? null : pickedDays.first.mark;
+    final aggregateOnly = _pickedDay != null &&
+        _detailDoses.isEmpty &&
+        (pickedMark == DayMark.done || pickedMark == DayMark.missed);
 
     return Scaffold(
       backgroundColor: AppColors.bg,
@@ -365,7 +362,29 @@ class _MonthCalendarScreenState extends ConsumerState<MonthCalendarScreen> {
                         const SizedBox(height: 12),
                         // 기록 탭과 같은 하루 상세를 둔다. 두 화면이 서로 다른
                         // 모양으로 같은 내용을 말하면 다른 것으로 읽힌다.
-                        DayDoseDetail(
+                        if (aggregateOnly)
+                          SeniorCard(
+                            padding: const EdgeInsets.all(22),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                Text(_detailLabel, style: AppText.cardTitle(size: 20)),
+                                const SizedBox(height: 8),
+                                Text(
+                                  pickedMark == DayMark.done
+                                      ? '이날 복약 일정은 모두 완료됐어요.'
+                                      : '이날 완료하지 못한 복약 일정이 있어요.',
+                                  style: AppText.body(size: 18),
+                                ),
+                                const SizedBox(height: 8),
+                                Text(
+                                  '시간대별 기록은 현재 확인할 수 없어요.',
+                                  style: AppText.caption(size: 16.5),
+                                ),
+                              ],
+                            ),
+                          )
+                        else DayDoseDetail(
                           dayLabel: _detailLabel,
                           date: _detailDate,
                           doses: _detailDoses,
