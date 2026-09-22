@@ -108,9 +108,9 @@ class Medicine {
         cardSpokenOf(efficacy);
   }
 
-  /// 화면에 보여 줄 약 이름. 허가 제품명을 그대로 쓴다.
+  /// 화면에 보여 줄 약 이름. 허가명에서 중복 주성분 괄호만 숨긴다.
   String get displayName {
-    final name = stripEasyCategoryParen(stripExportAlias(ingredient));
+    final name = compactProductName(ingredient, ingredient: ingredientName);
     return name.isEmpty ? '약' : name;
   }
 

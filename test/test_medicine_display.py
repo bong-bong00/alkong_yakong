@@ -2,6 +2,7 @@ from app.services.medicine_display import (
     card_display_name,
     card_official_name,
     card_purpose_label,
+    compact_product_name,
     is_card_purpose_label,
     is_mock_drug_info_name,
     strip_export_alias,
@@ -18,7 +19,7 @@ def test_mock_drug_info_names():
     assert not is_mock_drug_info_name("히드록시진염산염")
 
 
-def test_strips_keyword_paren_keeps_ingredient_paren():
+def test_strips_keyword_paren_and_compacts_ingredient_paren_for_cards():
     assert (
         strip_easy_category_paren("히드록시진염산염 (알레르기·두통·어지러움)")
         == "히드록시진염산염"
@@ -27,6 +28,14 @@ def test_strips_keyword_paren_keeps_ingredient_paren():
         card_display_name("아디팜정(히드록시진염산염)")
         == "아디팜정(히드록시진염산염)"
     )
+    assert (
+        compact_product_name(
+            "아디팜정(히드록시진염산염)",
+            "히드록시진염산염",
+        )
+        == "아디팜정"
+    )
+    assert compact_product_name("제품정(서방정)", "성분명") == "제품정(서방정)"
 
 
 def test_card_purpose_label_keeps_reviewed_relief_pair():
@@ -46,7 +55,7 @@ def test_official_name_prefers_permission_product():
             display_name="히드록시진염산염 (알레르기·두통·어지러움)",
             ingredient="히드록시진염산염",
         )
-        == "아디팜정(히드록시진염산염)"
+        == "아디팜정"
     )
     assert (
         card_official_name(

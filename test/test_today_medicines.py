@@ -166,8 +166,9 @@ def test_adipam_card_uses_permission_name_and_itch_copy():
             "explanation_review_status": "REVIEWED",
         }
     )
-    assert item["display_name"] == "아디팜정(히드록시진염산염)"
-    assert item["product_name"] == "아디팜정(히드록시진염산염)"
+    assert item["display_name"] == "아디팜정"
+    assert item["official_product_name"] == "아디팜정(히드록시진염산염)"
+    assert item["product_name"] == "아디팜정"
     assert item["purpose_label"] == "가려움 완화 · 불안·긴장 완화"
     assert "가려울 때" in item["short_explanation"]
     assert "목적으로 처방" not in (item["short_explanation"] or "")

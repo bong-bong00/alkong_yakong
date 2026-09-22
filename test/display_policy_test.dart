@@ -2,7 +2,7 @@ import 'package:alkong_yakong/features/medicines/domain/display_policy.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  test('허가 제품명을 제목으로 쓰고 키워드 괄호는 뗀다', () {
+  test('허가 제품명을 우선하고 중복 주성분 괄호는 뗀다', () {
     final card = resolveMyMedicineCard(
       medicineCode: '197800210',
       productName: '아디팜정(히드록시진염산염)',
@@ -12,7 +12,7 @@ void main() {
       shortExplanation: '가려움 또는 불안·긴장을 완화할 목적으로 처방될 수 있어요.',
       easyCategory: '가려울 때 먹는 약이에요',
     );
-    expect(card.name, '아디팜정(히드록시진염산염)');
+    expect(card.name, '아디팜정');
     expect(card.purposeLabel, '가려움 완화 · 불안·긴장 완화');
     expect(card.spoken, '가려울 때 먹는 약이에요');
     expect(card.spoken, isNot(contains('목적으로 처방')));
@@ -43,6 +43,14 @@ void main() {
   test('수출명만 제거하고 성분 괄호는 보존한다', () {
     expect(stripExportAlias('제품정(수출명 : TAGAMENT)(성분명)'), '제품정(성분명)');
     expect(stripExportAlias('아디팜정(히드록시진염산염)'), '아디팜정(히드록시진염산염)');
+  });
+
+  test('요약 화면은 주성분과 같은 마지막 괄호만 숨긴다', () {
+    expect(
+      compactProductName('코다론정(아미오다론염산염)', ingredient: '아미오다론염산염'),
+      '코다론정',
+    );
+    expect(compactProductName('제품정(서방정)', ingredient: '성분명'), '제품정(서방정)');
   });
 
   test('공식 용법은 숫자 용량을 바꾸지 않고 항만 줄바꿈한다', () {

@@ -56,6 +56,36 @@ String stripEasyCategoryParen(String? name) {
   return text;
 }
 
+/// 목록·카드에서만 제품명 뒤의 중복 주성분 괄호를 숨긴다.
+/// DB와 OCR 확인 화면의 공식 제품명은 변경하지 않는다.
+String compactProductName(String? name, {String? ingredient}) {
+  final text = stripEasyCategoryParen(stripExportAlias(name));
+  final match = RegExp(r'\s*\(([^)]*)\)\s*$').firstMatch(text);
+  if (match == null) return text;
+  final innerKey = _ingredientCompareKey(match.group(1));
+  if (innerKey.isEmpty) return text;
+  final ingredientKeys = ingredientParts(
+    ingredient,
+  ).map(_ingredientCompareKey).where((key) => key.isNotEmpty).toSet();
+  if (ingredientKeys.contains(innerKey)) {
+    return text.substring(0, match.start).trim();
+  }
+  return text;
+}
+
+String _ingredientCompareKey(String? value) {
+  return (value ?? '')
+      .replaceAll(
+        RegExp(
+          r'\d+(?:\.\d+)?\s*(?:mg|mL|g|%|밀리그램|밀리그람|밀리리터)',
+          caseSensitive: false,
+        ),
+        '',
+      )
+      .toLowerCase()
+      .replaceAll(RegExp(r'[^0-9a-z가-힣]'), '');
+}
+
 bool _isCategoryParen(String inner) {
   final text = normalizeEasyLabel(inner);
   if (text.contains('·') || text.contains(',')) return true;
@@ -83,7 +113,7 @@ bool looksLikePermissionProductName(String? name) {
   return _permissionNameHint.hasMatch(text);
 }
 
-/// 카드 제목은 허가 제품명. 성분+키워드 괄호는 제목으로 쓰지 않는다.
+/// 카드 제목은 허가 제품명을 우선하되 중복 주성분 괄호는 숨긴다.
 String cardOfficialName({
   String? productName,
   String? displayName,
@@ -91,7 +121,7 @@ String cardOfficialName({
 }) {
   final candidates = <String?>[productName, displayName, ingredient];
   for (final raw in candidates) {
-    final stripped = stripEasyCategoryParen(raw);
+    final stripped = compactProductName(raw, ingredient: ingredient);
     if (stripped.isEmpty) continue;
     if (looksLikePermissionProductName(raw) ||
         looksLikePermissionProductName(stripped)) {
@@ -99,7 +129,7 @@ String cardOfficialName({
     }
   }
   for (final raw in candidates) {
-    final stripped = stripEasyCategoryParen(raw);
+    final stripped = compactProductName(raw, ingredient: ingredient);
     if (stripped.isNotEmpty) return stripped;
   }
   return '약';

@@ -158,6 +158,37 @@ def strip_easy_category_paren(name: str | None) -> str:
     return text
 
 
+def compact_product_name(
+    name: str | None,
+    ingredient: str | None = None,
+) -> str:
+    """목록·카드용 제품명에서 주성분과 같은 마지막 괄호만 떼다.
+
+    DB의 허가 제품명은 변경하지 않는다. 성분 값과 일치하지 않는 규격·제형
+    괄호는 임의로 지우지 않는다.
+    """
+    text = strip_easy_category_paren(strip_export_alias(name))
+    match = _TRAILING_PAREN.search(text)
+    if not match:
+        return text
+    inner_key = _ingredient_compare_key(match.group(1))
+    if not inner_key:
+        return text
+    ingredient_keys = {
+        _ingredient_compare_key(part)
+        for part in split_ingredients(ingredient)
+        if _ingredient_compare_key(part)
+    }
+    if inner_key in ingredient_keys:
+        return text[: match.start()].strip()
+    return text
+
+
+def _ingredient_compare_key(value: str | None) -> str:
+    without_strength = _STRENGTH.sub("", str(value or ""))
+    return re.sub(r"[^0-9a-z가-힣]", "", without_strength.casefold())
+
+
 def _is_category_paren(inner: str) -> bool:
     text = normalize_easy_label(inner)
     if "·" in text or "," in text:
@@ -184,10 +215,10 @@ def card_official_name(
     display_name: str | None = None,
     ingredient: str | None = None,
 ) -> str:
-    """허가 제품명을 제목으로 쓴다. 성분+키워드 괄호는 제목이 아니다."""
+    """허가 제품명을 우선하되 카드에서 중복되는 주성분 괄호는 숨긴다."""
     candidates = (product_name, display_name, ingredient)
     for raw in candidates:
-        stripped = strip_easy_category_paren(strip_export_alias(raw))
+        stripped = compact_product_name(raw, ingredient)
         if not stripped:
             continue
         if looks_like_permission_product_name(raw) or looks_like_permission_product_name(
@@ -195,7 +226,7 @@ def card_official_name(
         ):
             return stripped
     for raw in candidates:
-        stripped = strip_easy_category_paren(strip_export_alias(raw))
+        stripped = compact_product_name(raw, ingredient)
         if stripped:
             return stripped
     return "약"
