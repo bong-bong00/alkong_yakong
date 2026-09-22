@@ -266,7 +266,13 @@ def ensure_medicine_detail(cursor, medicine_code: str) -> dict[str, Any] | None:
         existing_profile = get_medicine_detail_profile(cursor, code)
         candidate_quality = _profile_quality(profile)
         existing_quality = _profile_quality(existing_profile)
-        if existing_profile and candidate_quality < existing_quality:
+        # OUTDATED 프로필은 과거 원문 기준이므로 품질 점수가 더 높아도
+        # 보존하지 않는다. 현재 공식 정보와 현재 성분 설명으로 다시 만든다.
+        if (
+            existing_profile
+            and str(existing_profile.get("status") or "").upper() != "OUTDATED"
+            and candidate_quality < existing_quality
+        ):
             logger.info(
                 "MEDICINE_DETAIL_PRESERVED code=%s existing_quality=%s candidate_quality=%s",
                 code,
