@@ -116,6 +116,8 @@ def refresh_app_medicines_from_permission() -> int:
             except Exception:
                 continue
             med = (official or {}).get("medicine") or {}
+            if str(med.get("medicine_code") or "").strip() != str(row["medicine_code"]):
+                continue
             efficacy = str(med.get("efficacy") or "").strip()
             if not efficacy:
                 continue
@@ -129,8 +131,11 @@ def refresh_app_medicines_from_permission() -> int:
                 from app.services.pharmacist.easy_category import sync_medicine_guidance
                 from app.services.medicine_detail_service import ensure_medicine_detail
 
-                sync_medicine_guidance(conn, saved)
+                sync_medicine_guidance(conn, dict(saved))
                 ensure_medicine_detail(conn, str(saved["medicine_code"]))
+            # 다음 약의 외부 API 조회가 진행되는 동안 쓰기 잠금을 유지하지 않는다.
+            # 특히 Render 기동 직후 OCR 요청과 겹칠 때 database is locked를 막는다.
+            conn.commit()
         from app.services.pharmacist.easy_category import backfill_all_medicine_guidance
 
         backfill_all_medicine_guidance(conn)
@@ -187,7 +192,7 @@ def upsert_official_app_medicine(official: dict[str, Any]) -> str | None:
             easy_category=easy_category,
         )
         if saved:
-            sync_medicine_guidance(conn, saved)
+            sync_medicine_guidance(conn, dict(saved))
             from app.services.medicine_detail_service import ensure_medicine_detail
 
             ensure_medicine_detail(conn, code)

@@ -139,9 +139,11 @@ class UserMedicine {
       amount: json['amount']?.toString() ?? '',
       purposeLabel: card.purposeLabel,
       shortExplanation: card.spoken,
+      // 상세 첫 문장은 홈 목록용 짧은 분류를 재사용하지 않는다.
+      // 서버가 검토된 상세 문장을 주지 않으면 이 줄 자체를 숨긴다.
       detailExplanation: (rawShortExplanation?.isNotEmpty ?? false)
           ? rawShortExplanation
-          : card.spoken,
+          : null,
       keyCaution: json['key_caution']?.toString(),
       keyCautions: _stringList(json['key_cautions']),
       easyPurposes: _stringList(json['easy_purposes']),
@@ -150,7 +152,11 @@ class UserMedicine {
       frequencyPerDay: _intOrNull(json['frequency_per_day']),
       administrationTimes: _stringList(json['administration_times']),
       ingredientExplanation: json['ingredient_explanation']?.toString() ?? '',
-      ingredientHighlight: json['ingredient_highlight']?.toString() ?? '',
+      // 서버가 숫자나 이상한 값을 주면 강조하지 않는다. 엉뚱한 곳이
+      // 굵어지면 어르신은 그 말이 중요한 줄 안다.
+      ingredientHighlight: json['ingredient_highlight'] is String
+          ? (json['ingredient_highlight'] as String)
+          : '',
       approvedUseSummary: json['approved_use_summary']?.toString() ?? '',
       approvedUses: _stringList(json['approved_uses']),
       allApprovedUses: _stringList(json['all_approved_uses']),
@@ -171,7 +177,7 @@ class UserMedicine {
     );
   }
 
-  String? get effect => cardPurposeLabel(purposeLabel);
+  String? get effect => homePurposeCaption(purposeLabel);
 
   String? get cardSpoken => cardSpokenOf(shortExplanation);
 

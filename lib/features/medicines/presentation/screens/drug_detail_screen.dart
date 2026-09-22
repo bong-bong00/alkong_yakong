@@ -98,11 +98,14 @@ class _DetailBody extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final ingredients = ingredientParts(medicine.ingredientName);
+    final seenUses = <String>{};
     final extraOfficialUses = medicine.allApprovedUses.where((purpose) {
       final normalized = purpose.trim();
       return normalized.isNotEmpty &&
           normalized != medicine.approvedUseSummary.trim() &&
-          !medicine.approvedUses.any((shown) => shown.trim() == normalized);
+          !medicine.approvedUses.any((shown) => shown.trim() == normalized) &&
+          // 같은 줄이 두 번 오면 한 번만 읽게 둔다.
+          seenUses.add(normalized);
     }).toList();
     final cautions = <String>[
       if ((medicine.keyCaution ?? '').trim().isNotEmpty) medicine.keyCaution!,
@@ -587,16 +590,27 @@ class _EmphasizedBodyText extends StatelessWidget {
     return Text.rich(TextSpan(style: bodyStyle, children: spans));
   }
 
+  /// 본문 전체를 강조하면 강조가 아니다. 그런 값은 버린다.
+  bool _wholeBody(String value) => value.trim() == text.trim();
+
   String _effectTarget() {
     final reviewed = highlight.trim();
-    if (reviewed.isNotEmpty && text.contains(reviewed)) return reviewed;
+    if (reviewed.isNotEmpty &&
+        !_wholeBody(reviewed) &&
+        text.contains(reviewed)) {
+      return reviewed;
+    }
     var fallback = fallbackHighlight.trim();
     if (fallback.startsWith('이 약은 ')) fallback = fallback.substring(5);
     fallback = fallback.replaceFirst(
       RegExp(r'\s*(사용해요|사용돼요|사용될 수 있어요|도움을 줘요)\.?$'),
       '',
     );
-    return fallback.isNotEmpty && text.contains(fallback) ? fallback : '';
+    return fallback.isNotEmpty &&
+            !_wholeBody(fallback) &&
+            text.contains(fallback)
+        ? fallback
+        : '';
   }
 }
 

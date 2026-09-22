@@ -379,16 +379,6 @@ TABLE_DEFINITIONS = {
             updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
         )
     """,
-    "ingredient_aliases": """
-        CREATE TABLE ingredient_aliases (
-            alias_key TEXT PRIMARY KEY,
-            canonical_key TEXT NOT NULL,
-            display_name TEXT,
-            source TEXT NOT NULL DEFAULT 'official-merge',
-            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-        )
-    """,
     "medicine_detail_profiles": """
         CREATE TABLE medicine_detail_profiles (
             medicine_code TEXT PRIMARY KEY,
@@ -481,7 +471,6 @@ INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_notifications_user_created ON notifications(user_id, created_at)",
     "CREATE INDEX IF NOT EXISTS idx_notifications_schedule ON notifications(schedule_id, notification_type)",
     "CREATE INDEX IF NOT EXISTS idx_ingredient_explanations_review ON ingredient_explanations(review_status, normalized_key)",
-    "CREATE INDEX IF NOT EXISTS idx_ingredient_aliases_canonical ON ingredient_aliases(canonical_key)",
     "CREATE INDEX IF NOT EXISTS idx_medicine_detail_profiles_status ON medicine_detail_profiles(status, updated_at)",
     "CREATE INDEX IF NOT EXISTS idx_medicine_detail_jobs_status ON medicine_detail_jobs(status, requested_at)",
 ]
@@ -628,6 +617,28 @@ def _deactivate_legacy_demo_medicines(cursor: sqlite3.Cursor) -> None:
 
 
 _REVIEWED_INGREDIENT_EXPLANATIONS = {
+    # 무료 Render는 재시작 때 SQLite가 초기화될 수 있다. 발표·테스트에
+    # 사용하는 약의 검토된 성분 설명은 매 기동 시 다시 준비한다.
+    "히드록시진염산염": {
+        "explanation": "히드록시진염산염은 알레르기로 인한 가려움 같은 증상을 줄이는 데 사용되는 성분이에요.",
+        "role_explanation": "알레르기로 인한 가려움 증상을 줄여요.",
+        "use_help": "가려움과 불안·긴장 증상을 완화하는 데 도움을 줘요.",
+    },
+    "시메티딘": {
+        "explanation": "시메티딘은 위산과 관련된 속쓰림과 위 불편감을 줄이는 데 사용되는 성분이에요.",
+        "role_explanation": "위산과 관련된 불편한 증상을 줄여요.",
+        "use_help": "속쓰림과 위 불편감을 줄이는 데 도움을 줘요.",
+    },
+    "메퀴타진": {
+        "explanation": "메퀴타진은 알레르기 증상으로 생기는 가려움과 두드러기를 줄이는 데 도움을 주는 성분이에요.",
+        "role_explanation": "알레르기로 인한 가려움 증상을 줄여요.",
+        "use_help": "가려움과 두드러기 증상을 완화하는 데 도움을 줘요.",
+    },
+    "프레드니카르베이트": {
+        "explanation": "프레드니카르베이트는 피부의 염증과 가려움 증상을 줄이는 데 사용되는 성분이에요.",
+        "role_explanation": "피부의 염증과 가려움 증상을 줄여요.",
+        "use_help": "피부 염증과 가려움 증상을 완화하는 데 도움을 줘요.",
+    },
     "아미오다론염산염": {
         "explanation": "아미오다론염산염은 심장 박동을 만드는 전기 신호가 지나치게 빠르거나 불규칙해지는 것을 조절하는 성분이에요.",
         "role_explanation": "심장 박동을 만드는 전기 신호를 조절해요.",
@@ -699,35 +710,6 @@ def _invalidate_unusable_ingredient_explanations(cursor: sqlite3.Cursor) -> None
             """,
             (normalized_key,),
         )
-
-
-def _remove_source_preambles_from_ingredient_copy(cursor: sqlite3.Cursor) -> None:
-    """Keep attribution in source columns, not inside user-facing explanations."""
-    from app.services.medicine_detail_providers import clean_ingredient_explanation
-
-    for table, key_column in (
-        ("ingredient_explanations", "normalized_key"),
-        ("medicine_detail_profiles", "medicine_code"),
-    ):
-        rows = cursor.execute(
-            f"SELECT {key_column}, ingredient_explanation FROM {table}"
-            if table == "medicine_detail_profiles"
-            else f"SELECT {key_column}, explanation FROM {table}"
-        ).fetchall()
-        value_column = (
-            "ingredient_explanation"
-            if table == "medicine_detail_profiles"
-            else "explanation"
-        )
-        for key, original in rows:
-            cleaned = clean_ingredient_explanation(original)
-            if not cleaned or cleaned == str(original or "").strip():
-                continue
-            cursor.execute(
-                f"UPDATE {table} SET {value_column}=?, updated_at=CURRENT_TIMESTAMP "
-                f"WHERE {key_column}=?",
-                (cleaned, key),
-            )
 
 
 def _seed_reviewed_ingredient_explanations(cursor: sqlite3.Cursor) -> None:
@@ -870,7 +852,6 @@ def seed_reviewed_detail_explanations(cursor: sqlite3.Cursor) -> None:
 
 def initialize_database() -> None:
     conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
     cursor = conn.cursor()
     suffix = datetime.now().strftime("%Y%m%d%H%M%S")
@@ -897,7 +878,6 @@ def initialize_database() -> None:
         cursor.execute(statement)
 
     _seed_reviewed_home_explanations(cursor)
-    _remove_source_preambles_from_ingredient_copy(cursor)
     _invalidate_unusable_ingredient_explanations(cursor)
     _seed_reviewed_ingredient_explanations(cursor)
     seed_reviewed_detail_explanations(cursor)

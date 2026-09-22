@@ -236,24 +236,11 @@ def get_medication_calendar(user_id: str, year: int | None = None, month: int | 
         elif not slots:
             mark = "future"
         elif current > today:
-            # 아직 오지 않은 약 있는 날. 먹었어요/빠뜨렸어요로 치지 않는다.
-            mark = "scheduled"
+            mark = "future"
         else:
             taken = all(str(row["status"] or "").upper() == "TAKEN" for row in slots)
             mark = "done" if taken else "missed"
-        # 날짜를 누르면 그날 시간대별 결과를 보여줘야 한다.
-        day_slots = []
-        for row in slots:
-            label = _SLOT_LABEL.get(str(row["time_slot"] or "").upper(), "")
-            if not label:
-                continue
-            day_slots.append(
-                {
-                    "slot": label,
-                    "taken": str(row["status"] or "").upper() == "TAKEN",
-                }
-            )
-        days.append({"day": day_n, "mark": mark, "slots": day_slots})
+        days.append({"day": day_n, "mark": mark})
         if mark == "missed":
             leftover = [
                 row

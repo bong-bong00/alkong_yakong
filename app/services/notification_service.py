@@ -1,5 +1,3 @@
-from datetime import date
-
 from fastapi import HTTPException
 
 from app.core.kst import today_kst

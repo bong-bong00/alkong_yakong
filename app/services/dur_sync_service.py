@@ -243,6 +243,11 @@ def _sync_type(
             action = _upsert_taboo(cursor, normalized)
             stats[action] += 1
 
+        # 전체 식약처 자료를 한 트랜잭션으로 잡아 두면 Render 기동 직후
+        # OCR 등록이 최대 60초 동안 SQLite 쓰기 잠금에 막힌다. 페이지 단위로
+        # 잠금을 풀어 사용자 요청이 동기화 사이에 정상적으로 처리되게 한다.
+        cursor.connection.commit()
+
         if not items or page * page_size >= total_count:
             break
         if max_pages is not None and page >= max_pages:
