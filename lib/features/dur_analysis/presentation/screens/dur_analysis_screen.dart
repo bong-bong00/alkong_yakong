@@ -257,7 +257,7 @@ class _DurAnalysisScreenState extends ConsumerState<DurAnalysisScreen> {
             padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
             decoration: BoxDecoration(
               color: pairs.isNotEmpty
-                  ? AppColors.dangerBorder.withValues(alpha: 0.25)
+                  ? AppColors.dangerBg
                   : AppColors.pointTint,
               borderRadius: BorderRadius.circular(20),
             ),
@@ -289,7 +289,7 @@ class _DurAnalysisScreenState extends ConsumerState<DurAnalysisScreen> {
                     children: [
                       IconTitle(
                         icon: TablerIcons.pill,
-                        text: '이 약은 무슨 약인가요?',
+                        text: _explainQuestion(pairs),
                         style: AppText.cardTitle(size: 19),
                       ),
                       Text('쉬운 말로 알려드려요', style: AppText.caption()),
@@ -310,17 +310,20 @@ class _DurAnalysisScreenState extends ConsumerState<DurAnalysisScreen> {
               onPressed: _afterConfirm,
             ),
           ],
-          const SizedBox(height: 16),
-          SeniorButton(
-            label: '$_guardianTitle에게 알리기',
-            kind: SeniorButtonKind.outline,
-            minHeight: 64,
-            fontSize: 21,
-            onPressed: _callGuardian,
-          ),
         ],
       ),
     );
+  }
+
+  /// "아스피린은 무슨 약인가요?" 이름을 모르면 "이 약은 무슨 약인가요?".
+  static String _explainQuestion(List<Map<String, dynamic>> pairs) {
+    if (pairs.isEmpty) return '이 약은 무슨 약인가요?';
+    final medicines = _ConflictCard._pairMedicines(pairs.first);
+    if (medicines.isEmpty || medicines.first.name.isEmpty) {
+      return '이 약은 무슨 약인가요?';
+    }
+    final name = medicines.first.name;
+    return '$name${topicParticle(name)} 무슨 약인가요?';
   }
 
   void _callGuardian() {
@@ -384,25 +387,105 @@ class _ConflictCard extends StatelessWidget {
               padding: EdgeInsets.symmetric(horizontal: 13, vertical: 6),
             ),
           ),
-          const SizedBox(height: 12),
-          for (int i = 0; i < medicines.length; i++) ...[
-            if (i > 0) const SizedBox(height: 12),
-            Text(
-              medicines[i].spokenLine,
-              style: AppText.emphasis(size: 24),
-            ),
+          const SizedBox(height: 14),
+          if (medicines.length >= 2)
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                Expanded(child: _MedicineChip(medicine: medicines[0])),
+                const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 10),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        '+',
+                        style: TextStyle(
+                          fontSize: 28,
+                          fontWeight: FontWeight.w900,
+                          color: AppColors.danger,
+                        ),
+                      ),
+                      Text(
+                        '같이',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w700,
+                          color: AppColors.danger,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Expanded(child: _MedicineChip(medicine: medicines[1])),
+              ],
+            )
+          else
+            for (final medicine in medicines) _MedicineChip(medicine: medicine),
+          // 셋 이상이 겹치면 나머지도 빠뜨리지 않고 적는다.
+          for (final medicine in medicines.skip(2)) ...[
+            const SizedBox(height: 10),
+            _MedicineChip(medicine: medicine),
           ],
           if (why.isNotEmpty) ...[
             const SizedBox(height: 14),
-            Text(why, style: AppText.body(color: AppColors.textPrimary)),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(
+                horizontal: 18,
+                vertical: 16,
+              ),
+              decoration: BoxDecoration(
+                color: AppColors.dangerBg,
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    _whyHeadline(why),
+                    style: AppText.emphasis(size: 22, color: AppColors.danger),
+                  ),
+                  if (_whyDetail(why) case final String detail
+                      when detail.isNotEmpty) ...[
+                    const SizedBox(height: 6),
+                    Text(
+                      detail,
+                      style: AppText.body(
+                        size: 18,
+                        color: AppColors.textPrimary,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
           ],
+          const SizedBox(height: 14),
+          Text(
+            '약국이나 병원에 한 번 확인해 주세요.',
+            style: AppText.label(size: 19, color: AppColors.textPrimary),
+          ),
           if (source.isNotEmpty) ...[
-            const SizedBox(height: 12),
+            const SizedBox(height: 10),
             Text(source, style: AppText.caption()),
           ],
         ],
       ),
     );
+  }
+
+  /// 첫 문장은 "무슨 일이 생기는지", 나머지는 그 설명이다.
+  static String _whyHeadline(String why) {
+    final index = why.indexOf('.');
+    if (index <= 0 || index == why.length - 1) return why;
+    return why.substring(0, index + 1).trim();
+  }
+
+  static String _whyDetail(String why) {
+    final index = why.indexOf('.');
+    if (index <= 0 || index == why.length - 1) return '';
+    return why.substring(index + 1).trim();
   }
 
   static List<_NamedMedicine> _pairMedicines(Map<String, dynamic> match) {
@@ -480,11 +563,48 @@ class _ConflictCard extends StatelessWidget {
   }
 }
 
+/// 부딪히는 약 한 칸 — 이름과 "피를 묽게" 같은 한마디.
+class _MedicineChip extends StatelessWidget {
+  final _NamedMedicine medicine;
+
+  const _MedicineChip({required this.medicine});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      decoration: BoxDecoration(
+        color: AppColors.sunken,
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(medicine.name, style: AppText.cardTitle(size: 21)),
+          if (medicine.shortNote.isNotEmpty) ...[
+            const SizedBox(height: 2),
+            Text(medicine.shortNote, style: AppText.caption(size: 17)),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
 class _NamedMedicine {
   final String name;
   final String easyLine;
 
   const _NamedMedicine(this.name, this.easyLine);
+
+  /// 칸 안에 들어가는 한마디 — "피를 묽게".
+  /// 문장으로 온 값은 칸에 넣지 않는다.
+  String get shortNote {
+    final line = easyLine.trim();
+    if (line.isEmpty || line.length > 14) return '';
+    return line;
+  }
 
   String get spokenLine {
     if (easyLine.contains('드시는 약이에요')) return easyLine;

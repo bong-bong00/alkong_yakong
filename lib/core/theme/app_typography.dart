@@ -150,3 +150,15 @@ abstract final class AppText {
     color: active ? AppColors.point : AppColors.inactiveLabel,
   );
 }
+
+/// "아스피린은" / "와파린은" — 받침에 맞는 주제 조사.
+///
+/// 조사를 틀리면 어르신 눈에는 오탈자로 읽힌다. 한글이 아닌 이름이면
+/// 조사를 붙이지 않는다.
+String topicParticle(String word) {
+  final trimmed = word.trim();
+  if (trimmed.isEmpty) return '';
+  final code = trimmed.codeUnitAt(trimmed.length - 1);
+  if (code < 0xAC00 || code > 0xD7A3) return '';
+  return (code - 0xAC00) % 28 == 0 ? '는' : '은';
+}

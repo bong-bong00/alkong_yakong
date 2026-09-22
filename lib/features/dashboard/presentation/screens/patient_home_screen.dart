@@ -19,6 +19,11 @@ import '../../../easy_flow/domain/easy_flow.dart';
 import '../../../easy_flow/presentation/easy_flow_shell.dart';
 import '../../../medication/presentation/widgets/dose_guard_sheets.dart';
 import '../../../profile/application/current_user_controller.dart';
+import '../../../../core/session/mvp_session.dart';
+import '../../../guardian/application/guardians_provider.dart';
+import '../../../medicines/application/family_medicine_inbox.dart';
+import '../../../medicines/application/user_medicines_controller.dart';
+import '../../../medicines/presentation/screens/family_added_medicines_screen.dart';
 
 /// 12 / 15 · 오늘 · 홈.
 ///
@@ -81,6 +86,9 @@ class _PatientHomeScreenState extends ConsumerState<PatientHomeScreen> {
     super.initState();
     // 잔여일이 0이면 홈에 들어오는 순간 리필 시트를 연다. 하루 한 번만.
     WidgetsBinding.instance.addPostFrameCallback((_) => _maybeAskRefill());
+    WidgetsBinding.instance.addPostFrameCallback(
+      (_) => unawaited(_maybeTellFamilyAddedMedicines()),
+    );
     ReminderNotifications.pendingAction.addListener(_onNotificationAction);
     WidgetsBinding.instance.addPostFrameCallback(
       (_) => _onNotificationAction(),
@@ -104,6 +112,54 @@ class _PatientHomeScreenState extends ConsumerState<PatientHomeScreen> {
       unawaited(_take(next.slot));
     } else if (action == ReminderNotifications.snoozeActionId) {
       _snooze(next.slot);
+    }
+  }
+
+  /// 가족이 대신 넣어준 약이 있으면 어르신에게 한 번 알린다.
+  ///
+  /// 서버가 "누가 넣었는지"를 돌려주지 않아 [FamilyMedicineInbox]가 이 기기가
+  /// 본 약을 적어 두고 견준다. 보호자가 한 분도 없으면 내가 넣은 약일 수밖에
+  /// 없으므로 알리지 않고 장부만 갱신한다.
+  Future<void> _maybeTellFamilyAddedMedicines() async {
+    final userId = MvpSession.userId.trim();
+    if (userId.isEmpty || userId == 'mvp-user') return;
+
+    try {
+      final medicines = await ref.read(userMedicinesProvider.future);
+      final unseen = await FamilyMedicineInbox.unseen(
+        userId,
+        medicines.map((medicine) => medicine.medicineCode),
+      );
+      if (unseen.isEmpty || !mounted) return;
+
+      final guardians = await ref.read(guardiansProvider.future);
+      final guardian = guardians
+          .where((contact) => !contact.isPending)
+          .firstOrNull;
+      // 알렸든 못 알렸든 다음에 또 묻지 않도록 장부에는 적어 둔다.
+      await FamilyMedicineInbox.markSeen(userId, unseen);
+      if (guardian == null || !mounted) return;
+
+      final added = medicines
+          .where((medicine) => unseen.contains(medicine.medicineCode))
+          .toList();
+      if (added.isEmpty) return;
+
+      await Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (_) => FamilyAddedMedicinesScreen(
+            guardianName: guardian.name,
+            guardianRelation: guardian.relation ?? '',
+            medicines: added,
+            onOpenMedicines: () {
+              Navigator.of(context).pop();
+              widget.onOpenMedicines?.call();
+            },
+          ),
+        ),
+      );
+    } catch (_) {
+      // 목록을 못 읽었으면 조용히 넘어간다. 오늘 약 화면을 막지 않는다.
     }
   }
 
@@ -935,9 +991,9 @@ class _Shortcut extends StatelessWidget {
             width: 40,
             height: 40,
             alignment: Alignment.center,
-            decoration: BoxDecoration(
+            decoration: const BoxDecoration(
               color: AppColors.pointTint,
-              borderRadius: BorderRadius.circular(13),
+              shape: BoxShape.circle,
             ),
             child: ExcludeSemantics(
               child: Icon(icon, size: 26, color: AppColors.point),

@@ -61,7 +61,7 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
   final Set<String> _pastIllnesses = {};
   final Set<String> _familyIllnesses = {};
 
-  static const _pastOptions = ['수술받은 적', '암', '뇌졸중', '심근경색', '간·콩팥병', '없어요'];
+  static const _pastOptions = ['고혈압', '암', '뇌졸중', '심근경색', '간·콩팥병', '없어요'];
   static const _familyOptions = ['고혈압', '당뇨', '암', '심장병', '치매', '없어요'];
 
   final Set<String> _diseases = {};

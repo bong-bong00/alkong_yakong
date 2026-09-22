@@ -342,3 +342,286 @@ class SeniorField extends StatelessWidget {
     );
   }
 }
+
+/// 몇 개 중 하나를 고르는 칩 — 하루 복용 횟수, 며칠분, 나와의 관계.
+///
+/// 드롭다운을 쓰지 않는다. 목록이 접혀 있으면 지금 무엇이 골라져 있는지
+/// 보이지 않고, 펼치는 동작이 한 번 더 든다.
+class SeniorChoiceChip extends StatelessWidget {
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const SeniorChoiceChip({
+    super.key,
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      button: true,
+      selected: selected,
+      label: label,
+      child: GestureDetector(
+        onTap: onTap,
+        behavior: HitTestBehavior.opaque,
+        child: ExcludeSemantics(
+          child: Container(
+            constraints: const BoxConstraints(minHeight: 62, minWidth: 92),
+            alignment: Alignment.center,
+            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+            decoration: BoxDecoration(
+              color: selected ? AppColors.pointTint : AppColors.sunken,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                color: selected ? AppColors.point : AppColors.border,
+                width: 2,
+              ),
+            ),
+            child: Text(
+              label,
+              textAlign: TextAlign.center,
+              style: AppText.cardTitle(
+                size: 20,
+                color: selected ? AppColors.point : AppColors.textBody,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// 값을 하나씩 올리고 내리는 스테퍼 — 한 번에 몇 알, 하루 몇 번, 며칠분.
+///
+/// ±로 한 칸씩 옮기는 길과, 숫자를 눌러 바로 적는 길을 **둘 다** 연다.
+/// ±만 두면 30일을 맞추는 데 스물아홉 번을 눌러야 하고, 적는 칸만 두면
+/// 자판이 어려운 분이 막힌다.
+class SeniorStepper extends StatefulWidget {
+  final String label;
+
+  /// 숫자만 — "1", "0.5", "30".
+  final String number;
+
+  /// 숫자 뒤에 붙는 말 — "정", "번", "일".
+  final String unit;
+
+  /// 더 내릴 수 없으면 null. 버튼이 흐려진다.
+  final VoidCallback? onMinus;
+  final VoidCallback? onPlus;
+
+  /// 눌러서 직접 적었을 때. 적힌 글자 그대로 온다.
+  final ValueChanged<String> onNumberChanged;
+
+  const SeniorStepper({
+    super.key,
+    required this.label,
+    required this.number,
+    required this.unit,
+    required this.onMinus,
+    required this.onPlus,
+    required this.onNumberChanged,
+  });
+
+  @override
+  State<SeniorStepper> createState() => _SeniorStepperState();
+}
+
+class _SeniorStepperState extends State<SeniorStepper> {
+  late final TextEditingController _controller = TextEditingController(
+    text: widget.number,
+  );
+  final FocusNode _focus = FocusNode();
+
+  @override
+  void didUpdateWidget(SeniorStepper oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // 적는 중에는 건드리지 않는다. ±로 바뀐 값만 칸에 되비친다.
+    if (!_focus.hasFocus && widget.number != _controller.text) {
+      _controller.text = widget.number;
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    _focus.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(widget.label, style: AppText.label(size: 18)),
+        const SizedBox(height: 8),
+        // 셋을 한 덩어리로 묶는다. 양 끝으로 밀어 두면 값과 버튼이 서로
+        // 다른 것처럼 읽히고, 누를 곳을 눈으로 찾아가야 한다.
+        // 작은 화면에서 글자를 키우면 셋이 한 줄에 안 들어간다. 그때는
+        // 덩어리째 줄인다 — 버튼을 양 끝으로 밀어 떼어 놓지 않는다.
+        Center(
+          child: FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _StepperButton(
+                  icon: TablerIcons.minus,
+                  semanticLabel: '${widget.label} 줄이기',
+                  onPressed: widget.onMinus,
+                ),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 34),
+                  // 칸처럼 그리지 않는다. 값은 그냥 글씨로 두고,
+                  // 눌렀을 때만 자판이 올라온다.
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 4),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.baseline,
+                      textBaseline: TextBaseline.alphabetic,
+                      children: [
+                        // 글자 폭만 차지하게 둔다. 고정폭 칸에 넣으면
+                        // 값이 버튼 사이 가운데가 아니라 한쪽으로 쏠린다.
+                        IntrinsicWidth(
+                          child: Semantics(
+                            label: '${widget.label} 직접 적기',
+                            child: TextField(
+                              controller: _controller,
+                              focusNode: _focus,
+                              onChanged: widget.onNumberChanged,
+                              keyboardType:
+                                  const TextInputType.numberWithOptions(
+                                    decimal: true,
+                                  ),
+                              textAlign: TextAlign.center,
+                              inputFormatters: [
+                                FilteringTextInputFormatter.allow(
+                                  RegExp(r'[0-9.]'),
+                                ),
+                              ],
+                              style: AppText.bigTime(size: 24),
+                              decoration: const InputDecoration(
+                                border: InputBorder.none,
+                                isDense: true,
+                                contentPadding: EdgeInsets.symmetric(
+                                  vertical: 12,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 2),
+                        Text(widget.unit, style: AppText.bigTime(size: 24)),
+                      ],
+                    ),
+                  ),
+                ),
+                _StepperButton(
+                  icon: TablerIcons.plus,
+                  semanticLabel: '${widget.label} 늘리기',
+                  onPressed: widget.onPlus,
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _StepperButton extends StatelessWidget {
+  final IconData icon;
+  final String semanticLabel;
+  final VoidCallback? onPressed;
+
+  const _StepperButton({
+    required this.icon,
+    required this.semanticLabel,
+    required this.onPressed,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      button: true,
+      enabled: onPressed != null,
+      label: semanticLabel,
+      child: GestureDetector(
+        onTap: onPressed,
+        behavior: HitTestBehavior.opaque,
+        child: Opacity(
+          opacity: onPressed == null ? 0.4 : 1,
+          // 테두리 없는 동그라미로 감싼다. 네모에 테두리까지 두면 값보다
+          // 버튼이 먼저 눈에 들어온다. 누르는 자리는 원보다 넉넉히 둔다.
+          child: SizedBox(
+            width: 56,
+            height: 52,
+            child: Center(
+              child: Container(
+                width: 46,
+                height: 46,
+                alignment: Alignment.center,
+                decoration: const BoxDecoration(
+                  color: AppColors.secondaryFill,
+                  shape: BoxShape.circle,
+                ),
+                child: ExcludeSemantics(
+                  child: Icon(icon, size: 24, color: AppColors.textBody),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// "어머니 · 김복자 대신 등록" — 대신 넣어드리는 중임을 화면 맨 위에 붙인다.
+///
+/// 여러 어르신을 함께 보는 보호자가 엉뚱한 분에게 약을 넣는 일이 가장
+/// 무섭다. 그래서 찍기·확인 화면마다 이 띠를 계속 달고 다닌다.
+class ProxyBanner extends StatelessWidget {
+  /// "어머니 · 김복자".
+  final String title;
+
+  const ProxyBanner({super.key, required this.title});
+
+  @override
+  Widget build(BuildContext context) {
+    // 파랑 채움은 **누르는 것**에만 쓴다. 이 띠는 읽는 것이라 색을 뺀다.
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppColors.border, width: 2),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const ExcludeSemantics(
+            child: Icon(
+              TablerIcons.users,
+              size: 26,
+              color: AppColors.textSecondary,
+            ),
+          ),
+          const SizedBox(width: 10),
+          Flexible(
+            child: Text('$title 대신 등록', style: AppText.cardTitle(size: 21)),
+          ),
+        ],
+      ),
+    );
+  }
+}

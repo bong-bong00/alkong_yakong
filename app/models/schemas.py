@@ -55,6 +55,8 @@ class GuardianCreate(BaseModel):
     phone: Optional[str] = None
     fcm_token: Optional[str] = None
     notification_enabled: bool = True
+    # 보호자가 어르신을 부르는 말("어머니"). 보호자 화면이 이 말로 어르신을 가른다.
+    patient_relation: Optional[str] = None
 
 
 class GuardianLinkRequest(BaseModel):

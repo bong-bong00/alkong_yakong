@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -9,7 +10,6 @@ import '../../../../core/theme/app_typography.dart';
 import '../../../../core/widgets/app_logo.dart';
 import '../../../../core/widgets/senior_button.dart';
 import '../../../../core/widgets/senior_feedback.dart';
-import '../../../onboarding/presentation/screens/first_run_screen.dart';
 import '../../../profile/application/current_user_controller.dart';
 import '../../../profile/application/session_actions.dart';
 import 'signup_screen.dart';
@@ -116,7 +116,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                 fontSize: 25,
                 onPressed: _loggingIn ? null : _login,
               ),
-              const SizedBox(height: 18),
+              // "처음이세요?"는 시작하기에 붙여 둔다 — 로그인과 가입은
+              // 한 덩어리이고, 대행 버튼이 그 아래 따로 선다.
+              const SizedBox(height: 4),
 
               Center(
                 child: InkWell(
@@ -151,26 +153,15 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   ),
                 ),
               ),
-              const SizedBox(height: 30),
-
-              // ── 대행 경로 ──
-              SeniorButton(
-                label: '가족이 대신 만들어 드리기',
-                kind: SeniorButtonKind.secondary,
-                minHeight: 62,
-                fontSize: 20,
-                  onPressed: () => Navigator.of(context).push(
-                    MaterialPageRoute<void>(
-                      builder: (_) => const FirstRunScreen(),
-                    ),
-                  ),
-              ),
-              const SizedBox(height: 10),
-              Text(
-                '어려우시면 자녀분 전화번호로\n가입을 도와드릴 수 있어요.',
-                textAlign: TextAlign.center,
-                style: AppText.caption(),
-              ),
+              // 대리 가입은 보호자 화면에서만 들어간다 — 어르신 계정을
+              // 만들면서 곧바로 보호자로 붙어야 하고, 그러려면 자녀분이
+              // 누구인지 알아야 하기 때문이다.
+              // 개발 빌드에서만 보이는 길. 출시 빌드에는 그려지지 않는다.
+              if (kDebugMode)
+                SeniorTextButton(
+                  label: '화면 미리보기 (개발용)',
+                  onPressed: () => context.push('/preview'),
+                ),
             ],
           ),
         ),

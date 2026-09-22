@@ -11,6 +11,7 @@ import 'features/biosignal/presentation/screens/heart_screen.dart';
 import 'features/dashboard/presentation/screens/dashboard_screen.dart';
 import 'features/dashboard/presentation/screens/guardian_home_screen.dart';
 import 'features/dashboard/presentation/screens/home_screen.dart';
+import 'features/dev/presentation/screens/screen_preview_screen.dart';
 import 'features/drug_explain/drug_explain_screen.dart';
 import 'features/dur_analysis/presentation/screens/dur_analysis_screen.dart';
 import 'features/medication/application/medication_controller.dart';
@@ -30,13 +31,20 @@ final _router = GoRouter(
   initialLocation: '/login',
   redirect: (context, state) {
     final publicRoute =
-        state.matchedLocation == '/login' || state.matchedLocation == '/signup';
+        state.matchedLocation == '/login' ||
+        state.matchedLocation == '/signup' ||
+        // 개발용 화면 미리보기는 서버 없이 열려야 쓸모가 있다.
+        state.matchedLocation == '/preview';
     if (!AuthSession.isLoggedIn) return publicRoute ? null : '/login';
     return publicRoute ? '/' : null;
   },
   routes: [
     GoRoute(path: '/login', builder: (context, state) => const LoginScreen()),
     GoRoute(path: '/signup', builder: (context, state) => const SignupScreen()),
+    GoRoute(
+      path: '/preview',
+      builder: (context, state) => const ScreenPreviewScreen(),
+    ),
     GoRoute(path: '/', builder: (context, state) => const RoleShell()),
     GoRoute(
       path: '/guardian',

@@ -74,7 +74,14 @@ class SeniorSheet extends StatelessWidget {
       child: SafeArea(
         top: false,
         child: SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(24, 22, 24, 28),
+          // 자판이 올라오면 그만큼 밀어 올린다. 시트 안에 적는 칸이 있으면
+          // 그러지 않고서는 적는 자리가 자판 아래로 들어간다.
+          padding: EdgeInsets.fromLTRB(
+            24,
+            22,
+            24,
+            28 + MediaQuery.viewInsetsOf(context).bottom,
+          ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,

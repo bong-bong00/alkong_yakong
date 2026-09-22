@@ -71,7 +71,7 @@ class _AddCareSheetState extends State<_AddCareSheet> {
           const SizedBox(height: 8),
           SeniorField(
             controller: _name,
-            hint: '예: 김복자',
+            hint: '눌러서 성함 입력',
             onChanged: (_) => setState(() {}),
           ),
           const SizedBox(height: 16),
@@ -82,7 +82,7 @@ class _AddCareSheetState extends State<_AddCareSheet> {
             runSpacing: 8,
             children: [
               for (final relation in _relations)
-                _RelationChip(
+                SeniorChoiceChip(
                   label: relation,
                   selected: _relation == relation,
                   onTap: () => setState(() => _relation = relation),
@@ -102,7 +102,7 @@ class _AddCareSheetState extends State<_AddCareSheet> {
           const SizedBox(height: 8),
           SeniorField(
             controller: _phone,
-            hint: '010-0000-0000',
+            hint: '눌러서 번호 입력',
             keyboardType: TextInputType.phone,
             onChanged: (_) => setState(() {}),
           ),
@@ -116,11 +116,9 @@ class _AddCareSheetState extends State<_AddCareSheet> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Text('보내는 내용', style: AppText.label(size: 17.5)),
-                const SizedBox(height: 6),
                 Text(
-                  '이름, 관계, 내 전화번호가 어르신에게 그대로 보입니다. '
-                  '어르신이 수락해야 복약 현황이 열립니다.',
+                  '보내는 내용 · 이름, 관계, 내 전화번호가 어르신에게 '
+                  '그대로 보입니다. 어르신이 수락해야 복약 현황이 열립니다.',
                   style: AppText.body(size: 17.5),
                 ),
               ],
@@ -153,51 +151,6 @@ class _AddCareSheetState extends State<_AddCareSheet> {
           onPressed: () => Navigator.of(context).pop(),
         ),
       ],
-    );
-  }
-}
-
-class _RelationChip extends StatelessWidget {
-  final String label;
-  final bool selected;
-  final VoidCallback onTap;
-
-  const _RelationChip({
-    required this.label,
-    required this.selected,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Semantics(
-      button: true,
-      selected: selected,
-      child: GestureDetector(
-        onTap: onTap,
-        child: ExcludeSemantics(
-          child: Container(
-            constraints: const BoxConstraints(minHeight: 52),
-            alignment: Alignment.center,
-            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
-            decoration: BoxDecoration(
-              color: selected ? AppColors.point : AppColors.bg,
-              borderRadius: BorderRadius.circular(26),
-              border: Border.all(
-                color: selected ? AppColors.pointBorder : AppColors.border,
-                width: 2,
-              ),
-            ),
-            child: Text(
-              label,
-              style: AppText.cardTitle(
-                size: 17.5,
-                color: selected ? Colors.white : AppColors.textBody,
-              ),
-            ),
-          ),
-        ),
-      ),
     );
   }
 }

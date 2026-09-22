@@ -223,6 +223,9 @@ class _AlarmSettingsScreenState extends ConsumerState<AlarmSettingsScreen> {
                               color: _editing
                                   ? AppColors.point
                                   : AppColors.danger,
+                              background: _editing
+                                  ? AppColors.pointTint
+                                  : AppColors.dangerBg,
                               onTap: () => _toggleEditing(context, prefs),
                             ),
                           ],
@@ -299,6 +302,10 @@ class _IconBox extends StatelessWidget {
   final IconData icon;
   final String label;
   final Color color;
+
+  /// 동그라미 바탕. 지우기처럼 되돌리기 어려운 것은 연한 빨강을 깐다.
+  final Color background;
+
   final VoidCallback onTap;
 
   const _IconBox({
@@ -306,6 +313,7 @@ class _IconBox extends StatelessWidget {
     required this.label,
     required this.onTap,
     this.color = AppColors.textPrimary,
+    this.background = AppColors.secondaryFill,
   });
 
   @override
@@ -315,16 +323,13 @@ class _IconBox extends StatelessWidget {
       label: label,
       child: GestureDetector(
         onTap: onTap,
+        // 스테퍼의 ±와 같은 옷 — 테두리 없는 회색 동그라미.
         child: Container(
-          width: 60,
-          height: 60,
+          width: 56,
+          height: 56,
           alignment: Alignment.center,
-          decoration: BoxDecoration(
-            color: AppColors.surface,
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: AppColors.strongLine, width: 2),
-          ),
-          child: ExcludeSemantics(child: Icon(icon, size: 28, color: color)),
+          decoration: BoxDecoration(color: background, shape: BoxShape.circle),
+          child: ExcludeSemantics(child: Icon(icon, size: 26, color: color)),
         ),
       ),
     );

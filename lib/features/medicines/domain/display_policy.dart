@@ -217,3 +217,25 @@ MyMedicineCard resolveMyMedicineCard({
   var spoken = cardSpokenOf(shortExplanation) ?? cardSpokenOf(easyCategory);
   return MyMedicineCard(name: name, purposeLabel: purpose, spoken: spoken);
 }
+
+/// 서버가 주는 시각("08:00")을 어르신이 쓰는 말("아침")로 옮긴다.
+///
+/// 시각이 아니라 이미 "아침"처럼 온 값은 그대로 둔다 — 서버가 무엇을 주든
+/// 화면에서는 같은 말로 읽혀야 한다.
+List<String> doseSlotLabels(Iterable<String> times) {
+  final labels = <String>[];
+  for (final raw in times) {
+    final text = raw.trim();
+    if (text.isEmpty) continue;
+    final hour = int.tryParse(text.split(':').first.trim());
+    final label = hour == null
+        ? text
+        : hour < 11
+        ? '아침'
+        : hour < 17
+        ? '점심'
+        : '저녁';
+    if (!labels.contains(label)) labels.add(label);
+  }
+  return labels;
+}

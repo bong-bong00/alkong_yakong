@@ -10,9 +10,14 @@ import '../../../../core/widgets/senior_card.dart';
 import '../../../../core/widgets/senior_feedback.dart';
 import '../../../../core/widgets/senior_header.dart';
 import '../../../dashboard/presentation/screens/patient_data.dart';
+import '../../../prescription/domain/proxy_target.dart';
+import '../../../prescription/presentation/screens/prescription_screen.dart';
 import '../../application/guardians_provider.dart';
 import '../../data/guardian_repository.dart';
+import '../../domain/proxy_signup.dart';
 import '../widgets/add_care_sheet.dart';
+import 'proxy_patient_picker_screen.dart';
+import 'proxy_signup_screen.dart';
 
 /// 36 · 보호자 · 돌보는 분 목록.
 ///
@@ -53,6 +58,60 @@ class CareFamilyScreen extends ConsumerWidget {
     ref.invalidate(careOverviewProvider);
     final name = result.invite!.name.isEmpty ? draft.name : result.invite!.name;
     showSeniorSnackbar(context, '$name 님에게 연결을 요청했어요');
+  }
+
+  /// 어르신 계정을 자녀분이 대신 만든다. 다 만들면 바로 대신 찍기로 이어진다.
+  Future<void> _createElderAccount(BuildContext context, WidgetRef ref) async {
+    await Navigator.of(context).push(
+      MaterialPageRoute<ProxySignupResult>(
+        builder: (_) => ProxySignupScreen(
+          onCapturePrescription: (result) {
+            // 가입 화면을 닫고 그 자리에서 처방전 찍기로 넘어간다.
+            Navigator.of(context).pop();
+            _captureFor(
+              context,
+              ref,
+              ProxyTarget(patientId: result.patientId, title: result.title),
+            );
+          },
+        ),
+      ),
+    );
+    ref.invalidate(careOverviewProvider);
+  }
+
+  /// 어느 분 처방전인지 먼저 고르고 찍는다.
+  Future<void> _pickPatientAndCapture(
+    BuildContext context,
+    WidgetRef ref,
+  ) async {
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (pickerContext) => ProxyPatientPickerScreen(
+          onPick: (patient) {
+            Navigator.of(pickerContext).pop();
+            _captureFor(
+              context,
+              ref,
+              ProxyTarget(patientId: patient.patientId, title: patient.title),
+            );
+          },
+        ),
+      ),
+    );
+  }
+
+  Future<void> _captureFor(
+    BuildContext context,
+    WidgetRef ref,
+    ProxyTarget target,
+  ) async {
+    final registered = await Navigator.of(context).push<bool>(
+      MaterialPageRoute<bool>(
+        builder: (_) => PrescriptionScreen(proxyTarget: target),
+      ),
+    );
+    if (registered == true) ref.invalidate(careOverviewProvider);
   }
 
   Future<void> _cancel(
@@ -160,6 +219,28 @@ class CareFamilyScreen extends ConsumerWidget {
                     ),
                   ],
                   const SizedBox(height: 16),
+                  // 어르신이 혼자 가입하다 막히는 것이 첫 이탈 지점이다.
+                  // 그래서 "대신 만들어 드리기"를 1급 경로로 맨 앞에 둔다.
+                  SeniorButton(
+                    label: '가족이 회원가입해주기',
+                    subLabel: '어르신 대신 작성이 가능해요',
+                    icon: TablerIcons.user_plus,
+                    minHeight: 76,
+                    fontSize: 22,
+                    onPressed: () => _createElderAccount(context, ref),
+                  ),
+                  if (patients.isNotEmpty) ...[
+                    const SizedBox(height: 12),
+                    SeniorButton(
+                      label: '처방전 대신 찍어드리기',
+                      icon: TablerIcons.camera,
+                      kind: SeniorButtonKind.secondary,
+                      minHeight: 64,
+                      fontSize: 21,
+                      onPressed: () => _pickPatientAndCapture(context, ref),
+                    ),
+                  ],
+                  const SizedBox(height: 12),
                   SeniorButton(
                     label: '돌보는 분 추가하기',
                     icon: TablerIcons.user_plus,
@@ -223,35 +304,41 @@ class _AttentionBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(22),
+    return SeniorCard(
+      padding: const EdgeInsets.fromLTRB(18, 18, 20, 18),
       child: IntrinsicHeight(
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Container(width: 6, color: AppColors.danger),
+            Container(
+              width: 6,
+              decoration: BoxDecoration(
+                color: AppColors.danger,
+                borderRadius: BorderRadius.circular(3),
+              ),
+            ),
+            const SizedBox(width: 16),
             Expanded(
-              child: Container(
-                color: AppColors.dangerBgSoft,
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 20,
-                  vertical: 18,
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Text(
-                      '먼저 확인할 분',
-                      style: AppText.cardTitle(
-                        size: 18,
-                        color: AppColors.danger,
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    for (final patient in patients)
-                      Text(patient.title, style: AppText.cardTitle(size: 20)),
-                  ],
-                ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text(
+                    '먼저 확인할 분',
+                    style: AppText.cardTitle(size: 18, color: AppColors.danger),
+                  ),
+                  const SizedBox(height: 6),
+                  // 호칭만 쉼표로 잇는다. 이름까지 줄줄이 쓰면 띠가 길어져
+                  // "먼저"라는 말이 무색해진다.
+                  Text(
+                    [
+                      for (final patient in patients)
+                        patient.relation.isEmpty
+                            ? patient.name
+                            : patient.relation,
+                    ].join(', '),
+                    style: AppText.cardTitle(size: 20),
+                  ),
+                ],
               ),
             ),
           ],
@@ -269,7 +356,7 @@ class _PatientCard extends StatelessWidget {
 
   String get _status {
     if (patient.totalCount == 0) return '오늘 드실 약이 등록돼 있지 않아요';
-    if (patient.needsAttention) return '${patient.nextDoseLabel} 약이 남아 있어요';
+    if (patient.needsAttention) return '${patient.nextDoseLabel}이 남아 있어요';
     return '오늘 ${_spokenCount(patient.totalCount)} 다 드셨어요';
   }
 

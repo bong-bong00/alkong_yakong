@@ -363,9 +363,9 @@ class _InputBar extends StatelessWidget {
                     width: 62,
                     height: 62,
                     alignment: Alignment.center,
-                    decoration: BoxDecoration(
+                    decoration: const BoxDecoration(
                       color: AppColors.point,
-                      borderRadius: BorderRadius.circular(18),
+                      shape: BoxShape.circle,
                     ),
                     child: const ExcludeSemantics(
                       child: Icon(

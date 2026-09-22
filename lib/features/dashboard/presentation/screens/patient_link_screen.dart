@@ -89,9 +89,9 @@ class _PatientLinkScreenState extends ConsumerState<PatientLinkScreen> {
             child: Container(
               width: 72,
               height: 72,
-              decoration: BoxDecoration(
+              decoration: const BoxDecoration(
                 color: kGuardianLight,
-                borderRadius: BorderRadius.circular(22),
+                shape: BoxShape.circle,
               ),
               child: const Center(
                 child: Icon(Icons.link_rounded, color: kGuardian, size: 36),

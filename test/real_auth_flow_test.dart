@@ -5,7 +5,7 @@ import 'package:alkong_yakong/core/providers/user_role.dart';
 import 'package:alkong_yakong/core/session/auth_session.dart';
 import 'package:alkong_yakong/core/session/mvp_session.dart';
 import 'package:alkong_yakong/features/auth/presentation/screens/login_screen.dart';
-import 'package:alkong_yakong/features/auth/presentation/screens/signup_screen.dart';
+import 'package:alkong_yakong/features/guardian/presentation/screens/proxy_signup_screen.dart';
 import 'package:alkong_yakong/features/onboarding/presentation/screens/first_run_screen.dart';
 import 'package:alkong_yakong/features/prescription/presentation/screens/prescription_screen.dart';
 import 'package:alkong_yakong/features/profile/application/session_actions.dart';
@@ -44,14 +44,11 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byType(LoginScreen), findsOneWidget);
 
-    await tester.ensureVisible(find.text('가족이 대신 만들어 드리기'));
-    await tester.tap(find.text('가족이 대신 만들어 드리기'));
-    await tester.pumpAndSettle();
-    expect(find.byType(FirstRunScreen), findsOneWidget);
-    await tester.ensureVisible(find.text('처방전 찍기'));
-    await tester.tap(find.text('처방전 찍기'));
-    await tester.pumpAndSettle();
-    expect(find.byType(SignupScreen), findsOneWidget);
+    // 대리 가입은 보호자 화면에서만 들어간다 — 어르신 계정을 만들면서
+    // 곧바로 보호자로 붙여야 하므로, 자녀분이 누구인지 알아야 한다.
+    expect(find.text('가족이 회원가입해주기'), findsNothing);
+    expect(find.byType(ProxySignupScreen), findsNothing);
+    expect(find.byType(FirstRunScreen), findsNothing);
     expect(find.byType(PrescriptionScreen), findsNothing);
   });
 

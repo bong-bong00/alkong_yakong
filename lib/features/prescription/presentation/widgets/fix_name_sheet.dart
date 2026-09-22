@@ -15,17 +15,22 @@ import '../../../../core/widgets/senior_sheet.dart';
 Future<String?> showFixNameSheet(
   BuildContext context, {
   required String current,
+
+  /// 사진에서 읽은 글자와 공식 품목을 나란히 보여 주는 조각.
+  Widget? provenance,
 }) {
   return SeniorSheet.show<String>(
     context: context,
-    builder: (sheetContext) => _FixNameSheet(current: current),
+    builder: (sheetContext) =>
+        _FixNameSheet(current: current, provenance: provenance),
   );
 }
 
 class _FixNameSheet extends StatefulWidget {
   final String current;
+  final Widget? provenance;
 
-  const _FixNameSheet({required this.current});
+  const _FixNameSheet({required this.current, this.provenance});
 
   @override
   State<_FixNameSheet> createState() => _FixNameSheetState();
@@ -64,6 +69,10 @@ class _FixNameSheetState extends State<_FixNameSheet> {
             '그대로',
             ' 적어 주세요.',
           ]),
+          if (widget.provenance case final Widget lines) ...[
+            const SizedBox(height: 16),
+            lines,
+          ],
           const SizedBox(height: 18),
           SeniorField(
             controller: _name,

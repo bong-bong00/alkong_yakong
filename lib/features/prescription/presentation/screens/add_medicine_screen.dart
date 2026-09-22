@@ -176,9 +176,9 @@ class _AskedCard extends StatelessWidget {
                 width: 48,
                 height: 48,
                 alignment: Alignment.center,
-                decoration: BoxDecoration(
+                decoration: const BoxDecoration(
                   color: AppColors.pointTint,
-                  borderRadius: BorderRadius.circular(24),
+                  shape: BoxShape.circle,
                 ),
                 child: const ExcludeSemantics(
                   child: Icon(

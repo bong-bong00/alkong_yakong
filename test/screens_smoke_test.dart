@@ -10,6 +10,11 @@ import 'package:alkong_yakong/features/auth/presentation/screens/signup_screen.d
 import 'package:alkong_yakong/features/dashboard/presentation/screens/month_calendar_screen.dart';
 import 'package:alkong_yakong/features/dur_analysis/presentation/screens/dur_analysis_screen.dart';
 import 'package:alkong_yakong/features/guardian/presentation/screens/care_family_screen.dart';
+import 'package:alkong_yakong/features/guardian/presentation/screens/proxy_patient_picker_screen.dart';
+import 'package:alkong_yakong/features/guardian/presentation/screens/proxy_signup_screen.dart';
+import 'package:alkong_yakong/features/medicines/domain/user_medicine_models.dart';
+import 'package:alkong_yakong/features/medicines/presentation/screens/family_added_medicines_screen.dart';
+import 'package:alkong_yakong/features/prescription/domain/proxy_target.dart';
 import 'package:alkong_yakong/features/reminder/presentation/screens/alarm_settings_screen.dart';
 import 'package:alkong_yakong/features/medication/domain/medication_models.dart';
 import 'package:alkong_yakong/features/prescription/presentation/screens/prescription_screen.dart';
@@ -132,8 +137,41 @@ void main() {
     ],
   );
 
+  const proxyTarget = ProxyTarget(
+    patientId: 'synthetic-patient',
+    title: '어머니 · 김복자',
+  );
+
+  const addedMedicines = [
+    UserMedicine(
+      medicineCode: 'synthetic-1',
+      displayName: '메트포르민 500mg',
+      officialProductName: '메트포르민염산염정500mg',
+      ingredientName: '메트포르민염산염',
+      amount: '1정',
+      administrationTimes: ['08:00', '20:00'],
+    ),
+    UserMedicine(
+      medicineCode: 'synthetic-2',
+      displayName: '암로디핀 5mg',
+      officialProductName: '암로디핀베실산염정5mg',
+      ingredientName: '암로디핀베실산염',
+      amount: '1정',
+      administrationTimes: ['20:00'],
+    ),
+  ];
+
   final screens = <String, Widget Function()>{
     '처방전 찍기 (4d)': () => const PrescriptionScreen(),
+    '가족이 대신 회원가입 (1/3)': () => const ProxySignupScreen(),
+    '어느 분 처방전인가요?': () => ProxyPatientPickerScreen(onPick: (_) {}),
+    '대신 찍기': () => const PrescriptionScreen(proxyTarget: proxyTarget),
+    '약이 들어왔어요 (어르신)': () => FamilyAddedMedicinesScreen(
+      guardianName: '김지안',
+      guardianRelation: '딸',
+      medicines: addedMedicines,
+      onOpenMedicines: () {},
+    ),
     '약 함께먹기 주의 (4f)': () => const DurAnalysisScreen(),
     '약 넣기 방법 고르기 (07)': () => AddMedicineScreen(onPick: (_) {}),
     '손으로 적기 (10)': () => const ManualMedicineScreen(),

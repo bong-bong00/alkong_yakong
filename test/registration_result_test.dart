@@ -78,11 +78,8 @@ void main() {
         await tester.pumpAndSettle();
         await tester.tap(find.text('합성 제품'));
         await tester.pumpAndSettle();
-        await tester.enterText(find.byType(TextField).last,'0.5정');
-        final dropdowns = tester.widgetList<DropdownButtonFormField<int>>(find.byType(DropdownButtonFormField<int>)).toList();
-        dropdowns[0].onChanged!(1);
-        dropdowns[1].onChanged!(3);
-        await tester.pumpAndSettle();
+        // 한 번에 먹는 양·하루 횟수·며칠분은 ±로 고른다. 기본값이
+        // 들어 있으므로 그대로 두고 등록한다.
         await tester.ensureVisible(find.text('이 약 등록하기'));
         await tester.tap(find.text('이 약 등록하기'));
         await tester.pumpAndSettle();

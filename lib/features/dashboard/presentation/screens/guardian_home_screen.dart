@@ -38,9 +38,9 @@ class _GuardianHomeScreenState extends ConsumerState<GuardianHomeScreen> {
   String? _patientId;
 
   static const List<SeniorNavItem> _tabs = [
-    SeniorNavItem(icon: TablerIcons.users, label: '돌보는 분'),
-    SeniorNavItem(icon: TablerIcons.heart, label: '현황'),
+    SeniorNavItem(icon: TablerIcons.activity, label: '현황'),
     SeniorNavItem(icon: TablerIcons.bell, label: '알림'),
+    SeniorNavItem(icon: TablerIcons.users, label: '돌보는 분'),
     SeniorNavItem(icon: TablerIcons.user, label: '내 정보'),
   ];
 
@@ -48,7 +48,7 @@ class _GuardianHomeScreenState extends ConsumerState<GuardianHomeScreen> {
   void _openPatient(CarePatient patient) {
     setState(() {
       _patientId = patient.patientId;
-      _index = 1;
+      _index = 0;
     });
   }
 
@@ -60,14 +60,13 @@ class _GuardianHomeScreenState extends ConsumerState<GuardianHomeScreen> {
     final selected =
         patients.where((p) => p.patientId == _patientId).firstOrNull ??
         patients.firstOrNull;
-    void backToFamily() => setState(() => _index = 0);
+    void backToFamily() => setState(() => _index = 2);
 
     return Scaffold(
       backgroundColor: AppColors.bg,
       body: IndexedStack(
         index: _index,
         children: [
-          CareFamilyScreen(onOpenPatient: _openPatient),
           selected == null
               ? _NoPatientTab(onBackToFamily: backToFamily)
               : GuardianStatusTab(
@@ -75,14 +74,16 @@ class _GuardianHomeScreenState extends ConsumerState<GuardianHomeScreen> {
                   position: patients.indexOf(selected) + 1,
                   total: patients.length,
                   onBackToFamily: backToFamily,
-                  onOpenAlerts: () => setState(() => _index = 2),
+                  onOpenAlerts: () => setState(() => _index = 1),
                 ),
           selected == null
               ? _NoPatientTab(onBackToFamily: backToFamily)
               : GuardianAlertsTab(
                   key: ValueKey(selected.patientId),
                   patient: selected,
+                  onOpenStatus: () => setState(() => _index = 0),
                 ),
+          CareFamilyScreen(onOpenPatient: _openPatient),
           const MyPageScreen(isGuardian: true),
         ],
       ),
@@ -188,7 +189,7 @@ class GuardianStatusTab extends ConsumerWidget {
   String get _doseNote {
     if (patient.totalCount == 0) return '등록된 약이 없어요';
     return patient.needsAttention
-        ? '${patient.nextDoseLabel} 약이 남아 있어요'
+        ? '${patient.nextDoseLabel}이 남아 있어요'
         : '오늘 약을 다 드셨어요';
   }
 
@@ -373,7 +374,7 @@ class GuardianStatusTab extends ConsumerWidget {
                           ),
                           const SizedBox(height: 8),
                           Text(
-                            '${patient.nextDoseLabel} 약을 아직 안 드셨어요',
+                            '${patient.nextDoseLabel}을 아직 안 드셨어요',
                             style: AppText.cardTitle(size: 21),
                           ),
                           const SizedBox(height: 14),
@@ -608,7 +609,15 @@ class GuardianAlertsTab extends StatefulWidget {
   /// 알림을 읽어 올 곳. 없으면 이 탭이 하나 만들어 쓴다.
   final AlertRepository? repository;
 
-  const GuardianAlertsTab({super.key, required this.patient, this.repository});
+  /// "현황에서 보기"를 눌렀을 때 건너갈 곳.
+  final VoidCallback? onOpenStatus;
+
+  const GuardianAlertsTab({
+    super.key,
+    required this.patient,
+    this.repository,
+    this.onOpenStatus,
+  });
 
   @override
   State<GuardianAlertsTab> createState() => _GuardianAlertsTabState();
@@ -716,6 +725,7 @@ class _GuardianAlertsTabState extends State<GuardianAlertsTab> {
                         acknowledged: _acknowledged.contains(index),
                         onAcknowledge: () =>
                             setState(() => _acknowledged.add(index)),
+                        onOpenStatus: widget.onOpenStatus,
                       );
                     },
                   ),
@@ -732,11 +742,15 @@ class _AlertCard extends StatelessWidget {
   final bool acknowledged;
   final VoidCallback onAcknowledge;
 
+  /// 새 처방전 알림에서 현황 탭으로 건너가는 길.
+  final VoidCallback? onOpenStatus;
+
   const _AlertCard({
     required this.alert,
     required this.patient,
     required this.acknowledged,
     required this.onAcknowledge,
+    this.onOpenStatus,
   });
 
   bool get _isDanger =>
@@ -751,15 +765,22 @@ class _AlertCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // 좌측 6px 컬러 바. BoxDecoration의 한쪽 테두리는 둥근 모서리와
-    // 함께 쓸 수 없어서, 잘라낸 카드 안에 색 막대를 세운다.
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(22),
+    // 색 막대는 **카드 안쪽**에 세운다. 카드 모서리로 잘라내면 막대의
+    // 위아래가 곡선에 먹혀 비스듬히 잘린 토막처럼 보인다.
+    return SeniorCard(
+      padding: const EdgeInsets.fromLTRB(18, 20, 22, 20),
       child: IntrinsicHeight(
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Container(width: 6, color: _barColor),
+            Container(
+              width: 6,
+              decoration: BoxDecoration(
+                color: _barColor,
+                borderRadius: BorderRadius.circular(3),
+              ),
+            ),
+            const SizedBox(width: 16),
             Expanded(child: _content(context)),
           ],
         ),
@@ -768,58 +789,63 @@ class _AlertCard extends StatelessWidget {
   }
 
   Widget _content(BuildContext context) {
-    return Container(
-      color: AppColors.surface,
-      padding: const EdgeInsets.all(22),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                alert.title,
+                style: AppText.cardTitle(size: 18, color: _barColor),
+              ),
+            ),
+            Text(
+              alert.time,
+              style: AppText.label(size: 17, color: AppColors.textTertiary),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        Text(
+          alert.desc,
+          style: AppText.label(size: 20.5, color: AppColors.textPrimary),
+        ),
+        if (alert.type == 'prescription' && onOpenStatus != null) ...[
+          const SizedBox(height: 10),
+          SeniorTextButton(
+            label: '현황에서 보기',
+            color: AppColors.point,
+            expand: false,
+            onPressed: onOpenStatus,
+          ),
+        ],
+        if (_isDanger) ...[
+          const SizedBox(height: 14),
           Row(
             children: [
               Expanded(
-                child: Text(
-                  alert.title,
-                  style: AppText.cardTitle(size: 18, color: _barColor),
+                child: SeniorButton(
+                  label: '전화 드리기',
+                  minHeight: 56,
+                  fontSize: 19,
+                  onPressed: () => _callPatient(context, patient),
                 ),
               ),
-              Text(
-                alert.time,
-                style: AppText.label(size: 17, color: AppColors.textTertiary),
+              const SizedBox(width: 10),
+              Expanded(
+                child: SeniorButton(
+                  label: acknowledged ? '확인함' : '확인했어요',
+                  kind: SeniorButtonKind.secondary,
+                  minHeight: 56,
+                  fontSize: 19,
+                  onPressed: acknowledged ? null : onAcknowledge,
+                ),
               ),
             ],
           ),
-          const SizedBox(height: 8),
-          Text(
-            alert.desc,
-            style: AppText.label(size: 20.5, color: AppColors.textPrimary),
-          ),
-          if (_isDanger) ...[
-            const SizedBox(height: 14),
-            Row(
-              children: [
-                Expanded(
-                  child: SeniorButton(
-                    label: '전화 드리기',
-                    minHeight: 56,
-                    fontSize: 19,
-                    onPressed: () => _callPatient(context, patient),
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: SeniorButton(
-                    label: acknowledged ? '확인함' : '확인했어요',
-                    kind: SeniorButtonKind.secondary,
-                    minHeight: 56,
-                    fontSize: 19,
-                    onPressed: acknowledged ? null : onAcknowledge,
-                  ),
-                ),
-              ],
-            ),
-          ],
         ],
-      ),
+      ],
     );
   }
 }
