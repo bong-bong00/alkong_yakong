@@ -4,11 +4,12 @@ from datetime import date
 
 from fastapi import HTTPException
 
+from app.core.kst import today_kst
 from app.database import get_connection
 
 
 def get_dashboard(user_id: str, target_date: str | None = None) -> dict:
-    selected_date = target_date or date.today().isoformat()
+    selected_date = target_date or today_kst().isoformat()
     conn = get_connection()
     try:
         if not conn.execute(
@@ -185,7 +186,7 @@ _WEEKDAYS = "월화수목금토일"
 
 def get_medication_calendar(user_id: str, year: int | None = None, month: int | None = None) -> dict:
     """해당 달 medication_schedules만 본다. 스케줄 없는 날을 빠뜨린 날로 치지 않는다."""
-    today = date.today()
+    today = today_kst()
     year = int(year or today.year)
     month = int(month or today.month)
     if month < 1 or month > 12:

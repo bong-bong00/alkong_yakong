@@ -7,6 +7,7 @@ from datetime import date
 
 from fastapi import HTTPException
 
+from app.core.kst import today_kst
 from app.database import get_connection
 from app.models.schemas import DurAnalyzeRequest
 from app.services.pharmacist.dur_why import (
@@ -88,7 +89,7 @@ def _age_from_birth_date(value: str | None) -> int | None:
         born = date.fromisoformat(value)
     except ValueError:
         return None
-    today = date.today()
+    today = today_kst()
     return today.year - born.year - ((today.month, today.day) < (born.month, born.day))
 
 

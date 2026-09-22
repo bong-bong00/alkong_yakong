@@ -2,7 +2,7 @@ import 'package:alkong_yakong/features/medicines/domain/display_policy.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  test('허가 제품명을 제목으로 쓰고 키워드 괄호는 뗀다', () {
+  test('허가 제품명을 우선하고 중복 주성분 괄호는 뗀다', () {
     final card = resolveMyMedicineCard(
       medicineCode: '197800210',
       productName: '아디팜정(히드록시진염산염)',
@@ -12,7 +12,7 @@ void main() {
       shortExplanation: '가려움 또는 불안·긴장을 완화할 목적으로 처방될 수 있어요.',
       easyCategory: '가려울 때 먹는 약이에요',
     );
-    expect(card.name, '아디팜정(히드록시진염산염)');
+    expect(card.name, '아디팜정');
     expect(card.purposeLabel, '가려움 완화 · 불안·긴장 완화');
     expect(card.spoken, '가려울 때 먹는 약이에요');
     expect(card.spoken, isNot(contains('목적으로 처방')));
@@ -43,6 +43,61 @@ void main() {
   test('수출명만 제거하고 성분 괄호는 보존한다', () {
     expect(stripExportAlias('제품정(수출명 : TAGAMENT)(성분명)'), '제품정(성분명)');
     expect(stripExportAlias('아디팜정(히드록시진염산염)'), '아디팜정(히드록시진염산염)');
+  });
+
+  test('요약 화면은 주성분과 같은 마지막 괄호만 숨긴다', () {
+    expect(
+      compactProductName('코다론정(아미오다론염산염)', ingredient: '아미오다론염산염'),
+      '코다론정',
+    );
+    expect(compactProductName('제품정(서방정)', ingredient: '성분명'), '제품정(서방정)');
+  });
+
+  test('영문 주성분은 숨기고 제품명 한글 괄호를 쓴다', () {
+    expect(
+      preferredCardIngredient(
+        'Prednicarbate',
+        productName: '프레벨액0.25%(프레드니카르베이트)',
+      ),
+      '프레드니카르베이트',
+    );
+    expect(
+      cardIngredientCaption(
+        'Prednicarbate',
+        productName: '프레벨액0.25%(프레드니카르베이트)',
+        strength: '0.25%',
+      ),
+      '프레드니카르베이트 · 0.25%',
+    );
+    expect(
+      compactProductName(
+        '프레벨액0.25%(프레드니카르베이트)',
+        ingredient: preferredCardIngredient(
+          'Prednicarbate',
+          productName: '프레벨액0.25%(프레드니카르베이트)',
+        ),
+      ),
+      '프레벨액0.25%',
+    );
+    expect(
+      preferredCardIngredient('Prednicarbate', productName: '프레벨액0.25%'),
+      '',
+    );
+  });
+
+  test('홈 짧은 분류는 주제를 쉼표로 잇고 약은 끝에 한 번만 붙인다', () {
+    expect(homePurposeCaption('심장 박동 약'), '심장 박동 약');
+    expect(homePurposeCaption('가려움 약'), '가려움 약');
+    expect(
+      homePurposeCaption('가려움 완화 · 불안·긴장 완화'),
+      '가려움, 불안 긴장 약',
+    );
+    expect(
+      homePurposeCaption('가려움 완화 · 불안·긴장 완화 · 속쓰림 약'),
+      '가려움, 불안 긴장, 속쓰림 약',
+    );
+    expect(homePurposeCaption('속쓰림·위산 역류 완화'), '속쓰림 위산 역류 약');
+    expect(homePurposeCaption(null), isNull);
   });
 
   test('공식 용법은 숫자 용량을 바꾸지 않고 항만 줄바꿈한다', () {

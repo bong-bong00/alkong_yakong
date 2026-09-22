@@ -7,6 +7,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/network/api_client.dart';
+import '../../../../core/network/api_config.dart';
 import '../../../../core/session/mvp_session.dart';
 import '../../../medicines/application/family_medicine_inbox.dart';
 import '../../../../core/theme/app_typography.dart';
@@ -42,7 +43,7 @@ class ManualMedicineScreen extends ConsumerStatefulWidget {
 }
 
 class _ManualMedicineScreenState extends ConsumerState<ManualMedicineScreen> {
-  final _api = ApiClient();
+  final _api = ApiClient(baseUrl: ApiConfig.localFeatureBaseUrl);
   final _query = TextEditingController();
 
   /// 한 번에 먹는 양. 자판 대신 ±로 고른다.

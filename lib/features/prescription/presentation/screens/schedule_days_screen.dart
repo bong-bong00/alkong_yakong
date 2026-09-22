@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/network/api_client.dart';
+import '../../../../core/network/api_config.dart';
 import '../../../../core/session/mvp_session.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../core/widgets/senior_button.dart';
@@ -56,6 +57,7 @@ class ScheduleDaysScreen extends ConsumerStatefulWidget {
 
 class _ScheduleDaysScreenState extends ConsumerState<ScheduleDaysScreen> {
   static const List<String> _weekdays = ['월', '화', '수', '목', '금', '토', '일'];
+  final ApiClient _localApi = ApiClient(baseUrl: ApiConfig.localFeatureBaseUrl);
 
   late int _year;
   late int _month;
@@ -132,7 +134,7 @@ class _ScheduleDaysScreenState extends ConsumerState<ScheduleDaysScreen> {
         ? 'mvp-user'
         : MvpSession.userId.trim();
     try {
-      final response = await ApiClient().get(
+      final response = await _localApi.get(
         '/api/v1/users/$userId/prescriptions/$prescriptionId/schedule-days'
         '?year=$_year&month=$_month',
       );
@@ -285,7 +287,7 @@ class _ScheduleDaysScreenState extends ConsumerState<ScheduleDaysScreen> {
       _busyDay = cell.day;
     });
     try {
-      final response = await ApiClient().post(
+      final response = await _localApi.post(
         '/api/v1/users/$userId/prescriptions/$prescriptionId/schedule-days',
         body: {'date': date},
       );

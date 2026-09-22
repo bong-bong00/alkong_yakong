@@ -2,6 +2,7 @@ import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/network/api_client.dart';
+import '../../../core/network/api_config.dart';
 import '../../../core/session/mvp_session.dart';
 import '../../medicines/domain/display_policy.dart';
 import '../../reminder/domain/reminder_ladder.dart';
@@ -24,9 +25,9 @@ final patientTodayProvider = FutureProvider.family<TodayMedication, String>((
   ref,
   userId,
 ) async {
-  final response = await ApiClient().get(
-    '/api/v1/users/${Uri.encodeComponent(userId)}/today-medicines',
-  );
+  final response = await ApiClient(
+    baseUrl: ApiConfig.localFeatureBaseUrl,
+  ).get('/api/v1/users/${Uri.encodeComponent(userId)}/today-medicines');
   if (response is! Map) {
     throw const ApiException('오늘 복약을 받지 못했어요.');
   }
@@ -51,7 +52,8 @@ String resolveGuardianTitle(BuildContext context, String? given) {
 class MedicationController extends Notifier<TodayMedication> {
   final ApiClient _api;
 
-  MedicationController({ApiClient? apiClient}) : _api = apiClient ?? ApiClient();
+  MedicationController({ApiClient? apiClient})
+    : _api = apiClient ?? ApiClient(baseUrl: ApiConfig.localFeatureBaseUrl);
 
   @override
   TodayMedication build() {
@@ -123,6 +125,7 @@ class MedicationController extends Notifier<TodayMedication> {
                 efficacy: null,
                 scheduleId: scheduleId,
                 medicineCode: m['medicine_code']?.toString(),
+                frequencyPerDay: (m['frequency_per_day'] as num?)?.toInt(),
               ),
             );
           }

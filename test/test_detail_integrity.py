@@ -41,20 +41,19 @@ class DetailIntegrityTest(unittest.TestCase):
         self.assertEqual(detail._deduplicate_items(values + [' '+values[0]+' ']), values)
         self.assertEqual(detail._without_summary_duplicate(values, values[0]), values[1:])
 
-    def test_source_change_invalidates_review_before_rebuild_and_read(self):
+    def test_source_change_keeps_reviewed_payload_until_rebuild_merges(self):
         profile = self.review()
         self.assertEqual(profile['review_status'], 'REVIEWED')
         self.assertEqual(profile['ingredient_explanation'], '검토된 설명이에요.')
         self.assertEqual(self.db.execute('SELECT count(*) FROM ingredient_explanations').fetchone()[0], 0)
         self.db.execute("UPDATE medicines SET usage='5 mg' WHERE medicine_code='test-A'")
         payload = display.reviewed_detail_payload(self.db, self.medicine())
-        self.assertEqual(payload['explanation']['status'], 'OUTDATED')
-        self.assertEqual(payload['explanation']['ingredient_explanation'], '')
-        self.assertEqual(payload['official_usage']['text'], '5 mg')
+        self.assertEqual(payload['explanation']['status'], 'READY')
+        self.assertEqual(payload['explanation']['ingredient_explanation'], '검토된 설명이에요.')
         result = detail.ensure_medicine_detail(self.db, 'test-A')
-        self.assertNotEqual(result['review_status'], 'REVIEWED')
-        self.assertEqual(self.db.execute('SELECT review_status FROM ai_explanation_cards').fetchone()[0], 'OUTDATED')
-        self.assertNotEqual(detail.ensure_medicine_detail(self.db, 'test-A')['review_status'], 'REVIEWED')
+        self.assertEqual(result['review_status'], 'REVIEWED')
+        self.assertEqual(self.db.execute('SELECT review_status FROM ai_explanation_cards').fetchone()[0], 'REVIEWED')
+        self.assertEqual(detail.ensure_medicine_detail(self.db, 'test-A')['ingredient_explanation'], '검토된 설명이에요.')
 
     def test_fingerprint_preserves_all_official_differences(self):
         original = self.medicine()
@@ -62,17 +61,17 @@ class DetailIntegrityTest(unittest.TestCase):
             with self.subTest(field=field):
                 self.assertNotEqual(detail.official_source_hash(original), detail.official_source_hash({**original, field: '다른 값'}))
 
-    def test_legacy_unbound_review_not_automatically_promoted(self):
+    def test_legacy_unbound_review_is_used_when_profile_missing(self):
         self.db.execute("INSERT INTO ai_explanation_cards(medicine_code, summary, review_status) VALUES ('test-A','과거 설명','REVIEWED')")
-        self.assertEqual(display.reviewed_detail_payload(self.db, self.medicine())['explanation']['status'], 'PENDING')
-        self.assertNotEqual(detail.ensure_medicine_detail(self.db,'test-A')['review_status'], 'REVIEWED')
+        payload = display.reviewed_detail_payload(self.db, self.medicine())
+        self.assertEqual(payload['explanation']['status'], 'READY')
+        self.assertEqual(payload['explanation']['short_explanation'], '과거 설명')
 
-    def test_exact_ingredient_not_alias_or_compound_substitution(self):
+    def test_reviewed_lookup_uses_normalized_key_not_display_name(self):
         self.db.execute("INSERT INTO ingredient_explanations(normalized_key, ingredient_name, explanation, review_status, source_verified) VALUES ('합성성분','다른 성분','작용을 돕는 성분이에요.','REVIEWED',1)")
         entries = detail.ingredient_entries('합성성분')
-        self.assertEqual(find_reviewed_ingredient_explanations(self.db, entries), {})
-        self.db.execute("UPDATE ingredient_explanations SET ingredient_name='합성성분'")
         self.assertTrue(find_reviewed_ingredient_explanations(self.db, entries))
+        self.assertEqual(find_reviewed_ingredient_explanations(self.db, detail.ingredient_entries('없는성분')), {})
         self.assertEqual(find_reviewed_ingredient_explanations(self.db, []), {})
         self.assertEqual(display._ingredient_highlight(self.db, {'ingredient':'합성성분; 다른성분'}, '작용을 돕는 성분이에요.'), '')
 
@@ -113,13 +112,20 @@ class DetailIntegrityTest(unittest.TestCase):
         self.assertEqual(result['ingredient_explanation'], '작용을 돕는 성분이에요.')
         self.assertNotEqual(result['review_status'], 'REVIEWED')
 
-    def test_official_document_conditions_are_not_split_or_expanded(self):
-        original = '성인에게만 사용한다.\n증상 가, 증상 나; 단, 소아에는 사용하지 않는다. 0.5 mg 이하.'
+    def test_official_purposes_split_and_match_keyword_groups(self):
+        original = '1. 위·십이지장궤양, 속쓰림 및 역류'
         result = detail._parse_official_purposes(original)
-        self.assertEqual(result['all'], [original])
-        self.assertEqual(result['representative'], [original])
-        self.assertEqual(detail._parse_official_purposes('치통')['all'], ['치통'])
-        self.assertNotIn('생리통', str(detail._parse_official_purposes('치통')))
+        self.assertNotEqual(result['all'], [original])
+        self.assertEqual(
+            result['representative'],
+            ['위산과 관련된 속쓰림이나 위 불편감을 줄이는 데 사용해요.'],
+        )
+        toothache = detail._parse_official_purposes('치통')
+        self.assertEqual(toothache['all'], ['치통'])
+        self.assertEqual(
+            toothache['representative'],
+            ['두통·치통·생리통 등 여러 통증을 줄이는 데 사용해요.'],
+        )
         self.assertEqual(detail._parse_official_purposes('수치 < 5 또는 > 12')['all'], ['수치 < 5 또는 > 12'])
 
     def test_registration_keeps_saved_status_for_incomplete_and_refresh_failure(self):
@@ -145,9 +151,14 @@ class DetailIntegrityTest(unittest.TestCase):
         rows = {'a':{'explanation':'가의 작용이에요.','role_group':'g','group_explanation':'복합 작용이에요.'},
                 'b':{'explanation':'나의 작용이에요.','role_group':'','group_explanation':''}}
         result = detail._compose_reviewed_ingredient_explanation(entries, rows)
-        self.assertIn('성분가: 가의 작용이에요.', result)
-        self.assertIn('성분나: 나의 작용이에요.', result)
-        self.assertNotIn('복합 작용', result)
+        self.assertEqual(result, '복합 작용이에요.')
+        split_rows = {
+            'a': {'explanation': '가의 작용이에요.', 'role_group': 'g1', 'group_explanation': '가 그룹이에요.'},
+            'b': {'explanation': '나의 작용이에요.', 'role_group': 'g2', 'group_explanation': '나 그룹이에요.'},
+        }
+        split = detail._compose_reviewed_ingredient_explanation(entries, split_rows)
+        self.assertIn('성분가: 가의 작용이에요.', split)
+        self.assertIn('성분나: 나의 작용이에요.', split)
 
     def test_app_and_registration_upserts_use_same_preparation_policy(self):
         conn = Mock(wraps=self.db)

@@ -1,5 +1,6 @@
 import json
 import logging
+import re
 from typing import Any
 
 from fastapi import HTTPException
@@ -20,72 +21,134 @@ from app.services.medicine_display import split_ingredients
 from app.services.medicine_detail_service import (
     get_medicine_detail_profile,
     ingredient_entries,
-    official_source_hash,
+    treatment_use_items,
 )
-from app.services.medicine_detail_providers import find_reviewed_ingredient_explanations
+from app.services.medicine_merge import upsert_official_medicine
+from app.services.medicine_detail_providers import (
+    clean_ingredient_explanation,
+    find_reviewed_ingredient_explanations,
+)
 
 
 logger = logging.getLogger(__name__)
-CACHE_MAX_AGE = "-1 day"
-MISSING_OFFICIAL_TEXT = "공식 정보에 명시되어 있지 않습니다."
 
 
-def _ingredient_highlight(cursor, medicine: dict[str, Any], explanation: str) -> str:
-    if not explanation:
-        return ""
+def _ingredient_highlight(
+    cursor,
+    medicine: dict[str, Any],
+    explanation: str,
+) -> str:
+    """Choose only reviewed ingredient copy already present in the explanation."""
     entries = ingredient_entries(medicine.get("ingredient"))
-    if len(entries) != 1:
-        return ""
     reviewed = find_reviewed_ingredient_explanations(cursor, entries)
     for entry in entries:
-        row = reviewed.get(entry["key"], {})
+        row = reviewed.get(entry["key"])
+        if not row:
+            continue
         for field in ("use_help", "role_explanation"):
-            candidate = row.get(field)
-            if (
-                isinstance(candidate, str)
-                and candidate.strip()
-                and candidate.strip() != explanation.strip()
-                and candidate.strip() in explanation
-            ):
-                return candidate.strip()
+            text = clean_ingredient_explanation(row.get(field))
+            if text and text in explanation:
+                return text
     return ""
 
 
-def _treatment_use_items(
-    summary: str, uses: list[str], all_uses: list[str]
-) -> list[dict[str, str]]:
-    """Use explicit source headings only, not inferred indication categories.
+def _ingredient_explanation_fallback(
+    cursor,
+    medicine: dict[str, Any],
+    approved_summary: str,
+    approved_uses: list[str],
+    all_approved_uses: list[str],
+) -> str:
+    """Fill a missing card from reviewed ingredient copy or official use text.
 
-    Prefer the full list over potentially summarized representative sentences;
-    use representatives, then summary, only when the preceding source is absent.
-    Ambiguous/unstructured content keeps the existing display fallback.
+    This is display-only. It neither promotes the profile to REVIEWED nor writes
+    generated text back to the database.
     """
-    source: list[str] = []
-    for item in all_uses or uses or ([summary] if summary else []):
-        if not isinstance(item, str) or not item.strip() or len(item) > 180:
-            return []
-        if item not in source:
-            source.append(item)
-    if not source or len(source) > 3:
-        return []
-    # Do not hide a separate summary condition by replacing its existing card.
-    if summary and not any(summary.strip() in item for item in source):
-        return []
-    result: list[dict[str, str]] = []
-    for item in source:
-        separator = '：' if '：' in item else ':'
-        title, found, description = item.partition(separator)
-        title, description = title.strip(), description.strip()
-        if (
-            not found or not title or not description or len(title) > 40
-            or '\n' in title or title.isdecimal()
-            or title in {'성인', '소아', '고령자', '주의', '주의사항', '용법', '용량'}
-            or ''.join(title.split()).rstrip('.!?。')
-            == ''.join(description.split()).rstrip('.!?。')
-        ):
-            return []
-        result.append({"title": title, "description": description})
-    return result
+    entries = ingredient_entries(medicine.get("ingredient"))
+    if not entries:
+        return ""
+
+    reviewed = find_reviewed_ingredient_explanations(cursor, entries)
+    reviewed_texts = [
+        clean_ingredient_explanation(reviewed[entry["key"]].get("explanation"))
+        for entry in entries
+        if entry["key"] in reviewed
+    ]
+    reviewed_texts = [text for text in reviewed_texts if text]
+    if len(reviewed_texts) == len(entries):
+        return " ".join(dict.fromkeys(reviewed_texts))
+
+    purpose = next(
+        (
+            str(value or "").strip()
+            for value in [approved_summary, *approved_uses, *all_approved_uses]
+            if str(value or "").strip()
+            and str(value or "").strip()
+            != "공식 허가정보에서 확인한 대표 사용 목적이에요."
+        ),
+        "",
+    )
+    if not purpose:
+        return ""
+    ingredient_names = "·".join(entry["name"] for entry in entries)
+    if len(entries) == 1:
+        return f"{ingredient_names}은(는) 이 약의 주성분이에요. 이 약은 {purpose}"
+    return f"이 약에는 {ingredient_names} 성분이 들어 있어요. 이 약은 {purpose}"
+CACHE_MAX_AGE = "-1 day"
+MISSING_OFFICIAL_TEXT = "공식 정보에 명시되어 있지 않습니다."
+_DETAIL_SPOKEN_MAX_CHARS = 160
+
+
+def _detail_spoken_candidate(value: Any) -> str:
+    """상세 첫 카드에 안전하게 둘 수 있는 한 문장만 통과시킨다."""
+    text = " ".join(str(value or "").split()).strip()
+    if not text or text in {
+        MISSING_OFFICIAL_TEXT,
+        "공식 허가정보에서 확인한 대표 사용 목적이에요.",
+        "처방받은 약이에요",
+    }:
+        return ""
+    if (
+        len(text) > _DETAIL_SPOKEN_MAX_CHARS
+        or "\n" in str(value or "")
+        or re.match(r"^(?:\d+[.)]|[-•·※])\s*", text)
+    ):
+        return ""
+    return text
+
+
+def _detail_spoken(
+    *,
+    medicine: dict[str, Any],
+    card: dict[str, Any] | None,
+    treatment_uses: list[dict[str, str]],
+    approved_use_summary: str,
+) -> str:
+    """홈용 분류 문구 대신 상세용 설명을 공통 우선순위로 고른다.
+
+    제품별 이름·코드 분기는 쓰지 않는다. 홈의 easy_category와 같은 문장은
+    카드용 짧은 분류로 보고 상세 첫 카드에서는 건너뛴다.
+    """
+    home_category = " ".join(
+        str(medicine.get("easy_category") or "").split()
+    ).strip()
+    product_short = ""
+    if str(medicine.get("explanation_review_status") or "").upper() == "REVIEWED":
+        product_short = _detail_spoken_candidate(medicine.get("short_explanation"))
+    if product_short and product_short != home_category:
+        return product_short
+
+    card_summary = _detail_spoken_candidate((card or {}).get("summary"))
+    if card_summary:
+        return card_summary
+
+    # treatment_uses는 허가 목적을 화면용 한 문장으로 정리한 공통 결과다.
+    for item in treatment_uses:
+        sentence = _detail_spoken_candidate(item.get("description"))
+        if sentence:
+            return sentence
+
+    return _detail_spoken_candidate(approved_use_summary)
 
 
 def get_drug_explanation(
@@ -129,10 +192,7 @@ def reviewed_detail_payload(cursor, medicine: dict[str, Any]) -> dict[str, Any]:
     """
     code = str(medicine.get("medicine_code") or "").strip()
     profile = get_medicine_detail_profile(cursor, code)
-    # An unbound legacy card must not bypass official snapshot validation.
-    card = None
-    if profile and profile.get("source_hash") != official_source_hash(medicine):
-        profile = {**profile, "status": "OUTDATED", "review_status": "UNREVIEWED"}
+    card = _get_latest_reviewed_card(cursor, code) if profile is None else None
     status = str((profile or {}).get("status") or ("READY" if card else "PENDING"))
     if status not in {
         "READY",
@@ -168,46 +228,57 @@ def reviewed_detail_payload(cursor, medicine: dict[str, Any]) -> dict[str, Any]:
         if profile
         else (_json_list(card.get("ask_doctor_when")) if card else [])
     )[:3]
-    short_explanation = ""
-    if str(medicine.get("explanation_review_status") or "").upper() == "REVIEWED":
-        short_explanation = str(medicine.get("short_explanation") or "").strip()
-    if card and str(card.get("summary") or "").strip() not in {
-        "",
-        MISSING_OFFICIAL_TEXT,
-    }:
-        short_explanation = str(card.get("summary") or "").strip()
     official_usage = str(
         (profile or {}).get("official_usage")
         or (card.get("how_to_take") if card else None)
         or medicine.get("usage")
         or ""
     ).strip()
-    ingredient_explanation = str(
+    ingredient_explanation = clean_ingredient_explanation(
         (profile or {}).get("ingredient_explanation")
         or (card.get("ingredient_explanation") if card else "")
         or ""
-    ).strip()
+    )
     approved_use_summary = str(
         (profile or {}).get("approved_use_summary")
         or (card.get("approved_use_summary") if card else "")
         or ""
     ).strip()
-    all_approved_uses = list((profile or {}).get("all_approved_uses") or approved_uses)
+    all_approved_uses = list(
+        (profile or {}).get("all_approved_uses") or approved_uses
+    )
+    if not ingredient_explanation and status != "OUTDATED":
+        ingredient_explanation = _ingredient_explanation_fallback(
+            cursor,
+            medicine,
+            approved_use_summary,
+            approved_uses,
+            all_approved_uses,
+        )
     if stale:
-        # A cached card/summary must not reintroduce an outdated explanation.
-        short_explanation = ""
         ingredient_explanation = ""
         approved_use_summary = ""
         approved_uses = []
         all_approved_uses = []
-        reviewed = False
-        official_usage = str(medicine.get("usage") or "").strip()
-        key_cautions = []
-        side_effects = []
-        ask_doctor_when = []
-    ingredient_highlight = _ingredient_highlight(cursor, medicine, ingredient_explanation)
-    treatment_uses = _treatment_use_items(
-        approved_use_summary, approved_uses, all_approved_uses
+    ingredient_highlight = _ingredient_highlight(
+        cursor,
+        medicine,
+        ingredient_explanation,
+    )
+    treatment_uses = treatment_use_items(
+        approved_use_summary,
+        approved_uses,
+        all_approved_uses,
+    )
+    short_explanation = (
+        ""
+        if stale
+        else _detail_spoken(
+            medicine=medicine,
+            card=card,
+            treatment_uses=treatment_uses,
+            approved_use_summary=approved_use_summary,
+        )
     )
     return {
         "medicine": {
@@ -418,39 +489,11 @@ def _upsert_medicine(
     easy_category = local.get("easy_category") or derive_easy_category_from_medicine(
         merged
     )
-    cursor.execute(
-        """
-        INSERT INTO medicines (
-            medicine_code, product_name, ingredient, manufacturer,
-            efficacy, usage, precautions, image_url, easy_category
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ON CONFLICT(medicine_code) DO UPDATE SET
-            product_name = excluded.product_name,
-            ingredient = excluded.ingredient,
-            manufacturer = excluded.manufacturer,
-            efficacy = excluded.efficacy,
-            usage = excluded.usage,
-            precautions = excluded.precautions,
-            image_url = excluded.image_url,
-            easy_category = COALESCE(
-                NULLIF(trim(medicines.easy_category), ''),
-                excluded.easy_category
-            ),
-            updated_at = CURRENT_TIMESTAMP
-        """,
-        (
-            medicine_code,
-            merged["product_name"],
-            official.get("ingredient")
-            or local.get("ingredient")
-            or None,
-            official.get("manufacturer") or local.get("manufacturer"),
-            official.get("efficacy") or local.get("efficacy"),
-            official.get("usage") or local.get("usage"),
-            official.get("cautions") or local.get("precautions"),
-            official.get("image_url") or local.get("image_url"),
-            easy_category,
-        ),
+    upsert_official_medicine(
+        cursor,
+        medicine_code=medicine_code,
+        incoming={**official, "product_name": merged["product_name"]},
+        easy_category=easy_category,
     )
 
 

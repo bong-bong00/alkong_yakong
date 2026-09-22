@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/network/api_client.dart';
+import '../../../core/network/api_config.dart';
 import '../../../core/session/mvp_session.dart';
 import '../domain/display_policy.dart';
 import '../domain/user_medicine_models.dart';
@@ -12,7 +13,7 @@ final userMedicinesProvider =
 
 /// 활성 내 약 목록·상세를 서버에서 불러온다.
 class UserMedicinesController extends AsyncNotifier<List<UserMedicine>> {
-  final _api = ApiClient();
+  final _api = ApiClient(baseUrl: ApiConfig.localFeatureBaseUrl);
 
   @override
   Future<List<UserMedicine>> build() async {

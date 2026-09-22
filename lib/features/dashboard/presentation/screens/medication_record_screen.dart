@@ -50,12 +50,13 @@ class MedicationRecordScreen extends ConsumerWidget {
         ? ref.watch(medicationProvider)
         : ref.watch(patientTodayProvider(patientId)).valueOrNull ??
               TodayMedication.empty;
-    final history =
-        (patientId == null
-                ? ref.watch(medicationHistoryProvider)
-                : ref.watch(patientHistoryProvider(patientId)))
-            .valueOrNull ??
-        const <DateTime, DayAdherence>{};
+    final history = mergeCachedScheduleDates(
+      (patientId == null
+              ? ref.watch(medicationHistoryProvider)
+              : ref.watch(patientHistoryProvider(patientId)))
+          .valueOrNull ??
+      const <DateTime, DayAdherence>{},
+    );
     final interactionCount = today.interactionCount;
 
     final title = patientName == null ? '복약 기록' : '$patientName님 복약 기록';
@@ -103,7 +104,7 @@ class MedicationRecordScreen extends ConsumerWidget {
                   footnote: '날짜를 누르면 그날 결과가 여기에 나와요.',
                 ),
                 // 함께먹기 주의 화면은 로그인한 본인 약만 분석한다.
-                if (patientId == null) ...[
+                if (patientId == null && interactionCount > 0) ...[
                   const SizedBox(height: 12),
                   SeniorCard(
                     padding: const EdgeInsets.symmetric(
@@ -112,16 +113,11 @@ class MedicationRecordScreen extends ConsumerWidget {
                     ),
                     child: SeniorListRow(
                       label: '약 함께먹기 주의',
+                      subtitle: '확인이 필요한 약이 있어요',
                       icon: TablerIcons.alert_triangle,
-                      iconColor: interactionCount > 0
-                          ? AppColors.danger
-                          : AppColors.textTertiary,
-                      value: interactionCount > 0
-                          ? '$interactionCount건'
-                          : '없어요',
-                      valueColor: interactionCount > 0
-                          ? AppColors.danger
-                          : AppColors.textTertiary,
+                      iconColor: AppColors.danger,
+                      value: '$interactionCount건',
+                      valueColor: AppColors.danger,
                       trailing: const SeniorChevron(),
                       onTap: () => Navigator.of(context).push(
                         MaterialPageRoute<void>(
@@ -181,7 +177,13 @@ class MedicationRecordScreen extends ConsumerWidget {
         () {
           final date = monday.add(Duration(days: i));
           if (date.isAfter(todayDate)) {
-            return _DayStatus(date: date, taken: 0, total: 0, isFuture: true);
+            final record = history[date];
+            return _DayStatus(
+              date: date,
+              taken: 0,
+              total: record?.total ?? 0,
+              isFuture: true,
+            );
           }
           if (date == todayDate) {
             return _DayStatus(
@@ -222,7 +224,10 @@ class _DayStatus {
 
   /// 지난 날인데 약 일정이 없었던 날. 다 드신 날로도 빠뜨린 날로도 치지 않는다.
   bool get noRecord => !isFuture && !isToday && total == 0;
-  bool get partial => total > 0 && taken < total;
+  bool get partial => !isFuture && total > 0 && taken < total;
+
+  /// 아직 오지 않은 약 있는 날. 먹었어요로 치지 않는다.
+  bool get hasUpcomingSchedule => isFuture && total > 0;
 }
 
 /// 카드 1 — 이번 달.
@@ -394,6 +399,12 @@ class _WeekDay extends StatelessWidget {
         status.complete ? '✓' : '${status.taken}',
         style: AppText.cardTitle(size: 17, color: Colors.white),
       );
+    } else if (status.hasUpcomingSchedule) {
+      background = AppColors.pointTint;
+      mark = Text(
+        '·',
+        style: AppText.cardTitle(size: 17, color: AppColors.point),
+      );
     } else if (status.future || status.noRecord) {
       background = AppColors.headerBg;
       mark = Text(
@@ -418,7 +429,9 @@ class _WeekDay extends StatelessWidget {
     return Semantics(
       label:
           '${status.date.day}일 $label요일, '
-          '${status.future
+          '${status.hasUpcomingSchedule
+              ? '약 있는 날'
+              : status.future
               ? '아직 오지 않은 날'
               : status.noRecord
               ? '기록 없음'

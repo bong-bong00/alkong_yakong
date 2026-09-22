@@ -3,14 +3,15 @@
 from __future__ import annotations
 
 import json
-from datetime import date
 from typing import Any
 
 from fastapi import HTTPException
 
+from app.core.kst import today_kst
 from app.database import get_connection
 from app.services.drug_explain_service import reviewed_detail_payload
 from app.services.dur_service import pair_card_fields, person_cautions_for_medicine
+from app.services.seed_mvp_medicines import ensure_user_codarone_available
 from app.services.today_medication_service import _visible_medicine_item
 
 
@@ -252,7 +253,7 @@ def _enrich_medicine_row(
     explicitly_active = bool(row.get("is_active", 1))
     item["status"] = (
         "active"
-        if explicitly_active and (not end_date or end_date >= date.today().isoformat())
+        if explicitly_active and (not end_date or end_date >= today_kst().isoformat())
         else "past"
     )
     item["registered_at"] = row.get("created_at")
@@ -274,6 +275,8 @@ def get_user_medicines(user_id: str) -> dict[str, Any]:
     uid = (user_id or "").strip()
     if not uid:
         raise HTTPException(status_code=422, detail="user_id가 필요합니다.")
+
+    ensure_user_codarone_available(uid)
 
     conn = get_connection()
     try:
@@ -311,6 +314,8 @@ def get_user_medicine(user_id: str, medicine_code: str) -> dict[str, Any]:
         raise HTTPException(status_code=422, detail="user_id가 필요합니다.")
     if not code:
         raise HTTPException(status_code=422, detail="medicine_code가 필요합니다.")
+
+    ensure_user_codarone_available(uid)
 
     conn = get_connection()
     try:

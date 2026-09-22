@@ -463,6 +463,17 @@ class _NextDoseCard extends StatelessWidget {
     required this.onOpenDrug,
   });
 
+  int _dailyFrequency(Medicine medicine) =>
+      medicine.frequencyPerDay ??
+      today.doses
+          .where(
+            (entry) => entry.medicines.any(
+              (candidate) =>
+                  _medicineIdentity(candidate) == _medicineIdentity(medicine),
+            ),
+          )
+          .length;
+
   @override
   Widget build(BuildContext context) {
     final others = today.doses.where((d) => d.slot != dose.slot).toList();
@@ -489,6 +500,7 @@ class _NextDoseCard extends StatelessWidget {
             if (i > 0) const SeniorDivider(),
             _MedicineRow(
               medicine: dose.medicines[i],
+              frequencyPerDay: _dailyFrequency(dose.medicines[i]),
               onTap: onOpenDrug == null
                   ? null
                   : () => onOpenDrug!(dose.medicines[i]),
@@ -514,15 +526,17 @@ class _NextDoseCard extends StatelessWidget {
   }
 }
 
-/// 약 한 줄 — 사진, 이름, 개수.
-///
-/// 무슨 약인지는 줄을 눌러서 보는 약 설명이 맡는다. 홈에 다 적으면
-/// 한 화면에 글이 너무 많아진다.
+/// 약 한 줄 — 사진, 이름, 짧은 분류, 하루 횟수.
 class _MedicineRow extends StatelessWidget {
   final Medicine medicine;
+  final int frequencyPerDay;
   final VoidCallback? onTap;
 
-  const _MedicineRow({required this.medicine, required this.onTap});
+  const _MedicineRow({
+    required this.medicine,
+    required this.frequencyPerDay,
+    required this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -539,24 +553,38 @@ class _MedicineRow extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    medicine.displayName,
-                    style: AppText.cardTitle(size: 21),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          medicine.displayName,
+                          style: AppText.cardTitle(size: 21),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Text(
+                        '하루 $frequencyPerDay회',
+                        style: AppText.cardTitle(
+                          size: 20,
+                          color: AppColors.point,
+                        ),
+                      ),
+                      if (onTap != null) ...[
+                        const SizedBox(width: 4),
+                        const SeniorChevron(),
+                      ],
+                    ],
                   ),
+                  if (medicine.effect != null)
+                    Text(
+                      medicine.effect!,
+                      style: AppText.caption(size: 16.5),
+                    ),
                 ],
               ),
             ),
-            const SizedBox(width: 10),
-            Text(
-              medicine.amount,
-              style: AppText.cardTitle(size: 20, color: AppColors.point),
-            ),
-            if (onTap != null) ...[
-              const SizedBox(width: 4),
-              const SeniorChevron(),
-            ],
           ],
         ),
       ),
@@ -568,6 +596,21 @@ class _MedicineRow extends StatelessWidget {
 class _OtherDosesBlock extends StatelessWidget {
   final List<DoseEntry> doses;
   const _OtherDosesBlock({required this.doses});
+
+  List<_OtherMedicineSchedule> get _medicineSchedules {
+    final grouped = <String, _OtherMedicineSchedule>{};
+    for (final dose in doses) {
+      for (final medicine in dose.medicines) {
+        final key = _medicineIdentity(medicine);
+        final schedule = grouped.putIfAbsent(
+          key,
+          () => _OtherMedicineSchedule(medicine),
+        );
+        schedule.addDose(dose);
+      }
+    }
+    return grouped.values.toList(growable: false);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -582,57 +625,88 @@ class _OtherDosesBlock extends StatelessWidget {
         children: [
           Text('오늘 다른 약', style: AppText.label(size: 17.5)),
           const SizedBox(height: 10),
-          for (final dose in doses)
-            for (final medicine in dose.medicines)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 8),
-                child: Row(
-                  children: [
-                    const PillPhoto(size: 38),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
+          for (final schedule in _medicineSchedules)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Row(
+                children: [
+                  const PillPhoto(size: 38),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          schedule.medicine.displayName,
+                          style: AppText.label(
+                            size: 18,
+                            color: AppColors.textPrimary,
+                          ),
+                        ),
+                        if (schedule.medicine.effect != null)
                           Text(
-                            medicine.displayName,
-                            style: AppText.label(
-                              size: 18,
-                              color: AppColors.textPrimary,
-                            ),
+                            schedule.medicine.effect!,
+                            style: AppText.caption(size: 16.5),
                           ),
-                          if (medicine.effect != null)
-                            Text(
-                              medicine.effect!,
-                              style: AppText.caption(size: 16.5),
-                            ),
-                        ],
-                      ),
+                      ],
                     ),
-                    const SizedBox(width: 8),
-                    Flexible(
-                      child: FittedBox(
-                        fit: BoxFit.scaleDown,
-                        alignment: Alignment.centerRight,
-                        child: Text(
-                          dose.taken
-                              ? '${dose.slot.label} ✓'
-                              : '${dose.slot.label}에 있어요',
-                          style: AppText.cardTitle(
-                            size: 16.5,
-                            color: dose.taken
-                                ? AppColors.point
-                                : AppColors.textSecondary,
-                          ),
+                  ),
+                  const SizedBox(width: 8),
+                  Flexible(
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: Alignment.centerRight,
+                      child: Text(
+                        schedule.statusLabel,
+                        style: AppText.cardTitle(
+                          size: 16.5,
+                          color: schedule.allTaken
+                              ? AppColors.point
+                              : AppColors.textSecondary,
                         ),
                       ),
                     ),
-                  ],
-                ),
+                  ),
+                ],
               ),
+            ),
         ],
       ),
     );
+  }
+}
+
+String _medicineIdentity(Medicine medicine) {
+  final code = medicine.medicineCode?.trim() ?? '';
+  if (code.isNotEmpty) return 'code:$code';
+  final normalizedName = medicine.displayName
+      .replaceAll(RegExp(r'\s+'), '')
+      .toLowerCase();
+  return 'name:$normalizedName';
+}
+
+class _OtherMedicineSchedule {
+  final Medicine medicine;
+  final List<DoseEntry> _doses = [];
+
+  _OtherMedicineSchedule(this.medicine);
+
+  void addDose(DoseEntry dose) {
+    if (_doses.any((entry) => entry.slot == dose.slot)) return;
+    _doses.add(dose);
+  }
+
+  bool get allTaken => _doses.isNotEmpty && _doses.every((dose) => dose.taken);
+
+  String get statusLabel {
+    final taken = _doses.where((dose) => dose.taken).toList(growable: false);
+    final pending = _doses.where((dose) => !dose.taken).toList(growable: false);
+    String slots(List<DoseEntry> entries) =>
+        entries.map((entry) => entry.slot.label).join('·');
+
+    if (pending.isEmpty) return '${slots(taken)} ✓';
+    if (taken.isEmpty) return '${slots(pending)}에 있어요';
+    return '${slots(taken)} ✓ · ${slots(pending)} 예정';
   }
 }
 

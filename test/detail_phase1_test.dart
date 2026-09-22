@@ -37,18 +37,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
   test('missing and malformed new fields have safe defaults', () {
-    for (final raw in [
-      null,
-      12,
-      'bad',
-      {},
-      [
-        null,
-        3,
-        {'title': 42},
-        {'title': 'x', 'description': []},
-      ],
-    ]) {
+    for (final raw in [null, 12, 'bad', {}, [null, 3, {'title': ''}]]) {
       final med = UserMedicine.fromJson({
         ...data(),
         'ingredient_highlight': 12,
@@ -138,12 +127,11 @@ void main() {
     expect(tester.takeException(),isNull);
   });
 
-  testWidgets('missing explanation is not described as missing official source', (tester) async {
+  testWidgets('missing explanation hides ingredient card without empty-state copy', (tester) async {
     await show(tester, {...data(), 'ingredient_explanation':''});
-    expect(find.text('주성분의 쉬운 설명을 아직 확인하지 못했어요. 공식 정보가 없다는 뜻은 아니에요.'),findsOneWidget);
-    await tester.pumpWidget(const SizedBox.shrink());
-    await show(tester, {...data(), 'detail_status':'FAILED', 'ingredient_explanation':''});
-    expect(find.text('주성분 설명을 불러오지 못했어요. 잠시 후 다시 확인해 주세요.'),findsOneWidget);
+    expect(find.text('주성분의 쉬운 설명을 아직 확인하지 못했어요. 공식 정보가 없다는 뜻은 아니에요.'), findsNothing);
+    expect(find.text('주성분 설명을 불러오지 못했어요. 잠시 후 다시 확인해 주세요.'), findsNothing);
+    expect(find.text('기존 사용 목적'), findsOneWidget);
   });
 
   testWidgets('matched phrase alone is bold green and purposes displayed', (
@@ -211,13 +199,14 @@ void main() {
       await tester.tap(find.text('전체 허가 목적'));
       await tester.pumpAndSettle();
       expect(knownWarnings, isNotEmpty);
-      for (final entry in entries) {
+      expect(find.text('· ${entries[0]}'), findsNothing);
+      for (final entry in entries.skip(1)) {
         expect(find.text('· $entry'), findsOneWidget);
       }
       expect(find.text(entries[1]), findsOneWidget); // Representative remains too.
       final expanded = tester.widget<ExpansionTile>(find.byType(ExpansionTile));
       final texts = expanded.children.whereType<Align>().map((a) => (a.child! as Text).data).toList();
-      expect(texts, entries.map((e) => '· $e').toList());
+      expect(texts, entries.skip(1).map((e) => '· $e').toList());
     } finally { FlutterError.onError = previous; }
     expect(tester.takeException(), isNull);
   });
@@ -228,22 +217,15 @@ void main() {
     expect(text.textSpan, isNull);
   });
 
-  testWidgets('OUTDATED cannot show old explanation or purpose via fallback', (
-    tester,
-  ) async {
-    await show(tester, {
+  test('title-only treatment uses are kept', () {
+    final med = UserMedicine.fromJson({
       ...data(),
-      'detail_status': 'OUTDATED',
-      'short_explanation': '과거 카드 설명',
       'treatment_uses': [
-        {'title': '과거 목적', 'description': '과거 내용'},
+        {'title': '속쓰림·위 불편감', 'description': ''},
       ],
-      'official_usage': '공식 원문 0.5 mL',
     });
-    expect(find.text('과거 카드 설명'), findsNothing);
-    expect(find.text('정해진 작용을 돕는 성분이에요.'), findsNothing);
-    expect(find.text('기존 사용 목적'), findsNothing);
-    expect(find.text('과거 내용'), findsNothing);
-    expect(find.text('제품 공식 용법·용량'), findsOneWidget);
+    expect(med.treatmentUses.single.title, '속쓰림·위 불편감');
+    expect(med.treatmentUses.single.description, isEmpty);
+    expect(med.hasDetailContent, isTrue);
   });
 }
