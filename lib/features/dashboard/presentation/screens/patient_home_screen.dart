@@ -146,7 +146,7 @@ class _PatientHomeScreenState extends ConsumerState<PatientHomeScreen> {
     final choice = await showWearSensorSheet(context);
     if (!mounted || choice == WearChoice.cancel) return;
 
-    final outcome = controller.take(slot);
+    final outcome = await controller.take(slot);
     if (!mounted) return;
 
     switch (outcome) {
@@ -155,7 +155,7 @@ class _PatientHomeScreenState extends ConsumerState<PatientHomeScreen> {
       case DoseCheckOutcome.tooLate:
         final proceed = await showLateDoseSheet(context: context, slot: slot);
         if (proceed && mounted) {
-          controller.takeAnyway(slot);
+          await controller.takeAnyway(slot);
           _afterRecord(choice, slot);
         }
       case DoseCheckOutcome.recorded:

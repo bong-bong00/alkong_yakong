@@ -1,11 +1,24 @@
+import pytest
+
+import app.database as database
+import init_db
 from app.services.seed_mvp_medicines import MVP_USER_ID, ensure_mvp_demo_medicines
 from app.services.today_medication_service import (
     _doses_from_active_medicines,
     _medicine_item,
+    _is_current_ocr_interaction,
     _visible_medicine_item,
     get_today_medicines,
 )
 from app.database import get_connection
+
+
+@pytest.fixture(autouse=True)
+def isolated_medicine_db(tmp_path, monkeypatch):
+    path = str(tmp_path / "today-medicines.db")
+    monkeypatch.setattr(database, "DB_PATH", path)
+    monkeypatch.setattr(init_db, "DB_PATH", path)
+    init_db.initialize_database()
 
 
 def test_mvp_user_today_medicines_from_server():
@@ -20,8 +33,8 @@ def test_mvp_user_today_medicines_from_server():
         for med in dose["medicines"]
     ]
     assert any("코다론" in name for name in names)
-    assert any("부루펜" in name for name in names)
-    assert any("게루삼" in name for name in names)
+    assert all("부루펜" not in name for name in names)
+    assert all("게루삼" not in name for name in names)
     assert not any("아디팜" in name for name in names)
     assert not any("프리마란" in name for name in names)
     assert not any("프레벨" in name for name in names)
@@ -176,7 +189,7 @@ def test_adipam_card_uses_permission_name_and_itch_copy():
     assert "처방받은 약이에요" not in (item["short_explanation"] or "")
 
 
-def test_home_only_exposes_an_actual_high_or_medium_interaction_alert():
+def test_home_does_not_expose_a_risk_without_current_ocr_match():
     ensure_mvp_demo_medicines()
     marker = "테스트 함께먹기 주의"
     conn = get_connection()
@@ -192,7 +205,7 @@ def test_home_only_exposes_an_actual_high_or_medium_interaction_alert():
     conn.commit()
     conn.close()
     try:
-        assert get_today_medicines(MVP_USER_ID)["interaction_alert"] == marker
+        assert get_today_medicines(MVP_USER_ID)["interaction_alert"] is None
     finally:
         conn = get_connection()
         conn.execute(
@@ -201,3 +214,25 @@ def test_home_only_exposes_an_actual_high_or_medium_interaction_alert():
         )
         conn.commit()
         conn.close()
+
+
+def test_current_ocr_interaction_requires_active_pair_and_ocr_origin():
+    match = {
+        "medicine_codes_a": ["OCR-A"],
+        "medicine_codes_b": ["OTHER-B"],
+    }
+    assert _is_current_ocr_interaction(
+        match,
+        active_codes={"OCR-A", "OTHER-B"},
+        active_ocr_codes={"OCR-A"},
+    )
+    assert not _is_current_ocr_interaction(
+        match,
+        active_codes={"OCR-A"},
+        active_ocr_codes={"OCR-A"},
+    )
+    assert not _is_current_ocr_interaction(
+        match,
+        active_codes={"OCR-A", "OTHER-B"},
+        active_ocr_codes=set(),
+    )

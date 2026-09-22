@@ -25,9 +25,16 @@ class HeartRepository {
     if (id.isEmpty) return null;
     try {
       final response = await _apiClient.get(
-        '/api/v1/users/${Uri.encodeComponent(id)}/biosignal/heart-summary',
+        '/api/v1/users/${Uri.encodeComponent(id)}/biosignal/heart-summary'
+        '?include_readings=true&utc_offset_minutes=${DateTime.now().timeZoneOffset.inMinutes}',
       );
       if (response is! Map) return null;
+      // An old server or malformed response must not masquerade as no records.
+      if (response['readings'] is! List ||
+          DateTime.tryParse(response['period_date']?.toString() ?? '') ==
+              null) {
+        return null;
+      }
       return _parse(Map<String, dynamic>.from(response));
     } catch (_) {
       return null;
@@ -39,6 +46,8 @@ class HeartRepository {
     final anomaly = _anomaly(json['anomaly'], today);
 
     return HeartData(
+      readings: [for (final raw in json['readings'] as List) _reading(raw)],
+      periodDate: DateTime.parse(json['period_date'] as String),
       today: today,
       // 서버는 오늘 잰 것이 없어도 "저녁 약"을 채워 보낸다. 여기서 또
       // 지어내지 않고, 오늘 값이 없으면 화면이 이 이름을 숨긴다.
@@ -64,6 +73,17 @@ class HeartRepository {
     if (value is int) return value;
     if (value is num) return value.round();
     return int.tryParse(value?.toString() ?? '');
+  }
+
+  static HeartReading _reading(dynamic raw) {
+    if (raw is! Map) throw const FormatException('Invalid heart reading');
+    final id = _int(raw['id']);
+    final bpm = _int(raw['bpm']);
+    final at = DateTime.tryParse(raw['measured_at']?.toString() ?? '');
+    if (id == null || bpm == null || at == null || !at.isUtc) {
+      throw const FormatException('Invalid heart reading');
+    }
+    return HeartReading(id: id, bpm: bpm, measuredAt: at.toLocal());
   }
 
   /// 서버의 "17:45"를 앱이 늘 쓰는 "오후 5시 45분"으로.

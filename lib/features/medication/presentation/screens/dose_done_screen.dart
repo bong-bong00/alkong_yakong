@@ -105,11 +105,11 @@ Future<void> _takeDose(
   // 홈과 같은 순서다. 센서를 차셨는지 먼저 묻고 기록한다.
   final choice = await showWearSensorSheet(context);
   if (!context.mounted || choice == WearChoice.cancel) return;
-  final outcome = controller.take(slot);
+  final outcome = await controller.take(slot);
   if (!context.mounted) return;
   if (outcome == DoseCheckOutcome.tooLate) {
     final proceed = await showLateDoseSheet(context: context, slot: slot);
-    if (proceed && context.mounted) controller.takeAnyway(slot);
+    if (proceed && context.mounted) await controller.takeAnyway(slot);
   }
 }
 

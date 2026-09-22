@@ -41,8 +41,13 @@ class UserRepository {
 
   static UserProfile _profile(dynamic response) {
     if (response is Map) {
-      final profile = UserProfile.fromJson(Map<String, dynamic>.from(response));
-      if (profile.id.isNotEmpty) return profile;
+      final data = Map<String, dynamic>.from(response);
+      final id = data['id']?.toString().trim() ?? '';
+      final role = data['role']?.toString().trim().toLowerCase();
+      if (id.isNotEmpty && id != 'mvp-user' &&
+          (role == 'patient' || role == 'guardian')) {
+        return UserProfile.fromJson(data);
+      }
     }
     throw const ApiException('서버에서 내 정보를 받지 못했어요.');
   }

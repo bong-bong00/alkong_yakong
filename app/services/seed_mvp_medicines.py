@@ -218,7 +218,7 @@ def ensure_mvp_demo_medicines() -> str:
                     med.get("precautions"),
                     category,
                     med.get("short_explanation"),
-                    "REVIEWED" if med.get("short_explanation") else None,
+                    "REVIEWED" if med.get("short_explanation") else "UNREVIEWED",
                 ),
             )
         for med in _CATALOG_MEDS:

@@ -9,14 +9,51 @@ import '../../guardian/application/guardians_provider.dart';
 import '../../medication/application/medication_controller.dart';
 import '../../medicines/application/user_medicines_controller.dart';
 import '../domain/user_profile.dart';
+import '../data/user_repository.dart';
 import 'current_user_controller.dart';
+
+/// Restore only after the backend confirms both the saved UUID and role.
+/// A cached preference alone cannot unlock protected screens.
+Future<UserProfile?> restorePersistedSession(UserRepository repository) async {
+  try {
+    await AuthSession.load();
+    final savedId = MvpSession.userId.trim();
+    final canRestore =
+        AuthSession.isLoggedIn && savedId.isNotEmpty && savedId != 'mvp-user';
+    AuthSession.isLoggedIn = false;
+    AuthSession.role = 'patient';
+    MvpSession.userId = '';
+    MvpSession.isPregnant = null;
+    if (!canRestore) return null;
+
+    final user = await repository.fetch(savedId);
+    if (user.id != savedId) return null;
+    MvpSession.userId = user.id;
+    MvpSession.isPregnant = user.isPregnant;
+    await AuthSession.setLoggedIn(user.isGuardian ? 'guardian' : 'patient');
+    return user;
+  } catch (_) {
+    AuthSession.isLoggedIn = false;
+    AuthSession.role = 'patient';
+    MvpSession.userId = '';
+    MvpSession.isPregnant = null;
+    return null;
+  }
+}
 
 /// 로그인·가입이 끝난 사람으로 앱을 연다.
 ///
 /// 앞사람이 보던 약·가족·기록이 남아 있으면 남의 정보가 보인다.
 /// 사람이 바뀔 때마다 사람에게 딸린 값을 모두 버리고 다시 읽는다.
 Future<void> startSession(WidgetRef ref, UserProfile user) async {
-  MvpSession.userId = user.id;
+  final id = user.id.trim();
+  final role = user.role.trim().toLowerCase();
+  if (id.isEmpty ||
+      id == 'mvp-user' ||
+      (role != 'patient' && role != 'guardian')) {
+    throw StateError('서버 사용자 정보를 확인할 수 없습니다.');
+  }
+  MvpSession.userId = id;
   MvpSession.isPregnant = user.isPregnant;
   await AuthSession.setLoggedIn(user.isGuardian ? 'guardian' : 'patient');
   ref.read(userRoleProvider.notifier).state = user.isGuardian
@@ -46,4 +83,10 @@ void resetUserScopedData(WidgetRef ref) {
 Future<void> endSession(WidgetRef ref) async {
   await ref.read(appModeProvider.notifier).set(AppMode.normal);
   await AuthSession.logout();
+  MvpSession.medicineCode = '';
+  MvpSession.latestOcrItems = <Map<String, dynamic>>[];
+  MvpSession.latestOcrRegisteredAt = null;
+  MvpSession.latestPrescriptionId = null;
+  MvpSession.latestScheduleDates = <String>{};
+  resetUserScopedData(ref);
 }

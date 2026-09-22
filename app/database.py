@@ -8,8 +8,6 @@ DB_PATH = os.getenv("ALKONGYAKONG_DB_PATH", str(PROJECT_ROOT / "alkongyakong.db"
 
 
 def get_connection() -> sqlite3.Connection:
-    # 서버 시작 직후 백그라운드 동기화와 OCR 요청이 겹쳐도 즉시 실패하지 않고
-    # 기존 쓰기 작업이 끝날 때까지 기다린다.
     conn = sqlite3.connect(DB_PATH, timeout=60)
     conn.row_factory = sqlite3.Row
     # Render에서는 OCR 요청과 서버 시작 시 DUR/약 상세 동기화가 같은 SQLite를

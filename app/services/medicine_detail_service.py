@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import logging
 import re
 from typing import Any
 
@@ -20,9 +19,6 @@ from app.services.medicine_detail_providers import (
     find_reviewed_ingredient_explanations,
     is_displayable_ingredient_explanation,
 )
-
-
-logger = logging.getLogger(__name__)
 
 
 PROFILE_STATUSES = frozenset(
@@ -36,9 +32,9 @@ _STRENGTH = re.compile(
     re.I,
 )
 _SPACE = re.compile(r"\s+")
-_HTML = re.compile(r"<[^>]+>")
+_HTML = re.compile(r"<\s*/?\s*[A-Za-z][^>]*>")
 _LEADING_MARK = re.compile(r"^(?:\d+[.)]|[가-하][.)]|[-•·※]+)\s*")
-PARSER_VERSION = "3.0"
+PARSER_VERSION = "4.0"
 _BOILERPLATE_PURPOSES = (
     "다음 질환에도 사용할 수 있다",
     "다음 질환에 사용할 수 있다",
@@ -46,50 +42,37 @@ _BOILERPLATE_PURPOSES = (
     "주효능 효과",
     "효능 효과",
 )
-_PURPOSE_GROUPS: tuple[tuple[re.Pattern[str], str, str], ...] = (
+_PURPOSE_GROUPS: tuple[tuple[re.Pattern[str], str], ...] = (
     (
         re.compile(r"발열|해열|감기.*(?:열|통증)"),
-        "열·감기 통증",
         "열을 내리고 감기로 인한 통증을 줄이는 데 사용해요.",
     ),
     (
         re.compile(r"두통|치통|월경곤란|생리통|요통|근육통|신경통|수술\s*후\s*통증"),
-        "여러 통증",
         "두통·치통·생리통 등 여러 통증을 줄이는 데 사용해요.",
     ),
     (
         re.compile(r"관절염|류마티|통풍|염좌|좌상|건염|건초염|활액낭염|소염"),
-        "관절·근육의 염증과 통증",
         "관절이나 근육의 염증과 통증을 줄이는 데 사용해요.",
     ),
     (
         re.compile(r"가려움|두드러기|알레르기|알러지"),
-        "알레르기로 인한 가려움",
         "알레르기로 인한 가려움 같은 증상을 줄이는 데 사용해요.",
     ),
     (
-        re.compile(r"불안|긴장|초조|신경증"),
-        "불안·긴장",
-        "불안하거나 긴장된 증상을 완화할 목적으로 사용될 수 있어요.",
-    ),
-    (
         re.compile(r"위산|속쓰림|역류|위궤양|십이지장궤양"),
-        "속쓰림·위 불편감",
         "위산과 관련된 속쓰림이나 위 불편감을 줄이는 데 사용해요.",
     ),
     (
         re.compile(r"부정맥|심실세동|심방세동|빈맥"),
-        "빠르거나 불규칙한 심장 박동",
         "불규칙하거나 지나치게 빠른 심장 박동을 조절하는 데 사용해요.",
     ),
     (
         re.compile(r"고혈압|혈압"),
-        "높은 혈압",
         "높은 혈압을 조절하는 데 사용해요.",
     ),
     (
         re.compile(r"당뇨|혈당"),
-        "높은 혈당",
         "혈당을 조절하는 데 사용해요.",
     ),
 )
@@ -102,13 +85,6 @@ def normalize_ingredient_key(value: str | None) -> str:
     return text
 
 
-def _topic_particle(value: str) -> str:
-    last = str(value or "").strip()[-1:]
-    if last and "가" <= last <= "힣":
-        return "은" if (ord(last) - ord("가")) % 28 else "는"
-    return "은"
-
-
 def ingredient_entries(raw: str | None) -> list[dict[str, str]]:
     entries: list[dict[str, str]] = []
     seen: set[str] = set()
@@ -119,101 +95,6 @@ def ingredient_entries(raw: str | None) -> list[dict[str, str]]:
         seen.add(key)
         entries.append({"key": key, "name": name.strip()})
     return entries
-
-
-def _profile_quality(profile: dict[str, Any] | None) -> int:
-    if not profile:
-        return -1
-    score = 0
-    if clean_ingredient_explanation(profile.get("ingredient_explanation")):
-        score += 6
-    if str(profile.get("approved_use_summary") or "").strip():
-        score += 4
-    score += min(len(_load_list(profile.get("approved_uses"))), 3)
-    score += min(len(_load_list(profile.get("all_approved_uses"))), 5)
-    if str(profile.get("official_usage") or "").strip():
-        score += 2
-    if bool(profile.get("source_verified")):
-        score += 1
-    if str(profile.get("review_status") or "").upper() == "REVIEWED":
-        score += 4
-    score -= len(_load_list(profile.get("quality_flags")))
-    return score
-
-
-def _merge_profile_content(
-    existing: dict[str, Any] | None,
-    candidate: dict[str, Any],
-) -> dict[str, Any]:
-    """Keep non-empty/reviewed detail fields while accepting richer updates."""
-    merged = dict(candidate)
-    merged["ingredient_explanation"] = clean_ingredient_explanation(
-        merged.get("ingredient_explanation")
-    )
-    if not existing:
-        return merged
-
-    string_fields = (
-        "ingredient_explanation",
-        "approved_use_summary",
-        "official_usage",
-        "source_name",
-        "source_url",
-        "generated_by",
-    )
-    list_fields = (
-        "ingredient_keys",
-        "approved_uses",
-        "all_approved_uses",
-        "key_cautions",
-        "possible_side_effects",
-        "ask_doctor_when",
-    )
-    for field in string_fields:
-        if not str(merged.get(field) or "").strip():
-            merged[field] = existing.get(field) or ""
-    for field in list_fields:
-        if not _load_list(merged.get(field)):
-            merged[field] = _load_list(existing.get(field))
-
-    old_reviewed = str(existing.get("review_status") or "").upper() == "REVIEWED"
-    new_reviewed = str(merged.get("review_status") or "").upper() == "REVIEWED"
-    if old_reviewed and not new_reviewed:
-        for field in (
-            "ingredient_explanation",
-            "approved_use_summary",
-            "approved_uses",
-            "all_approved_uses",
-        ):
-            old_value = existing.get(field)
-            if old_value:
-                merged[field] = old_value
-        merged["review_status"] = "REVIEWED"
-        merged["status"] = "READY"
-        merged["generated_by"] = existing.get("generated_by") or merged.get(
-            "generated_by"
-        )
-
-    flags = _load_list(merged.get("quality_flags"))
-    if str(merged.get("ingredient_explanation") or "").strip():
-        flags = [item for item in flags if item != "missing_reviewed_ingredient_explanation"]
-    if (
-        str(merged.get("approved_use_summary") or "").strip()
-        or _load_list(merged.get("approved_uses"))
-        or _load_list(merged.get("all_approved_uses"))
-    ):
-        flags = [item for item in flags if item != "missing_purpose"]
-    merged["quality_flags"] = flags
-    if str(merged.get("status") or "").upper() in {"PENDING", "FAILED"} and (
-        str(merged.get("ingredient_explanation") or "").strip()
-        or str(merged.get("approved_use_summary") or "").strip()
-        or _load_list(merged.get("all_approved_uses"))
-    ):
-        merged["status"] = "READY" if merged.get("review_status") == "REVIEWED" else "OFFICIAL_ONLY"
-    merged["source_verified"] = bool(
-        merged.get("source_verified") or existing.get("source_verified")
-    )
-    return merged
 
 
 def enqueue_medicine_detail(cursor, medicine_code: str) -> None:
@@ -262,59 +143,23 @@ def ensure_medicine_detail(cursor, medicine_code: str) -> dict[str, Any] | None:
     )
 
     try:
-        profile = _build_profile(cursor, medicine)
-        existing_profile = get_medicine_detail_profile(cursor, code)
-        candidate_quality = _profile_quality(profile)
-        existing_quality = _profile_quality(existing_profile)
-        if existing_profile and candidate_quality < existing_quality:
-            logger.info(
-                "MEDICINE_DETAIL_PRESERVED code=%s existing_quality=%s candidate_quality=%s",
-                code,
-                existing_quality,
-                candidate_quality,
-            )
-            cursor.execute(
-                """
-                UPDATE medicine_detail_jobs
-                SET status='READY', last_error=NULL, finished_at=CURRENT_TIMESTAMP,
-                    updated_at=CURRENT_TIMESTAMP
-                WHERE medicine_code=?
-                """,
-                (code,),
-            )
-            return existing_profile
-        merged_profile = _merge_profile_content(existing_profile, profile)
-        changed_fields = [
-            field
-            for field in (
-                "status",
-                "ingredient_keys",
-                "ingredient_explanation",
-                "approved_use_summary",
-                "approved_uses",
-                "all_approved_uses",
-                "official_usage",
-                "key_cautions",
-                "ask_doctor_when",
-                "review_status",
-                "quality_flags",
-            )
-            if (existing_profile or {}).get(field) != merged_profile.get(field)
-        ]
-        profile = merged_profile
-        logger.info(
-            "MEDICINE_DETAIL_MERGED code=%s existing_quality=%s candidate_quality=%s "
-            "final_quality=%s changed_fields=%s",
-            code,
-            existing_quality,
-            candidate_quality,
-            _profile_quality(profile),
-            ",".join(changed_fields) or "none",
-        )
         existing = cursor.execute(
             "SELECT source_hash, content_version FROM medicine_detail_profiles WHERE medicine_code=?",
             (code,),
         ).fetchone()
+        # A reviewed card without a matching official snapshot has no proven
+        # connection to today's product. Never promote it merely by rebuilding.
+        source_hash = official_source_hash(medicine)
+        if not existing or existing["source_hash"] != source_hash:
+            cursor.execute(
+                "UPDATE ai_explanation_cards SET review_status='OUTDATED' "
+                "WHERE medicine_code=? AND review_status='REVIEWED'", (code,)
+            )
+            cursor.execute(
+                "UPDATE medicines SET explanation_review_status='UNREVIEWED' "
+                "WHERE medicine_code=?", (code,)
+            )
+        profile = _build_profile(cursor, medicine)
         if (
             existing
             and str(existing["source_hash"] or "")
@@ -484,17 +329,6 @@ def _build_profile(cursor, medicine: dict[str, Any]) -> dict[str, Any]:
     ).fetchone()
     card = dict(reviewed_card_row) if reviewed_card_row else None
 
-    if card and len(ingredients) == 1:
-        reviewed_text = str(card.get("ingredient_explanation") or "").strip()
-        if is_displayable_ingredient_explanation(reviewed_text):
-            _store_reviewed_ingredient(
-                cursor,
-                ingredients[0],
-                reviewed_text,
-                source=str(card.get("source") or "식약처 의약품 허가정보"),
-                generated_by=str(card.get("content_generated_by") or card.get("generated_by") or "manual"),
-            )
-
     ingredient_explanation = ""
     reviewed_by_key = find_reviewed_ingredient_explanations(cursor, ingredients)
     ingredient_provider_names: set[str] = set()
@@ -507,11 +341,15 @@ def _build_profile(cursor, medicine: dict[str, Any]) -> dict[str, Any]:
             ingredients,
             reviewed_by_key,
         )
+    if card and ingredients and is_displayable_ingredient_explanation(card.get("ingredient_explanation")):
+        # A product review bound to the current snapshot may supply product copy,
+        # but must never be copied into a global ingredient dictionary.
+        ingredient_explanation = clean_ingredient_explanation(card["ingredient_explanation"])
 
     quality_flags: list[str] = []
     if card:
         all_approved_uses = _deduplicate_items(_load_list(card.get("approved_uses")))
-        approved_uses = all_approved_uses[:3]
+        approved_uses = all_approved_uses if len(all_approved_uses) <= 3 else []
         approved_summary = str(card.get("approved_use_summary") or "").strip()
         approved_uses = _without_summary_duplicate(approved_uses, approved_summary)
     else:
@@ -526,19 +364,6 @@ def _build_profile(cursor, medicine: dict[str, Any]) -> dict[str, Any]:
         )
         if len(approved_uses) == 1:
             approved_uses = []
-
-    purpose_for_ingredient = approved_summary
-    if purpose_for_ingredient == "공식 허가정보에서 확인한 대표 사용 목적이에요.":
-        purpose_for_ingredient = next(
-            iter(approved_uses or all_approved_uses),
-            "",
-        )
-    if len(ingredients) == 1 and not ingredient_explanation and purpose_for_ingredient:
-        ingredient_name = ingredients[0]["name"]
-        ingredient_explanation = clean_ingredient_explanation(
-            f"{ingredient_name}{_topic_particle(ingredient_name)} 이 약의 주성분이에요. "
-            f"{purpose_for_ingredient}"
-        )
 
     if ingredients and not ingredient_explanation:
         quality_flags.append("missing_reviewed_ingredient_explanation")
@@ -556,9 +381,8 @@ def _build_profile(cursor, medicine: dict[str, Any]) -> dict[str, Any]:
         str(medicine.get(key) or "").strip()
         for key in ("efficacy", "usage", "precautions", "ingredient")
     )
-    fully_reviewed = bool(card) or (
-        bool(ingredients) and len(reviewed_by_key) == len(ingredients)
-    )
+    # Reviewed ingredient copy is not a review of the entire product/indications.
+    fully_reviewed = bool(card)
     if fully_reviewed:
         status = "READY"
     elif quality_flags:
@@ -566,16 +390,6 @@ def _build_profile(cursor, medicine: dict[str, Any]) -> dict[str, Any]:
     else:
         status = "OFFICIAL_ONLY" if has_official else "PENDING"
     review_status = "REVIEWED" if fully_reviewed else "UNREVIEWED"
-    source_material = {
-        "medicine_code": code,
-        "ingredient": medicine.get("ingredient"),
-        "efficacy": medicine.get("efficacy"),
-        "usage": medicine.get("usage"),
-        "precautions": medicine.get("precautions"),
-        "reviewed_card_version": card.get("content_version") if card else None,
-        "ingredient_keys": [item["key"] for item in ingredients],
-        "parser_version": PARSER_VERSION,
-    }
     return {
         "status": status,
         "ingredient_keys": [item["key"] for item in ingredients],
@@ -603,9 +417,7 @@ def _build_profile(cursor, medicine: dict[str, Any]) -> dict[str, Any]:
             or ("ingredient-provider" if ingredient_provider_names else "official-parser")
         ),
         "quality_flags": quality_flags,
-        "source_hash": hashlib.sha256(
-            json.dumps(source_material, ensure_ascii=False, sort_keys=True).encode("utf-8")
-        ).hexdigest(),
+        "source_hash": official_source_hash(medicine),
     }
 
 
@@ -613,15 +425,15 @@ def _hydrate_from_local_permission(cursor, medicine: dict[str, Any]) -> dict[str
     """Fill missing official fields from the local MFDS mirror only."""
     try:
         from app.services.mfds_drug_permission.db import (
-            find_permission_product,
+            find_permission_product_by_item_seq,
             product_to_medicine,
         )
 
-        row = find_permission_product(str(medicine.get("product_name") or ""))
+        row = find_permission_product_by_item_seq(str(medicine.get("medicine_code") or ""))
         official = product_to_medicine(row) if row else {}
     except Exception:
         official = {}
-    if not official:
+    if not official or str(official.get("medicine_code") or "") != str(medicine.get("medicine_code") or ""):
         return medicine
 
     merged = dict(medicine)
@@ -657,9 +469,6 @@ def _store_reviewed_ingredient(
     source: str,
     generated_by: str,
 ) -> None:
-    explanation = clean_ingredient_explanation(explanation)
-    if not is_displayable_ingredient_explanation(explanation):
-        return
     cursor.execute(
         """
         INSERT INTO ingredient_explanations (
@@ -709,21 +518,9 @@ def _parse_official_purposes(value: Any) -> dict[str, list[str]]:
     if not cleaned:
         return {"representative": [], "all": [], "flags": ["missing_purpose"]}
 
-    for phrase in _BOILERPLATE_PURPOSES:
-        cleaned = re.sub(
-            rf"(?:^|\n|[.!?]\s*){re.escape(phrase)}\s*[.:：]?",
-            "\n",
-            cleaned,
-            flags=re.I,
-        )
-
-    chunks: list[str] = []
-    for block in re.split(r"\n+|[;；]", cleaned):
-        for item in _split_top_level_commas(block):
-            text = _clean_purpose_item(item)
-            if text:
-                chunks.append(text)
-    all_items = _deduplicate_items(chunks)
+    # Without a structured source, a heading/exception can qualify later lines.
+    # Keep the entire document together instead of splitting commas or clauses.
+    all_items = [cleaned]
     flags: list[str] = []
     if not all_items:
         flags.append("unparsed_purpose")
@@ -732,20 +529,9 @@ def _parse_official_purposes(value: Any) -> dict[str, list[str]]:
     if len(all_items) == 1 and len(all_items[0]) > 120:
         flags.append("unparsed_long_text")
 
-    representative: list[str] = []
-    joined = " ".join(all_items)
-    for pattern, _title, sentence in _PURPOSE_GROUPS:
-        if pattern.search(joined) and sentence not in representative:
-            representative.append(sentence)
-        if len(representative) == 3:
-            break
-
-    if not representative:
-        representative = [
-            item
-            for item in all_items
-            if len(item) <= 80 and not _looks_like_heading(item)
-        ][:3]
+    # No keyword-generated indications or partial selection that could drop an
+    # age restriction/exception. Long official lists remain in the full list.
+    representative = all_items if len(all_items) <= 3 else []
     if not representative and all_items:
         flags.append("no_representative_purpose")
     return {
@@ -753,44 +539,6 @@ def _parse_official_purposes(value: Any) -> dict[str, list[str]]:
         "all": all_items,
         "flags": list(dict.fromkeys(flags)),
     }
-
-
-def treatment_use_items(
-    approved_summary: str,
-    approved_uses: list[str],
-    all_approved_uses: list[str],
-) -> list[dict[str, str]]:
-    """Return at most three user-facing treatment titles and descriptions."""
-    source_items = _deduplicate_items(
-        [
-            *all_approved_uses,
-            *approved_uses,
-            approved_summary,
-        ]
-    )
-    joined = " ".join(source_items)
-    result: list[dict[str, str]] = []
-    for pattern, title, description in _PURPOSE_GROUPS:
-        if pattern.search(joined):
-            result.append({"title": title, "description": description})
-        if len(result) == 3:
-            return result
-
-    if result:
-        return result
-
-    for item in [*approved_uses, approved_summary, *all_approved_uses]:
-        text = str(item or "").strip()
-        if (
-            not text
-            or text == "공식 허가정보에서 확인한 대표 사용 목적이에요."
-            or any(entry["title"] == text for entry in result)
-        ):
-            continue
-        result.append({"title": text, "description": ""})
-        if len(result) == 3:
-            break
-    return result
 
 
 def _compose_reviewed_ingredient_explanation(
@@ -809,31 +557,13 @@ def _compose_reviewed_ingredient_explanation(
         len(ingredients) > 1
         and len(group_keys) == 1
         and len(group_texts) == 1
+        and all(str(row.get("role_group") or "").strip()
+                and clean_ingredient_explanation(row.get("group_explanation"))
+                for row in rows)
     ):
-        common_roles = {
-            clean_ingredient_explanation(row.get("role_explanation")) for row in rows
-        }
-        common_uses = {
-            clean_ingredient_explanation(row.get("use_help")) for row in rows
-        }
-        common_roles.discard("")
-        common_uses.discard("")
-        if len(common_roles) == 1 and len(common_uses) == 1:
-            return f"이 약의 여러 주성분은 {next(iter(common_roles))} {next(iter(common_uses))}"
         grouped = next(iter(group_texts))
         if is_displayable_ingredient_explanation(grouped):
             return grouped
-
-    if len(ingredients) == 1:
-        row = rows[0]
-        role = clean_ingredient_explanation(row.get("role_explanation"))
-        use_help = clean_ingredient_explanation(row.get("use_help"))
-        if role and use_help:
-            ingredient_name = ingredients[0]["name"]
-            return (
-                f"{ingredient_name}{_topic_particle(ingredient_name)} 이 약의 주성분으로, "
-                f"{role} {use_help}"
-            )
 
     explanations: list[str] = []
     for ingredient, row in zip(ingredients, rows):
@@ -896,10 +626,10 @@ def _deduplicate_items(values: list[str]) -> list[str]:
     keys: list[str] = []
     for raw in values:
         value = str(raw or "").strip()
-        key = _purpose_key(value)
+        key = value
         if not key:
             continue
-        if any(key == old or (len(key) >= 12 and key in old) for old in keys):
+        if key in keys:
             continue
         keys.append(key)
         result.append(value)
@@ -907,22 +637,29 @@ def _deduplicate_items(values: list[str]) -> list[str]:
 
 
 def _without_summary_duplicate(values: list[str], summary: str) -> list[str]:
-    summary_key = _purpose_key(summary)
+    summary_key = summary.strip()
     if not summary_key:
         return values
     return [
         value
         for value in values
-        if _purpose_key(value) != summary_key
-        and not (
-            len(_purpose_key(value)) >= 12
-            and _purpose_key(value) in summary_key
-        )
+        if value.strip() != summary_key
     ]
 
 
 def _purpose_key(value: str) -> str:
     return re.sub(r"[^0-9A-Za-z가-힣]", "", str(value or "")).casefold()
+
+
+def official_source_hash(medicine: dict[str, Any]) -> str:
+    """Versioned exact official snapshot; no number/condition normalization."""
+    material = {key: str(medicine.get(key) or "").strip() for key in (
+        "medicine_code", "product_name", "manufacturer", "ingredient",
+        "efficacy", "usage", "precautions",
+    )}
+    return "official-v1:" + hashlib.sha256(
+        json.dumps(material, ensure_ascii=False, sort_keys=True).encode("utf-8")
+    ).hexdigest()
 
 
 def _complete_user_text(value: str) -> bool:
