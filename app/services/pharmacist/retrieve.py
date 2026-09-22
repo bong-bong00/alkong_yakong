@@ -131,6 +131,9 @@ def refresh_app_medicines_from_permission() -> int:
 
                 sync_medicine_guidance(conn, saved)
                 ensure_medicine_detail(conn, str(saved["medicine_code"]))
+            # 다음 약의 외부 API 조회가 진행되는 동안 쓰기 잠금을 유지하지 않는다.
+            # 특히 Render 기동 직후 OCR 요청과 겹칠 때 database is locked를 막는다.
+            conn.commit()
         from app.services.pharmacist.easy_category import backfill_all_medicine_guidance
 
         backfill_all_medicine_guidance(conn)
