@@ -895,6 +895,7 @@ class _ConfirmScreenState extends State<_ConfirmScreen> {
     final nameController = TextEditingController(
       text: item['drug_name']?.toString() ?? '',
     );
+    Map<String, dynamic>? pickedOfficial;
 
     // 돋보기 — 적어 넣은 이름을 공식 의약품 목록에서 찾는다.
     Future<void> searchName(BuildContext sheetContext) async {
@@ -910,13 +911,11 @@ class _ConfirmScreenState extends State<_ConfirmScreen> {
           picked['product_name']?.toString() ??
           query;
       nameController.text = displayName;
-      _pickedOfficial = picked;
+      pickedOfficial = picked;
     }
 
     await SeniorSheet.show<void>(
       context: context,
-      isScrollControlled: true,
-      backgroundColor: AppColors.bg,
       builder: (sheetContext) => StatefulBuilder(
         builder: (context, setSheetState) => SeniorSheet(
           title: '복용 정보 고치기',
@@ -1014,7 +1013,7 @@ class _ConfirmScreenState extends State<_ConfirmScreen> {
               label: '이 정보로 하기',
               minHeight: 68,
               onPressed: () {
-                final picked = _pickedOfficial;
+                final picked = pickedOfficial;
                 final typedName = nameController.text.trim();
                 setState(() {
                   _editedItems[index] = {
@@ -1050,6 +1049,7 @@ class _ConfirmScreenState extends State<_ConfirmScreen> {
     amountController.dispose();
     frequencyController.dispose();
     durationController.dispose();
+    nameController.dispose();
   }
 
   static String? _editableDoseUnit(String raw) {
@@ -1059,6 +1059,7 @@ class _ConfirmScreenState extends State<_ConfirmScreen> {
       'PKG' || '포' => '포',
       'ML' || '밀리리터' => 'mL',
       '방울' => '방울',
+      '회' => '회',
       'EA' || '개' => '개',
       _ => null,
     };
@@ -1790,6 +1791,100 @@ class _DetailLine extends StatelessWidget {
         const SizedBox(height: 4),
         Text(value, style: AppText.body(size: 19)),
       ],
+    );
+  }
+}
+
+class _Stepper extends StatelessWidget {
+  final String label;
+  final String value;
+  final bool needsConfirmation;
+  final VoidCallback? onMinus;
+  final VoidCallback? onPlus;
+
+  const _Stepper({
+    required this.label,
+    required this.value,
+    this.needsConfirmation = false,
+    this.onMinus,
+    this.onPlus,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label, style: AppText.label(size: 18)),
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            _StepperButton(
+              icon: TablerIcons.minus,
+              label: '$label 줄이기',
+              onTap: onMinus,
+            ),
+            Expanded(
+              child: Text(
+                value,
+                textAlign: TextAlign.center,
+                style: AppText.cardTitle(
+                  size: 24,
+                  color: needsConfirmation
+                      ? AppColors.danger
+                      : AppColors.textPrimary,
+                ),
+              ),
+            ),
+            _StepperButton(
+              icon: TablerIcons.plus,
+              label: '$label 늘리기',
+              onTap: onPlus,
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+class _StepperButton extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final VoidCallback? onTap;
+
+  const _StepperButton({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final enabled = onTap != null;
+    return Semantics(
+      button: true,
+      label: label,
+      child: ExcludeSemantics(
+        child: GestureDetector(
+          onTap: onTap,
+          child: Container(
+            width: 72,
+            height: 72,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: AppColors.secondaryFill,
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(color: AppColors.strongLine, width: 2),
+            ),
+            child: Icon(
+              icon,
+              size: 32,
+              color: enabled ? AppColors.textBody : AppColors.inactive,
+            ),
+          ),
+        ),
+      ),
     );
   }
 }

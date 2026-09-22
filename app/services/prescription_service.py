@@ -22,6 +22,7 @@ from app.services.medicine_display import (
     ingredient_strength_from,
     infer_dosage_form,
     split_take_amount,
+    take_unit_for_form,
 )
 from app.services.medicine_detail_service import ensure_medicine_detail
 from app.services.medicine_merge import upsert_official_medicine
@@ -476,12 +477,16 @@ def _create_medication_schedules(
     if not confirmed_times:
         return []
     created_schedules = []
-
-    for scheduled_date in _schedule_dates(
+    schedule_dates = _schedule_dates(
         prescribed_date,
         expire_date,
         item.duration_days,
-    ):
+    )
+    # 투약일수가 없어도 확인된 횟수는 오늘 칸만 만든다. 7일로 늘리지 않는다.
+    if not schedule_dates:
+        schedule_dates = [today_kst()]
+
+    for scheduled_date in schedule_dates:
         for scheduled_time in confirmed_times:
             time_slot = _time_slot_for_clock(scheduled_time)
             cursor.execute(
@@ -582,6 +587,7 @@ _TAKE_UNIT_LABELS = {
     "ML": "mL",
     "밀리리터": "mL",
     "방울": "방울",
+    "회": "회",
 }
 
 
@@ -592,14 +598,20 @@ def _format_take_number(value: str) -> str:
     return f"{number:.3f}".rstrip("0").rstrip(".")
 
 
-def _unit_from_dosage_form(dosage_form: str | None) -> str | None:
-    """제형만으로 단위를 확정할 수 있는 고형제에 한해 단위를 보완한다."""
+def _unit_from_dosage_form(
+    dosage_form: str | None,
+    product_name: str | None = None,
+) -> str | None:
+    """액·바르는 약은 회로, 고형제는 미리보기용 단위로 보완한다."""
     form = str(dosage_form or "").strip()
+    unit = take_unit_for_form(form, product_name)
+    if unit == "회":
+        return "회"
     if "캡슐" in form:
         return "캡슐"
     if "정" in form:
         return "정"
-    return None
+    return unit
 
 
 _TOPICAL_USAGE = re.compile(r"바르|도포|외용|환부")
@@ -655,7 +667,7 @@ def _preview_take_fields(
 
     compact = re.sub(r"\s+", "", raw)
     embedded = re.fullmatch(
-        r"(?P<amount>\d+(?:\.\d+)?)(?P<unit>알|정|캡슐|포|개|mL|ml|방울|T|TAB|C|CAP|PKG|EA)?",
+        r"(?P<amount>\d+(?:\.\d+)?)(?P<unit>알|정|캡슐|포|개|회|mL|ml|방울|T|TAB|C|CAP|PKG|EA)?",
         compact,
         re.IGNORECASE,
     )
@@ -679,10 +691,11 @@ def _preview_take_fields(
         "ML": "mL",
         "밀리리터": "mL",
         "방울": "방울",
+        "회": "회",
     }.get(raw_unit.upper())
     inferred = False
     if not unit:
-        unit = _unit_from_dosage_form(dosage_form)
+        unit = _unit_from_dosage_form(dosage_form, item.drug_name)
         inferred = unit is not None
     return amount, unit, inferred
 
@@ -693,12 +706,12 @@ def _normalized_confirm_take_amount(item: PrescriptionConfirmItem) -> str | None
         str(item.dose_unit or item.unit or "").strip().upper()
     )
     if not unit_from_field:
-        unit_from_field = _unit_from_dosage_form(item.dosage_form)
+        unit_from_field = _unit_from_dosage_form(item.dosage_form, item.drug_name)
 
     if raw:
         compact = re.sub(r"\s+", "", raw)
         fraction = re.fullmatch(
-            r"(?P<numerator>\d+)/(?P<denominator>\d+)(?P<unit>알|정|캡슐|포|개|mL|ml|방울|T|TAB|C|CAP|PKG|EA)",
+            r"(?P<numerator>\d+)/(?P<denominator>\d+)(?P<unit>알|정|캡슐|포|개|회|mL|ml|방울|T|TAB|C|CAP|PKG|EA)",
             compact,
             re.IGNORECASE,
         )
@@ -717,7 +730,7 @@ def _normalized_confirm_take_amount(item: PrescriptionConfirmItem) -> str | None
             unit = _TAKE_UNIT_LABELS.get(half.group("unit").upper())
             return f"0.5{unit}" if unit else None
         match = re.fullmatch(
-            r"(?P<amount>\d+(?:\.\d+)?)(?P<unit>알|정|캡슐|포|개|mL|ml|방울|T|TAB|C|CAP|PKG|EA)",
+            r"(?P<amount>\d+(?:\.\d+)?)(?P<unit>알|정|캡슐|포|개|회|mL|ml|방울|T|TAB|C|CAP|PKG|EA)",
             compact,
             re.IGNORECASE,
         )
