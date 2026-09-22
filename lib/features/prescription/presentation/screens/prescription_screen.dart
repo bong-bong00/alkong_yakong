@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -19,11 +20,14 @@ import '../../../../core/widgets/senior_feedback.dart';
 import '../../../../core/widgets/senior_header.dart';
 import '../../../../core/widgets/senior_sheet.dart';
 import '../../../medication/application/medication_controller.dart';
+import '../../../medicines/application/family_medicine_inbox.dart';
 import '../../../medicines/application/user_medicines_controller.dart';
 import '../../../medicines/domain/display_policy.dart';
 import '../../../onboarding/presentation/screens/first_run_screen.dart';
 import 'add_medicine_screen.dart';
 import 'manual_medicine_screen.dart';
+import '../widgets/unread_names_sheet.dart';
+import '../../domain/proxy_target.dart';
 import '../../domain/registration_result.dart';
 
 /// 처방전 등록 흐름의 단계.
@@ -64,12 +68,25 @@ class PrescriptionScreen extends ConsumerStatefulWidget {
   /// 약 있는 날 달력으로 갈 때. 쉬운 모드가 화면을 직접 바꿀 때 쓴다.
   final VoidCallback? onOpenScheduleDays;
 
+  /// 보호자가 어르신 대신 넣을 때, 약이 들어갈 어르신.
+  ///
+  /// null이면 내 약을 내가 넣는 평소 흐름이다. 값이 있으면 방법 고르기를
+  /// 건너뛰고 바로 찍기로 들어가며, 등록도 보호자가 아니라 이 어르신 앞으로
+  /// 올라간다.
+  final ProxyTarget? proxyTarget;
+
+  /// 이미 읽어 둔 처방전 결과. 값이 있으면 찍기를 건너뛰고
+  /// 확인 화면부터 시작한다. 서버 없이 화면을 보는 미리보기에 쓴다.
+  final Map<String, dynamic>? initialOcrResult;
+
   const PrescriptionScreen({
     super.key,
     this.onCompleted,
     this.onGoHome,
     this.onOpenScheduleDays,
     this.guardianTitle = '',
+    this.proxyTarget,
+    this.initialOcrResult,
   });
 
   @override
@@ -82,9 +99,25 @@ class _PrescriptionScreenState extends ConsumerState<PrescriptionScreen> {
     baseUrl: ApiConfig.localFeatureBaseUrl,
   );
 
-  PrescriptionStep _step = PrescriptionStep.pickMethod;
+  late PrescriptionStep _step = widget.initialOcrResult != null
+      ? PrescriptionStep.confirm
+      : widget.proxyTarget == null
+      // 대신 찍기는 어느 분인지 이미 고르고 들어온다. 방법 고르기를 건너뛴다.
+      ? PrescriptionStep.pickMethod
+      : PrescriptionStep.capture;
   File? _image;
-  Map<String, dynamic>? _result;
+  late Map<String, dynamic>? _result = widget.initialOcrResult;
+
+  /// 보호자가 어르신 대신 넣는 중인지.
+  bool get _isProxy => widget.proxyTarget != null;
+
+  /// 약이 들어갈 사람. 대신 넣는 중이면 어르신, 아니면 나.
+  String get _targetUserId {
+    final proxyId = widget.proxyTarget?.patientId.trim() ?? '';
+    if (proxyId.isNotEmpty) return proxyId;
+    final mine = MvpSession.userId.trim();
+    return mine.isEmpty ? 'mvp-user' : mine;
+  }
 
   /// 촬영 실패 횟수. 3번 실패하면 가족 대행(5g)을 권한다.
   int _failureCount = 0;
@@ -160,9 +193,7 @@ class _PrescriptionScreenState extends ConsumerState<PrescriptionScreen> {
       final response = await _apiClient.post(
         '/api/v1/prescriptions/ocr',
         body: {
-          'user_id': MvpSession.userId.trim().isEmpty
-              ? 'mvp-user'
-              : MvpSession.userId.trim(),
+          'user_id': _targetUserId,
           'image_data': base64Image,
           'source_type': 'OCR',
         },
@@ -196,7 +227,9 @@ class _PrescriptionScreenState extends ConsumerState<PrescriptionScreen> {
         _step = PrescriptionStep.confirm;
       });
 
-      final first = _items.isEmpty ? null : _items.first;
+      // 대신 찍는 중이면 어르신 약이다. 내 세션의 "방금 본 약"으로 남기면
+      // 보호자 화면이 남의 약을 펼친다.
+      final first = _items.isEmpty || _isProxy ? null : _items.first;
       if (first != null) {
         MvpSession.medicineCode = first['medicine_code']?.toString() ?? '';
       }
@@ -214,9 +247,7 @@ class _PrescriptionScreenState extends ConsumerState<PrescriptionScreen> {
   }
 
   Future<void> _register(List<Map<String, dynamic>> editedItems) async {
-    final userId = MvpSession.userId.trim().isEmpty
-        ? 'mvp-user'
-        : MvpSession.userId.trim();
+    final userId = _targetUserId;
     final confirmItems = editedItems
         .where(_isOfficialMatchedItem)
         .map(
@@ -283,11 +314,15 @@ class _PrescriptionScreenState extends ConsumerState<PrescriptionScreen> {
           'prescription_id_present=${prescriptionId?.isNotEmpty == true} '
           'schedule_count=${response['schedule_count'] ?? 'unknown'}',
         );
-        MvpSession.rememberPrescriptionSchedules(
-          prescriptionId: prescriptionId,
-          confirmResponse: response,
-          ocrItems: editedItems,
-        );
+        // 대신 넣는 중이면 이 처방전은 어르신 것이다. 보호자 세션에
+        // "방금 등록한 처방전"으로 남기면 보호자의 달력이 남의 약을 그린다.
+        if (!_isProxy) {
+          MvpSession.rememberPrescriptionSchedules(
+            prescriptionId: prescriptionId,
+            confirmResponse: response,
+            ocrItems: editedItems,
+          );
+        }
         durResult = registrationDurResult(response['dur_result']);
       } else {
         throw const ApiException('약 등록 결과를 확인하지 못했어요.');
@@ -300,6 +335,30 @@ class _PrescriptionScreenState extends ConsumerState<PrescriptionScreen> {
       showSeniorSnackbar(context, '약 등록에 실패했어요. 잠시 후 다시 시도해 주세요.', error: true);
       return;
     }
+
+    // ── 대신 넣기는 여기서 끝난다 ──
+    // 뒤따르는 새로고침·달력·함께먹기 확인은 모두 **내 약** 화면이다.
+    // 보호자 앞에 어르신 약을 펼치지 않고, 무엇이 어디로 갔는지만 알린다.
+    if (_isProxy) {
+      if (!mounted) return;
+      final onCompleted = widget.onCompleted;
+      if (onCompleted != null) {
+        onCompleted(durResult);
+        return;
+      }
+      // 스낵바는 앱 전체 메신저에 붙으므로 이 화면을 닫아도 남는다.
+      showSeniorSnackbar(context, '${widget.proxyTarget!.title} 전화기로 보냈어요');
+      Navigator.of(context).pop(true);
+      return;
+    }
+
+    // 내가 넣은 약이다. 다음에 홈을 열 때 "가족이 넣어드렸어요"가 뜨면 안 된다.
+    unawaited(
+      FamilyMedicineInbox.markSeen(
+        userId,
+        confirmItems.map((item) => item['medicine_code']?.toString() ?? ''),
+      ),
+    );
 
     MvpSession.latestOcrItems = editedItems;
     MvpSession.latestOcrRegisteredAt = DateTime.now();
@@ -372,7 +431,12 @@ class _PrescriptionScreenState extends ConsumerState<PrescriptionScreen> {
         );
       case PrescriptionStep.manual:
         return ManualMedicineScreen(
-          onBack: () => setState(() => _step = PrescriptionStep.pickMethod),
+          proxyTarget: widget.proxyTarget,
+          onBack: () => setState(
+            () => _step = _isProxy
+                ? PrescriptionStep.capture
+                : PrescriptionStep.pickMethod,
+          ),
           onSaved: (result) {
             final onCompleted = widget.onCompleted;
             if (onCompleted != null) {
@@ -400,10 +464,23 @@ class _PrescriptionScreenState extends ConsumerState<PrescriptionScreen> {
       case PrescriptionStep.capture:
         return _CaptureScreen(
           image: _image,
-          onBack: () => setState(() {
-            _image = null;
-            _step = PrescriptionStep.pickMethod;
-          }),
+          proxyTitle: widget.proxyTarget?.title,
+          onBack: () {
+            // 대신 찍기는 어느 분인지 고르고 들어온다. 돌아갈 방법 고르기가
+            // 없으므로 흐름에서 나간다.
+            if (_isProxy) {
+              if (_image != null) {
+                setState(() => _image = null);
+                return;
+              }
+              Navigator.of(context).maybePop();
+              return;
+            }
+            setState(() {
+              _image = null;
+              _step = PrescriptionStep.pickMethod;
+            });
+          },
           onUse: _read,
           onCamera: () => _pick(ImageSource.camera),
           onGallery: () => _pick(ImageSource.gallery),
@@ -416,9 +493,12 @@ class _PrescriptionScreenState extends ConsumerState<PrescriptionScreen> {
           items: _items,
           unrecognizedNames: _unrecognizedNames,
           onRegister: _register,
+          proxyTitle: widget.proxyTarget?.title,
           onRetake: () => setState(() {
             _image = null;
-            _step = PrescriptionStep.pickMethod;
+            _step = _isProxy
+                ? PrescriptionStep.capture
+                : PrescriptionStep.pickMethod;
           }),
         );
       case PrescriptionStep.failed:
@@ -428,11 +508,18 @@ class _PrescriptionScreenState extends ConsumerState<PrescriptionScreen> {
           onRetry: () => setState(() {
             _image = null;
             _failureReason = '';
-            _step = PrescriptionStep.pickMethod;
+            _step = _isProxy
+                ? PrescriptionStep.capture
+                : PrescriptionStep.pickMethod;
           }),
-          onAskFamily: () => Navigator.of(context).push(
-            MaterialPageRoute<void>(builder: (_) => const FirstRunScreen()),
-          ),
+          // 대신 찍는 중이라면 가족이 이미 찍고 있다. 다시 부탁할 곳이 없다.
+          onAskFamily: _isProxy
+              ? null
+              : () => Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => const FirstRunScreen(),
+                  ),
+                ),
         );
     }
   }
@@ -443,6 +530,9 @@ class _PrescriptionScreenState extends ConsumerState<PrescriptionScreen> {
 // ════════════════════════════════════════════════════════════════
 class _CaptureScreen extends StatelessWidget {
   final File? image;
+
+  /// 보호자가 어르신 대신 찍는 중이면 그 어르신 이름 — "어머니 · 김복자".
+  final String? proxyTitle;
   final VoidCallback onBack;
   final VoidCallback onUse;
   final VoidCallback onCamera;
@@ -451,6 +541,7 @@ class _CaptureScreen extends StatelessWidget {
 
   const _CaptureScreen({
     required this.image,
+    this.proxyTitle,
     required this.onBack,
     required this.onUse,
     required this.onCamera,
@@ -473,6 +564,11 @@ class _CaptureScreen extends StatelessWidget {
                   child: IntrinsicHeight(
                     child: Column(
                       children: [
+                        if (proxyTitle case final String title)
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(22, 14, 22, 0),
+                            child: ProxyBanner(title: title),
+                          ),
                         if (image != null)
                           Padding(
                             padding: const EdgeInsets.fromLTRB(22, 18, 22, 8),
@@ -623,13 +719,14 @@ class _CaptureTipArrow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // 번호 아래가 아니라 글줄 사이에 둔다 — 1번 다음에 2번이라는 뜻이지,
+    // 번호 동그라미에 딸린 표시가 아니다.
     return const Padding(
       padding: EdgeInsets.symmetric(vertical: 4),
       child: SizedBox(
-        width: 40,
+        width: double.infinity,
         height: 48,
-        child: OverflowBox(
-          maxWidth: 48,
+        child: Center(
           child: Icon(
             TablerIcons.arrow_narrow_down,
             size: 48,
@@ -699,11 +796,16 @@ class _ConfirmScreen extends StatefulWidget {
   final Future<void> Function(List<Map<String, dynamic>> items) onRegister;
   final VoidCallback onRetake;
 
+  /// 보호자가 어르신 대신 넣는 중이면 그 어르신 이름 — "어머니 · 김복자".
+  /// null이면 내 약을 내가 넣는 평소 흐름이다.
+  final String? proxyTitle;
+
   const _ConfirmScreen({
     required this.items,
     required this.unrecognizedNames,
     required this.onRegister,
     required this.onRetake,
+    this.proxyTitle,
   });
 
   @override
@@ -715,6 +817,24 @@ class _ConfirmScreenState extends State<_ConfirmScreen> {
     for (final item in widget.items) Map<String, dynamic>.from(item),
   ];
   bool _registering = false;
+
+  @override
+  void initState() {
+    super.initState();
+    // 빠뜨린 약이 있다는 사실은 목록을 훑기 전에 먼저 말한다.
+    // 조용히 빼 두면 그 약을 등록했다고 믿고 안 드신다.
+    if (widget.unrecognizedNames.isNotEmpty) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _tellUnread());
+    }
+  }
+
+  Future<void> _tellUnread() async {
+    final retake = await showUnreadNamesSheet(
+      context,
+      names: widget.unrecognizedNames,
+    );
+    if (retake && mounted) widget.onRetake();
+  }
 
   static String _frequencyLabel(Map<String, dynamic> item) {
     final value = item['frequency_per_day'];
@@ -876,6 +996,17 @@ class _ConfirmScreenState extends State<_ConfirmScreen> {
     );
     Map<String, dynamic>? pickedOfficial;
 
+    // 이 이름이 어디서 왔는지 — 사진에서 읽은 글자인지, 공식 목록에서
+    // 맞춘 품목인지. 뭉뚱그리면 잘못 읽은 이름을 공식 약으로 믿게 된다.
+    final ocrRawName =
+        item['ocr_drug_name_raw']?.toString().trim() ??
+        '';
+    final officialName =
+        item['official_product_name']?.toString().trim() ??
+        item['product_name']?.toString().trim() ??
+        '';
+    final medicineCode = item['medicine_code']?.toString().trim() ?? '';
+
     // 돋보기 — 적어 넣은 이름을 공식 의약품 목록에서 찾는다.
     Future<void> searchName(BuildContext sheetContext) async {
       final query = nameController.text.trim();
@@ -903,6 +1034,36 @@ class _ConfirmScreenState extends State<_ConfirmScreen> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             mainAxisSize: MainAxisSize.min,
             children: [
+              if (ocrRawName.isNotEmpty ||
+                  officialName.isNotEmpty ||
+                  medicineCode.isNotEmpty) ...[
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.fromLTRB(18, 14, 18, 14),
+                  decoration: BoxDecoration(
+                    color: AppColors.sunken,
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: AppColors.border, width: 2),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (ocrRawName.isNotEmpty) ...[
+                        _DetailLine(label: '사진에서 읽은 이름', value: ocrRawName),
+                        const SizedBox(height: 10),
+                      ],
+                      if (officialName.isNotEmpty) ...[
+                        _DetailLine(label: '공식 제품명', value: officialName),
+                        const SizedBox(height: 10),
+                      ],
+                      if (medicineCode.isNotEmpty)
+                        _DetailLine(label: '공식 의약품 코드', value: medicineCode),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 18),
+              ],
               Text('약 이름', style: AppText.label(size: 18)),
               const SizedBox(height: 8),
               Row(
@@ -926,9 +1087,9 @@ class _ConfirmScreenState extends State<_ConfirmScreen> {
                           width: 66,
                           height: 66,
                           alignment: Alignment.center,
-                          decoration: BoxDecoration(
+                          decoration: const BoxDecoration(
                             color: AppColors.point,
-                            borderRadius: BorderRadius.circular(16),
+                            shape: BoxShape.circle,
                           ),
                           child: const Icon(
                             TablerIcons.search,
@@ -942,21 +1103,28 @@ class _ConfirmScreenState extends State<_ConfirmScreen> {
                 ],
               ),
               const SizedBox(height: 18),
-              _Stepper(
+              SeniorStepper(
                 label: '한 번에 몇 알',
-                value: '${_formatDoseAmount(amount)}${doseUnit ?? '알'}',
+                number: _formatDoseAmount(amount),
+                unit: doseUnit ?? '알',
                 onMinus: amount > 0.5
                     ? () => setSheetState(() => amount -= 0.5)
                     : null,
                 onPlus: amount < 10
                     ? () => setSheetState(() => amount += 0.5)
                     : null,
+                onNumberChanged: (text) {
+                  final typed = double.tryParse(text.trim());
+                  if (typed == null || typed <= 0 || typed > 10) return;
+                  setSheetState(() => amount = typed);
+                },
               ),
-              const SizedBox(height: 16),
-              _Stepper(
+              const SizedBox(height: 18),
+              SeniorStepper(
                 label: '하루 몇 번',
-                value: frequency == null ? '확인 필요' : '$frequency번',
-                needsConfirmation: frequency == null,
+                number: frequency == null ? '' : '$frequency',
+                unit: '번',
+                placeholder: '확인 필요',
                 onMinus: frequency == null
                     ? null
                     : () => setSheetState(
@@ -968,12 +1136,23 @@ class _ConfirmScreenState extends State<_ConfirmScreen> {
                       ? 1
                       : (frequency! < 6 ? frequency! + 1 : frequency),
                 ),
+                onNumberChanged: (text) {
+                  final trimmed = text.trim();
+                  if (trimmed.isEmpty) {
+                    setSheetState(() => frequency = null);
+                    return;
+                  }
+                  final typed = int.tryParse(trimmed);
+                  if (typed == null || typed < 1 || typed > 6) return;
+                  setSheetState(() => frequency = typed);
+                },
               ),
-              const SizedBox(height: 16),
-              _Stepper(
+              const SizedBox(height: 18),
+              SeniorStepper(
                 label: '며칠분',
-                value: days == null ? '확인 필요' : '$days일',
-                needsConfirmation: days == null,
+                number: days == null ? '' : '$days',
+                unit: '일',
+                placeholder: '확인 필요',
                 onMinus: days == null
                     ? null
                     : () => setSheetState(
@@ -984,6 +1163,16 @@ class _ConfirmScreenState extends State<_ConfirmScreen> {
                       ? 1
                       : (days! < 365 ? days! + 1 : days),
                 ),
+                onNumberChanged: (text) {
+                  final trimmed = text.trim();
+                  if (trimmed.isEmpty) {
+                    setSheetState(() => days = null);
+                    return;
+                  }
+                  final typed = int.tryParse(trimmed);
+                  if (typed == null || typed < 1 || typed > 365) return;
+                  setSheetState(() => days = typed);
+                },
               ),
             ],
           ),
@@ -1196,6 +1385,10 @@ class _ConfirmScreenState extends State<_ConfirmScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
+                  if (widget.proxyTitle case final String title) ...[
+                    ProxyBanner(title: title),
+                    const SizedBox(height: 12),
+                  ],
                   Container(
                     padding: const EdgeInsets.symmetric(
                       horizontal: 22,
@@ -1267,46 +1460,8 @@ class _ConfirmScreenState extends State<_ConfirmScreen> {
                     ),
                     const SizedBox(height: 12),
                   ],
-                  if (widget.unrecognizedNames.isNotEmpty) ...[
-                    SeniorCard(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 22,
-                        vertical: 18,
-                      ),
-                      borderColor: AppColors.dangerBorder,
-                      borderWidth: 2,
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            '사진 인식률이 낮아 읽지 못한 이름이 있어요',
-                            style: AppText.cardTitle(
-                              size: 20,
-                              color: AppColors.danger,
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          Text(
-                            '이 이름들은 등록에서 빼 두었어요. 밝은 곳에서 흔들리지 않게 다시 찍으면 인식률이 올라가요.',
-                            style: AppText.body(
-                              size: 17,
-                              color: AppColors.textSecondary,
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          for (final name in widget.unrecognizedNames)
-                            Padding(
-                              padding: const EdgeInsets.only(bottom: 4),
-                              child: Text(
-                                '· $name  (못 읽음)',
-                                style: AppText.body(),
-                              ),
-                            ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                  ],
+                  // 못 읽은 이름은 카드로 흘려보내지 않고 화면에 들어서자마자
+                  // 시트로 먼저 말한다 — [initState]의 _tellUnread.
                 ],
               ),
             ),
@@ -1319,7 +1474,9 @@ class _ConfirmScreenState extends State<_ConfirmScreen> {
                 children: [
                   if (_editedItems.isNotEmpty) ...[
                     SeniorButton(
-                      label: _registering ? '등록하고 있어요' : '이대로 등록하기',
+                      label: widget.proxyTitle == null
+                          ? (_registering ? '등록하고 있어요' : '이대로 등록하기')
+                          : (_registering ? '보내고 있어요' : '어르신께 보내기'),
                       minHeight: 70,
                       onPressed: _registering ? null : _tryRegister,
                     ),
@@ -1506,96 +1663,25 @@ class _DoseInfoRow extends StatelessWidget {
   }
 }
 
-class _Stepper extends StatelessWidget {
+/// 이름 한 줄에 그 출처를 붙여 보여준다.
+class _DetailLine extends StatelessWidget {
   final String label;
   final String value;
-  final bool needsConfirmation;
-  final VoidCallback? onMinus;
-  final VoidCallback? onPlus;
 
-  const _Stepper({
-    required this.label,
-    required this.value,
-    this.needsConfirmation = false,
-    this.onMinus,
-    this.onPlus,
-  });
+  const _DetailLine({required this.label, required this.value});
 
   @override
   Widget build(BuildContext context) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(label, style: AppText.label(size: 18)),
-        const SizedBox(height: 8),
-        Row(
-          children: [
-            _StepperButton(
-              icon: TablerIcons.minus,
-              label: '$label 줄이기',
-              onTap: onMinus,
-            ),
-            Expanded(
-              child: Text(
-                value,
-                textAlign: TextAlign.center,
-                style: AppText.cardTitle(
-                  size: 24,
-                  color: needsConfirmation
-                      ? AppColors.danger
-                      : AppColors.textPrimary,
-                ),
-              ),
-            ),
-            _StepperButton(
-              icon: TablerIcons.plus,
-              label: '$label 늘리기',
-              onTap: onPlus,
-            ),
-          ],
+        Text(
+          label,
+          style: AppText.label(size: 17, color: AppColors.textSecondary),
         ),
+        const SizedBox(height: 4),
+        Text(value, style: AppText.body(size: 19)),
       ],
-    );
-  }
-}
-
-class _StepperButton extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final VoidCallback? onTap;
-
-  const _StepperButton({
-    required this.icon,
-    required this.label,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final enabled = onTap != null;
-    return Semantics(
-      button: true,
-      label: label,
-      child: ExcludeSemantics(
-        child: GestureDetector(
-          onTap: onTap,
-          child: Container(
-            width: 72,
-            height: 72,
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-              color: AppColors.secondaryFill,
-              borderRadius: BorderRadius.circular(18),
-              border: Border.all(color: AppColors.strongLine, width: 2),
-            ),
-            child: Icon(
-              icon,
-              size: 32,
-              color: enabled ? AppColors.textBody : AppColors.inactive,
-            ),
-          ),
-        ),
-      ),
     );
   }
 }
@@ -1605,7 +1691,7 @@ class _FailedScreen extends StatelessWidget {
   final int failureCount;
   final String failureReason;
   final VoidCallback onRetry;
-  final VoidCallback onAskFamily;
+  final VoidCallback? onAskFamily;
 
   const _FailedScreen({
     required this.failureCount,

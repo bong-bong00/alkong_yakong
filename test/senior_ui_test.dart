@@ -436,13 +436,11 @@ void _forbiddenFeatureTests() {
         isFalse,
         reason: '$path 에 기본 스낵바가 있다 — showSeniorSnackbar를 쓴다',
       );
-      if (!path.endsWith('features/prescription/presentation/widgets/fix_name_sheet.dart')) {
-        expect(
-          text.contains('SeniorErrorBox('),
-          isFalse,
-          reason: '$path 가 오류를 화면에 끼워 넣는다 — 스낵바로 알린다',
-        );
-      }
+      expect(
+        text.contains('SeniorErrorBox('),
+        isFalse,
+        reason: '$path 가 오류를 화면에 끼워 넣는다 — 스낵바로 알린다',
+      );
     }
   });
 }
@@ -741,7 +739,10 @@ void _shippingTests() {
     final confirm = File(
       'lib/features/prescription/presentation/screens/prescription_screen.dart',
     ).readAsStringSync();
-    expect(confirm.contains('showFixNameSheet'), isTrue);
+    // 이름 고치기는 "복용 정보 고치기" 시트 안에 있다 — 적어 넣고 돋보기를
+    // 누르면 공식 의약품 목록에서 찾아 바꾼다.
+    expect(confirm.contains('_lookupOfficialMedicine'), isTrue);
+    expect(confirm.contains("label: '약 이름 찾기'"), isTrue);
     expect(confirm.contains("'고치기 — 아직 준비 중이에요'"), isFalse);
 
     final profile = File(

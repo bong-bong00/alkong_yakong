@@ -417,6 +417,11 @@ class SeniorStepper extends StatefulWidget {
   /// 눌러서 직접 적었을 때. 적힌 글자 그대로 온다.
   final ValueChanged<String> onNumberChanged;
 
+  /// 처방전에서 못 읽어 아직 값이 없을 때 그 자리에 대신 놓는 말
+  /// — "확인 필요". [number]가 비었을 때만 보이고, 단위도 함께 숨는다.
+  /// 모르는 값을 1로 채워 두면 그 숫자가 곧 잘못된 복약 알림이 된다.
+  final String? placeholder;
+
   const SeniorStepper({
     super.key,
     required this.label,
@@ -425,6 +430,7 @@ class SeniorStepper extends StatefulWidget {
     required this.onMinus,
     required this.onPlus,
     required this.onNumberChanged,
+    this.placeholder,
   });
 
   @override
@@ -493,6 +499,8 @@ class _SeniorStepperState extends State<SeniorStepper> {
                           child: Semantics(
                             label: '${widget.label} 직접 적기',
                             child: TextField(
+                              // 값이 비어 있으면 "확인 필요"가 그 자리를
+                              // 지킨다. 빈 칸은 0으로 읽힌다.
                               controller: _controller,
                               focusNode: _focus,
                               onChanged: widget.onNumberChanged,
@@ -507,18 +515,24 @@ class _SeniorStepperState extends State<SeniorStepper> {
                                 ),
                               ],
                               style: AppText.bigTime(size: 24),
-                              decoration: const InputDecoration(
+                              decoration: InputDecoration(
                                 border: InputBorder.none,
                                 isDense: true,
-                                contentPadding: EdgeInsets.symmetric(
+                                contentPadding: const EdgeInsets.symmetric(
                                   vertical: 12,
+                                ),
+                                hintText: widget.placeholder,
+                                hintStyle: AppText.bigTime(
+                                  size: 24,
+                                  color: AppColors.danger,
                                 ),
                               ),
                             ),
                           ),
                         ),
                         const SizedBox(width: 2),
-                        Text(widget.unit, style: AppText.bigTime(size: 24)),
+                        if (widget.number.isNotEmpty)
+                          Text(widget.unit, style: AppText.bigTime(size: 24)),
                       ],
                     ),
                   ),

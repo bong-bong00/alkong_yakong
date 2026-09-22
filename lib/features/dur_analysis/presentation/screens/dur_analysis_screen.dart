@@ -193,14 +193,6 @@ class _DurAnalysisScreenState extends ConsumerState<DurAnalysisScreen> {
     return '이 약';
   }
 
-  /// 받침이 있으면 "은", 없으면 "는".
-  static String _topicParticle(String word) {
-    if (word.isEmpty) return '은';
-    final code = word.codeUnitAt(word.length - 1);
-    if (code < 0xAC00 || code > 0xD7A3) return '은';
-    return (code - 0xAC00) % 28 == 0 ? '는' : '은';
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -297,7 +289,7 @@ class _DurAnalysisScreenState extends ConsumerState<DurAnalysisScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        '$_askName${_topicParticle(_askName)} 무슨 약인가요?',
+                        '$_askName${topicParticle(_askName)} 무슨 약인가요?',
                         style: AppText.cardTitle(size: 19),
                       ),
                       Text('쉬운 말로 알려드려요', style: AppText.caption()),
@@ -318,14 +310,6 @@ class _DurAnalysisScreenState extends ConsumerState<DurAnalysisScreen> {
               onPressed: _afterConfirm,
             ),
           ],
-          const SizedBox(height: 16),
-          SeniorButton(
-            label: '$_guardianTitle에게 알리기',
-            kind: SeniorButtonKind.outline,
-            minHeight: 64,
-            fontSize: 21,
-            onPressed: _callGuardian,
-          ),
         ],
       ),
     );
