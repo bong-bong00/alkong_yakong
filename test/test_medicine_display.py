@@ -5,6 +5,7 @@ from app.services.medicine_display import (
     compact_product_name,
     is_card_purpose_label,
     is_mock_drug_info_name,
+    preferred_card_ingredient,
     strip_export_alias,
     strip_easy_category_paren,
 )
@@ -91,3 +92,24 @@ def test_export_alias_is_removed_but_ingredient_parentheses_are_kept():
     assert strip_export_alias("제품정(수출명 : TEST)(성분명)") == "제품정(성분명)"
     assert strip_export_alias("제품정(수출용)") == "제품정"
     assert strip_export_alias("아디팜정(히드록시진염산염)") == "아디팜정(히드록시진염산염)"
+
+
+def test_english_ingredient_uses_hangul_product_paren_or_hides():
+    assert (
+        preferred_card_ingredient(
+            "Prednicarbate",
+            "프레벨액0.25%(프레드니카르베이트)",
+        )
+        == "프레드니카르베이트"
+    )
+    assert preferred_card_ingredient("Prednicarbate", "프레벨액0.25%") == ""
+    assert (
+        compact_product_name(
+            "프레벨액0.25%(프레드니카르베이트)",
+            preferred_card_ingredient(
+                "Prednicarbate",
+                "프레벨액0.25%(프레드니카르베이트)",
+            ),
+        )
+        == "프레벨액0.25%"
+    )

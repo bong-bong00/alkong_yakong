@@ -14,6 +14,7 @@ import '../../../../core/widgets/senior_button.dart';
 import '../../../../core/widgets/senior_card.dart';
 import '../../../../core/widgets/senior_feedback.dart';
 import '../../../../core/widgets/senior_header.dart';
+import '../../../guardian/data/guardian_repository.dart';
 import '../../../medication/application/medication_controller.dart';
 
 const _pairTypes = {'병용금기', '중복성분', '효능군중복'};
@@ -38,9 +39,10 @@ class DurAnalysisScreen extends ConsumerStatefulWidget {
 }
 
 class _DurAnalysisScreenState extends ConsumerState<DurAnalysisScreen> {
-  final ApiClient _apiClient = ApiClient(
+  final ApiClient _durApi = ApiClient(
     baseUrl: ApiConfig.localFeatureBaseUrl,
   );
+  final GuardianRepository _guardians = GuardianRepository();
   String _guardianTitle = '보호자 가족 님';
 
   bool _loading = true;
@@ -65,7 +67,7 @@ class _DurAnalysisScreenState extends ConsumerState<DurAnalysisScreen> {
   Future<void> _loadLatestOrAnalyze() async {
     final userId = Uri.encodeComponent(MvpSession.userId.trim());
     try {
-      final response = await _apiClient.get('/api/v1/users/$userId/dur/latest');
+      final response = await _durApi.get('/api/v1/users/$userId/dur/latest');
       if (!mounted) return;
       if (response is Map) {
         _applyResponse(Map<String, dynamic>.from(response));
@@ -80,17 +82,11 @@ class _DurAnalysisScreenState extends ConsumerState<DurAnalysisScreen> {
     final today = ref.read(medicationProvider);
     final fromToday = '${today.guardianRelation} ${today.guardianName} 님'
         .trim();
-    final userId = Uri.encodeComponent(MvpSession.userId);
     var guardianTitle = fromToday.isEmpty ? _guardianTitle : fromToday;
     try {
-      final guardians = await _apiClient.get('/api/v1/guardians/users/$userId');
-      if (guardians is List && guardians.isNotEmpty && guardians.first is Map) {
-        final row = Map<String, dynamic>.from(guardians.first as Map);
-        final relation = row['relationship']?.toString().trim() ?? '';
-        final name = row['guardian_name']?.toString().trim() ?? '';
-        if (name.isNotEmpty) {
-          guardianTitle = relation.isEmpty ? '$name 님' : '$relation $name 님';
-        }
+      final contacts = await _guardians.fetchAll(userId: MvpSession.userId);
+      if (contacts.isNotEmpty) {
+        guardianTitle = '${contacts.first.label} 님';
       }
     } catch (_) {}
     if (!mounted) return;
@@ -147,7 +143,7 @@ class _DurAnalysisScreenState extends ConsumerState<DurAnalysisScreen> {
       if (MvpSession.isPregnant != null) {
         body['is_pregnant'] = MvpSession.isPregnant;
       }
-      final response = await _apiClient.post('/api/v1/dur/analyze', body: body);
+      final response = await _durApi.post('/api/v1/dur/analyze', body: body);
       if (!mounted) return;
       if (response is! Map) {
         setState(() {

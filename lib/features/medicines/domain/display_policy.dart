@@ -195,6 +195,22 @@ String? cardPurposeLabel(String? raw) {
   return unique.join(' · ');
 }
 
+/// 홈 짧은 분류. 주제는 쉼표로 모두 적고 `약`은 끝에 한 번만 붙인다.
+String? homePurposeCaption(String? raw) {
+  final labeled = cardPurposeLabel(raw);
+  if (labeled == null) return null;
+  final topics = <String>[];
+  for (final chunk in labeled.split(' · ')) {
+    var topic = chunk.replaceAll(RegExp('[·ㆍ]'), ' ');
+    topic = topic.replaceAll(RegExp(r'\s+'), ' ').trim();
+    topic = topic.replaceFirst(RegExp(r'(완화|약|제)$'), '').trim();
+    if (topic.isEmpty || topics.contains(topic)) continue;
+    topics.add(topic);
+  }
+  if (topics.isEmpty) return null;
+  return '${topics.join(', ')} 약';
+}
+
 String? cardSpokenOf(String? text) {
   var value = (text ?? '').trim();
   value = _spokenAliases[value] ?? value;

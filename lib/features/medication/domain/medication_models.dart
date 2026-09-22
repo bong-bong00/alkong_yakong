@@ -124,7 +124,7 @@ class Medicine {
   }
 
   /// 메인 홈 카드의 짧은 분류. 증상 키워드 나열은 쓰지 않는다.
-  String? get effect => cardPurposeLabel(purposeLabel);
+  String? get effect => homePurposeCaption(purposeLabel);
 
   /// 메인 홈에서 DrugInfo 찾기에 쓰던 키. 서버 약 코드를 쓴다.
   String? get key => medicineCode;

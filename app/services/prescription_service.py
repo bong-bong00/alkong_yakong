@@ -21,6 +21,7 @@ from app.services.matching.name_matcher import compare_key
 from app.services.medicine_display import (
     ingredient_strength_from,
     infer_dosage_form,
+    preferred_card_ingredient,
     split_take_amount,
     take_unit_for_form,
 )
@@ -42,7 +43,6 @@ from app.services.pharmacist.easy_category import (
     sync_medicine_guidance,
 )
 from app.services.pharmacist.efficacy_display import display_efficacy_text
-from app.services.pharmacist.ingredient import clean_ingredient_text
 from app.services.pharmacist.retrieve import retrieve_official
 
 
@@ -247,7 +247,6 @@ def _upsert_official_medicine(cursor, official: dict) -> tuple[str, str]:
             status_code=422,
             detail="공식 약품 코드가 없습니다.",
         )
-    precautions = med.get("precautions") or med.get("cautions") or ""
     easy_category = derive_easy_category_from_medicine(
         {
             **med,
@@ -255,65 +254,11 @@ def _upsert_official_medicine(cursor, official: dict) -> tuple[str, str]:
             "source_text": official.get("source_text"),
         }
     )
-    # 성분이 없거나 제품명과 같으면 DUR이 제품명으로 오탐하지 않게 빈 값/기존값 유지
-    incoming_ingredient = clean_ingredient_text(med.get("ingredient"))
-    if incoming_ingredient == name:
-        incoming_ingredient = ""
-    if not incoming_ingredient:
-        prev = cursor.execute(
-            "SELECT ingredient, product_name FROM medicines WHERE medicine_code = ?",
-            (code,),
-        ).fetchone()
-        if (
-            prev
-            and prev["ingredient"]
-            and clean_ingredient_text(prev["ingredient"])
-            and clean_ingredient_text(prev["ingredient"])
-            != clean_ingredient_text(prev["product_name"])
-        ):
-            ingredient = clean_ingredient_text(prev["ingredient"])
-        else:
-            ingredient = ""
-    else:
-        ingredient = incoming_ingredient
-
-    cursor.execute(
-        """
-        INSERT INTO medicines (
-            medicine_code, product_name, ingredient, manufacturer,
-            efficacy, usage, precautions, image_url, easy_category
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ON CONFLICT(medicine_code) DO UPDATE SET
-            product_name = excluded.product_name,
-            ingredient = CASE
-                WHEN excluded.ingredient IS NOT NULL
-                     AND trim(excluded.ingredient) != ''
-                     AND excluded.ingredient != excluded.product_name
-                THEN excluded.ingredient
-                ELSE medicines.ingredient
-            END,
-            manufacturer = COALESCE(NULLIF(trim(excluded.manufacturer), ''), medicines.manufacturer),
-            efficacy = COALESCE(NULLIF(trim(excluded.efficacy), ''), medicines.efficacy),
-            usage = COALESCE(NULLIF(trim(excluded.usage), ''), medicines.usage),
-            precautions = COALESCE(NULLIF(trim(excluded.precautions), ''), medicines.precautions),
-            image_url = COALESCE(NULLIF(trim(excluded.image_url), ''), medicines.image_url),
-            easy_category = COALESCE(
-                NULLIF(trim(medicines.easy_category), ''),
-                excluded.easy_category
-            ),
-            updated_at = CURRENT_TIMESTAMP
-        """,
-        (
-            code,
-            name,
-            ingredient,
-            med.get("manufacturer"),
-            med.get("efficacy"),
-            med.get("usage"),
-            precautions if isinstance(precautions, str) else str(precautions or ""),
-            med.get("image_url"),
-            easy_category,
-        ),
+    upsert_official_medicine(
+        cursor,
+        medicine_code=code,
+        incoming={**med, "product_name": name},
+        easy_category=easy_category,
     )
     # OCR로 처음 들어온 공식 약도 기존 DB 약과 같은 상세 준비 경로를 탄다.
     # 로컬 공식 정보만 사용하므로 외부 API·Gemini를 기다리지 않는다.
@@ -913,7 +858,10 @@ def create_prescription_from_ocr(request: PrescriptionOCRRequest) -> dict:
             med_dict = dict(med_row) if med_row else {}
             guidance = sync_medicine_guidance(cursor, med_dict)
             official_spoken = guidance["short_explanation"]
-            ingredient = med_dict.get("ingredient") or ""
+            ingredient = preferred_card_ingredient(
+                med_dict.get("ingredient"),
+                med_dict.get("product_name") or official_name,
+            )
             dosage_form = _preview_dosage_form(
                 medicine_code,
                 official_name,

@@ -24,7 +24,6 @@ import '../../../medicines/domain/display_policy.dart';
 import '../../../onboarding/presentation/screens/first_run_screen.dart';
 import 'add_medicine_screen.dart';
 import 'manual_medicine_screen.dart';
-import '../widgets/fix_name_sheet.dart';
 import '../../domain/registration_result.dart';
 
 /// 처방전 등록 흐름의 단계.
@@ -716,7 +715,6 @@ class _ConfirmScreenState extends State<_ConfirmScreen> {
     for (final item in widget.items) Map<String, dynamic>.from(item),
   ];
   bool _registering = false;
-  final Set<int> _expandedItems = <int>{};
 
   static String _frequencyLabel(Map<String, dynamic> item) {
     final value = item['frequency_per_day'];
@@ -810,25 +808,6 @@ class _ConfirmScreenState extends State<_ConfirmScreen> {
         '';
     if (raw.isEmpty || raw == '처방받은 약이에요') return null;
     return raw;
-  }
-
-  static Map<String, int> _fieldConfidences(Map<String, dynamic> item) {
-    final raw = item['ocr_field_confidences'];
-    if (raw is! Map) return const {};
-    return {
-      for (final entry in raw.entries)
-        if (entry.value is num)
-          entry.key.toString(): (entry.value as num).round(),
-    };
-  }
-
-  static String _matchStatusLabel(Map<String, dynamic> item) {
-    final status = item['match_status']?.toString().toUpperCase() ?? '';
-    return switch (status) {
-      'MATCHED' || 'MFDS' => '공식 약 확인됨',
-      'REVIEW_REQUIRED' => '약 확인 필요',
-      _ => '공식 약을 찾지 못함',
-    };
   }
 
   static bool _uncertain(Map<String, dynamic> item) {
@@ -1099,63 +1078,6 @@ class _ConfirmScreenState extends State<_ConfirmScreen> {
       return null;
     }
   }
-  Future<void> _fixMedicineName(int index) async {
-    final item = _editedItems[index];
-    final current =
-        item['ocr_drug_name_raw']?.toString().trim().isNotEmpty == true
-        ? item['ocr_drug_name_raw'].toString()
-        : item['drug_name']?.toString() ?? '';
-    final query = await showFixNameSheet(context, current: current);
-    if (!mounted || query == null) return;
-
-    try {
-      final response = await ApiClient(
-        baseUrl: ApiConfig.localFeatureBaseUrl,
-      ).get('/api/v1/medicines/lookup?q=${Uri.encodeQueryComponent(query)}');
-      if (!mounted) return;
-      final rawItems = response is Map ? response['items'] : null;
-      final hits = rawItems is List
-          ? rawItems
-                .whereType<Map>()
-                .map((value) => Map<String, dynamic>.from(value))
-                .toList()
-          : <Map<String, dynamic>>[];
-      if (hits.isEmpty) {
-        showSeniorSnackbar(context, '공식 의약품 목록에서 해당 이름을 찾지 못했어요.', error: true);
-        return;
-      }
-      final picked = await _pickOfficialMedicine(hits);
-      if (!mounted || picked == null) return;
-      final displayName =
-          picked['display_name']?.toString() ??
-          picked['product_name']?.toString() ??
-          query;
-      setState(() {
-        _editedItems[index] = {
-          ...item,
-          'medicine_code': picked['medicine_code'],
-          'drug_name': displayName,
-          'display_name': displayName,
-          'official_product_name':
-              picked['product_name']?.toString() ?? displayName,
-          'ingredient_name':
-              picked['ingredient_name']?.toString() ??
-              picked['ingredient']?.toString() ??
-              '',
-          'ocr_drug_name_raw': current,
-          'match_status': 'MATCHED',
-        };
-        _expandedItems.add(index);
-      });
-    } catch (_) {
-      if (!mounted) return;
-      showSeniorSnackbar(
-        context,
-        '공식 약을 찾지 못했어요. 잠시 후 다시 시도해 주세요.',
-        error: true,
-      );
-    }
-  }
 
   Future<Map<String, dynamic>?> _pickOfficialMedicine(
     List<Map<String, dynamic>> hits,
@@ -1193,16 +1115,20 @@ class _ConfirmScreenState extends State<_ConfirmScreen> {
                         hit['ingredient_name']?.toString() ??
                         hit['ingredient']?.toString() ??
                         '';
+                    final visibleIngredient = preferredCardIngredient(
+                      ingredient,
+                      productName: name,
+                    );
                     return SeniorCard(
                       onTap: () => Navigator.of(sheetContext).pop(hit),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(name, style: AppText.cardTitle(size: 20)),
-                          if (ingredient.trim().isNotEmpty) ...[
+                          if (visibleIngredient.isNotEmpty) ...[
                             const SizedBox(height: 4),
                             Text(
-                              '주성분: $ingredient',
+                              '주성분: $visibleIngredient',
                               style: AppText.caption(
                                 size: 17,
                                 color: AppColors.textSecondary,
@@ -1276,8 +1202,9 @@ class _ConfirmScreenState extends State<_ConfirmScreen> {
                       vertical: 18,
                     ),
                     decoration: BoxDecoration(
-                      color: AppColors.pointTint,
+                      color: AppColors.surface,
                       borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: AppColors.point, width: 2),
                     ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1294,7 +1221,7 @@ class _ConfirmScreenState extends State<_ConfirmScreen> {
                               ? '글자는 읽었는데, 공식 약과 아직 못 맞췄어요'
                               : '틀린 곳이 있으면 눌러서 고쳐주세요.',
                           style: AppText.caption(
-                            color: const Color(0xFF3A4590),
+                            color: AppColors.textSecondary,
                           ),
                         ),
                       ],
@@ -1305,44 +1232,35 @@ class _ConfirmScreenState extends State<_ConfirmScreen> {
                     Builder(
                       builder: (context) {
                         final item = _editedItems[index];
+                        final productName =
+                            item['drug_name']?.toString() ?? '이름을 못 읽었어요';
                         final ingredient =
                             item['ingredient_name']?.toString() ??
                             item['ingredient']?.toString() ??
                             '';
+                        final visibleIngredient = preferredCardIngredient(
+                          ingredient,
+                          productName: productName,
+                        );
                         return _DrugCard(
                           name: _shortDrugName(
-                            item['drug_name']?.toString() ?? '이름을 못 읽었어요',
-                            ingredient: ingredient,
+                            productName,
+                            ingredient: visibleIngredient.isNotEmpty
+                                ? visibleIngredient
+                                : ingredient,
                           ),
-                          ingredient: ingredient,
-                          ingredientStrength:
-                              item['ingredient_strength']?.toString() ?? '',
-                          rawOcrName:
-                              item['ocr_drug_name_raw']?.toString() ??
-                              item['drug_name']?.toString() ??
-                              '',
-                          officialName:
-                              item['official_product_name']?.toString() ??
-                              item['drug_name']?.toString() ??
-                              '',
-                          medicineCode: item['medicine_code']?.toString() ?? '',
+                          ingredientCaption: cardIngredientCaption(
+                            ingredient,
+                            productName: productName,
+                            strength:
+                                item['ingredient_strength']?.toString() ?? '',
+                          ),
                           doseAmount: _takeAmountLabel(item),
                           frequencyPerDay: _frequencyLabel(item),
                           durationDays: _durationLabel(item),
-                          purposeLabel: item['purpose_label']?.toString(),
                           explanation: _seniorExplanation(item),
-                          keyCaution: item['key_caution']?.toString(),
-                          fieldConfidences: _fieldConfidences(item),
-                          matchStatusLabel: _matchStatusLabel(item),
                           uncertain: _uncertain(item),
                           conflicts: _interactionConflicts(item),
-                          expanded: _expandedItems.contains(index),
-                          onToggle: () => setState(() {
-                            if (!_expandedItems.remove(index)) {
-                              _expandedItems.add(index);
-                            }
-                          }),
-                          onFixName: () => _fixMedicineName(index),
                           onEditDosing: () => _editItem(index),
                         );
                       },
@@ -1427,46 +1345,24 @@ class _ConfirmScreenState extends State<_ConfirmScreen> {
 
 class _DrugCard extends StatelessWidget {
   final String name;
-  final String ingredient;
-  final String ingredientStrength;
-  final String rawOcrName;
-  final String officialName;
-  final String medicineCode;
+  final String ingredientCaption;
   final String doseAmount;
   final String frequencyPerDay;
   final String durationDays;
-  final String? purposeLabel;
   final String? explanation;
-  final String? keyCaution;
-  final Map<String, int> fieldConfidences;
-  final String matchStatusLabel;
   final bool uncertain;
   final List<Map<String, String>> conflicts;
-  final bool expanded;
-  final VoidCallback onToggle;
-  final VoidCallback onFixName;
   final VoidCallback onEditDosing;
 
   const _DrugCard({
     required this.name,
-    required this.ingredient,
-    required this.ingredientStrength,
-    required this.rawOcrName,
-    required this.officialName,
-    required this.medicineCode,
+    required this.ingredientCaption,
     required this.doseAmount,
     required this.frequencyPerDay,
     required this.durationDays,
-    required this.purposeLabel,
     required this.explanation,
-    required this.keyCaution,
-    required this.fieldConfidences,
-    required this.matchStatusLabel,
     required this.uncertain,
     this.conflicts = const [],
-    required this.expanded,
-    required this.onToggle,
-    required this.onFixName,
     required this.onEditDosing,
   });
 
@@ -1484,33 +1380,21 @@ class _DrugCard extends StatelessWidget {
     if (_needsCheck) return AppColors.attentionBorder;
     return null;
   }
+
   @override
   Widget build(BuildContext context) {
     return SeniorCard(
-      onTap: onToggle,
       padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 20),
-      borderColor: _borderColor,      borderWidth: 2,
+      borderColor: _borderColor,
+      borderWidth: 2,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(child: Text(name, style: AppText.cardTitle(size: 21))),
-              const SizedBox(width: 12),
-              ExcludeSemantics(
-                child: Icon(
-                  expanded ? Icons.expand_less : Icons.chevron_right,
-                  color: AppColors.textTertiary,
-                  size: 30,
-                ),
-              ),
-            ],
-          ),
-          if (ingredient.trim().isNotEmpty) ...[
+          Text(name, style: AppText.cardTitle(size: 21)),
+          if (ingredientCaption.trim().isNotEmpty) ...[
             const SizedBox(height: 5),
             Text(
-              '주성분: ${[compactIngredientSummary(ingredient), ingredientStrength].where((value) => value.trim().isNotEmpty).join(' · ')}',
+              '주성분: $ingredientCaption',
               style: AppText.caption(size: 17, color: AppColors.textSecondary),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
@@ -1520,12 +1404,9 @@ class _DrugCard extends StatelessWidget {
             const SizedBox(height: 8),
             Text(
               explanation!,
-              style: AppText.body(
-                size: 20,
-                color: AppColors.detailEmphasis,
-              ).copyWith(fontWeight: FontWeight.w700),
-              maxLines: expanded ? null : 3,
-              overflow: expanded ? null : TextOverflow.ellipsis,
+              style: AppText.body(size: 19),
+              maxLines: 3,
+              overflow: TextOverflow.ellipsis,
             ),
           ],
           const SizedBox(height: 12),
@@ -1547,34 +1428,10 @@ class _DrugCard extends StatelessWidget {
             value: durationDays,
             needsConfirmation: durationDays == '확인 필요',
           ),
-          const SizedBox(height: 10),
-          Wrap(
-            spacing: 10,
-            runSpacing: 6,
-            children: [
-              Text(
-                matchStatusLabel,
-                style: AppText.label(
-                  size: 16.5,
-                  color: uncertain ? AppColors.danger : AppColors.point,
-                ),
-              ),
-              if (fieldConfidences['drug_name'] case final int confidence)
-                Text(
-                  '글자 인식률 $confidence%',
-                  style: AppText.label(
-                    size: 16.5,
-                    color: confidence >= 85
-                        ? AppColors.point
-                        : AppColors.danger,
-                  ),
-                ),
-            ],
-          ),
           if (uncertain) ...[
             const SizedBox(height: 10),
             Text(
-              '약 이름을 다시 확인해 주세요',
+              '약 확인 필요',
               style: AppText.label(size: 17.5, color: AppColors.danger),
             ),
           ],
@@ -1595,141 +1452,17 @@ class _DrugCard extends StatelessWidget {
               const SizedBox(height: 6),
             ],
           ],
-          const SizedBox(height: 10),
-          Text(
-            '처방전과 같은 약이 맞는지 한 번 더 확인해 주세요',
-            style: AppText.label(size: 17.5, color: AppColors.danger),
+          const SizedBox(height: 14),
+          SeniorButton(
+            label: '복용 정보 고치기',
+            kind: SeniorButtonKind.neutral,
+            minHeight: 66,
+            fontSize: 21,
+            onPressed: onEditDosing,
           ),
-          if (expanded) ...[
-            const SizedBox(height: 16),
-            const SeniorDivider(),
-            const SizedBox(height: 14),
-            _DetailLine(label: '사진에서 읽은 이름', value: rawOcrName),
-            const SizedBox(height: 8),
-            _DetailLine(
-              label: '공식 제품명',
-              value: _productNameLines(officialName),
-            ),
-            if (medicineCode.isNotEmpty) ...[
-              const SizedBox(height: 8),
-              _DetailLine(label: '공식 의약품 코드', value: medicineCode),
-            ],
-            if ((purposeLabel ?? '').trim().isNotEmpty) ...[
-              const SizedBox(height: 12),
-              Text(
-                '사용될 수 있는 주요 목적',
-                style: AppText.label(size: 17, color: AppColors.textSecondary),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                purposeLabel!,
-                style: AppText.body(size: 20, color: AppColors.point),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                '실제 처방 이유는 의사나 약사에게 확인해 주세요.',
-                style: AppText.caption(
-                  size: 16,
-                  color: AppColors.textSecondary,
-                ),
-              ),
-            ],
-            if ((keyCaution ?? '').trim().isNotEmpty) ...[
-              const SizedBox(height: 12),
-              Text(
-                '주의',
-                style: AppText.label(size: 17, color: AppColors.textSecondary),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                _cautionLines(keyCaution!),
-                style: AppText.body(size: 18, color: AppColors.danger),
-              ),
-            ],
-            if (fieldConfidences.isNotEmpty) ...[
-              const SizedBox(height: 12),
-              Text(
-                '항목별 글자 인식률',
-                style: AppText.label(size: 17, color: AppColors.textSecondary),
-              ),
-              const SizedBox(height: 8),
-              for (final row in _confidenceRows(fieldConfidences)) ...[
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 4),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          row.label,
-                          style: AppText.caption(
-                            size: 16,
-                            color: AppColors.textSecondary,
-                          ),
-                        ),
-                      ),
-                      Text('${row.percent}%', style: AppText.body(size: 18)),
-                    ],
-                  ),
-                ),
-              ],
-            ],
-            const SizedBox(height: 14),
-            SeniorButton(
-              label: '약 이름 다시 확인',
-              kind: SeniorButtonKind.outline,
-              minHeight: 68,
-              fontSize: 22,
-              onPressed: onFixName,
-            ),
-            const SizedBox(height: 10),
-            SeniorButton(
-              label: '복용 정보 고치기',
-              kind: SeniorButtonKind.outline,
-              minHeight: 68,
-              fontSize: 22,
-              onPressed: onEditDosing,
-            ),
-          ] else ...[
-            const SizedBox(height: 8),
-            Text(
-              '자세히 확인하기',
-              style: AppText.label(size: 17, color: AppColors.point),
-            ),
-          ],
         ],
       ),
     );
-  }
-
-  static String _productNameLines(String raw) {
-    final text = raw.trim();
-    final index = text.indexOf('(');
-    if (index <= 0) return text;
-    return '${text.substring(0, index).trim()}\n${text.substring(index)}';
-  }
-
-  static String _cautionLines(String raw) {
-    var text = raw.trim();
-    if (text.startsWith('주의:')) {
-      text = text.substring(3).trim();
-    }
-    return text.replaceAll('. ', '.\n');
-  }
-
-  static List<({String label, int percent})> _confidenceRows(
-    Map<String, int> values,
-  ) {
-    const labels = {
-      'drug_name': '약 이름',
-      'dose_amount': '1회 투약량',
-      'frequency_per_day': '1일 투여횟수',
-      'duration_days': '투약일수',
-    };
-    return [
-      for (final entry in values.entries)
-        if (labels.containsKey(entry.key))
-          (label: labels[entry.key]!, percent: entry.value),
-    ];
   }
 }
 
@@ -1768,28 +1501,6 @@ class _DoseInfoRow extends StatelessWidget {
             ),
           ),
         ),
-      ],
-    );
-  }
-}
-
-class _DetailLine extends StatelessWidget {
-  final String label;
-  final String value;
-
-  const _DetailLine({required this.label, required this.value});
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          label,
-          style: AppText.label(size: 17, color: AppColors.textSecondary),
-        ),
-        const SizedBox(height: 4),
-        Text(value, style: AppText.body(size: 19)),
       ],
     );
   }

@@ -470,10 +470,7 @@ class _NextDoseCard extends StatelessWidget {
   }
 }
 
-/// 약 한 줄 — 사진, 이름, 개수.
-///
-/// 무슨 약인지는 줄을 눌러서 보는 약 설명이 맡는다. 홈에 다 적으면
-/// 한 화면에 글이 너무 많아진다.
+/// 약 한 줄 — 사진, 이름, 짧은 분류, 하루 횟수.
 class _MedicineRow extends StatelessWidget {
   final Medicine medicine;
   final int frequencyPerDay;
@@ -500,24 +497,38 @@ class _MedicineRow extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    medicine.displayName,
-                    style: AppText.cardTitle(size: 21),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          medicine.displayName,
+                          style: AppText.cardTitle(size: 21),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Text(
+                        '하루 $frequencyPerDay회',
+                        style: AppText.cardTitle(
+                          size: 20,
+                          color: AppColors.point,
+                        ),
+                      ),
+                      if (onTap != null) ...[
+                        const SizedBox(width: 4),
+                        const SeniorChevron(),
+                      ],
+                    ],
                   ),
+                  if (medicine.effect != null)
+                    Text(
+                      medicine.effect!,
+                      style: AppText.caption(size: 16.5),
+                    ),
                 ],
               ),
             ),
-            const SizedBox(width: 10),
-            Text(
-              '하루 $frequencyPerDay회',
-              style: AppText.cardTitle(size: 20, color: AppColors.point),
-            ),
-            if (onTap != null) ...[
-              const SizedBox(width: 4),
-              const SeniorChevron(),
-            ],
           ],
         ),
       ),

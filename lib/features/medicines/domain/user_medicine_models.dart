@@ -172,7 +172,7 @@ class UserMedicine {
     );
   }
 
-  String? get effect => cardPurposeLabel(purposeLabel);
+  String? get effect => homePurposeCaption(purposeLabel);
 
   String? get cardSpoken => cardSpokenOf(shortExplanation);
 

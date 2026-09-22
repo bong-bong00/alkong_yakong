@@ -53,6 +53,53 @@ void main() {
     expect(compactProductName('제품정(서방정)', ingredient: '성분명'), '제품정(서방정)');
   });
 
+  test('영문 주성분은 숨기고 제품명 한글 괄호를 쓴다', () {
+    expect(
+      preferredCardIngredient(
+        'Prednicarbate',
+        productName: '프레벨액0.25%(프레드니카르베이트)',
+      ),
+      '프레드니카르베이트',
+    );
+    expect(
+      cardIngredientCaption(
+        'Prednicarbate',
+        productName: '프레벨액0.25%(프레드니카르베이트)',
+        strength: '0.25%',
+      ),
+      '프레드니카르베이트 · 0.25%',
+    );
+    expect(
+      compactProductName(
+        '프레벨액0.25%(프레드니카르베이트)',
+        ingredient: preferredCardIngredient(
+          'Prednicarbate',
+          productName: '프레벨액0.25%(프레드니카르베이트)',
+        ),
+      ),
+      '프레벨액0.25%',
+    );
+    expect(
+      preferredCardIngredient('Prednicarbate', productName: '프레벨액0.25%'),
+      '',
+    );
+  });
+
+  test('홈 짧은 분류는 주제를 쉼표로 잇고 약은 끝에 한 번만 붙인다', () {
+    expect(homePurposeCaption('심장 박동 약'), '심장 박동 약');
+    expect(homePurposeCaption('가려움 약'), '가려움 약');
+    expect(
+      homePurposeCaption('가려움 완화 · 불안·긴장 완화'),
+      '가려움, 불안 긴장 약',
+    );
+    expect(
+      homePurposeCaption('가려움 완화 · 불안·긴장 완화 · 속쓰림 약'),
+      '가려움, 불안 긴장, 속쓰림 약',
+    );
+    expect(homePurposeCaption('속쓰림·위산 역류 완화'), '속쓰림 위산 역류 약');
+    expect(homePurposeCaption(null), isNull);
+  });
+
   test('공식 용법은 숫자 용량을 바꾸지 않고 항만 줄바꿈한다', () {
     const raw =
         '○ 성인 1. 정신과 영역 2. 피부과 영역 고령자 이 약은 가능한한 최단 기간 동안 '
