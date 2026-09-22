@@ -12,7 +12,6 @@ import '../../../../core/theme/app_typography.dart';
 import '../../../../core/widgets/app_logo.dart';
 import '../../../../core/widgets/senior_button.dart';
 import '../../../../core/widgets/senior_feedback.dart';
-import '../../../onboarding/presentation/screens/first_run_screen.dart';
 import '../../../profile/application/current_user_controller.dart';
 import '../../../profile/application/session_actions.dart';
 import 'signup_screen.dart';
@@ -179,6 +178,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
               const SizedBox(height: 30),
 
               // ── 대행 경로 ──
+              // 여기서 말하는 "대신 만들기"는 **계정 만들기**다.
+              // 약 등록 화면([FirstRunScreen])은 가입을 마친 다음 길이다.
               SeniorButton(
                 label: '가족이 대신 만들어 드리기',
                 kind: SeniorButtonKind.secondary,
@@ -186,7 +187,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                 fontSize: 20,
                 onPressed: () => Navigator.of(context).push(
                   MaterialPageRoute<void>(
-                    builder: (_) => const FirstRunScreen(),
+                    builder: (_) => const SignupScreen(initialRole: 'guardian'),
                   ),
                 ),
               ),

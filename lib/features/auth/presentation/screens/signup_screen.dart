@@ -3,6 +3,7 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_tabler_icons/flutter_tabler_icons.dart';
 import 'package:go_router/go_router.dart';
+
 import '../../../../core/constants/app_colors.dart';
 import '../../domain/exclusive_choice.dart';
 import '../../../../core/network/api_client.dart';
@@ -20,7 +21,14 @@ import '../../../profile/domain/user_profile.dart';
 /// 단계형 회원가입 (위저드).
 /// 위치: lib/features/auth/presentation/screens/signup_screen.dart
 class SignupScreen extends ConsumerStatefulWidget {
-  const SignupScreen({super.key});
+  /// 미리 골라 둘 역할 ('patient' | 'guardian').
+  ///
+  /// 로그인 화면의 "가족이 대신 만들어 드리기"로 들어오면 보호자가 이미
+  /// 골라진 채로 시작한다. 첫 단계를 감추지는 않는다 — 잘못 들어왔을 때
+  /// 바꿀 길이 없으면 처음부터 다시 해야 한다.
+  final String? initialRole;
+
+  const SignupScreen({super.key, this.initialRole});
 
   @override
   ConsumerState<SignupScreen> createState() => _SignupScreenState();
@@ -38,6 +46,17 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
   /// 고르지 않고 지나쳐도 환자로 가입된다.
   String _role = 'patient';
   bool _rolePicked = false;
+
+  @override
+  void initState() {
+    super.initState();
+    final role = widget.initialRole;
+    if (role == 'patient' || role == 'guardian') {
+      _role = role!;
+      _rolePicked = true;
+    }
+  }
+
   final _name = TextEditingController();
   final _phone = TextEditingController();
   final _pw = TextEditingController();

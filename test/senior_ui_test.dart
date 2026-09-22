@@ -459,6 +459,27 @@ void _signupTests() {
     expect(find.text('어떤 분이신가요?'), findsOneWidget);
   });
 
+  testWidgets('보호자로 미리 골라 둔 채로 들어올 수 있다', (tester) async {
+    // 로그인 화면의 "가족이 대신 만들어 드리기"로 들어오는 길.
+    await tester.pumpWidget(wrap(const SignupScreen(initialRole: 'guardian')));
+    // 이미 골라져 있으니 다음으로 그냥 넘어간다.
+    await tester.tap(find.text('다음'));
+    await tester.pumpAndSettle();
+    expect(find.byType(SnackBar), findsNothing);
+    expect(find.text('어떤 분이신가요?'), findsNothing);
+    // 그래도 첫 단계를 감추지는 않는다 — 뒤로 가면 바꿀 수 있다.
+  });
+
+  testWidgets('가족이 대신 만들어 드리기는 가입으로 간다', (tester) async {
+    // 계정을 만드는 길이다. 약 등록 화면(FirstRunScreen)은 가입 다음이다.
+    await tester.pumpWidget(wrap(const LoginScreen()));
+    await tester.ensureVisible(find.text('가족이 대신 만들어 드리기'));
+    await tester.tap(find.text('가족이 대신 만들어 드리기'));
+    await tester.pumpAndSettle();
+    expect(find.byType(SignupScreen), findsOneWidget);
+    expect(find.byType(FirstRunScreen), findsNothing);
+  });
+
   testWidgets('역할을 고르지 않으면 스낵바로 이유를 알린다 (02)', (tester) async {
     await tester.pumpWidget(wrap(const SignupScreen()));
     await tester.tap(find.text('다음'));
