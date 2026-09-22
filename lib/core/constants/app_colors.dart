@@ -28,6 +28,9 @@ abstract final class AppColors {
   /// 주의 카드 테두리.
   static const Color dangerBorder = Color(0xFFE8C4BE);
 
+  /// 안전 위험은 아니지만 사용자 확인이 필요한 카드의 테두리.
+  static const Color attentionBorder = Color(0xFFE67E22);
+
   /// 제목, 핵심 숫자.
   static const Color textPrimary = Color(0xFF111114);
 

@@ -103,7 +103,10 @@ def take_unit_for_form(
 ) -> str | None:
     """홈 횟수 칸에 쓸 단위. 액·바르는 약은 알을 붙이지 않는다."""
     form = str(dosage_form or "").strip() or infer_dosage_form(product_name)
-    if any(token in form for token in ("액", "연고", "크림", "시럽", "점안", "패치")):
+    if any(
+        token in form
+        for token in ("액", "연고", "크림", "시럽", "점안", "패치", "외용", "도포")
+    ):
         return "회"
     if "캡슐" in form:
         return "캡슐"

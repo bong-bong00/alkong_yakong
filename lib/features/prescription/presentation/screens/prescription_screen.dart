@@ -821,7 +821,7 @@ class _ConfirmScreenState extends State<_ConfirmScreen> {
       return '0.5$normalized';
     }
     final fraction = RegExp(
-      r'^(\d+)/(\d+)(알|정|캡슐|포|개|mL|ml|방울|T|TAB|C|CAP|PKG|EA)$',
+      r'^(\d+)/(\d+)(알|정|캡슐|포|개|회|mL|ml|방울|T|TAB|C|CAP|PKG|EA)$',
       caseSensitive: false,
     ).firstMatch(compact);
     if (fraction != null) {
@@ -835,7 +835,7 @@ class _ConfirmScreenState extends State<_ConfirmScreen> {
       }
     }
     final match = RegExp(
-      r'^(\d+(?:\.\d+)?)(알|정|캡슐|포|개|mL|ml|방울|T|TAB|C|CAP|PKG|EA)$',
+      r'^(\d+(?:\.\d+)?)(알|정|캡슐|포|개|회|mL|ml|방울|T|TAB|C|CAP|PKG|EA)$',
       caseSensitive: false,
     ).firstMatch(compact);
     final number =
@@ -856,6 +856,7 @@ class _ConfirmScreenState extends State<_ConfirmScreen> {
       'C' || 'CAP' || '캡슐' => '캡슐',
       'PKG' || '포' => '포',
       'EA' || '개' => '개',
+      '회' => '회',
       'ML' || '밀리리터' => 'mL',
       '방울' => '방울',
       _ => '',
@@ -1561,12 +1562,18 @@ class _DrugCard extends StatelessWidget {
       frequencyPerDay == '확인 필요' ||
       durationDays == '확인 필요';
 
+  Color? get _borderColor {
+    if (conflicts.isNotEmpty) return AppColors.danger;
+    if (_needsCheck) return AppColors.attentionBorder;
+    return null;
+  }
+
   @override
   Widget build(BuildContext context) {
     return SeniorCard(
       onTap: onToggle,
       padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 20),
-      borderColor: _needsCheck ? AppColors.dangerBorder : null,
+      borderColor: _borderColor,
       borderWidth: 2,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,

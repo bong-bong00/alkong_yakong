@@ -98,6 +98,51 @@ def test_liquid_confirm_amount_is_once_not_a_pill():
     )
 
 
+def test_permission_usage_marks_topical_liquid_as_once(monkeypatch):
+    monkeypatch.setattr(
+        prescription_service,
+        "find_permission_product_by_item_seq",
+        lambda _code: {
+            "chart": "맑고 투명한 액",
+            "usage_text": "1일 1~2회 환부에 얇게 바른다.",
+        },
+    )
+
+    dosage_form = prescription_service._preview_dosage_form(
+        "200401147",
+        "프레벨액0.25%(프레드니카르베이트)",
+        None,
+    )
+    preview = OCRMedicineItem(drug_name="프레벨액0.25%", dosage="1.00")
+
+    assert dosage_form == "외용제"
+    assert prescription_service._preview_take_fields(
+        preview,
+        dosage_form=dosage_form,
+    ) == ("1", "회", True)
+
+
+def test_permission_lookup_does_not_guess_unknown_liquid_units(monkeypatch):
+    monkeypatch.setattr(
+        prescription_service,
+        "find_permission_product_by_item_seq",
+        lambda _code: {"chart": "흰색 원형 정제", "usage_text": ""},
+    )
+
+    dosage_form = prescription_service._preview_dosage_form(
+        "TEST-UNKNOWN",
+        "제품명",
+        None,
+    )
+    preview = OCRMedicineItem(drug_name="제품명", dosage="1.00")
+
+    assert dosage_form == ""
+    assert prescription_service._preview_take_fields(
+        preview,
+        dosage_form=dosage_form,
+    ) == ("1", None, False)
+
+
 def test_prescription_expiry_never_extends_confirmed_duration():
     assert _schedule_dates("2026-09-09", "2026-12-31", 2) == [
         date(2026, 9, 9),

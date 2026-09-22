@@ -27,6 +27,7 @@ from app.services.medicine_display import (
 )
 from app.services.medicine_detail_service import ensure_medicine_detail
 from app.services.medicine_merge import upsert_official_medicine
+from app.services.mfds_drug_permission.db import find_permission_product_by_item_seq
 from app.services.ocr.parser import (
     _clean_drug_label,
     _is_plausible_drug_candidate,
@@ -559,6 +560,45 @@ def _unit_from_dosage_form(
     return take_unit_for_form(dosage_form, product_name)
 
 
+_TOPICAL_USAGE = re.compile(r"바르|도포|외용|환부")
+_LIQUID_OR_TOPICAL_CHART = re.compile(r"액|연고|크림|겔|로션|스프레이")
+
+
+def _preview_dosage_form(
+    medicine_code: str | None,
+    product_name: str | None,
+    stored_form: str | None,
+) -> str:
+    """OCR 확인 화면의 단위를 위해 로컬 허가정보에서 제형을 보완한다.
+
+    이 경로에서는 외부 API를 호출하지 않는다. 성상·용법의 명시적인 근거가
+    있을 때만 외용·액제로 분류하고, 없으면 저장된 제형과 제품명 추론을 유지한다.
+    """
+    permission: dict | None = None
+    try:
+        permission = find_permission_product_by_item_seq(str(medicine_code or ""))
+    except Exception:
+        logger.debug(
+            "permission dosage-form lookup failed medicine_code=%s",
+            medicine_code,
+            exc_info=True,
+        )
+
+    if permission:
+        chart = str(permission.get("chart") or "")
+        usage = str(
+            permission.get("usage_text") or permission.get("ud_doc_data") or ""
+        )
+        if _TOPICAL_USAGE.search(usage):
+            return "외용제"
+        chart_match = _LIQUID_OR_TOPICAL_CHART.search(chart)
+        if chart_match:
+            token = chart_match.group(0)
+            return "액제" if token == "액" else token
+
+    return str(stored_form or "").strip() or infer_dosage_form(product_name)
+
+
 def _preview_take_fields(
     item: OCRMedicineItem,
     *,
@@ -821,7 +861,11 @@ def create_prescription_from_ocr(request: PrescriptionOCRRequest) -> dict:
             guidance = sync_medicine_guidance(cursor, med_dict)
             official_spoken = guidance["short_explanation"]
             ingredient = med_dict.get("ingredient") or ""
-            dosage_form = med_dict.get("dosage_form") or infer_dosage_form(official_name)
+            dosage_form = _preview_dosage_form(
+                medicine_code,
+                official_name,
+                med_dict.get("dosage_form"),
+            )
             dose_amount, dose_unit, dose_unit_inferred = _preview_take_fields(
                 item,
                 dosage_form=dosage_form,
