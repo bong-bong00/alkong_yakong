@@ -384,21 +384,33 @@ class _ConflictCard extends StatelessWidget {
               padding: EdgeInsets.symmetric(horizontal: 13, vertical: 6),
             ),
           ),
-          const SizedBox(height: 12),
-          for (int i = 0; i < medicines.length; i++) ...[
-            if (i > 0) const SizedBox(height: 12),
-            Text(
-              medicines[i].spokenLine,
-              style: AppText.emphasis(size: 24),
-            ),
-          ],
+          const SizedBox(height: 14),
+          _PairRow(medicines: medicines),
           if (why.isNotEmpty) ...[
             const SizedBox(height: 14),
-            Text(why, style: AppText.body(color: AppColors.textPrimary)),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: AppColors.dangerBg,
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: Text(
+                why,
+                style: AppText.body(size: 18, color: AppColors.danger),
+              ),
+            ),
+          ],
+          if (!why.contains('약국이나 병원에 한 번 확인해 주세요.')) ...[
+            const SizedBox(height: 14),
+            Text(
+              '약국이나 병원에 한 번 확인해 주세요.',
+              style: AppText.emphasis(size: 19),
+            ),
           ],
           if (source.isNotEmpty) ...[
-            const SizedBox(height: 12),
-            Text(source, style: AppText.caption()),
+            const SizedBox(height: 8),
+            Text(source, style: AppText.caption(size: 15)),
           ],
         ],
       ),
@@ -480,15 +492,109 @@ class _ConflictCard extends StatelessWidget {
   }
 }
 
+/// 두 약은 나란히, 더 많은 약은 세로로 보여 준다.
+class _PairRow extends StatelessWidget {
+  final List<_NamedMedicine> medicines;
+
+  const _PairRow({required this.medicines});
+
+  @override
+  Widget build(BuildContext context) {
+    if (medicines.isEmpty) return const SizedBox.shrink();
+    if (medicines.length == 1) return _MedicineTile(medicine: medicines.first);
+    if (medicines.length > 2) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          for (int i = 0; i < medicines.length; i++) ...[
+            if (i > 0)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 8),
+                child: _PlusMark(),
+              ),
+            _MedicineTile(medicine: medicines[i]),
+          ],
+        ],
+      );
+    }
+    return IntrinsicHeight(
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Expanded(child: _MedicineTile(medicine: medicines[0])),
+          const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 10),
+            child: Center(child: _PlusMark()),
+          ),
+          Expanded(child: _MedicineTile(medicine: medicines[1])),
+        ],
+      ),
+    );
+  }
+}
+
+class _PlusMark extends StatelessWidget {
+  const _PlusMark();
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text('+', style: AppText.emphasis(size: 22, color: AppColors.danger)),
+        Text('같이', style: AppText.caption(size: 15)),
+      ],
+    );
+  }
+}
+
+class _MedicineTile extends StatelessWidget {
+  final _NamedMedicine medicine;
+
+  const _MedicineTile({required this.medicine});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppColors.border, width: 2),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Text(medicine.name, style: AppText.cardTitle(size: 19)),
+          if (medicine.roleLine.isNotEmpty) ...[
+            const SizedBox(height: 4),
+            Text(
+              medicine.roleLine,
+              style: AppText.caption(size: 16),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
 class _NamedMedicine {
   final String name;
   final String easyLine;
 
   const _NamedMedicine(this.name, this.easyLine);
 
-  String get spokenLine {
-    if (easyLine.contains('드시는 약이에요')) return easyLine;
-    if (easyLine.isEmpty) return name;
-    return '$name은 $easyLine';
+  String get roleLine {
+    var text = easyLine.trim();
+    for (final particle in const ['은 ', '는 ']) {
+      final prefix = '$name$particle';
+      if (text.startsWith(prefix)) {
+        text = text.substring(prefix.length).trim();
+        break;
+      }
+    }
+    return text;
   }
 }

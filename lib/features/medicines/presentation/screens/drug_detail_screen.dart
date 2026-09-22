@@ -280,7 +280,7 @@ class _DetailBody extends StatelessWidget {
                     childrenPadding: const EdgeInsets.fromLTRB(22, 0, 22, 22),
                     title: Text(
                       easyMode ? '더 자세한 사용 목적 보기' : '전체 허가 목적',
-                      style: AppText.cardTitle(),
+                      style: AppText.cardTitle(size: 22),
                     ),
                     children: [
                       for (final purpose in allOfficialUses) ...[
@@ -536,7 +536,7 @@ class _EmphasizedBodyText extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final bodyStyle = AppText.body(size: 18);
+    final bodyStyle = AppText.body(size: 20);
     final target = highlight.trim();
     final start = target.isEmpty || target == text.trim()
         ? -1

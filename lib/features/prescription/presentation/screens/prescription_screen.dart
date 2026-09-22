@@ -1198,8 +1198,9 @@ class _ConfirmScreenState extends State<_ConfirmScreen> {
                       vertical: 18,
                     ),
                     decoration: BoxDecoration(
-                      color: AppColors.pointTint,
+                      color: AppColors.surface,
                       borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: AppColors.point, width: 2),
                     ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1390,14 +1391,20 @@ class _DrugCard extends StatelessWidget {
     required this.onEditDosing,
   });
 
+  bool get _needsCheck =>
+      uncertain ||
+      conflicts.isNotEmpty ||
+      doseAmount.isEmpty ||
+      doseAmount.contains('확인 필요') ||
+      frequencyPerDay == '확인 필요' ||
+      durationDays == '확인 필요';
+
   @override
   Widget build(BuildContext context) {
     return SeniorCard(
       onTap: onToggle,
       padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 20),
-      borderColor: (uncertain || conflicts.isNotEmpty)
-          ? AppColors.dangerBorder
-          : null,
+      borderColor: _needsCheck ? AppColors.dangerBorder : null,
       borderWidth: 2,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1429,10 +1436,7 @@ class _DrugCard extends StatelessWidget {
             const SizedBox(height: 8),
             Text(
               explanation!,
-              style: AppText.body(
-                size: 20,
-                color: AppColors.detailEmphasis,
-              ).copyWith(fontWeight: FontWeight.w700),
+              style: AppText.body(size: 19),
               maxLines: expanded ? null : 3,
               overflow: expanded ? null : TextOverflow.ellipsis,
             ),
@@ -1590,14 +1594,6 @@ class _DrugCard extends StatelessWidget {
               fontSize: 22,
               onPressed: onFixName,
             ),
-            const SizedBox(height: 10),
-            SeniorButton(
-              label: '복용 정보 고치기',
-              kind: SeniorButtonKind.outline,
-              minHeight: 68,
-              fontSize: 22,
-              onPressed: onEditDosing,
-            ),
           ] else ...[
             const SizedBox(height: 8),
             Text(
@@ -1605,6 +1601,14 @@ class _DrugCard extends StatelessWidget {
               style: AppText.label(size: 17, color: AppColors.point),
             ),
           ],
+          const SizedBox(height: 14),
+          SeniorButton(
+            label: '복용 정보 고치기',
+            kind: SeniorButtonKind.neutral,
+            minHeight: 66,
+            fontSize: 21,
+            onPressed: onEditDosing,
+          ),
         ],
       ),
     );
