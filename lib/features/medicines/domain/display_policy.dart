@@ -56,8 +56,8 @@ String stripEasyCategoryParen(String? name) {
   return text;
 }
 
-/// 목록·카드에서만 제품명 뒤의 중복 주성분 괄호를 숨긴다.
-/// DB와 OCR 확인 화면의 공식 제품명은 변경하지 않는다.
+/// 요약 화면에서만 제품명 뒤에 중복된 주성분 괄호를 숨긴다.
+/// DB와 OCR 확인 화면의 공식 제품명은 바꾸지 않는다.
 String compactProductName(String? name, {String? ingredient}) {
   final text = stripEasyCategoryParen(stripExportAlias(name));
   final match = RegExp(r'\s*\(([^)]*)\)\s*$').firstMatch(text);
@@ -84,6 +84,33 @@ String _ingredientCompareKey(String? value) {
       )
       .toLowerCase()
       .replaceAll(RegExp(r'[^0-9a-z가-힣]'), '');
+}
+
+/// 영문 성분명만 있을 때 제품명의 한글 성분 괄호를 우선한다.
+String preferredCardIngredient(String? ingredient, {String? productName}) {
+  final raw = (ingredient ?? '').trim();
+  final product = stripExportAlias(productName);
+  final match = RegExp(r'\(([^()]*)\)\s*$').firstMatch(product);
+  final fromProduct = match?.group(1)?.trim() ?? '';
+  final rawHasHangul = RegExp(r'[가-힣]').hasMatch(raw);
+  final productHasHangul = RegExp(r'[가-힣]').hasMatch(fromProduct);
+  if (!rawHasHangul && productHasHangul && !_isCategoryParen(fromProduct)) {
+    return fromProduct;
+  }
+  // 영문만 있고 한글 성분명을 보완할 근거가 없으면 어르신 화면에 만 노출하지 않는다.
+  return rawHasHangul ? raw : '';
+}
+
+String cardIngredientCaption(
+  String? ingredient, {
+  String? productName,
+  String? strength,
+}) {
+  final name = preferredCardIngredient(ingredient, productName: productName);
+  final dose = (strength ?? '').trim();
+  if (name.isEmpty) return '';
+  if (dose.isEmpty || name.contains(dose)) return name;
+  return '$name · $dose';
 }
 
 bool _isCategoryParen(String inner) {
@@ -113,7 +140,7 @@ bool looksLikePermissionProductName(String? name) {
   return _permissionNameHint.hasMatch(text);
 }
 
-/// 카드 제목은 허가 제품명을 우선하되 중복 주성분 괄호는 숨긴다.
+/// 카드 제목은 허가 제품명. 성분+키워드 괄호는 제목으로 쓰지 않는다.
 String cardOfficialName({
   String? productName,
   String? displayName,
@@ -169,6 +196,15 @@ String? cardSpokenOf(String? text) {
   if (value.contains('목적으로 처방') || value.contains('목적으로 사용')) {
     return null;
   }
+  return value;
+}
+
+/// 상세 화면은 검토된 한 문장 설명을 보여 준다.
+/// 홈·목록의 중복 제거 규칙(`목적으로 처방`)을 적용하지 않는다.
+String? detailSpokenOf(String? text) {
+  var value = (text ?? '').trim();
+  value = _spokenAliases[value] ?? value;
+  if (value.isEmpty || value == _placeholderSpoken) return null;
   return value;
 }
 
