@@ -1,5 +1,6 @@
 import json
 import logging
+import re
 from typing import Any
 
 from fastapi import HTTPException
@@ -95,6 +96,59 @@ def _ingredient_explanation_fallback(
     return f"이 약에는 {ingredient_names} 성분이 들어 있어요. 이 약은 {purpose}"
 CACHE_MAX_AGE = "-1 day"
 MISSING_OFFICIAL_TEXT = "공식 정보에 명시되어 있지 않습니다."
+_DETAIL_SPOKEN_MAX_CHARS = 160
+
+
+def _detail_spoken_candidate(value: Any) -> str:
+    """상세 첫 카드에 안전하게 둘 수 있는 한 문장만 통과시킨다."""
+    text = " ".join(str(value or "").split()).strip()
+    if not text or text in {
+        MISSING_OFFICIAL_TEXT,
+        "공식 허가정보에서 확인한 대표 사용 목적이에요.",
+        "처방받은 약이에요",
+    }:
+        return ""
+    if (
+        len(text) > _DETAIL_SPOKEN_MAX_CHARS
+        or "\n" in str(value or "")
+        or re.match(r"^(?:\d+[.)]|[-•·※])\s*", text)
+    ):
+        return ""
+    return text
+
+
+def _detail_spoken(
+    *,
+    medicine: dict[str, Any],
+    card: dict[str, Any] | None,
+    treatment_uses: list[dict[str, str]],
+    approved_use_summary: str,
+) -> str:
+    """홈용 분류 문구 대신 상세용 설명을 공통 우선순위로 고른다.
+
+    제품별 이름·코드 분기는 쓰지 않는다. 홈의 easy_category와 같은 문장은
+    카드용 짧은 분류로 보고 상세 첫 카드에서는 건너뛴다.
+    """
+    home_category = " ".join(
+        str(medicine.get("easy_category") or "").split()
+    ).strip()
+    product_short = ""
+    if str(medicine.get("explanation_review_status") or "").upper() == "REVIEWED":
+        product_short = _detail_spoken_candidate(medicine.get("short_explanation"))
+    if product_short and product_short != home_category:
+        return product_short
+
+    card_summary = _detail_spoken_candidate((card or {}).get("summary"))
+    if card_summary:
+        return card_summary
+
+    # treatment_uses는 허가 목적을 화면용 한 문장으로 정리한 공통 결과다.
+    for item in treatment_uses:
+        sentence = _detail_spoken_candidate(item.get("description"))
+        if sentence:
+            return sentence
+
+    return _detail_spoken_candidate(approved_use_summary)
 
 
 def get_drug_explanation(
@@ -174,14 +228,6 @@ def reviewed_detail_payload(cursor, medicine: dict[str, Any]) -> dict[str, Any]:
         if profile
         else (_json_list(card.get("ask_doctor_when")) if card else [])
     )[:3]
-    short_explanation = ""
-    if str(medicine.get("explanation_review_status") or "").upper() == "REVIEWED":
-        short_explanation = str(medicine.get("short_explanation") or "").strip()
-    if card and str(card.get("summary") or "").strip() not in {
-        "",
-        MISSING_OFFICIAL_TEXT,
-    }:
-        short_explanation = str(card.get("summary") or "").strip()
     official_usage = str(
         (profile or {}).get("official_usage")
         or (card.get("how_to_take") if card else None)
@@ -223,6 +269,16 @@ def reviewed_detail_payload(cursor, medicine: dict[str, Any]) -> dict[str, Any]:
         approved_use_summary,
         approved_uses,
         all_approved_uses,
+    )
+    short_explanation = (
+        ""
+        if stale
+        else _detail_spoken(
+            medicine=medicine,
+            card=card,
+            treatment_uses=treatment_uses,
+            approved_use_summary=approved_use_summary,
+        )
     )
     return {
         "medicine": {

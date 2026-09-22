@@ -139,9 +139,10 @@ class UserMedicine {
       amount: json['amount']?.toString() ?? '',
       purposeLabel: card.purposeLabel,
       shortExplanation: card.spoken,
-      detailExplanation: (rawShortExplanation?.isNotEmpty ?? false)
-          ? rawShortExplanation
-          : card.spoken,
+      // 상세 첫 문장은 홈 목록용 짧은 분류를 재사용하지 않는다.
+      // 서버가 검토된 상세 문장을 주지 않으면 이 줄 자체를 숨긴다.
+      detailExplanation:
+          (rawShortExplanation?.isNotEmpty ?? false) ? rawShortExplanation : null,
       keyCaution: json['key_caution']?.toString(),
       keyCautions: _stringList(json['key_cautions']),
       easyPurposes: _stringList(json['easy_purposes']),

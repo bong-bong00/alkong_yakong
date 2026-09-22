@@ -174,9 +174,12 @@ def compact_product_name(
     inner_key = _ingredient_compare_key(match.group(1))
     if not inner_key:
         return text
+    # 허가 제품명 괄호는 한글인데, 원본 DB 성분은 영문인 경우가 있다.
+    # 이때는 제품명 안의 한글 성분을 비교용으로만 사용한다. 원본 성분값은 바꾸지 않는다.
+    comparison_ingredient = preferred_card_ingredient(ingredient, text) or ingredient
     ingredient_keys = {
         _ingredient_compare_key(part)
-        for part in split_ingredients(ingredient)
+        for part in split_ingredients(comparison_ingredient)
         if _ingredient_compare_key(part)
     }
     if inner_key in ingredient_keys:
@@ -264,6 +267,21 @@ def ingredient_summary(raw: str | None) -> str:
     if len(parts) == 1:
         return parts[0]
     return f"{parts[0]} 외 {len(parts) - 1}개"
+
+
+def preferred_card_ingredient(
+    ingredient: str | None,
+    product_name: str | None = None,
+) -> str:
+    """카드용 주성분. 영문만 있으면 제품명 한글 괄호를 쓰고, 그것도 없으면 숨긴다."""
+    summary = ingredient_summary(ingredient)
+    if re.search(r"[가-힣]", summary):
+        return summary
+    match = _TRAILING_PAREN.search(strip_export_alias(product_name))
+    inner = (match.group(1).strip() if match else "")
+    if re.search(r"[가-힣]", inner) and not _is_category_paren(inner):
+        return inner
+    return ""
 
 
 def is_card_purpose_label(label: str | None, *, review_status: str | None = None) -> bool:

@@ -64,8 +64,14 @@ String compactProductName(String? name, {String? ingredient}) {
   if (match == null) return text;
   final innerKey = _ingredientCompareKey(match.group(1));
   if (innerKey.isEmpty) return text;
+  // 서버가 오래된 이름을 보내더라도, 영문 성분값과 제품명 한글 괄호를
+  // 같은 성분으로 비교해 중복 괄호만 숨긴다. 원본 데이터는 바꾸지 않는다.
+  final preferredIngredient =
+      preferredCardIngredient(ingredient, productName: text);
+  final comparisonIngredient =
+      preferredIngredient.isNotEmpty ? preferredIngredient : ingredient;
   final ingredientKeys = ingredientParts(
-    ingredient,
+    comparisonIngredient,
   ).map(_ingredientCompareKey).where((key) => key.isNotEmpty).toSet();
   if (ingredientKeys.contains(innerKey)) {
     return text.substring(0, match.start).trim();
