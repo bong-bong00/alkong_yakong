@@ -21,6 +21,7 @@ import '../../../reminder/presentation/screens/alarm_settings_screen.dart';
 import '../../../biosignal/presentation/screens/polar_screen.dart';
 import '../../../medicines/application/user_medicines_controller.dart';
 import '../../application/current_user_controller.dart';
+import '../../../guardian/presentation/screens/care_family_screen.dart';
 import 'account_screen.dart';
 
 /// 4h — 내 정보 · 설정.
@@ -105,10 +106,16 @@ class _MyPageScreenState extends ConsumerState<MyPageScreen> {
     );
     final loadFailed = profile == null && user.hasError;
     final ageLine = profile?.ageLine(DateTime.now()) ?? '';
+    final subLine = widget.isGuardian ? (profile?.phone ?? '') : ageLine;
+    // 보호자는 돌보는 분이 몇 분인지를 여기서도 본다. 아직 못 읽었으면
+    // 숫자를 비워 둔다 — 0명이라고 적으면 연결이 끊긴 줄 안다.
+    final careCount = widget.isGuardian
+        ? ref.watch(careOverviewProvider).valueOrNull?.patients.length
+        : null;
 
     return Column(
       children: [
-        const SeniorTitleHeader(title: '내 정보'),
+        SeniorTitleHeader(title: widget.isGuardian ? '정보' : '내 정보'),
         Expanded(
           child: SingleChildScrollView(
             padding: const EdgeInsets.fromLTRB(20, 16, 20, 28),
@@ -147,9 +154,9 @@ class _MyPageScreenState extends ConsumerState<MyPageScreen> {
                                   color: AppColors.danger,
                                 ),
                               )
-                            else if (ageLine.isNotEmpty)
+                            else if (subLine.isNotEmpty)
                               Text(
-                                ageLine,
+                                subLine,
                                 style: AppText.body(
                                   size: 18,
                                   color: AppColors.textTertiary,
@@ -180,6 +187,31 @@ class _MyPageScreenState extends ConsumerState<MyPageScreen> {
                 const SizedBox(height: 12),
 
                 // ── 설정 목록 ──
+                // 보호자에게 "내 약 목록"·"복약 알림"·"폴라 센서"를 내밀면
+                // 안 열리는 문을 넷 만드는 셈이다. 보호자가 쓸 줄만 둔다.
+                if (widget.isGuardian)
+                  SeniorCard(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 22,
+                      vertical: 4,
+                    ),
+                    child: Column(
+                      children: [
+                        SeniorListRow(
+                          label: '돌보는 분 관리',
+                          icon: TablerIcons.users,
+                          value: careCount == null ? null : '$careCount명',
+                          trailing: const SeniorChevron(),
+                          onTap: () => Navigator.of(context).push(
+                            MaterialPageRoute<void>(
+                              builder: (_) => const CareManageScreen(),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  )
+                else
                 SeniorCard(
                   padding: const EdgeInsets.symmetric(
                     horizontal: 22,
@@ -315,12 +347,12 @@ class _MyPageScreenState extends ConsumerState<MyPageScreen> {
                     vertical: 4,
                   ),
                   child: SeniorListRow(
-                    label: '계정 관리',
+                    label: '내 계정',
                     icon: TablerIcons.user,
                     trailing: const SeniorChevron(),
                     onTap: () => Navigator.of(context).push(
                       MaterialPageRoute<void>(
-                        builder: (_) => const AccountScreen(),
+                        builder: (_) => AccountScreen(isGuardian: widget.isGuardian),
                       ),
                     ),
                   ),

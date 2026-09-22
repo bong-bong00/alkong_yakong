@@ -11,6 +11,7 @@ import '../../../guardian/data/guardian_repository.dart';
 import '../../../guardian/data/proxy_signup_repository.dart';
 import '../../../guardian/domain/proxy_signup.dart';
 import '../../../dashboard/presentation/screens/guardian_home_screen.dart';
+import '../../../guardian/presentation/screens/care_family_screen.dart';
 import '../../../guardian/data/alert_repository.dart';
 import '../../../guardian/presentation/screens/proxy_patient_picker_screen.dart';
 import '../../../guardian/presentation/screens/proxy_signup_screen.dart';
@@ -60,20 +61,30 @@ class ScreenPreviewScreen extends StatelessWidget {
         ),
       ),
       (
-        title: '보호자 화면 (현황 · 알림 · 돌보는 분)',
-        note: '탭 세 개를 모두 걸어볼 수 있습니다. 돌보는 분 세 분이 들어 있습니다.',
+        title: '보호자 화면 (돌보는 분 · 정보)',
+        note: '돌보는 분 세 분이 들어 있습니다. 카드를 누르면 그분 현황으로 들어갑니다.',
         build: () => const GuardianHomeScreen(),
+      ),
+      (
+        title: '보호자 현황 (한 분)',
+        note: '아침·점심은 드시고 저녁이 남은 분입니다.',
+        build: () => GuardianStatusScreen(
+          patient: _sampleOverview.patients.first,
+          position: 1,
+          total: _sampleOverview.patients.length,
+        ),
+      ),
+      (
+        title: '돌보는 분 관리',
+        note: '명단을 손질하는 자리입니다.',
+        build: () => const CareManageScreen(),
       ),
       (
         title: '보호자 알림',
         note: '못 드심 · 복약 완료 · 새 처방전 · 심박수 네 가지가 들어 있습니다.',
-        build: () => Scaffold(
-          backgroundColor: AppColors.bg,
-          body: GuardianAlertsTab(
-            patient: _sampleOverview.patients.first,
-            repository: _SampleAlertRepository(),
-            onOpenStatus: () {},
-          ),
+        build: () => GuardianAlertsScreen(
+          patients: _sampleOverview.patients,
+          repository: _SampleAlertRepository(),
         ),
       ),
       (

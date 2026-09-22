@@ -87,11 +87,6 @@ def _patient_summary(row) -> dict[str, Any]:
     patient_id = row["user_id"]
     today = date.today()
     doses = get_today_medicines(patient_id).get("doses") or []
-    slots = [
-        {"label": _SLOT_LABELS.get(dose["slot"], dose["slot"]), "taken": bool(dose.get("taken"))}
-        for dose in doses
-    ]
-    next_slot = next((slot["label"] for slot in slots if not slot["taken"]), None)
 
     week = get_medication_history(
         patient_id, (today - timedelta(days=6)).isoformat(), today.isoformat()
@@ -102,9 +97,21 @@ def _patient_summary(row) -> dict[str, Any]:
     conn = get_connection()
     try:
         heart = latest_heart_reading(conn, patient_id)
-        activities = _activities(conn, patient_id, today.isoformat())
+        taken_at = _taken_times(conn, patient_id, today.isoformat())
+        activities = _activities(taken_at, conn, patient_id, today.isoformat())
     finally:
         conn.close()
+
+    slots = [
+        {
+            "label": _SLOT_LABELS.get(dose["slot"], dose["slot"]),
+            "taken": bool(dose.get("taken")),
+            # 드신 시각. 아직 안 드셨거나 기록이 없으면 빈 문자열이다.
+            "taken_at": taken_at.get(dose["slot"], "") if dose.get("taken") else "",
+        }
+        for dose in doses
+    ]
+    next_slot = next((slot["label"] for slot in slots if not slot["taken"]), None)
 
     return {
         "link_id": row["id"],
@@ -145,8 +152,11 @@ def _clock(value: str | None, *, stored_in_utc: bool) -> str:
     return moment.strftime("%H:%M")
 
 
-def _activities(conn: sqlite3.Connection, patient_id: str, day: str) -> list[dict[str, str]]:
-    """오늘 있었던 일. 어르신이 직접 누른 복약과 잰 심박수만 적는다."""
+def _taken_times(conn: sqlite3.Connection, patient_id: str, day: str) -> dict[str, str]:
+    """시간대별로 어르신이 직접 누른 시각. "morning" -> "08:10".
+
+    medication_logs.taken_at 은 SQLite CURRENT_TIMESTAMP(UTC)로 쌓인다.
+    """
     taken_by_slot: dict[str, str] = {}
     for row in conn.execute(
         """
@@ -159,10 +169,20 @@ def _activities(conn: sqlite3.Connection, patient_id: str, day: str) -> list[dic
     ):
         slot = _slot_from_time(row["time_slot"], row["scheduled_time"])
         taken_by_slot[slot] = max(taken_by_slot.get(slot, ""), str(row["taken_at"] or ""))
+    return {
+        slot: _clock(at, stored_in_utc=True) for slot, at in taken_by_slot.items()
+    }
 
+
+def _activities(
+    taken_by_slot: dict[str, str],
+    conn: sqlite3.Connection,
+    patient_id: str,
+    day: str,
+) -> list[dict[str, str]]:
+    """오늘 있었던 일. 어르신이 직접 누른 복약과 잰 심박수만 적는다."""
     items = [
-        # medication_logs.taken_at 은 SQLite CURRENT_TIMESTAMP(UTC)로 쌓인다.
-        {"text": f"{_SLOT_LABELS[slot]} 약 드셨어요", "time": _clock(at, stored_in_utc=True)}
+        {"text": f"{_SLOT_LABELS[slot]} 약 드셨어요", "time": at}
         for slot, at in taken_by_slot.items()
     ]
     for row in conn.execute(
