@@ -10,6 +10,15 @@ import 'package:alkong_yakong/features/auth/presentation/screens/signup_screen.d
 import 'package:alkong_yakong/features/dashboard/presentation/screens/month_calendar_screen.dart';
 import 'package:alkong_yakong/features/dur_analysis/presentation/screens/dur_analysis_screen.dart';
 import 'package:alkong_yakong/features/guardian/presentation/screens/care_family_screen.dart';
+import 'package:alkong_yakong/features/guardian/presentation/screens/care_manage_screen.dart';
+import 'package:alkong_yakong/features/guardian/presentation/screens/care_patient_screen.dart';
+import 'package:alkong_yakong/features/guardian/presentation/screens/guardian_account_screen.dart';
+import 'package:alkong_yakong/features/guardian/presentation/screens/guardian_alert_prefs_screen.dart';
+import 'package:alkong_yakong/features/guardian/presentation/screens/guardian_info_screen.dart';
+import 'package:alkong_yakong/features/guardian/presentation/screens/guardian_prescription_screen.dart';
+import 'package:alkong_yakong/features/dashboard/presentation/screens/guardian_home_screen.dart';
+import 'package:alkong_yakong/features/dashboard/presentation/screens/patient_data.dart';
+import 'package:alkong_yakong/features/prescription/presentation/screens/medicine_arrived_screen.dart';
 import 'package:alkong_yakong/features/reminder/presentation/screens/alarm_settings_screen.dart';
 import 'package:alkong_yakong/features/medication/domain/medication_models.dart';
 import 'package:alkong_yakong/features/prescription/presentation/screens/prescription_screen.dart';
@@ -44,6 +53,24 @@ class _FakeHeartRepository extends HeartRepository {
   @override
   Future<HeartData?> fetch({String? userId}) async => result;
 }
+
+/// 테스트에서만 쓰는 보호자 화면용 어르신.
+const _carePatient = CarePatient(
+  linkId: 'l1',
+  patientId: 'p1',
+  name: '김복자',
+  relation: '어머니',
+  phone: '010-1234-5678',
+  age: 79,
+  takenCount: 2,
+  totalCount: 3,
+  nextDoseLabel: '저녁',
+  slots: [CareSlot('아침', true), CareSlot('점심', true), CareSlot('저녁', false)],
+  heartRate: 72,
+  heartRateNormal: true,
+  weekRate: 94,
+  activities: [ActivityItem('점심 약을 드셨어요', '오늘 12:10')],
+);
 
 /// 테스트에서만 쓰는 채워진 기록. 앱 코드에는 이런 값을 두지 않는다.
 const _heartSample = HeartData(
@@ -160,6 +187,24 @@ void main() {
     '복약 알림 (32)': () => const AlarmSettingsScreen(),
     '돌보는 분 목록 (36)': () =>
         Scaffold(body: CareFamilyScreen(onOpenPatient: (_) {})),
+    '보호자 · 어르신 현황 (88)': () => const GuardianStatusScreen(
+      patient: _carePatient,
+      position: 1,
+      total: 3,
+    ),
+    '보호자 · 정보 (93)': () => const Scaffold(body: GuardianInfoScreen()),
+    '보호자 · 내 계정 (94)': () => const GuardianAccountScreen(),
+    '보호자 · 알림 받는 방법 (95)': () => const GuardianAlertPrefsScreen(),
+    '보호자 · 돌보는 분 관리 (90)': () => const CareManageScreen(),
+    '보호자 · 어르신 한 분 (91)': () => const CarePatientScreen(patient: _carePatient),
+    '보호자 · 어느 분 처방전 (96)': () => const GuardianPickPatientScreen(),
+    '약이 들어왔어요 (84)': () => const MedicineArrivedScreen(
+      senderTitle: '딸 지안',
+      medicines: [
+        {'name': '메트포르민 500mg', 'dose': '한 번에 1알 · 아침 · 저녁'},
+        {'name': '암로디핀 5mg', 'dose': '한 번에 1알 · 저녁'},
+      ],
+    ),
     '계정 관리': () => const AccountScreen(),
     '도움이 필요할 때': () => const HelpScreen(),
     '도움이 필요할 때 (모두 펼침)': () => const HelpScreen(openAll: true),

@@ -1,3 +1,6 @@
+import 'features/guardian/presentation/screens/guardian_prescription_screen.dart';
+import 'features/prescription/presentation/screens/medicine_arrived_screen.dart';
+import 'demo_guardian.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -40,6 +43,35 @@ final _router = GoRouter(
     GoRoute(
       path: '/first-run',
       builder: (context, state) => const FirstRunScreen(),
+    ),
+    GoRoute(
+      path: '/guardian-prescription',
+      builder: (context, state) => const GuardianPickPatientScreen(),
+    ),
+    GoRoute(
+      path: '/medicine-arrived',
+      builder: (context, state) {
+        final extra = state.extra;
+        final data = extra is Map ? Map<String, dynamic>.from(extra) : const {};
+        final raw = data['medicines'];
+        return MedicineArrivedScreen(
+          senderTitle: data['sender']?.toString() ?? '가족',
+          medicines: [
+            if (raw is List)
+              for (final item in raw)
+                if (item is Map)
+                  {
+                    for (final entry in item.entries)
+                      entry.key.toString(): entry.value?.toString() ?? '',
+                  },
+          ],
+        );
+      },
+    ),
+    // 화면 확인용 임시 경로. 확인이 끝나면 지운다.
+    GoRoute(
+      path: '/demo-guardian',
+      builder: (context, state) => const DemoGuardianScreen(),
     ),
     GoRoute(
       path: '/prescription',

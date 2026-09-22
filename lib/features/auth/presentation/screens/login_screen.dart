@@ -196,6 +196,15 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                 textAlign: TextAlign.center,
                 style: AppText.caption(),
               ),
+              // 화면 확인용 임시 단추. 확인이 끝나면 지운다.
+              const SizedBox(height: 18),
+              SeniorButton(
+                label: '화면 확인용 · 보호자 화면',
+                kind: SeniorButtonKind.neutral,
+                minHeight: 56,
+                fontSize: 18,
+                onPressed: () => context.push('/demo-guardian'),
+              ),
             ],
           ),
         ),

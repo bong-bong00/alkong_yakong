@@ -26,6 +26,7 @@ class SeniorHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
+      width: double.infinity,
       decoration: BoxDecoration(
         color: background ?? AppColors.surface,
         border: Border(
@@ -72,11 +73,15 @@ class SeniorBackHeader extends StatelessWidget {
   /// 카메라 화면처럼 어두운 배경 위에 얹을 때.
   final bool onDark;
 
+  /// 제목을 뒤로가기 옆에 붙일 때. 어두운 화면은 늘 이렇게 둔다.
+  final bool alignStart;
+
   const SeniorBackHeader({
     super.key,
     required this.title,
     this.onBack,
     this.onDark = false,
+    this.alignStart = false,
   });
 
   @override
@@ -87,8 +92,10 @@ class SeniorBackHeader extends StatelessWidget {
         Expanded(
           child: Text(
             title,
-            // 어두운 찍기 화면은 프로토타입대로 제목이 뒤로가기 옆에 붙는다.
-            textAlign: onDark ? TextAlign.start : TextAlign.center,
+            // 어두운 찍기 화면과 알림 화면은 제목이 뒤로가기 옆에 붙는다.
+            textAlign: (onDark || alignStart)
+                ? TextAlign.start
+                : TextAlign.center,
             style: AppText.screenTitle(
               size: 24,
               color: onDark ? Colors.white : AppColors.textPrimary,
@@ -96,7 +103,7 @@ class SeniorBackHeader extends StatelessWidget {
           ),
         ),
         // 제목이 진짜 가운데에 오도록 뒤로가기만큼 오른쪽을 비워 둔다.
-        if (!onDark) const SizedBox(width: 56),
+        if (!onDark && !alignStart) const SizedBox(width: 56),
       ],
     );
 
@@ -177,7 +184,13 @@ class InitialAvatar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final trimmed = name.trim();
-    final initial = trimmed.isEmpty ? '님' : trimmed.substring(0, 1);
+    // 프로토타입은 성이 아니라 이름 첫 글자를 쓴다 (김복자 → 복).
+    // 성이 같은 분이 여럿이면 성만으로는 구별이 안 된다.
+    final initial = trimmed.isEmpty
+        ? '님'
+        : (trimmed.length >= 2 && !trimmed.contains(' ')
+              ? trimmed.substring(1, 2)
+              : trimmed.substring(0, 1));
     return Container(
       width: size,
       height: size,

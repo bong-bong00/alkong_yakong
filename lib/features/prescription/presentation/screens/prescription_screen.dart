@@ -66,12 +66,21 @@ class PrescriptionScreen extends ConsumerStatefulWidget {
   /// 약 있는 날 달력으로 갈 때. 쉬운 모드가 화면을 직접 바꿀 때 쓴다.
   final VoidCallback? onOpenScheduleDays;
 
+  /// 보호자가 대신 넣을 때 그 어르신 호칭 ("어머니 · 김복자").
+  /// 값이 있으면 위에 띠가 붙고, 마지막 단추가 "어르신께 보내기"가 된다.
+  final String? onBehalfOf;
+
+  /// 대신 넣는 어르신의 id. 약은 이 사람 것으로 들어간다.
+  final String? onBehalfOfUserId;
+
   const PrescriptionScreen({
     super.key,
     this.onCompleted,
     this.onGoHome,
     this.onOpenScheduleDays,
     this.guardianTitle = '',
+    this.onBehalfOf,
+    this.onBehalfOfUserId,
   });
 
   @override
@@ -79,12 +88,22 @@ class PrescriptionScreen extends ConsumerStatefulWidget {
 }
 
 class _PrescriptionScreenState extends ConsumerState<PrescriptionScreen> {
+  /// 약을 누구 것으로 넣을지. 대신 넣는 중이면 그 어르신이다.
+  String get _targetUserId {
+    final onBehalf = widget.onBehalfOfUserId?.trim() ?? '';
+    if (onBehalf.isNotEmpty) return onBehalf;
+    final mine = MvpSession.userId.trim();
+    return mine.isEmpty ? 'mvp-user' : mine;
+  }
+
   final ImagePicker _picker = ImagePicker();
   final ApiClient _localApiClient = ApiClient(
     baseUrl: ApiConfig.localFeatureBaseUrl,
   );
 
-  PrescriptionStep _step = PrescriptionStep.pickMethod;
+  late PrescriptionStep _step = widget.onBehalfOf == null
+      ? PrescriptionStep.pickMethod
+      : PrescriptionStep.capture;
 
   File? _image;
   Map<String, dynamic>? _result;
@@ -163,9 +182,7 @@ class _PrescriptionScreenState extends ConsumerState<PrescriptionScreen> {
       final response = await _localApiClient.post(
         '/api/v1/prescriptions/ocr',
         body: {
-          'user_id': MvpSession.userId.trim().isEmpty
-              ? 'mvp-user'
-              : MvpSession.userId.trim(),
+          'user_id': _targetUserId,
           'image_data': base64Image,
           'source_type': 'OCR',
         },
@@ -217,9 +234,7 @@ class _PrescriptionScreenState extends ConsumerState<PrescriptionScreen> {
   }
 
   Future<void> _register(List<Map<String, dynamic>> editedItems) async {
-    final userId = MvpSession.userId.trim().isEmpty
-        ? 'mvp-user'
-        : MvpSession.userId.trim();
+    final userId = _targetUserId;
     final confirmItems = editedItems
         .where(_isOfficialMatchedItem)
         .map(
@@ -408,6 +423,7 @@ class _PrescriptionScreenState extends ConsumerState<PrescriptionScreen> {
       case PrescriptionStep.capture:
         return _CaptureScreen(
           image: _image,
+          onBehalfOf: widget.onBehalfOf,
           onBack: () => setState(() {
             _image = null;
             _step = PrescriptionStep.pickMethod;
@@ -419,6 +435,7 @@ class _PrescriptionScreenState extends ConsumerState<PrescriptionScreen> {
         return _ReadingScreen(image: _image);
       case PrescriptionStep.confirm:
         return _ConfirmScreen(
+          onBehalfOf: widget.onBehalfOf,
           items: _items,
           unrecognizedNames: _unrecognizedNames,
           onRegister: _register,
@@ -452,10 +469,12 @@ class _CaptureScreen extends StatelessWidget {
   final VoidCallback onUse;
   final VoidCallback onCamera;
   final VoidCallback onBack;
+  final String? onBehalfOf;
 
   const _CaptureScreen({
     required this.image,
     required this.onBack,
+    this.onBehalfOf,
     required this.onUse,
     required this.onCamera,
   });
@@ -467,6 +486,11 @@ class _CaptureScreen extends StatelessWidget {
       body: Column(
         children: [
           SeniorBackHeader(title: '처방전 찍기', onDark: true, onBack: onBack),
+          if (onBehalfOf != null)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(22, 4, 22, 0),
+              child: _OnBehalfBanner(title: onBehalfOf!),
+            ),
           Expanded(
             child: LayoutBuilder(
               builder: (context, constraints) => SingleChildScrollView(
@@ -562,6 +586,40 @@ class _CaptureScreen extends StatelessWidget {
             ),
           ),
           const SafeArea(top: false, child: SizedBox(height: 12)),
+        ],
+      ),
+    );
+  }
+}
+
+/// "어머니 · 김복자 대신 등록". 누구 약을 넣고 있는지 화면 위에 붙여 둔다.
+class _OnBehalfBanner extends StatelessWidget {
+  final String title;
+
+  const _OnBehalfBanner({required this.title});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
+      decoration: BoxDecoration(
+        color: AppColors.point,
+        borderRadius: BorderRadius.circular(18),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const ExcludeSemantics(
+            child: Icon(TablerIcons.users, size: 26, color: Colors.white),
+          ),
+          const SizedBox(width: 10),
+          Flexible(
+            child: Text(
+              '$title 대신 등록',
+              style: AppText.button(size: 21, color: Colors.white),
+            ),
+          ),
         ],
       ),
     );
@@ -687,12 +745,16 @@ class _ReadingScreen extends StatelessWidget {
 //  4e — 이렇게 읽었어요
 // ════════════════════════════════════════════════════════════════
 class _ConfirmScreen extends StatefulWidget {
+  /// 보호자가 대신 넣을 때 그 어르신 호칭.
+  final String? onBehalfOf;
+
   final List<Map<String, dynamic>> items;
   final List<String> unrecognizedNames;
   final Future<void> Function(List<Map<String, dynamic>> items) onRegister;
   final VoidCallback onRetake;
 
   const _ConfirmScreen({
+    this.onBehalfOf,
     required this.items,
     required this.unrecognizedNames,
     required this.onRegister,
@@ -1387,6 +1449,10 @@ class _ConfirmScreenState extends State<_ConfirmScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
+                  if (widget.onBehalfOf != null) ...[
+                    _OnBehalfBanner(title: widget.onBehalfOf!),
+                    const SizedBox(height: 12),
+                  ],
                   Container(
                     padding: const EdgeInsets.symmetric(
                       horizontal: 22,
@@ -1478,7 +1544,11 @@ class _ConfirmScreenState extends State<_ConfirmScreen> {
                 children: [
                   if (_editedItems.isNotEmpty) ...[
                     SeniorButton(
-                      label: _registering ? '등록하고 있어요' : '이대로 등록하기',
+                      label: _registering
+                          ? '보내고 있어요'
+                          : (widget.onBehalfOf == null
+                                ? '이대로 등록하기'
+                                : '어르신께 보내기'),
                       minHeight: 70,
                       onPressed: _registering ? null : _tryRegister,
                     ),
