@@ -866,8 +866,8 @@ class _ConfirmScreenState extends State<_ConfirmScreen> {
         : '$amount$normalizedUnit';
   }
 
-  static String _shortDrugName(String name) {
-    return stripExportAlias(name);
+  static String _shortDrugName(String name, {String? ingredient}) {
+    return compactProductName(name, ingredient: ingredient);
   }
 
   static String? _seniorExplanation(Map<String, dynamic> item) {
@@ -1429,14 +1429,16 @@ class _ConfirmScreenState extends State<_ConfirmScreen> {
                     Builder(
                       builder: (context) {
                         final item = _editedItems[index];
+                        final ingredient =
+                            item['ingredient_name']?.toString() ??
+                            item['ingredient']?.toString() ??
+                            '';
                         return _DrugCard(
                           name: _shortDrugName(
                             item['drug_name']?.toString() ?? '이름을 못 읽었어요',
+                            ingredient: ingredient,
                           ),
-                          ingredient:
-                              item['ingredient_name']?.toString() ??
-                              item['ingredient']?.toString() ??
-                              '',
+                          ingredient: ingredient,
                           ingredientStrength:
                               item['ingredient_strength']?.toString() ?? '',
                           rawOcrName:

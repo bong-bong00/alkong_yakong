@@ -437,8 +437,6 @@ class _ConflictCard extends StatelessWidget {
   static List<_NamedMedicine> pairMedicines(Map<String, dynamic> match) {
     final namesA = _namesOf(match['medicine_names_a']);
     final namesB = _namesOf(match['medicine_names_b']);
-    final lineA = (match['easy_line_a'] ?? '').toString().trim();
-    final lineB = (match['easy_line_b'] ?? '').toString().trim();
     final uniqueA = namesA.isEmpty ? '' : namesA.first;
     var uniqueB = namesB.isEmpty ? '' : namesB.first;
     if (uniqueB.isEmpty || uniqueB == uniqueA) {
@@ -448,17 +446,14 @@ class _ConflictCard extends StatelessWidget {
         if (!unique.contains(name)) unique.add(name);
       }
       if (unique.length >= 2) {
-        return [
-          _NamedMedicine(unique[0], lineA),
-          _NamedMedicine(unique[1], lineB),
-        ];
+        return [_NamedMedicine(unique[0]), _NamedMedicine(unique[1])];
       }
       if (unique.length == 1) {
-        return [_NamedMedicine(unique[0], lineA)];
+        return [_NamedMedicine(unique[0])];
       }
       return const [];
     }
-    return [_NamedMedicine(uniqueA, lineA), _NamedMedicine(uniqueB, lineB)];
+    return [_NamedMedicine(uniqueA), _NamedMedicine(uniqueB)];
   }
 
   static List<String> _namesOf(dynamic raw) {
@@ -597,7 +592,7 @@ class _PlusMark extends StatelessWidget {
   }
 }
 
-/// 약 한 장. 이름 아래에 무슨 약인지 한 줄.
+/// 약 한 장. 충돌 이유는 아래 경고 상자에서 설명하므로 이름만 보여 준다.
 class _MedicineTile extends StatelessWidget {
   final _NamedMedicine medicine;
 
@@ -612,21 +607,13 @@ class _MedicineTile extends StatelessWidget {
         borderRadius: BorderRadius.circular(14),
         border: Border.all(color: AppColors.border, width: 2),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Text(medicine.name, style: AppText.cardTitle(size: 19)),
-          if (medicine.roleLine.isNotEmpty) ...[
-            const SizedBox(height: 4),
-            Text(
-              medicine.roleLine,
-              style: AppText.caption(size: 16),
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-            ),
-          ],
-        ],
+      child: Align(
+        alignment: Alignment.center,
+        child: Text(
+          medicine.name,
+          textAlign: TextAlign.center,
+          style: AppText.cardTitle(size: 19),
+        ),
       ),
     );
   }
@@ -634,20 +621,6 @@ class _MedicineTile extends StatelessWidget {
 
 class _NamedMedicine {
   final String name;
-  final String easyLine;
 
-  const _NamedMedicine(this.name, this.easyLine);
-
-  /// 이름 아래에 붙일 한 줄. 카드가 이름을 이미 말했으니 "○○은"은 덜어낸다.
-  String get roleLine {
-    var text = easyLine.trim();
-    for (final particle in const ['은 ', '는 ']) {
-      final prefix = '$name$particle';
-      if (text.startsWith(prefix)) {
-        text = text.substring(prefix.length).trim();
-        break;
-      }
-    }
-    return text;
-  }
+  const _NamedMedicine(this.name);
 }
