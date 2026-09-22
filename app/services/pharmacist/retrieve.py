@@ -156,10 +156,10 @@ def refresh_app_medicines_from_permission() -> int:
 
                 sync_medicine_guidance(conn, dict(saved))
                 ensure_medicine_detail(conn, str(saved["medicine_code"]))
-        from app.services.pharmacist.easy_category import backfill_all_medicine_guidance
-
-        backfill_all_medicine_guidance(conn)
-        conn.commit()
+            # Release the write lock before the next medicine's potentially
+            # slow official lookup. Startup initialization already backfills
+            # unchanged medicines; this worker only needs to persist this row.
+            conn.commit()
     finally:
         conn.close()
     return updated

@@ -8,7 +8,10 @@ DB_PATH = os.getenv("ALKONGYAKONG_DB_PATH", str(PROJECT_ROOT / "alkongyakong.db"
 
 
 def get_connection() -> sqlite3.Connection:
-    conn = sqlite3.connect(DB_PATH)
+    # Background medicine refreshes may briefly hold the SQLite writer lock.
+    # Allow ordinary requests to wait for a short write instead of failing at
+    # SQLite's five-second default timeout.
+    conn = sqlite3.connect(DB_PATH, timeout=30)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
     return conn
