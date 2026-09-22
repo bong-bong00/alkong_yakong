@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import '../../../medication/application/medication_controller.dart';
 import 'package:flutter_tabler_icons/flutter_tabler_icons.dart';
 
@@ -39,6 +40,17 @@ class SavedScreen extends StatelessWidget {
     this.savedAt,
     this.onOpenRecord,
   });
+
+  void _confirm(BuildContext context) {
+    final navigator = Navigator.of(context);
+    if (navigator.canPop()) {
+      navigator.popUntil((route) => route.isFirst);
+      return;
+    }
+    // A replacement can leave this as the navigator's first route. In that
+    // case popUntil is a no-op; return to the real heart records route.
+    GoRouter.maybeOf(context)?.go('/biosignal');
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -137,8 +149,7 @@ class SavedScreen extends StatelessWidget {
                     label: '확인했어요',
                     minHeight: 74,
                     fontSize: 24,
-                    onPressed: () =>
-                        Navigator.of(context).popUntil((r) => r.isFirst),
+                    onPressed: () => _confirm(context),
                   ),
                   if (onOpenRecord != null) ...[
                     const SizedBox(height: 12),

@@ -14,6 +14,7 @@ import 'package:alkong_yakong/features/biosignal/presentation/screens/saved_scre
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:timezone/data/latest.dart' as tzdata;
@@ -47,6 +48,42 @@ Widget wrap(Widget screen) => ProviderScope(
 );
 
 void main() {
+  testWidgets('saved confirmation leaves a first-route completion screen', (
+    tester,
+  ) async {
+    final router = GoRouter(
+      initialLocation: '/saved',
+      routes: [
+        GoRoute(
+          path: '/saved',
+          builder: (_, _) =>
+              const SavedScreen(bpm: 92, guardianTitle: '합성 보호자'),
+        ),
+        GoRoute(
+          path: '/biosignal',
+          builder: (_, _) => const Scaffold(body: Text('심박수 관리로 돌아옴')),
+        ),
+      ],
+    );
+    addTearDown(router.dispose);
+
+    await tester.pumpWidget(
+      ProviderScope(
+        child: MaterialApp.router(
+          theme: AppTheme.build(),
+          routerConfig: router,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.byType(SavedScreen), findsOneWidget);
+    await tester.ensureVisible(find.text('확인했어요'));
+    await tester.tap(find.text('확인했어요'));
+    await tester.pumpAndSettle();
+    expect(find.text('심박수 관리로 돌아옴'), findsOneWidget);
+    expect(find.byType(SavedScreen), findsNothing);
+  });
+
   testWidgets('monthly count is measured days, not a consecutive or normal claim',
       (tester) async {
     const data = HeartData(
