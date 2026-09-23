@@ -223,15 +223,6 @@ class AdherenceWeekCard extends StatelessWidget {
 
   static const List<String> _labels = ['월', '화', '수', '목', '금', '토', '일'];
 
-  String get _summary {
-    final missed = days.where((d) => d.partial && !d.isToday).toList();
-    if (missed.isEmpty) return '이번 주는 빠뜨린 약이 없어요.';
-    final names = missed
-        .map((d) => '${_labels[d.date.weekday - 1]}요일')
-        .join(', ');
-    return '$names 약을 한 번 못 드셨어요.';
-  }
-
   @override
   Widget build(BuildContext context) {
     return SeniorCard(
@@ -285,41 +276,6 @@ class AdherenceWeekCard extends StatelessWidget {
                   child: _WeekDay(status: days[i], label: _labels[i]),
                 ),
             ],
-          ),
-          const SizedBox(height: 13),
-          // 글자를 키우면 두 줄로 내려간다. 줄 밖으로 밀려나지 않게 Wrap을 쓴다.
-          Wrap(
-            spacing: 18,
-            runSpacing: 6,
-            children: [
-              Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    '✓',
-                    style: AppText.cardTitle(size: 16, color: AppColors.point),
-                  ),
-                  const SizedBox(width: 6),
-                  Text('다 드심', style: AppText.caption(size: 16)),
-                ],
-              ),
-              Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    '✗',
-                    style: AppText.cardTitle(size: 16, color: AppColors.danger),
-                  ),
-                  const SizedBox(width: 6),
-                  Text('못 드심', style: AppText.caption(size: 16)),
-                ],
-              ),
-            ],
-          ),
-          const SizedBox(height: 10),
-          Text(
-            _summary,
-            style: AppText.caption(color: AppColors.textSecondary),
           ),
         ],
       ),
