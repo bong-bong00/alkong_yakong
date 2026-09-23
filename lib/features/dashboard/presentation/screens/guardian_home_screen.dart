@@ -17,6 +17,11 @@ import '../../../guardian/data/alert_repository.dart';
 import '../../../guardian/presentation/screens/care_family_screen.dart';
 import '../../../guardian/presentation/screens/guardian_info_screen.dart';
 import '../../../guardian/presentation/screens/guardian_prescription_screen.dart';
+import '../../application/medication_history_provider.dart';
+import '../../../medication/application/medication_controller.dart';
+import '../../../medication/domain/medication_models.dart';
+import 'medication_record_screen.dart';
+import 'month_calendar_screen.dart';
 import 'patient_data.dart';
 
 /// 보호자 쉘 — 탭은 프로토타입대로 **돌보는 분 · 정보** 둘이다.
@@ -160,6 +165,14 @@ class GuardianStatusScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final slots = patient.slots;
     final heartRate = patient.heartRate;
+    // 복약 달력은 어르신 화면과 같은 것을 쓴다. 보호자가 보는 그림과
+    // 어르신이 보는 그림이 다르면 통화로 맞춰 볼 수가 없다.
+    final today =
+        ref.watch(patientTodayProvider(patient.patientId)).valueOrNull ??
+        TodayMedication.empty;
+    final history =
+        ref.watch(patientHistoryProvider(patient.patientId)).valueOrNull ??
+        const <DateTime, DayAdherence>{};
 
     return Scaffold(
       backgroundColor: AppColors.bg,
@@ -255,6 +268,18 @@ class GuardianStatusScreen extends ConsumerWidget {
                           style: AppText.body(size: 18),
                         ),
                       ),
+                    const SizedBox(height: 12),
+                    // 처음엔 이번 주만. "달력으로 보기"를 누르면 한 달로 넓힌다.
+                    AdherenceWeekCard(
+                      days: weekAdherenceStatuses(today, history),
+                      onOpenCalendar: () => Navigator.of(context).push(
+                        MaterialPageRoute<void>(
+                          builder: (_) => MonthCalendarScreen(
+                            patientUserId: patient.patientId,
+                          ),
+                        ),
+                      ),
+                    ),
                   ],
                 ),
               ),

@@ -88,10 +88,8 @@ class MedicationRecordScreen extends ConsumerWidget {
                   ),
                   const SizedBox(height: 12),
                 ],
-                _MonthCard(rate: _monthRate(today, history)),
-                const SizedBox(height: 12),
-                _WeekCard(
-                  days: _weekStatuses(today, history),
+                AdherenceWeekCard(
+                  days: weekAdherenceStatuses(today, history),
                   onOpenCalendar: () => Navigator.of(context).push(
                     MaterialPageRoute<void>(
                       builder: (_) =>
@@ -138,85 +136,63 @@ class MedicationRecordScreen extends ConsumerWidget {
       ],
     );
   }
-
-  // ── 데이터 정리 ───────────────────────────────────────────────
-  // 서버의 날짜별 기록 + 오늘 상태로 센다.
-
-  /// 기록이 하나도 없으면 null. 없는 기록을 퍼센트로 지어내지 않는다.
-  int? _monthRate(TodayMedication today, Map<DateTime, DayAdherence> history) {
-    var taken = 0;
-    var total = 0;
-    final now = dateOnly(DateTime.now());
-    for (final record in history.values) {
-      // 아직 오지 않은 약 있는 날은 달성률에 넣지 않는다.
-      if (record.date.year != now.year ||
-          record.date.month != now.month ||
-          !record.date.isBefore(now)) {
-        continue;
-      }
-      taken += record.taken;
-      total += record.total;
-    }
-    final live = todayAdherence(today);
-    taken += live.taken;
-    total += live.total;
-    if (total == 0) return null;
-    return (taken * 100 / total).round();
-  }
-
-  List<_DayStatus> _weekStatuses(
-    TodayMedication today,
-    Map<DateTime, DayAdherence> history,
-  ) {
-    final now = DateTime.now();
-    final monday = DateTime(
-      now.year,
-      now.month,
-      now.day,
-    ).subtract(Duration(days: now.weekday - 1));
-
-    // 지난 날은 서버 기록, 오늘은 오늘 상태, 앞날은 비운다.
-    final todayDate = dateOnly(now);
-    return [
-      for (int i = 0; i < 7; i++)
-        () {
-          final date = monday.add(Duration(days: i));
-          if (date.isAfter(todayDate)) {
-            final record = history[date];
-            return _DayStatus(
-              date: date,
-              taken: 0,
-              total: record?.total ?? 0,
-              isFuture: true,
-            );
-          }
-          if (date == todayDate) {
-            return _DayStatus(
-              date: date,
-              taken: today.takenCount,
-              total: today.doses.length,
-              isToday: true,
-            );
-          }
-          final record = history[date];
-          return _DayStatus(
-            date: date,
-            taken: record?.taken ?? 0,
-            total: record?.total ?? 0,
-          );
-        }(),
-    ];
-  }
 }
 
-class _DayStatus {
+// ── 데이터 정리 ───────────────────────────────────────────────
+// 서버의 날짜별 기록 + 오늘 상태로 센다.
+
+List<DayStatus> weekAdherenceStatuses(
+  TodayMedication today,
+  Map<DateTime, DayAdherence> history,
+) {
+  final now = DateTime.now();
+  final monday = DateTime(
+    now.year,
+    now.month,
+    now.day,
+  ).subtract(Duration(days: now.weekday - 1));
+
+  // 지난 날은 서버 기록, 오늘은 오늘 상태, 앞날은 비운다.
+  final todayDate = dateOnly(now);
+  return [
+    for (int i = 0; i < 7; i++)
+      () {
+        final date = monday.add(Duration(days: i));
+        if (date.isAfter(todayDate)) {
+          final record = history[date];
+          return DayStatus(
+            date: date,
+            taken: 0,
+            total: record?.total ?? 0,
+            isFuture: true,
+          );
+        }
+        if (date == todayDate) {
+          return DayStatus(
+            date: date,
+            taken: today.takenCount,
+            total: today.doses.length,
+            isToday: true,
+          );
+        }
+        final record = history[date];
+        return DayStatus(
+          date: date,
+          taken: record?.taken ?? 0,
+          total: record?.total ?? 0,
+        );
+      }(),
+  ];
+}
+
+class DayStatus {
   final DateTime date;
   final int taken;
   final int total;
   final bool isToday;
   final bool isFuture;
 
-  const _DayStatus({
+  const DayStatus({
     required this.date,
     required this.taken,
     required this.total,
@@ -236,71 +212,14 @@ class _DayStatus {
 }
 
 /// 카드 1 — 이번 달.
-class _MonthCard extends StatelessWidget {
-  /// 기록이 없으면 null.
-  final int? rate;
-  const _MonthCard({required this.rate});
-
-  @override
-  Widget build(BuildContext context) {
-    final month = DateTime.now().month;
-    return SeniorCard(
-      padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 18),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Row(
-            children: [
-              Expanded(child: Text('이번 달', style: AppText.cardTitle())),
-              Text(
-                '$month월',
-                style: AppText.cardTitle(size: 19, color: AppColors.point),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          if (rate == null)
-            Text(
-              '아직 쌓인 기록이 없어요',
-              style: AppText.label(size: 18, color: AppColors.textTertiary),
-            )
-          else
-            Wrap(
-              spacing: 10,
-              runSpacing: 4,
-              crossAxisAlignment: WrapCrossAlignment.center,
-              children: [
-                Text('$rate%', style: AppText.hero(size: 40)),
-                Text(
-                  rate! >= 90 ? '잘 지키고 계세요' : '조금만 더 챙겨보세요',
-                  style: AppText.label(size: 18, color: AppColors.textTertiary),
-                ),
-              ],
-            ),
-          const SizedBox(height: 12),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(6),
-            child: LinearProgressIndicator(
-              value: (rate ?? 0) / 100,
-              minHeight: 12,
-              backgroundColor: AppColors.divider,
-              valueColor: const AlwaysStoppedAnimation<Color>(AppColors.point),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 /// 카드 2 — 이번 주.
-class _WeekCard extends StatelessWidget {
-  final List<_DayStatus> days;
+class AdherenceWeekCard extends StatelessWidget {
+  final List<DayStatus> days;
 
   /// 한 주에서 한 달로 넓혀 보기.
   final VoidCallback onOpenCalendar;
 
-  const _WeekCard({required this.days, required this.onOpenCalendar});
+  const AdherenceWeekCard({required this.days, required this.onOpenCalendar});
 
   static const List<String> _labels = ['월', '화', '수', '목', '금', '토', '일'];
 
@@ -395,17 +314,6 @@ class _WeekCard extends StatelessWidget {
                   Text('못 드심', style: AppText.caption(size: 16)),
                 ],
               ),
-              Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    '·',
-                    style: AppText.cardTitle(size: 16, color: AppColors.point),
-                  ),
-                  const SizedBox(width: 6),
-                  Text('약 있는 날', style: AppText.caption(size: 16)),
-                ],
-              ),
             ],
           ),
           const SizedBox(height: 10),
@@ -420,7 +328,7 @@ class _WeekCard extends StatelessWidget {
 }
 
 class _WeekDay extends StatelessWidget {
-  final _DayStatus status;
+  final DayStatus status;
   final String label;
 
   const _WeekDay({required this.status, required this.label});
@@ -437,12 +345,6 @@ class _WeekDay extends StatelessWidget {
         status.complete ? '✓' : '${status.taken}',
         style: AppText.cardTitle(size: 17, color: Colors.white),
       );
-    } else if (status.hasUpcomingSchedule) {
-      background = AppColors.pointTint;
-      mark = Text(
-        '·',
-        style: AppText.cardTitle(size: 17, color: AppColors.point),
-      );
     } else if (status.future || status.noRecord) {
       background = AppColors.headerBg;
       mark = Text(
@@ -450,10 +352,10 @@ class _WeekDay extends StatelessWidget {
         style: AppText.cardTitle(size: 17, color: AppColors.inactive),
       );
     } else if (status.complete) {
-      background = AppColors.pointTint;
+      background = AppColors.timelineRing;
       mark = Text(
         '✓',
-        style: AppText.cardTitle(size: 17, color: AppColors.point),
+        style: AppText.cardTitle(size: 17, color: AppColors.pointBorder),
       );
     } else {
       background = AppColors.surface;
@@ -467,9 +369,7 @@ class _WeekDay extends StatelessWidget {
     return Semantics(
       label:
           '${status.date.day}일 $label요일, '
-          '${status.hasUpcomingSchedule
-              ? '약 있는 날'
-              : status.future
+          '${status.future
               ? '아직 오지 않은 날'
               : status.noRecord
               ? '기록 없음'

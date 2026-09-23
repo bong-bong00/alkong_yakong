@@ -22,13 +22,14 @@ class DayDoseDetail extends StatelessWidget {
   final DateTime? date;
 
   /// 카드 아래 안내. 날짜를 누르면 내용이 바뀐다는 것을 알려준다.
-  final String footnote;
+  /// 아래 한 줄 안내. null이면 줄 자체를 그리지 않는다.
+  final String? footnote;
 
   const DayDoseDetail({
     super.key,
     required this.dayLabel,
     required this.doses,
-    required this.footnote,
+    this.footnote,
     this.date,
   });
 
@@ -80,11 +81,13 @@ class DayDoseDetail extends StatelessWidget {
             ],
           ),
         ),
-        const SizedBox(height: 8),
-        Text(
-          footnote,
-          style: AppText.caption(size: 16.5, color: AppColors.textTertiary),
-        ),
+        if (footnote case final String note) ...[
+          const SizedBox(height: 8),
+          Text(
+            note,
+            style: AppText.caption(size: 16.5, color: AppColors.textTertiary),
+          ),
+        ],
       ],
     );
   }
