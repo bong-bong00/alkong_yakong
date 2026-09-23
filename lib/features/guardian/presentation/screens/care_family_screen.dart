@@ -74,56 +74,51 @@ class CareFamilyScreen extends ConsumerWidget {
               : _AlertBell(count: needAttention.length, onTap: onOpenAlerts!),
         ),
         Expanded(
-          // 돌보는 분이 몇 분 안 되면 화면에 다 들어간다. 그때 내용이 딸려
-          // 늘어나면 스크롤할 것이 있는 줄 알고 계속 끌게 된다. 늘어나는
-          // 효과만 끈다 — 당기는 동작 자체는 살아 있어야 새로고침이 된다.
-          child: ScrollConfiguration(
-            behavior: ScrollConfiguration.of(
-              context,
-            ).copyWith(overscroll: false),
-            child: RefreshIndicator(
-              onRefresh: () => ref.refresh(careOverviewProvider.future),
-              child: SingleChildScrollView(
-                physics: const AlwaysScrollableScrollPhysics(),
-                padding: const EdgeInsets.fromLTRB(20, 16, 20, 28),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    if (data == null && overview.isLoading)
-                      const _InfoCard(text: '불러오는 중이에요')
-                    else if (data == null)
-                      _InfoCard(
-                        text: '돌보는 분 목록을 불러오지 못했어요',
-                        actionLabel: '다시 불러오기',
-                        onAction: () => ref.invalidate(careOverviewProvider),
-                      )
-                    else if (patients.isEmpty && pending.isEmpty)
-                      const _InfoCard(
-                        text:
-                            '아직 연결된 어르신이 없어요. 정보 → 돌보는 분 관리에서 '
-                            '어르신 전화번호로 연결을 요청해 주세요.',
-                      ),
-                    if (needAttention.isNotEmpty) ...[
-                      _AttentionBanner(patients: needAttention),
-                      const SizedBox(height: 12),
-                    ],
-                    for (int i = 0; i < patients.length; i++) ...[
-                      if (i > 0) const SizedBox(height: 12),
-                      _PatientCard(
-                        patient: patients[i],
-                        onTap: () => onOpenPatient(patients[i]),
-                      ),
-                    ],
-                    for (final invite in pending) ...[
-                      const SizedBox(height: 12),
-                      _PendingCard(
-                        invite: invite,
-                        onCancel: () => _cancel(context, ref, invite),
-                      ),
-                    ],
-                  ],
-                ),
-              ),
+          // 당겨서 새로고침을 두지 않는다. 돌보는 분이 몇 분 안 되면 목록이
+          // 화면에 다 들어가는데, 새로고침을 살리려면 늘 끌리게 만들어야 해
+          // 스크롤할 것이 없는데도 화면이 들썩였다. 목록은 화면에 들어오면
+          // 움직이지 않고, 길어지면 그때부터 평소대로 스크롤된다.
+          child: SingleChildScrollView(
+            // 아래 여백이 28이면 카드가 다 들어가고도 여백 때문에 몇 px이
+            // 넘쳐 목록이 헛돈다. 카드끼리 이미 12씩 띄우고 있어 16이면
+            // 탭바와 충분히 떨어진다.
+            padding: const EdgeInsets.fromLTRB(20, 16, 20, 16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                if (data == null && overview.isLoading)
+                  const _InfoCard(text: '불러오는 중이에요')
+                else if (data == null)
+                  _InfoCard(
+                    text: '돌보는 분 목록을 불러오지 못했어요',
+                    actionLabel: '다시 불러오기',
+                    onAction: () => ref.invalidate(careOverviewProvider),
+                  )
+                else if (patients.isEmpty && pending.isEmpty)
+                  const _InfoCard(
+                    text:
+                        '아직 연결된 어르신이 없어요. 정보 → 돌보는 분 관리에서 '
+                        '어르신 전화번호로 연결을 요청해 주세요.',
+                  ),
+                if (needAttention.isNotEmpty) ...[
+                  _AttentionBanner(patients: needAttention),
+                  const SizedBox(height: 12),
+                ],
+                for (int i = 0; i < patients.length; i++) ...[
+                  if (i > 0) const SizedBox(height: 12),
+                  _PatientCard(
+                    patient: patients[i],
+                    onTap: () => onOpenPatient(patients[i]),
+                  ),
+                ],
+                for (final invite in pending) ...[
+                  const SizedBox(height: 12),
+                  _PendingCard(
+                    invite: invite,
+                    onCancel: () => _cancel(context, ref, invite),
+                  ),
+                ],
+              ],
             ),
           ),
         ),
