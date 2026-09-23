@@ -37,7 +37,14 @@ class SeniorHeader extends StatelessWidget {
         bottom: false,
         child: Padding(
           padding: const EdgeInsets.fromLTRB(18, 12, 18, 14),
-          child: child,
+          // 상단바는 화면마다 높이가 달라지지 않는다. 제목 한 줄짜리와
+          // 아바타가 붙은 것이 서로 다른 높이로 서면, 탭을 옮길 때마다
+          // 바가 들썩여 같은 앱이 아닌 것처럼 보인다. 52는 이 앱에서
+          // 상단바에 놓이는 동그라미(아바타·종)의 지름이다.
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(minHeight: 52),
+            child: Align(alignment: Alignment.centerLeft, child: child),
+          ),
         ),
       ),
     );
