@@ -59,17 +59,6 @@ class CareManageScreen extends ConsumerWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  SeniorCard(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 22,
-                      vertical: 18,
-                    ),
-                    child: Text(
-                      '한 분씩 따로 설정돼요',
-                      style: AppText.cardTitle(size: 21),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
                   if (patients.isNotEmpty)
                     SeniorCard(
                       padding: const EdgeInsets.symmetric(
@@ -97,12 +86,10 @@ class CareManageScreen extends ConsumerWidget {
                     SeniorCard(
                       padding: const EdgeInsets.symmetric(
                         horizontal: 22,
-                        vertical: 18,
+                        vertical: 14,
                       ),
                       child: Text(
-                        overview.isLoading
-                            ? '불러오는 중이에요'
-                            : '아직 연결된 어르신이 없어요. 아래에서 어르신 전화번호로 연결을 요청해 주세요.',
+                        overview.isLoading ? '불러오는 중이에요' : '아직 연결된 어르신이 없어요',
                         style: AppText.body(size: 18),
                       ),
                     ),
@@ -111,7 +98,7 @@ class CareManageScreen extends ConsumerWidget {
                     SeniorCard(
                       padding: const EdgeInsets.symmetric(
                         horizontal: 20,
-                        vertical: 18,
+                        vertical: 14,
                       ),
                       child: Row(
                         children: [

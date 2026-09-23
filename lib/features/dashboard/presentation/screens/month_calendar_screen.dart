@@ -296,7 +296,7 @@ class _MonthCalendarScreenState extends ConsumerState<MonthCalendarScreen> {
                         SeniorCard(
                           padding: const EdgeInsets.symmetric(
                             horizontal: 20,
-                            vertical: 18,
+                            vertical: 14,
                           ),
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.stretch,

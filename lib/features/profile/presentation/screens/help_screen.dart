@@ -58,7 +58,7 @@ class _HelpScreenState extends State<HelpScreen> {
                 SeniorCard(
                   padding: const EdgeInsets.symmetric(
                     horizontal: 22,
-                    vertical: 20,
+                    vertical: 16,
                   ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,

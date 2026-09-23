@@ -7,6 +7,8 @@ import '../../../../core/theme/app_typography.dart';
 import '../../../../core/widgets/senior_card.dart';
 import '../../../../core/widgets/senior_header.dart';
 import '../../../dashboard/presentation/screens/patient_data.dart';
+import '../../../medicines/application/user_medicines_controller.dart';
+import '../../../medicines/domain/user_medicine_models.dart';
 import '../../../profile/domain/user_profile.dart';
 
 /// 그 어르신의 몸 이야기를 가져온다. 못 가져오면 null.
@@ -40,6 +42,7 @@ class CarePatientScreen extends ConsumerWidget {
         .watch(carePatientProfileProvider(patient.patientId))
         .valueOrNull;
     final allergies = profile?.allergies ?? const <String>[];
+    final medicines = ref.watch(patientMedicinesProvider(patient.patientId));
     final diseases = profile?.diseases ?? const <String>[];
 
     String? sizeLine() {
@@ -83,6 +86,8 @@ class CarePatientScreen extends ConsumerWidget {
                     _WarnCard(text: '${allergies.join(' · ')} 알레르기가 있어요'),
                     const SizedBox(height: 12),
                   ],
+                  _MedicineListCard(medicines: medicines),
+                  const SizedBox(height: 12),
                   SeniorCard(
                     padding: const EdgeInsets.symmetric(
                       horizontal: 22,
@@ -118,7 +123,7 @@ class CarePatientScreen extends ConsumerWidget {
                   SeniorCard(
                     padding: const EdgeInsets.symmetric(
                       horizontal: 22,
-                      vertical: 18,
+                      vertical: 14,
                     ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -163,15 +168,15 @@ class CarePatientScreen extends ConsumerWidget {
                     ),
                     child: Column(
                       children: [
+                        const SeniorDivider(),
                         _FactRow(
-                          label: '크게 아팠던 적',
+                          label: '과거에 앓았던 병',
                           value: switch (profile?.pastHistory) {
-                            true => '있어요',
-                            false => '없어요',
-                            _ => null,
+                            true => '있으세요',
+                            false => '없으세요',
+                            null => null,
                           },
                         ),
-                        const SeniorDivider(),
                         _FactRow(
                           label: '가족 병력',
                           value: switch (profile?.familyHistory) {
@@ -250,6 +255,84 @@ class _FactRow extends StatelessWidget {
                   : AppText.cardTitle(size: 20),
             ),
           ),
+        ],
+      ),
+    );
+  }
+}
+
+/// 지금 드시는 약. 대신 처방전을 넣기 전에 무엇이 이미 들어가 있는지
+/// 알아야 같은 약을 두 번 넣지 않는다.
+class _MedicineListCard extends StatelessWidget {
+  final AsyncValue<List<UserMedicine>> medicines;
+
+  const _MedicineListCard({required this.medicines});
+
+  @override
+  Widget build(BuildContext context) {
+    return SeniorCard(
+      padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text('지금 드시는 약', style: AppText.cardTitle(size: 21)),
+          const SizedBox(height: 12),
+          ...medicines.when(
+            loading: () => [Text('불러오는 중이에요', style: AppText.body(size: 18))],
+            // 못 읽었으면 못 읽었다고 말한다. 빈 목록으로 두면 드시는 약이
+            // 없는 줄 알고 같은 약을 또 넣는다.
+            error: (_, _) => [
+              Text(
+                '약 목록을 불러오지 못했어요',
+                style: AppText.body(size: 18, color: AppColors.danger),
+              ),
+            ],
+            data: (list) {
+              final active = list.where((m) => m.status == 'active').toList();
+              if (active.isEmpty) {
+                return [Text('등록된 약이 없어요', style: AppText.body(size: 18))];
+              }
+              return [
+                for (int i = 0; i < active.length; i++) ...[
+                  if (i > 0) const SeniorDivider(),
+                  _MedicineLine(medicine: active[i]),
+                ],
+              ];
+            },
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _MedicineLine extends StatelessWidget {
+  final UserMedicine medicine;
+
+  const _MedicineLine({required this.medicine});
+
+  @override
+  Widget build(BuildContext context) {
+    final slots = medicine.administrationTimes
+        .map((t) => t.trim())
+        .where((t) => t.isNotEmpty)
+        .toList();
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(medicine.displayName, style: AppText.cardTitle(size: 20)),
+          if (medicine.amount.trim().isNotEmpty || slots.isNotEmpty) ...[
+            const SizedBox(height: 4),
+            Text(
+              [
+                if (medicine.amount.trim().isNotEmpty) medicine.amount.trim(),
+                if (slots.isNotEmpty) slots.join(' · '),
+              ].join(' · '),
+              style: AppText.caption(size: 17.5),
+            ),
+          ],
         ],
       ),
     );

@@ -226,7 +226,7 @@ class AdherenceWeekCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SeniorCard(
-      padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 18),
+      padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 14),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -297,10 +297,11 @@ class _WeekDay extends StatelessWidget {
 
     if (status.isToday) {
       background = AppColors.point;
-      mark = Text(
-        status.complete ? '✓' : '${status.taken}',
-        style: AppText.cardTitle(size: 17, color: Colors.white),
-      );
+      // 오늘은 아직 끝나지 않았다. 다 드시면 ✓, 아니면 아무 표시도 하지
+      // 않는다 — 먹은 횟수를 숫자로 적으면 0이 "빠뜨림"으로 읽힌다.
+      mark = status.complete
+          ? Text('✓', style: AppText.cardTitle(size: 17, color: Colors.white))
+          : const SizedBox.shrink();
     } else if (status.future || status.noRecord) {
       background = AppColors.headerBg;
       mark = Text(

@@ -296,7 +296,7 @@ class _DurAnalysisScreenState extends ConsumerState<DurAnalysisScreen> {
             const SizedBox(height: 12),
           ],
           SeniorCard(
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
             onTap: () => context.push('/drug-explain'),
             child: Row(
               children: [
@@ -375,7 +375,7 @@ class _ConflictCard extends StatelessWidget {
     final source = _sourceLabel(match);
 
     return SeniorCard(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
       borderColor: AppColors.danger,
       borderWidth: 3,
       child: Column(

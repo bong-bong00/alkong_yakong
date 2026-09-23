@@ -237,7 +237,7 @@ class _ProxySignupScreenState extends ConsumerState<ProxySignupScreen> {
         ),
         const SizedBox(height: 14),
         SeniorCard(
-          padding: const EdgeInsets.fromLTRB(20, 20, 20, 22),
+          padding: const EdgeInsets.fromLTRB(20, 16, 20, 16),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
@@ -302,7 +302,7 @@ class _ProxySignupScreenState extends ConsumerState<ProxySignupScreen> {
       actionsKey: _actionsKey,
       content: [
         SeniorCard(
-          padding: const EdgeInsets.fromLTRB(20, 18, 20, 20),
+          padding: const EdgeInsets.fromLTRB(20, 14, 20, 16),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -324,7 +324,7 @@ class _ProxySignupScreenState extends ConsumerState<ProxySignupScreen> {
         ),
         const SizedBox(height: 14),
         SeniorCard(
-          padding: const EdgeInsets.fromLTRB(20, 18, 20, 20),
+          padding: const EdgeInsets.fromLTRB(20, 14, 20, 16),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
@@ -393,7 +393,7 @@ class _ProxySignupScreenState extends ConsumerState<ProxySignupScreen> {
       actionsKey: _actionsKey,
       content: [
         SeniorCard(
-          padding: const EdgeInsets.fromLTRB(20, 22, 20, 22),
+          padding: const EdgeInsets.fromLTRB(20, 16, 20, 16),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -592,7 +592,7 @@ class _NoticeCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SeniorCard(
-      padding: const EdgeInsets.fromLTRB(20, 18, 20, 20),
+      padding: const EdgeInsets.fromLTRB(20, 14, 20, 16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [

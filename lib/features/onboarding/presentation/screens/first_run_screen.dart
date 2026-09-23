@@ -51,7 +51,7 @@ class FirstRunScreen extends StatelessWidget {
 
               // ── 선택지 1 (권장) ──
               SeniorCard(
-                padding: const EdgeInsets.fromLTRB(18, 16, 18, 18),
+                padding: const EdgeInsets.fromLTRB(18, 14, 18, 14),
                 radius: 24,
                 borderColor: AppColors.point,
                 child: Column(
@@ -91,7 +91,7 @@ class FirstRunScreen extends StatelessWidget {
 
               // ── 선택지 2 ──
               SeniorCard(
-                padding: const EdgeInsets.fromLTRB(18, 16, 18, 18),
+                padding: const EdgeInsets.fromLTRB(18, 14, 18, 14),
                 radius: 24,
                 borderColor: AppColors.border,
                 borderWidth: 2,

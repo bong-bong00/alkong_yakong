@@ -128,7 +128,7 @@ class _EmptyMonthCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SeniorCard(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
       child: Column(
         children: [
           const ExcludeSemantics(
@@ -305,7 +305,7 @@ class _WeeklyBars extends StatelessWidget {
     );
 
     return SeniorCard(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [

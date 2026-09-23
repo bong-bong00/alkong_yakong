@@ -462,7 +462,9 @@ void _signupTests() {
   testWidgets('걸음마다 지금 어디쯤인지 알려준다 (02~05)', (tester) async {
     await tester.pumpWidget(wrap(const SignupScreen()));
     expect(find.textContaining(stepLabel), findsOneWidget);
-    expect(find.text('1 / 10'), findsOneWidget);
+    // 총 개수는 박지 않는다 — 역할·성별에 따라, 그리고 묻는 것이 늘거나
+    // 줄면 달라진다. 첫 걸음이 1번째라는 것만 지킨다.
+    expect(find.textContaining(RegExp(r'^1 / \d+$')), findsOneWidget);
     expect(find.text('어떤 분이신가요?'), findsOneWidget);
   });
 
@@ -579,7 +581,8 @@ void _signupTests() {
       "title: '담배와 술은",
       "title: '약물 알레르기가",
       "title: '지금 앓고 있는",
-      "title: '크게 아팠던 적이나",
+      "title: '과거에 앓았던 병이",
+      "title: '가족이 앓은 병이",
       "title: '보호자 연락처를",
     ]) {
       expect(source.contains(question), isTrue, reason: '$question 단계가 없다');

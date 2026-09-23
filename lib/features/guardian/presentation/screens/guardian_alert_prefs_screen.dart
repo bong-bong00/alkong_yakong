@@ -143,6 +143,12 @@ class _SwitchRow extends StatelessWidget {
             inactiveThumbColor: Colors.white,
             inactiveTrackColor: AppColors.strongLine,
             trackOutlineColor: WidgetStateProperty.all(Colors.transparent),
+            // 머티리얼 기본값은 꺼짐일 때 안쪽 동그라미를 줄인다. 켜고 끌 때
+            // 크기까지 바뀌면 손가락이 짚을 자리가 흔들린다. 보이지 않는
+            // 아이콘을 넣어 두 상태의 동그라미를 같은 크기로 묶는다.
+            thumbIcon: WidgetStateProperty.all(
+              const Icon(Icons.circle, size: 0, color: Colors.transparent),
+            ),
           ),
         ],
       ),

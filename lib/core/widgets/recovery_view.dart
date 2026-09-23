@@ -116,7 +116,7 @@ class RecoveryView extends StatelessWidget {
 
           // ④ 여전히 되는 것
           SeniorCard(
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -131,7 +131,7 @@ class RecoveryView extends StatelessWidget {
           if (helperText != null) ...[
             const SizedBox(height: 12),
             SeniorCard(
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
               child: Row(
                 children: [
                   Expanded(

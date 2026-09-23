@@ -95,7 +95,7 @@ class _PolarScreenState extends State<PolarScreen> {
                   SeniorCard(
                     padding: const EdgeInsets.symmetric(
                       horizontal: 20,
-                      vertical: 18,
+                      vertical: 14,
                     ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -161,7 +161,7 @@ class _StatusCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SeniorCard(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
       child: Column(
         children: [
           Container(

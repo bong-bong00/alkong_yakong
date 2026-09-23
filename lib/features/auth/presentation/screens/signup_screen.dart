@@ -59,11 +59,13 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
 
   final _diseaseOther = TextEditingController();
 
-  /// 크게 아팠던 적과 부모·형제가 앓은 병. "없어요"는 다른 것과 함께 고를 수 없다.
+  /// 과거에 앓았던 병과 부모·형제가 앓은 병.
+  /// "없어요"는 다른 것과 함께 고를 수 없다.
   final Set<String> _pastIllnesses = {};
   final Set<String> _familyIllnesses = {};
 
-  static const _pastOptions = ['수술받은 적', '암', '뇌졸중', '심근경색', '간·콩팥병', '없어요'];
+  static const _pastOptions = ['암', '뇌졸중', '심근경색', '간·콩팥병', '없어요'];
+
   static const _familyOptions = ['고혈압', '당뇨', '암', '심장병', '치매', '없어요'];
 
   final Set<String> _diseases = {};
@@ -556,34 +558,36 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
       ]);
       steps.add(
         _StepDef(
-          title: '크게 아팠던 적이나\n가족 병력이 있나요?',
-          subtitle: '해당이 없으면 "없어요"를 눌러주세요.',
+          title: '과거에 앓았던 병이\n있나요?',
+          subtitle: '지금은 다 나으셨더라도 골라주세요. 없으면 "없어요"를 눌러주세요.',
           validate: () {
             if (_pastIllnesses.isEmpty) {
-              return '크게 아팠던 적을 고르거나 "없어요"를 눌러주세요';
+              return '과거에 앓았던 병을 고르거나 "없어요"를 눌러주세요';
             }
+            return null;
+          },
+          child: _multiChips(
+            _pastOptions,
+            _pastIllnesses,
+            (o) => _toggle(_pastIllnesses, o),
+          ),
+        ),
+      );
+
+      steps.add(
+        _StepDef(
+          title: '가족이 앓은 병이\n있나요?',
+          subtitle: '부모·형제 이야기입니다. 해당이 없으면 "없어요"를 눌러주세요.',
+          validate: () {
             if (_familyIllnesses.isEmpty) {
               return '가족이 앓은 병을 고르거나 "없어요"를 눌러주세요';
             }
             return null;
           },
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              _sectionLabel('크게 아팠던 적 (여러 개 가능)'),
-              _multiChips(
-                _pastOptions,
-                _pastIllnesses,
-                (o) => _toggle(_pastIllnesses, o),
-              ),
-              const SizedBox(height: 18),
-              _sectionLabel('부모·형제가 앓은 병 (여러 개 가능)'),
-              _multiChips(
-                _familyOptions,
-                _familyIllnesses,
-                (o) => _toggle(_familyIllnesses, o),
-              ),
-            ],
+          child: _multiChips(
+            _familyOptions,
+            _familyIllnesses,
+            (o) => _toggle(_familyIllnesses, o),
           ),
         ),
       );

@@ -119,7 +119,7 @@ class _MyPageScreenState extends ConsumerState<MyPageScreen> {
                 SeniorCard(
                   padding: const EdgeInsets.symmetric(
                     horizontal: 20,
-                    vertical: 18,
+                    vertical: 14,
                   ),
                   child: Row(
                     children: [
@@ -230,7 +230,7 @@ class _MyPageScreenState extends ConsumerState<MyPageScreen> {
                   SeniorCard(
                     padding: const EdgeInsets.symmetric(
                       horizontal: 22,
-                      vertical: 18,
+                      vertical: 14,
                     ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,

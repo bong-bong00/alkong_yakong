@@ -40,7 +40,7 @@ class GuardianInfoScreen extends ConsumerWidget {
                 SeniorCard(
                   padding: const EdgeInsets.symmetric(
                     horizontal: 20,
-                    vertical: 18,
+                    vertical: 14,
                   ),
                   onTap: () => Navigator.of(context).push(
                     MaterialPageRoute<void>(

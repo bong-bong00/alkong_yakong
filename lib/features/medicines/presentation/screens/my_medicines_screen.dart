@@ -142,7 +142,7 @@ class _MedicineCard extends StatelessWidget {
 
   Widget _body(BuildContext context) {
     return SeniorCard(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
       onTap: () => context.push('/medicines/${medicine.medicineCode}'),
       child: Row(
         children: [

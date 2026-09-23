@@ -172,7 +172,7 @@ class _MeasureScreenState extends State<MeasureScreen> {
                     SeniorCard(
                       padding: const EdgeInsets.symmetric(
                         horizontal: 20,
-                        vertical: 18,
+                        vertical: 14,
                       ),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -197,7 +197,7 @@ class _MeasureScreenState extends State<MeasureScreen> {
                     SeniorCard(
                       padding: const EdgeInsets.symmetric(
                         horizontal: 20,
-                        vertical: 17,
+                        vertical: 14,
                       ),
                       child: LabelValueRow(
                         label: Row(
@@ -329,7 +329,7 @@ class _MeasureCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SeniorCard(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 22),
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
       child: Column(
         children: [
           _PulsingHeart(active: !done),
@@ -381,7 +381,7 @@ class _NoValueCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SeniorCard(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -486,7 +486,7 @@ class _ResultCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SeniorCard(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
