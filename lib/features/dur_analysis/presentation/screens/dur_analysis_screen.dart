@@ -326,14 +326,9 @@ class _DurAnalysisScreenState extends ConsumerState<DurAnalysisScreen> {
               onPressed: _afterConfirm,
             ),
           ],
-          const SizedBox(height: 16),
-          SeniorButton(
-            label: '$_guardianTitle에게 알리기',
-            kind: SeniorButtonKind.outline,
-            minHeight: 64,
-            fontSize: 21,
-            onPressed: _callGuardian,
-          ),
+          // 아래쪽 "○○에게 알리기"는 두지 않는다. 여기서 누른 알림은
+          // 가족에게 "약이 부딪힌다"만 전할 뿐, 어르신이 할 일은 그대로
+          // 남는다. 도움을 청하는 길은 읽지 못했을 때의 회복 화면에 있다.
         ],
       ),
     );
