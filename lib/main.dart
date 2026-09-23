@@ -1,6 +1,6 @@
+import 'demo_guardian.dart';
 import 'features/guardian/presentation/screens/guardian_prescription_screen.dart';
 import 'features/prescription/presentation/screens/medicine_arrived_screen.dart';
-import 'demo_guardian.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -33,7 +33,10 @@ final _router = GoRouter(
   initialLocation: '/login',
   redirect: (context, state) {
     final publicRoute =
-        state.matchedLocation == '/login' || state.matchedLocation == '/signup';
+        state.matchedLocation == '/login' ||
+        state.matchedLocation == '/signup' ||
+        // 화면 확인용 임시 통로. 확인이 끝나면 지운다.
+        state.matchedLocation == '/demo-guardian';
     if (!AuthSession.isLoggedIn) return publicRoute ? null : '/login';
     return publicRoute ? '/' : null;
   },

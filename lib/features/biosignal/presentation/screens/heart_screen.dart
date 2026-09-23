@@ -5,7 +5,6 @@ import '../../../medication/application/medication_controller.dart';
 import 'package:flutter_tabler_icons/flutter_tabler_icons.dart';
 
 import '../../../../core/constants/app_colors.dart';
-import '../../../../core/session/mvp_session.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../core/widgets/senior_button.dart';
 import '../../../../core/widgets/senior_card.dart';
@@ -15,7 +14,6 @@ import '../../../medication/domain/medication_models.dart';
 import '../../application/heart_sensor.dart';
 import '../../data/heart_repository.dart';
 import '../../domain/heart_data.dart';
-import '../widgets/dumbbell_chart.dart';
 import '../widgets/heart_readings_card.dart';
 import 'measure_screen.dart';
 import 'monthly_heart_screen.dart';
@@ -61,18 +59,16 @@ class _HeartScreenState extends State<HeartScreen> {
   /// 서버에서 읽어 온 기록. 아직 못 읽었으면 null — 예시로 채우지 않는다.
   HeartData? _data;
   bool _loading = true;
-  bool _failed = false;
-  int _requestSequence = 0;
-  bool _sensorUpdatePending = false;
 
-  @override
-  void didUpdateWidget(covariant HeartScreen oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.userId != widget.userId) {
-      _data = null;
-      unawaited(_load());
-    }
-  }
+  /// 몇 번째 물음인지. 늦게 온 답은 버린다.
+  int _requestId = 0;
+
+  /// 뒤에서 다시 읽다 실패했는지. 보이는 기록은 그대로 두되 말은 해 준다.
+  bool _reloadFailed = false;
+  bool _failed = false;
+
+  /// 보호자 알림 스위치. 기록이 아니라 설정이라 기록과 따로 든다.
+  bool _notifyGuardian = true;
 
   /// 다른 사람(어르신)의 기록을 보는 중인지. 그러면 이 전화기로 재지 않는다.
   bool get _viewingOther => widget.userId != null;
@@ -84,8 +80,11 @@ class _HeartScreenState extends State<HeartScreen> {
     unawaited(_load());
   }
 
+  /// 측정 화면이 열리고 닫히는 동안에도 센서는 계속 알려 온다.
+  /// 그리는 도중에 setState 를 부르면 터지므로 한 박자 뒤로 미룬다.
+  bool _sensorUpdatePending = false;
+
   void _onSensor() {
-    // Measurement route init/dispose can notify while Navigator is building.
     if (_sensorUpdatePending) return;
     _sensorUpdatePending = true;
     scheduleMicrotask(() {
@@ -102,42 +101,44 @@ class _HeartScreenState extends State<HeartScreen> {
 
   /// 기록을 읽는다.
   ///
-  /// 갱신 중·실패를 표시하되 서버 기록을 로컬에서 만들거나 다시 저장하지 않는다.
+  /// [quiet]이면 들고 있던 기록을 치우지 않고 뒤에서 새로 읽는다 —
+  /// 재고 돌아왔을 때 화면이 한 번 비었다 채워지면 어르신이 놀란다.
   Future<void> _load({bool quiet = false}) async {
-    final sequence = ++_requestSequence;
-    final userId = widget.userId ?? MvpSession.userId;
     // 처음 부를 때는 이미 "읽는 중"으로 시작하므로 initState 안에서
     // setState 를 부르지 않는다. 다시 불러오기를 누른 경우에만 상태를 되돌린다.
-    if (!_loading) {
+    if (!quiet && !_loading) {
       setState(() {
         _loading = true;
         _failed = false;
       });
     }
-    final loaded = await _repository.fetch(userId: userId);
-    if (!mounted || sequence != _requestSequence) return;
-    if (userId != (widget.userId ?? MvpSession.userId)) {
-      _data = null;
-      unawaited(_load());
-      return;
-    }
+    final id = ++_requestId;
+    final loaded = await _repository.fetch(userId: widget.userId);
+    if (!mounted || id != _requestId) return;
     setState(() {
       _loading = false;
       if (loaded != null) {
         _data = loaded;
         _failed = false;
-      } else {
-        // 이전 데이터가 있어도 새 조회 실패를 숨기지 않는다.
+        _reloadFailed = false;
+      } else if (!quiet || _data == null) {
         _failed = true;
+      } else {
+        // 조용히 다시 읽다 실패했으면 보이는 기록은 그대로 두고,
+        // 못 읽었다는 말만 덧붙인다.
+        _reloadFailed = true;
       }
     });
   }
 
   Future<void> _openMonthly() async {
+    // 한 달을 열 때마다 서버에서 다시 읽는다. 못 읽으면 옛 기록으로
+    // 한 달 화면을 열지 않고, 이 화면에서 못 읽었다고 말한다.
     await _load(quiet: true);
-    if (!mounted || _failed) return;
+    if (!mounted) return;
     final data = _data;
-    if (data == null) return;
+    // 다시 읽기가 실패했으면 옛 기록으로 한 달 화면을 열지 않는다.
+    if (data == null || _failed || _reloadFailed) return;
     await Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => MonthlyHeartScreen(
@@ -146,7 +147,8 @@ class _HeartScreenState extends State<HeartScreen> {
         ),
       ),
     );
-    if (mounted) unawaited(_load(quiet: true));
+    // 돌아오면 그 사이 올라간 기록을 다시 읽는다.
+    if (mounted) await _load(quiet: true);
   }
 
   Future<void> _openMeasure() async {
@@ -190,11 +192,12 @@ class _HeartScreenState extends State<HeartScreen> {
                   labels: const ['이번 주', '한 달'],
                   index: 0,
                   onChanged: (i) {
-                    // 읽어 온 기록이 없으면 한 달 화면에 넘길 것도 없다.
+                    // 어느 쪽을 눌러도 서버에서 다시 읽는다. 한 달은
+                    // 새로 읽은 기록으로 연다.
                     if (i == 1) {
                       unawaited(_openMonthly());
                     } else {
-                      unawaited(_load());
+                      unawaited(_load(quiet: true));
                     }
                   },
                 ),
@@ -207,29 +210,29 @@ class _HeartScreenState extends State<HeartScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  if (_loading)
+                  if (_loading && data == null)
                     const _LoadingCard()
-                  else if (_failed)
+                  else if (_failed && data == null)
                     _FailedCard(onRetry: () => unawaited(_load()))
-                  else if (data != null &&
-                      data.readingsFor(monthly: false).isEmpty &&
-                      !data.week.any(
-                        (d) => d.pair.before != null || d.pair.after != null,
-                      ) &&
-                      data.today.before == null &&
-                      data.today.after == null)
+                  else if (data != null && !data.hasReadings)
                     _EmptyCard(viewingOther: _viewingOther)
-                  else if (data != null) ...[
+                  else if (data != null)
+                    _TodayCard(data: data),
+                  if ((_failed || _reloadFailed) && data != null) ...[
+                    const SizedBox(height: 12),
+                    Text(
+                      '심박수 기록을 불러오지 못했어요',
+                      style: AppText.body(size: 18, color: AppColors.danger),
+                    ),
+                  ],
+                  if (data != null) ...[
                     if (data.readingsFor(monthly: false).isNotEmpty) ...[
+                      const SizedBox(height: 12),
                       HeartReadingsCard(
                         readings: data.readingsFor(monthly: false),
-                        hasComparison: data.week.any((d) => d.pair.isComplete),
+                        hasComparison: data.today.isComplete,
                       ),
-                      const SizedBox(height: 12),
                     ],
-                    _TodayCard(data: data),
-                    const SizedBox(height: 12),
-                    _WeekCard(data: data),
                   ],
                   if (!_viewingOther) ...[
                     const SizedBox(height: 16),
@@ -240,18 +243,29 @@ class _HeartScreenState extends State<HeartScreen> {
                       onPressed: () => unawaited(_openMeasure()),
                     ),
                   ],
+                  const SizedBox(height: 12),
+                  // 지난 기록은 한 달 화면이 맡는다. 위 세그먼트와 같은 곳으로
+                  // 가지만, 아래까지 내려온 자리에서도 길이 보여야 한다.
+                  SeniorCard(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 20,
+                      vertical: 4,
+                    ),
+                    child: SeniorListRow(
+                      label: '지난 기록 보기',
+                      trailing: const SeniorChevron(),
+                      onTap: () => unawaited(_openMonthly()),
+                    ),
+                  ),
                   if (!_viewingOther) ...[
                     const SizedBox(height: 12),
                     _SensorRow(
                       sensor: widget.sensor,
-                      onTap: () async {
-                        await Navigator.of(context).push(
-                          MaterialPageRoute(
-                            builder: (_) => PolarScreen(sensor: widget.sensor),
-                          ),
-                        );
-                        if (mounted) unawaited(_load(quiet: true));
-                      },
+                      onTap: () => Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => PolarScreen(sensor: widget.sensor),
+                        ),
+                      ),
                     ),
                   ],
                   const SizedBox(height: 12),
@@ -260,7 +274,8 @@ class _HeartScreenState extends State<HeartScreen> {
                       context,
                       widget.guardianTitle,
                     ),
-                    value: false,
+                    value: _notifyGuardian,
+                    onChanged: (v) => setState(() => _notifyGuardian = v),
                   ),
                 ],
               ),
@@ -336,7 +351,7 @@ class _FailedCard extends StatelessWidget {
           const SizedBox(height: 8),
           Text(
             '인터넷이 연결되어 있는지 확인한 뒤 다시 눌러 주세요. '
-            '재 둔 기록은 지워지지 않았어요.',
+            '측정해 둔 기록은 지워지지 않았어요.',
             style: AppText.body(size: 18),
           ),
           const SizedBox(height: 16),
@@ -391,7 +406,7 @@ class _EmptyCard extends StatelessWidget {
           const SizedBox(height: 6),
           Text(
             viewingOther
-                ? '센서로 측정하고 나면 여기에 기록이 남아요.'
+                ? '센서로 측정하고 나면 여기에 약 먹기 전·후 값이 남아요.'
                 : '약 드시기 전과 드신 뒤에 한 번씩 재면\n여기에 남아요.',
             textAlign: TextAlign.center,
             style: AppText.body(size: 18, color: AppColors.textSecondary),
@@ -459,7 +474,7 @@ class _TodayCard extends StatelessWidget {
                 borderRadius: BorderRadius.circular(16),
               ),
               child: Text(
-                '오늘의 복약 전·후 비교 기록은 없어요',
+                '오늘은 아직 재지 않았어요',
                 style: AppText.label(size: 18.5, color: AppColors.textPrimary),
               ),
             )
@@ -587,57 +602,6 @@ class _ValueBox extends StatelessWidget {
   }
 }
 
-/// 이번 주 덤벨 막대.
-class _WeekCard extends StatelessWidget {
-  final HeartData data;
-  const _WeekCard({required this.data});
-
-  /// 전·후를 함께 잰 날만 센다. 못 잰 날을 "비슷했다"로 치지 않는다.
-  String _summary() {
-    final complete = data.week.where((d) => d.pair.isComplete).toList();
-    if (complete.isEmpty) {
-      return '이번 주에는 전·후를 함께 잰 날이 아직 없어요';
-    }
-    final dropped = complete.where((d) => d.pair.drop! > 0).length;
-    if (dropped == complete.length) {
-      return '잰 ${complete.length}일 모두 약을 드신 뒤에 낮아졌어요';
-    }
-    return '잰 ${complete.length}일 중 $dropped일은 약을 드신 뒤에 낮아졌어요';
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return SeniorCard(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Row(
-            children: [
-              Expanded(child: Text('이번 주', style: AppText.cardTitle())),
-              const DumbbellLegend(),
-            ],
-          ),
-          const SizedBox(height: 16),
-          DumbbellChart(days: data.week),
-          const SizedBox(height: 14),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-            decoration: BoxDecoration(
-              color: AppColors.sunken,
-              borderRadius: BorderRadius.circular(16),
-            ),
-            child: Text(
-              _summary(),
-              style: AppText.label(size: 18, color: AppColors.textPrimary),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 /// 센서 상태 한 줄.
 ///
 /// 연결 여부·배터리·마지막 측정은 **센서가 말한 것만** 쓴다. 이 화면이
@@ -654,7 +618,7 @@ class _SensorRow extends StatelessWidget {
     final parts = <String>[
       if (sensor.battery != null) '배터리 ${sensor.battery}%',
       if (lastReadAt != null)
-        '${DoseSlot.absoluteTime(lastReadAt)}에 잰 것이 마지막이에요',
+        '${DoseSlot.absoluteTime(lastReadAt)}에 측정한 것이 마지막이에요',
     ];
     return parts.isEmpty ? '연결되어 있어요' : parts.join(' · ');
   }
@@ -715,12 +679,17 @@ class _SensorRow extends StatelessWidget {
   }
 }
 
-/// 아직 지원하지 않는 보호자 자동 알림은 끈 상태로 비활성화한다.
+/// 심박수가 빠르면 보호자에게 자동으로 알리는 스위치.
 class _NotifyRow extends StatelessWidget {
   final String guardianTitle;
   final bool value;
+  final ValueChanged<bool> onChanged;
 
-  const _NotifyRow({required this.guardianTitle, required this.value});
+  const _NotifyRow({
+    required this.guardianTitle,
+    required this.value,
+    required this.onChanged,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -730,15 +699,15 @@ class _NotifyRow extends StatelessWidget {
         children: [
           Expanded(
             child: Text(
-              '보호자 자동 알림은\n아직 지원하지 않아요',
+              '심박수가 너무 빠르면\n$guardianTitle에게 바로 알려요',
               style: AppText.label(size: 19, color: AppColors.textPrimary),
             ),
           ),
           const SizedBox(width: 12),
           SeniorToggle(
             value: value,
-            semanticLabel: '보호자 자동 알림 미지원',
-            onChanged: null,
+            semanticLabel: '심박수가 빠를 때 $guardianTitle에게 알리기',
+            onChanged: onChanged,
           ),
         ],
       ),

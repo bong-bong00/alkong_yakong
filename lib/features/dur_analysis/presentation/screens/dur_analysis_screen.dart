@@ -14,7 +14,6 @@ import '../../../../core/widgets/senior_button.dart';
 import '../../../../core/widgets/senior_card.dart';
 import '../../../../core/widgets/senior_feedback.dart';
 import '../../../../core/widgets/senior_header.dart';
-import '../../../guardian/data/guardian_repository.dart';
 import '../../../medication/application/medication_controller.dart';
 
 const _pairTypes = {'병용금기', '중복성분', '효능군중복'};
@@ -39,8 +38,9 @@ class DurAnalysisScreen extends ConsumerStatefulWidget {
 }
 
 class _DurAnalysisScreenState extends ConsumerState<DurAnalysisScreen> {
-  final ApiClient _durApi = ApiClient(baseUrl: ApiConfig.localFeatureBaseUrl);
-  final GuardianRepository _guardians = GuardianRepository();
+  final ApiClient _apiClient = ApiClient(
+    baseUrl: ApiConfig.localFeatureBaseUrl,
+  );
   String _guardianTitle = '보호자 가족 님';
 
   bool _loading = true;
@@ -65,7 +65,7 @@ class _DurAnalysisScreenState extends ConsumerState<DurAnalysisScreen> {
   Future<void> _loadLatestOrAnalyze() async {
     final userId = Uri.encodeComponent(MvpSession.userId.trim());
     try {
-      final response = await _durApi.get('/api/v1/users/$userId/dur/latest');
+      final response = await _apiClient.get('/api/v1/users/$userId/dur/latest');
       if (!mounted) return;
       if (response is Map) {
         _applyResponse(Map<String, dynamic>.from(response));
@@ -80,11 +80,17 @@ class _DurAnalysisScreenState extends ConsumerState<DurAnalysisScreen> {
     final today = ref.read(medicationProvider);
     final fromToday = '${today.guardianRelation} ${today.guardianName} 님'
         .trim();
+    final userId = Uri.encodeComponent(MvpSession.userId);
     var guardianTitle = fromToday.isEmpty ? _guardianTitle : fromToday;
     try {
-      final contacts = await _guardians.fetchAll(userId: MvpSession.userId);
-      if (contacts.isNotEmpty) {
-        guardianTitle = '${contacts.first.label} 님';
+      final guardians = await _apiClient.get('/api/v1/guardians/users/$userId');
+      if (guardians is List && guardians.isNotEmpty && guardians.first is Map) {
+        final row = Map<String, dynamic>.from(guardians.first as Map);
+        final relation = row['relationship']?.toString().trim() ?? '';
+        final name = row['guardian_name']?.toString().trim() ?? '';
+        if (name.isNotEmpty) {
+          guardianTitle = relation.isEmpty ? '$name 님' : '$relation $name 님';
+        }
       }
     } catch (_) {}
     if (!mounted) return;
@@ -141,7 +147,7 @@ class _DurAnalysisScreenState extends ConsumerState<DurAnalysisScreen> {
       if (MvpSession.isPregnant != null) {
         body['is_pregnant'] = MvpSession.isPregnant;
       }
-      final response = await _durApi.post('/api/v1/dur/analyze', body: body);
+      final response = await _apiClient.post('/api/v1/dur/analyze', body: body);
       if (!mounted) return;
       if (response is! Map) {
         setState(() {
@@ -263,20 +269,24 @@ class _DurAnalysisScreenState extends ConsumerState<DurAnalysisScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          if (pairs.isNotEmpty) ...[
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
-              decoration: BoxDecoration(
-                color: AppColors.dangerBorder.withValues(alpha: 0.25),
-                borderRadius: BorderRadius.circular(20),
-              ),
-              child: Text(
-                '같이 먹으면 안 되는 약이 있어요',
-                style: AppText.cardTitle(color: AppColors.danger),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
+            decoration: BoxDecoration(
+              color: pairs.isNotEmpty
+                  ? AppColors.dangerBorder.withValues(alpha: 0.25)
+                  : AppColors.pointTint,
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: Text(
+              pairs.isNotEmpty
+                  ? '같이 먹으면 안 되는 약이 있어요'
+                  : '지금 같이 보는 약끼리 부딪히는 것은 없어요',
+              style: AppText.cardTitle(
+                color: pairs.isNotEmpty ? AppColors.danger : AppColors.point,
               ),
             ),
-            const SizedBox(height: 14),
-          ],
+          ),
+          const SizedBox(height: 14),
           for (final match in pairs) ...[
             _ConflictCard(match: match),
             const SizedBox(height: 12),
@@ -431,6 +441,8 @@ class _ConflictCard extends StatelessWidget {
   static List<_NamedMedicine> pairMedicines(Map<String, dynamic> match) {
     final namesA = _namesOf(match['medicine_names_a']);
     final namesB = _namesOf(match['medicine_names_b']);
+    final lineA = (match['easy_line_a'] ?? '').toString().trim();
+    final lineB = (match['easy_line_b'] ?? '').toString().trim();
     final uniqueA = namesA.isEmpty ? '' : namesA.first;
     var uniqueB = namesB.isEmpty ? '' : namesB.first;
     if (uniqueB.isEmpty || uniqueB == uniqueA) {
@@ -440,14 +452,17 @@ class _ConflictCard extends StatelessWidget {
         if (!unique.contains(name)) unique.add(name);
       }
       if (unique.length >= 2) {
-        return [_NamedMedicine(unique[0]), _NamedMedicine(unique[1])];
+        return [
+          _NamedMedicine(unique[0], lineA),
+          _NamedMedicine(unique[1], lineB),
+        ];
       }
       if (unique.length == 1) {
-        return [_NamedMedicine(unique[0])];
+        return [_NamedMedicine(unique[0], lineA)];
       }
       return const [];
     }
-    return [_NamedMedicine(uniqueA), _NamedMedicine(uniqueB)];
+    return [_NamedMedicine(uniqueA, lineA), _NamedMedicine(uniqueB, lineB)];
   }
 
   static List<String> _namesOf(dynamic raw) {
@@ -586,7 +601,7 @@ class _PlusMark extends StatelessWidget {
   }
 }
 
-/// 약 한 장. 충돌 이유는 아래 경고 상자에서 설명하므로 이름만 보여 준다.
+/// 약 한 장. 이름 아래에 무슨 약인지 한 줄.
 class _MedicineTile extends StatelessWidget {
   final _NamedMedicine medicine;
 
@@ -601,13 +616,21 @@ class _MedicineTile extends StatelessWidget {
         borderRadius: BorderRadius.circular(14),
         border: Border.all(color: AppColors.border, width: 2),
       ),
-      child: Align(
-        alignment: Alignment.center,
-        child: Text(
-          medicine.name,
-          textAlign: TextAlign.center,
-          style: AppText.cardTitle(size: 19),
-        ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Text(medicine.name, style: AppText.cardTitle(size: 19)),
+          if (medicine.roleLine.isNotEmpty) ...[
+            const SizedBox(height: 4),
+            Text(
+              medicine.roleLine,
+              style: AppText.caption(size: 16),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ],
+        ],
       ),
     );
   }
@@ -615,6 +638,20 @@ class _MedicineTile extends StatelessWidget {
 
 class _NamedMedicine {
   final String name;
+  final String easyLine;
 
-  const _NamedMedicine(this.name);
+  const _NamedMedicine(this.name, this.easyLine);
+
+  /// 이름 아래에 붙일 한 줄. 카드가 이름을 이미 말했으니 "○○은"은 덜어낸다.
+  String get roleLine {
+    var text = easyLine.trim();
+    for (final particle in const ['은 ', '는 ']) {
+      final prefix = '$name$particle';
+      if (text.startsWith(prefix)) {
+        text = text.substring(prefix.length).trim();
+        break;
+      }
+    }
+    return text;
+  }
 }

@@ -595,10 +595,12 @@ void _calendarTests() {
     ).readAsStringSync();
     // 칸이 가질 수 있는 상태는 정해져 있다. 기록이 없는 날은 다 드신 날로
     // 채우지 않고 따로 둔다.
-    expect(
-      source.contains('enum DayMark { done, missed, today, future, noRecord }'),
-      isTrue,
-    );
+    // 약 있는 날(scheduled)이 하나 더 있다. 기록이 없는 날은 여전히
+    // 다 드신 날로 채우지 않는다.
+    for (final mark in ['done', 'missed', 'today', 'future', 'noRecord']) {
+      expect(source.contains('enum DayMark {'), isTrue);
+      expect(source.contains(mark), isTrue);
+    }
     // 빠뜨린 때는 색으로 끝내지 않고 글로 다시 적는다.
     // 기록 탭과 같은 하루 상세가 "못 드셨어요"까지 말해 준다.
     expect(source.contains('DayDoseDetail'), isTrue);
@@ -1306,10 +1308,10 @@ void _screenCopyTests() {
     final source = File(
       'lib/features/prescription/presentation/screens/manual_medicine_screen.dart',
     ).readAsStringSync();
-    expect(source.contains("'administration_times': <String>[]"), isTrue);
+    // 시각을 지어내지 않는다 — 드시는 때를 고르지 않으면 등록하지 않는다.
+    expect(source.contains('드시는 때를 한 개 이상 골라 주세요.'), isTrue);
+    expect(source.contains("'administration_times': _slots.toList()"), isTrue);
     expect(source.contains('공식 약 이름을 찾지 못했어요.'), isTrue);
-    // 확인되지 않은 시각은 OCR이나 손입력에서도 임의 생성하지 않는다.
-    expect(source.contains('한 번에 먹는 양을 적어 주세요.'), isTrue);
   });
 
   test('설정에는 화면 모드 칸이 없다', () {

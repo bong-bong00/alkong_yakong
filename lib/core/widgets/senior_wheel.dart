@@ -17,7 +17,9 @@ Future<int?> showSeniorWheel({
   required String title,
   required List<String> options,
   int selectedIndex = 0,
-  String confirmLabel = '확인',
+
+  /// 제목 오른쪽 확인 단추 이름. 기본은 "확인".
+  String? confirmLabel,
 
   /// 굴림판 아래에 붙일 단추들. 없으면 두지 않는다.
   List<Widget> extraButtons = const [],
@@ -148,9 +150,9 @@ Future<DateTime?> showSeniorDateWheel({
 Future<T?> _showPickerSheet<T>({
   required BuildContext context,
   required String title,
-  String confirmLabel = '확인',
   required T Function() onConfirm,
   required WidgetBuilder builder,
+  String? confirmLabel,
   List<Widget> extraButtons = const [],
 }) {
   return SeniorSheet.show<T>(
@@ -166,7 +168,7 @@ Future<T?> _showPickerSheet<T>({
             alignment: Alignment.center,
             padding: const EdgeInsets.symmetric(horizontal: 8),
             child: Text(
-              confirmLabel,
+              confirmLabel ?? '확인',
               style: AppText.cardTitle(size: 23, color: AppColors.point),
             ),
           ),

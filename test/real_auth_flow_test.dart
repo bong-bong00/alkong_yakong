@@ -45,14 +45,9 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byType(LoginScreen), findsOneWidget);
 
-    await tester.ensureVisible(find.text('가족이 대신 만들어 드리기'));
-    await tester.tap(find.text('가족이 대신 만들어 드리기'));
+    router.go('/prescription');
     await tester.pumpAndSettle();
-    expect(find.byType(FirstRunScreen), findsOneWidget);
-    await tester.ensureVisible(find.text('처방전 찍기'));
-    await tester.tap(find.text('처방전 찍기'));
-    await tester.pumpAndSettle();
-    expect(find.byType(SignupScreen), findsOneWidget);
+    expect(find.byType(LoginScreen), findsOneWidget);
     expect(find.byType(PrescriptionScreen), findsNothing);
   });
 

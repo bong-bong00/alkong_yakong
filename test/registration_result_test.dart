@@ -137,18 +137,16 @@ void main() {
             ),
           );
           await tester.enterText(find.byType(TextField).first, '합성');
-          await tester.testTextInput.receiveAction(TextInputAction.search);
+          // 이름을 적고 잠깐 기다리면 공식 약 목록을 찾아 온다.
+          await tester.pump(const Duration(milliseconds: 800));
           await tester.pumpAndSettle();
           await tester.tap(find.text('합성 제품'));
           await tester.pumpAndSettle();
           await tester.enterText(find.byType(TextField).last, '0.5정');
-          final dropdowns = tester
-              .widgetList<DropdownButtonFormField<int>>(
-                find.byType(DropdownButtonFormField<int>),
-              )
-              .toList();
-          dropdowns[0].onChanged!(1);
-          dropdowns[1].onChanged!(3);
+          await tester.tap(find.text('1번'));
+          await tester.tap(find.text('3일'));
+          // 드시는 때를 골라야 등록된다 — 시간을 지어내지 않는다.
+          await tester.tap(find.text('아침'));
           await tester.pumpAndSettle();
           await tester.ensureVisible(find.text('이 약 등록하기'));
           await tester.tap(find.text('이 약 등록하기'));

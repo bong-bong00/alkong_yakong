@@ -38,10 +38,16 @@ final patientTodayProvider = FutureProvider.family<TodayMedication, String>((
 String resolveGuardianTitle(BuildContext context, String? given) {
   final trimmed = given?.trim() ?? '';
   if (trimmed.isNotEmpty) return trimmed;
-  return ProviderScope.containerOf(
-    context,
-    listen: false,
-  ).read(medicationProvider).guardianTitle;
+  // 화면이 Riverpod 밖에서 열릴 수도 있다. 그때는 호칭을 지어내지 않고
+  // 비워 둔다 — 없는 가족 이름을 만들어 내는 편이 더 나쁘다.
+  try {
+    return ProviderScope.containerOf(
+      context,
+      listen: false,
+    ).read(medicationProvider).guardianTitle;
+  } on StateError {
+    return '';
+  }
 }
 
 /// 오늘 복약 상태를 들고 있는 컨트롤러.

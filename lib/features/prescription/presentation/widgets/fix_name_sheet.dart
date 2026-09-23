@@ -36,7 +36,8 @@ class _FixNameSheetState extends State<_FixNameSheet> {
     text: widget.current,
   );
 
-  String? _error;
+  /// 빈 이름으로 눌렀는지. 입력칸 테두리를 붉게 둘 때만 쓴다.
+  bool _hasError = false;
 
   @override
   void dispose() {
@@ -47,7 +48,10 @@ class _FixNameSheetState extends State<_FixNameSheet> {
   void _save() {
     final name = _name.text.trim();
     if (name.isEmpty) {
-      setState(() => _error = '약 이름을 적어 주세요.');
+      // 시트 안에 글을 끼워 넣으면 버튼이 밀려 내려간다.
+      // 입력칸을 붉게 두고, 이유는 스낵바로 말한다.
+      setState(() => _hasError = true);
+      showSeniorSnackbar(context, '약 이름을 적어 주세요.', error: true);
       return;
     }
     Navigator.of(context).pop(name);
@@ -65,15 +69,11 @@ class _FixNameSheetState extends State<_FixNameSheet> {
           SeniorField(
             controller: _name,
             hint: '예: 메트포르민 500mg',
-            hasError: _error != null,
+            hasError: _hasError,
             onChanged: (_) {
-              if (_error != null) setState(() => _error = null);
+              if (_hasError) setState(() => _hasError = false);
             },
           ),
-          if (_error != null) ...[
-            const SizedBox(height: 12),
-            SeniorErrorBox(_error!),
-          ],
           const SizedBox(height: 12),
           Text('읽은 이름 · ${widget.current}', style: AppText.caption(size: 17)),
         ],
