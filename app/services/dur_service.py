@@ -329,8 +329,15 @@ def analyze_dur_consultation(
     user_id: str,
     selected_medicine: dict,
     risk_types: set[str],
+    current_medicines: list[dict] | None = None,
 ) -> dict:
-    """Run an official DUR check without persisting user medication or results."""
+    """Run an official DUR check without persisting user medication or results.
+
+    ``current_medicines`` is supplied by the medication-data Render.  A list
+    (including an empty list) must never be replaced with this server's
+    user_medicines rows; the two services have independent SQLite databases.
+    ``None`` remains only for older internal callers.
+    """
     conn = get_connection()
     try:
         cursor = conn.cursor()
@@ -378,13 +385,29 @@ def analyze_dur_consultation(
         medicines = []
         active_medicine_count = 0
         if risk_types & pairwise_types:
-            medicines.extend(
-                dict(row)
-                for row in _load_medicines(
-                    cursor,
-                    DurAnalyzeRequest(user_id=user_id, medicine_codes=[]),
+            if current_medicines is None:
+                # Compatibility for direct internal calls. HTTP chat requests
+                # always pass a list and therefore cannot read this DB's
+                # user medication rows by accident.
+                medicines.extend(
+                    dict(row)
+                    for row in _load_medicines(
+                        cursor,
+                        DurAnalyzeRequest(user_id=user_id, medicine_codes=[]),
+                    )
                 )
-            )
+            else:
+                medicines.extend(
+                    {
+                        "medicine_code": str(item.get("medicine_code") or "").strip(),
+                        "product_name": str(item.get("product_name") or "").strip(),
+                        "ingredient": item.get("ingredient"),
+                    }
+                    for item in current_medicines
+                    if isinstance(item, dict)
+                    and str(item.get("medicine_code") or "").strip()
+                    and str(item.get("product_name") or "").strip()
+                )
             active_medicine_count = len(medicines)
         medicines.append(consultation_medicine)
         medicines = list(

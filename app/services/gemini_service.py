@@ -554,6 +554,7 @@ def generate_chat_response(
     *,
     user_id: str = "",
     selected_medicine: dict[str, Any] | None = None,
+    current_medicines: list[dict[str, Any]] | None = None,
     intent: str | None = None,
 ) -> str:
     from app.services.chat_context_service import (
@@ -572,6 +573,15 @@ def generate_chat_response(
 
     intents = resolve_question_intents(message, intent)
     safety_question = is_safety_question(intents)
+    # 약 데이터 Render에서 읽은 목록이 없으면 팀 서버 DB로 대체하지 않는다.
+    # 서로 다른 SQLite DB의 오래된 약으로 함께먹기를 판단하면 위험하다.
+    # [] means the current app asked the medication-data Render but received
+    # no usable list. None remains compatibility for older internal callers.
+    if "combination" in intents and current_medicines == []:
+        return (
+            "현재 복용약 목록을 불러오지 못해서 함께먹기 확인을 할 수 없어요. "
+            "약 목록을 다시 불러온 뒤 확인해 주세요."
+        )
     unavailable_reply = (
         "현재 확인된 식약처 정보만으로는 답변하기 어려워요. "
         "현재 복용약으로 다시 확인하고, 복용 중인 약 전체를 의사 또는 약사에게 알려 주세요."
@@ -773,6 +783,11 @@ def generate_chat_response(
                 and item.get("식약처_공식정보")
             ]
             official_contexts = [item for item in official_contexts if item]
+            if "combination" in intents and selected_official is None:
+                return (
+                    "함께먹기 확인할 약을 먼저 선택해 주세요. "
+                    "선택한 약과 현재 복용약 전체를 함께 살펴볼게요."
+                )
             if safety_question and selected_official is not None:
                 wanted_types = set().union(
                     *(DUR_TYPES_BY_INTENT.get(intent, set()) for intent in intents)
@@ -781,6 +796,7 @@ def generate_chat_response(
                     user_id=user_id,
                     selected_medicine=selected_official,
                     risk_types=wanted_types,
+                    current_medicines=current_medicines,
                 )
                 dur_result["items"] = enrich_dur_matches(dur_result["items"])
             else:
