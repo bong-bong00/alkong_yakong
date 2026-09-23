@@ -93,6 +93,29 @@ def _prepare_detail_without_blocking(cursor, medicine_code: str) -> None:
             pass
 
 
+def _ocr_preview_spoken(cursor, medicine: dict, *, fallback: str) -> str:
+    """OCR 확인 카드도 약 상세와 같은 검토된 설명을 우선한다.
+
+    상세 프로필이 아직 없거나 읽는 중 문제가 생겨도 OCR 자체를 실패시키지
+    않고, 기존 홈용 짧은 설명으로만 되돌린다.
+    """
+    try:
+        from app.services.drug_explain_service import reviewed_detail_payload
+
+        payload = reviewed_detail_payload(cursor, medicine)
+        explanation = payload.get("explanation") or {}
+        detailed = str(explanation.get("short_explanation") or "").strip()
+        if detailed:
+            return detailed
+    except Exception as error:
+        logger.info(
+            "OCR preview detail sentence unavailable for %s: %s",
+            medicine.get("medicine_code"),
+            error,
+        )
+    return fallback
+
+
 def _compact_ocr_text(value: object) -> str:
     return re.sub(r"[^0-9A-Za-z가-힣.%]", "", str(value or "")).casefold()
 
@@ -857,7 +880,11 @@ def create_prescription_from_ocr(request: PrescriptionOCRRequest) -> dict:
             ).fetchone()
             med_dict = dict(med_row) if med_row else {}
             guidance = sync_medicine_guidance(cursor, med_dict)
-            official_spoken = guidance["short_explanation"]
+            official_spoken = _ocr_preview_spoken(
+                cursor,
+                med_dict,
+                fallback=guidance["short_explanation"],
+            )
             ingredient = preferred_card_ingredient(
                 med_dict.get("ingredient"),
                 med_dict.get("product_name") or official_name,
