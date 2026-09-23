@@ -17,7 +17,7 @@ class AccentCard extends StatelessWidget {
   final EdgeInsetsGeometry padding;
   final double radius;
 
-  /// 뒤 카드가 왼쪽으로 내다보이는 너비.
+  /// 뒤 카드가 왼쪽으로 내다보이는 너비 — 색 띠의 두께.
   final double peek;
 
   const AccentCard({
@@ -27,29 +27,25 @@ class AccentCard extends StatelessWidget {
     this.color = AppColors.surface,
     this.padding = const EdgeInsets.fromLTRB(20, 18, 20, 18),
     this.radius = 22,
-    this.peek = 8,
+    this.peek = 4,
   });
 
   @override
   Widget build(BuildContext context) {
-    // 색 띠는 카드 **안쪽 왼쪽 끝**이다. 뒤에 둥근 네모를 하나 더 깔고
-    // 왼쪽으로 내다보게 하면, 두 네모의 모서리 곡선이 서로 어긋나면서
-    // 위아래 귀퉁이에 색이 초승달처럼 삐져나온다. 카드 하나를 통째로
-    // 둥글게 자르고 그 안에서 왼쪽 [peek]만 색을 칠한다 — 그래야 바깥
-    // 테두리가 다른 카드와 똑같은 모양 하나로 떨어진다.
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(radius),
-      child: ColoredBox(
+    return Container(
+      decoration: BoxDecoration(
         color: accent,
-        child: Padding(
-          padding: EdgeInsets.only(left: peek),
-          child: Container(
-            width: double.infinity,
-            padding: padding,
-            color: color,
-            child: child,
-          ),
+        borderRadius: BorderRadius.circular(radius),
+      ),
+      padding: EdgeInsets.only(left: peek),
+      child: Container(
+        width: double.infinity,
+        padding: padding,
+        decoration: BoxDecoration(
+          color: color,
+          borderRadius: BorderRadius.circular(radius),
         ),
+        child: child,
       ),
     );
   }
