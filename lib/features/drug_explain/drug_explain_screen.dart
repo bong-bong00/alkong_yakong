@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/constants/app_colors.dart';
 import '../../core/network/api_client.dart';
+import '../../core/network/api_config.dart';
 import '../../core/session/mvp_session.dart';
 import '../../core/theme/app_typography.dart';
 import '../../core/widgets/senior_button.dart';
@@ -14,9 +15,13 @@ import '../../core/widgets/senior_sheet.dart';
 import '../../core/widgets/senior_wheel.dart';
 
 class DrugExplainScreen extends StatefulWidget {
+  /// AI 약사 Render로만 요청을 보낸다.
   final ApiClient? apiClient;
 
-  const DrugExplainScreen({super.key, this.apiClient});
+  /// 실제 복용약은 약 데이터 Render에서 읽는다.
+  final ApiClient? medicineApiClient;
+
+  const DrugExplainScreen({super.key, this.apiClient, this.medicineApiClient});
 
   @override
   State<DrugExplainScreen> createState() => _DrugExplainScreenState();
@@ -24,7 +29,8 @@ class DrugExplainScreen extends StatefulWidget {
 
 class _DrugExplainScreenState extends State<DrugExplainScreen>
     with WidgetsBindingObserver {
-  late final ApiClient _apiClient;
+  late final ApiClient _chatApiClient;
+  late final ApiClient _medicineApiClient;
   final TextEditingController _chatController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
   final FocusNode _chatFocusNode = FocusNode();
@@ -35,6 +41,7 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
   String? _selectedMedicine;
   _DrugSearchCandidate? _selectedOfficialMedicine;
   final Map<String, _DrugSearchCandidate> _officialMedicinesByName = {};
+  final List<Map<String, String>> _currentMedicines = [];
   String? _medicineLoadError;
   final List<String> _medicines = [];
   final List<Map<String, dynamic>> _messages = [];
@@ -98,7 +105,10 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _apiClient = widget.apiClient ?? ApiClient();
+    _chatApiClient = widget.apiClient ?? ApiClient();
+    _medicineApiClient =
+        widget.medicineApiClient ??
+        ApiClient(baseUrl: ApiConfig.localFeatureBaseUrl);
     // 초기 안내 메시지 추가
     _messages.add({
       'isMe': false,
@@ -170,6 +180,35 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
       );
     }
 
+    void addCurrentMedicine(dynamic raw) {
+      if (raw is! Map) return;
+      String firstText(Iterable<dynamic> values) {
+        for (final value in values) {
+          final text = value?.toString().trim() ?? '';
+          if (text.isNotEmpty) return text;
+        }
+        return '';
+      }
+
+      final code = raw['medicine_code']?.toString().trim() ?? '';
+      final productName = firstText([
+        raw['official_product_name'],
+        raw['product_name'],
+        raw['display_name'],
+      ]);
+      final ingredient = firstText([raw['ingredient_name'], raw['ingredient']]);
+      addMedicine(productName, code);
+      if (code.isEmpty || productName.isEmpty) return;
+      if (_currentMedicines.any((item) => item['medicine_code'] == code)) {
+        return;
+      }
+      _currentMedicines.add({
+        'medicine_code': code,
+        'product_name': productName,
+        'ingredient': ingredient,
+      });
+    }
+
     for (final item in MvpSession.latestOcrItems) {
       addMedicine(
         item['medicine_name'] ?? item['drug_name'] ?? item['ocr_drug_name'],
@@ -197,47 +236,17 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
       _medicineLoadError = null;
     });
     try {
-      final response = await _apiClient.get(
-        '/api/v1/users/${Uri.encodeComponent(userId)}/dashboard',
+      // OCR·홈·약 자세히와 같은 약 데이터 Render를 원본으로 쓴다.
+      // AI 약사 Render의 SQLite 약 목록을 읽으면 두 서버의 약이 어긋난다.
+      final response = await _medicineApiClient.get(
+        '/api/v1/users/${Uri.encodeComponent(userId)}/medicines',
       );
-      final dashboard = Map<String, dynamic>.from(response as Map);
-      final prescription = dashboard['latest_prescription'];
-      if (prescription is Map) {
-        final prescriptionItems = prescription['items'];
-        if (prescriptionItems is List) {
-          for (final item in prescriptionItems) {
-            if (item is Map) {
-              addMedicine(
-                item['medicine_name'] ??
-                    item['product_name'] ??
-                    item['drug_name'] ??
-                    item['ocr_drug_name'],
-                item['medicine_code'] ?? item['item_seq'] ?? item['itemSeq'],
-              );
-            }
-          }
-        }
-        final medicineNames = prescription['medicine_names'];
-        if (medicineNames is List) {
-          for (final name in medicineNames) {
-            addName(name);
-          }
-        }
+      if (response is! Map || response['medicines'] is! List) {
+        throw const ApiException('내 약 목록을 읽을 수 없습니다.');
       }
-      final todayMedications = dashboard['today_medications'];
-      if (todayMedications is List) {
-        for (final medication in todayMedications) {
-          if (medication is Map) {
-            addMedicine(
-              medication['product_name'] ??
-                  medication['drug_name'] ??
-                  medication['medicine_name'],
-              medication['medicine_code'] ??
-                  medication['item_seq'] ??
-                  medication['itemSeq'],
-            );
-          }
-        }
+      _currentMedicines.clear();
+      for (final medicine in response['medicines'] as List) {
+        addCurrentMedicine(medicine);
       }
       if (!mounted) return;
       setState(() {
@@ -338,7 +347,7 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
   Future<void> _enterOtherMedicine() async {
     final medicine = await SeniorSheet.show<_DrugSearchCandidate>(
       context: context,
-      builder: (_) => _OtherMedicineDialog(apiClient: _apiClient),
+      builder: (_) => _OtherMedicineDialog(apiClient: _chatApiClient),
     );
     if (!mounted || medicine == null) return;
     setState(() {
@@ -388,6 +397,9 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
       final body = <String, dynamic>{
         'user_id': MvpSession.userId,
         'message': text,
+        // AI 약사 Render는 약을 저장하지 않는다. 매 질문마다 약 데이터
+        // Render의 현재 복용약 전체를 전달해 함께먹기 판단에만 사용한다.
+        'current_medicines': _currentMedicines,
       };
       if (intent != null) body['intent'] = intent;
       final selectedOfficial = _selectedOfficialMedicine;
@@ -397,7 +409,7 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
           'product_name': selectedOfficial.itemName,
         };
       }
-      final response = await _apiClient.post(
+      final response = await _chatApiClient.post(
         '/api/v1/drug-explain/chat', // 가상의 챗봇 엔드포인트
         body: body,
       );

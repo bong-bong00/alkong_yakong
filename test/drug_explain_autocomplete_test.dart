@@ -12,7 +12,12 @@ import 'package:http/testing.dart';
 void main() {
   Widget appWith(http.Client client) {
     return MaterialApp(
-      home: DrugExplainScreen(apiClient: ApiClient(client: client)),
+      home: DrugExplainScreen(
+        apiClient: ApiClient(client: client),
+        // 기존 화면 테스트는 dashboard 응답으로 약 선택 목록을 만들었다.
+        // 실제 화면은 /medicines를 사용하므로, 테스트 안에서만 이를 변환한다.
+        medicineApiClient: ApiClient(client: _DashboardMedicinesClient(client)),
+      ),
     );
   }
 
@@ -142,6 +147,64 @@ void main() {
     await tester.pump();
     expect(find.text('게보린정'), findsOneWidget);
     expect(find.text('오래된검색결과'), findsNothing);
+  });
+
+  testWidgets('AI 약사는 약 데이터 API의 전체 목록을 함께먹기 요청에 보낸다', (tester) async {
+    final originalUserId = MvpSession.userId;
+    MvpSession.userId = 'current-medicines-test-user';
+    addTearDown(() => MvpSession.userId = originalUserId);
+    Map<String, dynamic>? chatBody;
+
+    final chatClient = MockClient((request) async {
+      expect(request.url.path, endsWith('/drug-explain/chat'));
+      chatBody = jsonDecode(request.body) as Map<String, dynamic>;
+      return jsonResponse({'reply': '함께먹기 답변'});
+    });
+    final medicinesClient = MockClient((request) async {
+      expect(request.url.path, endsWith('/medicines'));
+      return jsonResponse({
+        'medicines': [
+          {
+            'medicine_code': '20000001',
+            'official_product_name': '아디팜정',
+            'ingredient': '히드록시진염산염',
+          },
+          {
+            'medicine_code': '20000002',
+            'official_product_name': '코다론정',
+            'ingredient': '아미오다론염산염',
+          },
+        ],
+      });
+    });
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: DrugExplainScreen(
+          apiClient: ApiClient(client: chatClient),
+          medicineApiClient: ApiClient(client: medicinesClient),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await pickSubject(tester, '아디팜정');
+    final combination = find.widgetWithText(ChoiceChip, '다른 약과 함께 먹어도 되나요?');
+    await tester.ensureVisible(combination);
+    await tester.tap(combination);
+    await tester.pumpAndSettle();
+
+    expect(chatBody?['current_medicines'], [
+      {
+        'medicine_code': '20000001',
+        'product_name': '아디팜정',
+        'ingredient': '히드록시진염산염',
+      },
+      {
+        'medicine_code': '20000002',
+        'product_name': '코다론정',
+        'ingredient': '아미오다론염산염',
+      },
+    ]);
   });
 
   testWidgets('사용자가 고른 공식 품목명이 선택되고 빠른 질문에 사용된다', (tester) async {
@@ -813,4 +876,54 @@ void main() {
     expect(searchCalls, 2);
     expect(find.text('게보린정'), findsOneWidget);
   });
+}
+
+/// 기존 테스트의 dashboard 가짜 응답을 실제 약 데이터 API 응답으로 바꾼다.
+class _DashboardMedicinesClient extends http.BaseClient {
+  final http.Client _delegate;
+
+  _DashboardMedicinesClient(this._delegate);
+
+  @override
+  Future<http.StreamedResponse> send(http.BaseRequest request) async {
+    if (!request.url.path.endsWith('/medicines')) {
+      return _delegate.send(request);
+    }
+
+    final dashboardPath = request.url.path.replaceFirst(
+      RegExp(r'/medicines$'),
+      '/dashboard',
+    );
+    final dashboardRequest = http.Request(
+      'GET',
+      request.url.replace(path: dashboardPath),
+    );
+    final dashboardResponse = await http.Response.fromStream(
+      await _delegate.send(dashboardRequest),
+    );
+    if (dashboardResponse.statusCode < 200 ||
+        dashboardResponse.statusCode >= 300) {
+      return http.StreamedResponse(
+        Stream.value(utf8.encode(dashboardResponse.body)),
+        dashboardResponse.statusCode,
+        headers: dashboardResponse.headers,
+      );
+    }
+
+    final dashboard =
+        jsonDecode(dashboardResponse.body) as Map<String, dynamic>;
+    final medicines = <dynamic>[];
+    final prescription = dashboard['latest_prescription'];
+    if (prescription is Map && prescription['items'] is List) {
+      medicines.addAll(prescription['items'] as List);
+    }
+    if (dashboard['today_medications'] is List) {
+      medicines.addAll(dashboard['today_medications'] as List);
+    }
+    return http.StreamedResponse(
+      Stream.value(utf8.encode(jsonEncode({'medicines': medicines}))),
+      200,
+      headers: const {'content-type': 'application/json; charset=utf-8'},
+    );
+  }
 }
