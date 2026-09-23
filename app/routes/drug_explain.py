@@ -25,6 +25,7 @@ def chat_with_pharmacist(request: DrugExplainChatRequest):
             if request.selected_medicine is not None
             else None
         ),
+        current_medicines=[medicine.model_dump() for medicine in request.current_medicines],
         intent=request.intent,
     )
     return {"reply": reply}

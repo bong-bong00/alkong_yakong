@@ -180,10 +180,23 @@ class SelectedMedicine(BaseModel):
     product_name: str
 
 
+class CurrentMedicine(BaseModel):
+    """AI 약사 요청에만 동봉하는 현재 복용약 식별값.
+
+    약 데이터 Render가 원본이므로, AI 약사 서버 DB의 user_medicines를
+    대신 읽지 않는다.
+    """
+
+    medicine_code: str
+    product_name: str
+    ingredient: Optional[str] = None
+
+
 class DrugExplainChatRequest(BaseModel):
     user_id: str
     message: str
     selected_medicine: Optional[SelectedMedicine] = None
+    current_medicines: List[CurrentMedicine] = Field(default_factory=list)
     intent: Optional[
         Literal[
             "efficacy",
