@@ -142,12 +142,18 @@ class GuardianStatusScreen extends ConsumerWidget {
     this.alertsRepository,
   });
 
-  /// 그 시간대를 드신 시각. 기록에서 찾지 못하면 null.
-  String? _takenAt(String label) {
-    for (final activity in patient.activities) {
-      if (activity.text.contains(label)) return activity.time;
-    }
-    return null;
+  /// 그 시간대를 드신 시각 — "8시 10분". 기록이 없으면 null.
+  ///
+  /// 값은 서버가 슬롯마다 실어 보낸 것만 쓴다. "오늘 있었던 일" 글귀를
+  /// 문자열로 뒤져 찾으면 그 글귀가 한 글자만 바뀌어도 시각이 조용히 사라진다.
+  static String? _takenAt(CareSlot slot) {
+    if (!slot.taken) return null;
+    final parts = slot.time.split(':');
+    if (parts.length != 2) return null;
+    final hour = int.tryParse(parts[0]);
+    final minute = int.tryParse(parts[1]);
+    if (hour == null || minute == null) return null;
+    return minute == 0 ? '$hour시' : '$hour시 $minute분';
   }
 
   @override
@@ -221,8 +227,8 @@ class GuardianStatusScreen extends ConsumerWidget {
                                   : AppColors.danger,
                               label: '${slots[i].label} 약',
                               value:
-                                  _takenAt(slots[i].label) ??
-                                  (slots[i].taken ? '드심' : '아직'),
+                                  _takenAt(slots[i]) ??
+                                  (slots[i].taken ? '드셨어요' : '아직'),
                               danger: !slots[i].taken,
                             ),
                           ],

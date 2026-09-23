@@ -32,20 +32,24 @@ class AccentCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
+    // 색 띠는 카드 **안쪽 왼쪽 끝**이다. 뒤에 둥근 네모를 하나 더 깔고
+    // 왼쪽으로 내다보게 하면, 두 네모의 모서리 곡선이 서로 어긋나면서
+    // 위아래 귀퉁이에 색이 초승달처럼 삐져나온다. 카드 하나를 통째로
+    // 둥글게 자르고 그 안에서 왼쪽 [peek]만 색을 칠한다 — 그래야 바깥
+    // 테두리가 다른 카드와 똑같은 모양 하나로 떨어진다.
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(radius),
+      child: ColoredBox(
         color: accent,
-        borderRadius: BorderRadius.circular(radius),
-      ),
-      padding: EdgeInsets.only(left: peek),
-      child: Container(
-        width: double.infinity,
-        padding: padding,
-        decoration: BoxDecoration(
-          color: color,
-          borderRadius: BorderRadius.circular(radius),
+        child: Padding(
+          padding: EdgeInsets.only(left: peek),
+          child: Container(
+            width: double.infinity,
+            padding: padding,
+            color: color,
+            child: child,
+          ),
         ),
-        child: child,
       ),
     );
   }

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -22,6 +23,7 @@ import '../../../../core/widgets/senior_timeline.dart';
 import '../../../dashboard/application/medication_history_provider.dart';
 import '../../../medication/application/medication_controller.dart';
 import '../../../medicines/application/user_medicines_controller.dart';
+import '../../../medicines/application/family_medicine_inbox.dart';
 import '../../../medicines/domain/display_policy.dart';
 import '../../../onboarding/presentation/screens/first_run_screen.dart';
 import 'add_medicine_screen.dart';
@@ -322,6 +324,18 @@ class _PrescriptionScreenState extends ConsumerState<PrescriptionScreen> {
       if (!mounted) return;
       showSeniorSnackbar(context, '약 등록에 실패했어요. 잠시 후 다시 시도해 주세요.', error: true);
       return;
+    }
+
+    // 내가 내 약을 넣었으면 "가족이 넣어드렸어요"가 뜨면 안 된다. 장부에
+    // 미리 적어 둔다. 대신 넣는 중이라면 적지 않는다 — 어르신은 아직
+    // 그 약이 들어온 것을 모르니 그분 전화기에서 알려드려야 한다.
+    if (widget.onBehalfOfUserId == null) {
+      unawaited(
+        FamilyMedicineInbox.markSeen(
+          userId,
+          confirmItems.map((item) => item['medicine_code']?.toString() ?? ''),
+        ),
+      );
     }
 
     MvpSession.latestOcrItems = editedItems;
@@ -1025,6 +1039,19 @@ class _ConfirmScreenState extends State<_ConfirmScreen> {
       text: item['drug_name']?.toString() ?? '',
     );
 
+    // 이 이름이 어디서 왔는지 — 사진에서 읽은 글자인지, 공식 목록에서 맞춘
+    // 품목인지. 뭉뚱그리면 잘못 읽은 이름을 공식 약으로 믿고 그대로 등록한다.
+    final ocrRawName = item['ocr_drug_name_raw']?.toString().trim() ?? '';
+    final officialName =
+        item['official_product_name']?.toString().trim() ??
+        item['product_name']?.toString().trim() ??
+        '';
+    final medicineCode = item['medicine_code']?.toString().trim() ?? '';
+    final hasProvenance =
+        ocrRawName.isNotEmpty ||
+        officialName.isNotEmpty ||
+        medicineCode.isNotEmpty;
+
     // 돋보기 — 적어 넣은 이름을 공식 의약품 목록에서 찾는다.
     Future<void> searchName(BuildContext sheetContext) async {
       final query = nameController.text.trim();
@@ -1052,6 +1079,34 @@ class _ConfirmScreenState extends State<_ConfirmScreen> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             mainAxisSize: MainAxisSize.min,
             children: [
+              if (hasProvenance) ...[
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.fromLTRB(18, 14, 18, 14),
+                  decoration: BoxDecoration(
+                    color: AppColors.sunken,
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: AppColors.border, width: 2),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (ocrRawName.isNotEmpty) ...[
+                        _DetailLine(label: '사진에서 읽은 이름', value: ocrRawName),
+                        const SizedBox(height: 10),
+                      ],
+                      if (officialName.isNotEmpty) ...[
+                        _DetailLine(label: '공식 제품명', value: officialName),
+                        const SizedBox(height: 10),
+                      ],
+                      if (medicineCode.isNotEmpty)
+                        _DetailLine(label: '공식 의약품 코드', value: medicineCode),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 18),
+              ],
               Text('약 이름', style: AppText.label(size: 18)),
               const SizedBox(height: 8),
               Row(
@@ -1900,6 +1955,29 @@ class _FailedScreen extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// 이름 한 줄에 그 출처를 붙여 보여준다.
+class _DetailLine extends StatelessWidget {
+  final String label;
+  final String value;
+
+  const _DetailLine({required this.label, required this.value});
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: AppText.label(size: 17, color: AppColors.textSecondary),
+        ),
+        const SizedBox(height: 4),
+        Text(value, style: AppText.body(size: 19)),
+      ],
     );
   }
 }

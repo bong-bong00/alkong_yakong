@@ -14,6 +14,8 @@ import '../../application/guardians_provider.dart';
 import '../../data/guardian_repository.dart';
 import '../widgets/add_care_sheet.dart';
 import 'care_patient_screen.dart';
+import 'guardian_prescription_screen.dart';
+import 'proxy_signup_screen.dart';
 
 /// 보호자 · 돌보는 분 관리 (프로토타입 90).
 ///
@@ -149,6 +151,18 @@ class CareManageScreen extends ConsumerWidget {
                       ),
                     ),
                   ],
+                  const SizedBox(height: 16),
+                  // 어르신이 혼자 가입하다 막히는 것이 첫 이탈 지점이다.
+                  // 명단을 고치러 온 자리이므로 목록 끝에 함께 둔다.
+                  SeniorButton(
+                    label: '가족이 회원가입해주기',
+                    subLabel: '어르신 대신 작성이 가능해요',
+                    icon: TablerIcons.user_plus,
+                    kind: SeniorButtonKind.secondary,
+                    minHeight: 68,
+                    fontSize: 21,
+                    onPressed: () => _createElderAccount(context, ref),
+                  ),
                 ],
               ),
             ),
@@ -168,6 +182,31 @@ class CareManageScreen extends ConsumerWidget {
         ],
       ),
     );
+  }
+
+  /// 어르신 계정을 자녀분이 대신 만든다. 다 만들면 바로 대신 찍기로 이어진다.
+  Future<void> _createElderAccount(BuildContext context, WidgetRef ref) async {
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => ProxySignupScreen(
+          onCapturePrescription: (result) {
+            // 가입 화면을 닫고 그 자리에서 처방전 찍기로 넘어간다.
+            Navigator.of(context).pop();
+            openGuardianPrescription(
+              context,
+              CarePatient(
+                linkId: '',
+                patientId: result.patientId,
+                name: result.name,
+                relation: result.relation,
+                phone: result.phone,
+              ),
+            );
+          },
+        ),
+      ),
+    );
+    ref.invalidate(careOverviewProvider);
   }
 
   Future<void> _cancel(

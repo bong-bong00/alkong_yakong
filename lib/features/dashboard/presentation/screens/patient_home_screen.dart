@@ -18,6 +18,9 @@ import '../../../medication/presentation/widgets/dose_flow_sheets.dart';
 import '../../../easy_flow/domain/easy_flow.dart';
 import '../../../easy_flow/presentation/easy_flow_shell.dart';
 import '../../../medication/presentation/widgets/dose_guard_sheets.dart';
+import 'package:go_router/go_router.dart';
+import '../../../medicines/application/family_medicine_inbox.dart';
+import '../../../medicines/application/user_medicines_controller.dart';
 import '../../../profile/application/current_user_controller.dart';
 
 /// 12 / 15 · 오늘 · 홈.
@@ -81,6 +84,8 @@ class _PatientHomeScreenState extends ConsumerState<PatientHomeScreen> {
     super.initState();
     // 잔여일이 0이면 홈에 들어오는 순간 리필 시트를 연다. 하루 한 번만.
     WidgetsBinding.instance.addPostFrameCallback((_) => _maybeAskRefill());
+    // 가족이 대신 넣어 준 약이 있으면 홈에 들어서자마자 알린다.
+    WidgetsBinding.instance.addPostFrameCallback((_) => _maybeTellArrived());
     ReminderNotifications.pendingAction.addListener(_onNotificationAction);
     WidgetsBinding.instance.addPostFrameCallback(
       (_) => _onNotificationAction(),
@@ -105,6 +110,36 @@ class _PatientHomeScreenState extends ConsumerState<PatientHomeScreen> {
     } else if (action == ReminderNotifications.snoozeActionId) {
       _snooze(next.slot);
     }
+  }
+
+  /// 장부에 없는 약 — 내가 넣지 않았는데 들어와 있는 약을 알린다.
+  ///
+  /// 내가 등록한 약은 등록하는 자리에서 미리 장부에 적으므로 여기 걸리지
+  /// 않는다. 처음 켠 기기는 장부가 비어 있어 전부 적어 두고 넘어간다 —
+  /// 쓰던 약을 "방금 들어왔다"고 알리면 안 되기 때문이다.
+  Future<void> _maybeTellArrived() async {
+    final userId = ref.read(currentUserProvider).valueOrNull?.id ?? '';
+    if (userId.isEmpty) return;
+    final medicines = ref.read(userMedicinesProvider).valueOrNull;
+    if (medicines == null || medicines.isEmpty) return;
+
+    final arrived = await FamilyMedicineInbox.unseen(
+      userId,
+      medicines.map((m) => m.medicineCode),
+    );
+    if (!mounted || arrived.isEmpty) return;
+
+    final rows = [
+      for (final medicine in medicines)
+        if (arrived.contains(medicine.medicineCode))
+          {'name': medicine.displayName, 'dose': medicine.amount},
+    ];
+    if (rows.isEmpty) return;
+
+    // 누가 넣었는지는 서버가 알려주지 않는다. "가족"까지만 말한다.
+    unawaited(FamilyMedicineInbox.markSeen(userId, arrived));
+    if (!mounted) return;
+    context.push('/medicine-arrived', extra: {'medicines': rows});
   }
 
   Future<void> _maybeAskRefill() async {
