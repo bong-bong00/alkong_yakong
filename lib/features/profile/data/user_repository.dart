@@ -44,7 +44,8 @@ class UserRepository {
       final data = Map<String, dynamic>.from(response);
       final id = data['id']?.toString().trim() ?? '';
       final role = data['role']?.toString().trim().toLowerCase();
-      if (id.isNotEmpty && id != 'mvp-user' &&
+      if (id.isNotEmpty &&
+          id != 'mvp-user' &&
           (role == 'patient' || role == 'guardian')) {
         return UserProfile.fromJson(data);
       }

@@ -94,7 +94,7 @@ class _EasyFlowShellState extends ConsumerState<EasyFlowShell> {
           case SkipChoice.stay:
             return;
           case SkipChoice.takeAndContinue:
-            await ref.read(medicationProvider.notifier).takeAnyway(pending.slot);
+            ref.read(medicationProvider.notifier).takeAnyway(pending.slot);
           case SkipChoice.skip:
             break;
         }

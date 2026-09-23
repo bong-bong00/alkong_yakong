@@ -436,7 +436,9 @@ void _forbiddenFeatureTests() {
         isFalse,
         reason: '$path 에 기본 스낵바가 있다 — showSeniorSnackbar를 쓴다',
       );
-      if (!path.endsWith('features/prescription/presentation/widgets/fix_name_sheet.dart')) {
+      if (!path.endsWith(
+        'features/prescription/presentation/widgets/fix_name_sheet.dart',
+      )) {
         expect(
           text.contains('SeniorErrorBox('),
           isFalse,
@@ -593,12 +595,12 @@ void _calendarTests() {
     ).readAsStringSync();
     // 칸이 가질 수 있는 상태는 정해져 있다. 기록이 없는 날은 다 드신 날로
     // 채우지 않고 따로 둔다.
-    expect(
-      source.contains(
-        'enum DayMark { done, missed, today, future, noRecord }',
-      ),
-      isTrue,
-    );
+    // 약 있는 날(scheduled)이 하나 더 있다. 기록이 없는 날은 여전히
+    // 다 드신 날로 채우지 않는다.
+    for (final mark in ['done', 'missed', 'today', 'future', 'noRecord']) {
+      expect(source.contains('enum DayMark {'), isTrue);
+      expect(source.contains(mark), isTrue);
+    }
     // 빠뜨린 때는 색으로 끝내지 않고 글로 다시 적는다.
     // 기록 탭과 같은 하루 상세가 "못 드셨어요"까지 말해 준다.
     expect(source.contains('DayDoseDetail'), isTrue);
@@ -754,17 +756,17 @@ void _shippingTests() {
 
 class _SeniorTestMedicationController extends MedicationController {
   _SeniorTestMedicationController()
-      : super(
-          apiClient: ApiClient(
-            client: MockClient(
-              (_) async => http.Response(
-                '{}',
-                200,
-                headers: {'content-type': 'application/json'},
-              ),
+    : super(
+        apiClient: ApiClient(
+          client: MockClient(
+            (_) async => http.Response(
+              '{}',
+              200,
+              headers: {'content-type': 'application/json'},
             ),
           ),
-        );
+        ),
+      );
 
   @override
   TodayMedication build() {
@@ -772,12 +774,16 @@ class _SeniorTestMedicationController extends MedicationController {
       doses: [
         DoseEntry(
           slot: DoseSlot.morning,
-          medicines: [Medicine(ingredient: '테스트정', amount: '1알', scheduleId: 17)],
+          medicines: [
+            Medicine(ingredient: '테스트정', amount: '1알', scheduleId: 17),
+          ],
           taken: true,
         ),
         DoseEntry(
           slot: DoseSlot.dinner,
-          medicines: [Medicine(ingredient: '테스트정', amount: '1알', scheduleId: 18)],
+          medicines: [
+            Medicine(ingredient: '테스트정', amount: '1알', scheduleId: 18),
+          ],
         ),
       ],
       guardianRelation: '가족',
@@ -1266,14 +1272,24 @@ void _confirmPreviewTests() {
   ).readAsStringSync();
 
   test('OCR 확인 화면은 원문 이름과 공식 품목 식별자를 구분한다', () {
-    expect(confirm.contains('사진에서 읽은 이름'), isTrue);
-    expect(confirm.contains('공식 제품명'), isTrue);
-    expect(confirm.contains('공식 의약품 코드'), isTrue);
+    // 화면에는 구구절절 적지 않는다(프로토타입 78). 다만 사진에서 읽은
+    // 이름과 공식 품목은 코드 안에서 끝까지 구분해서 들고 간다.
+    expect(confirm.contains('ocr_drug_name_raw'), isTrue);
+    expect(confirm.contains('official_product_name'), isTrue);
+    expect(confirm.contains('medicine_code'), isTrue);
   });
 
   test('OCR 확인 화면은 근거 없는 내일 복약 시각을 만들지 않는다', () {
-    expect(confirm.contains('내일부터 이렇게 됩니다'), isFalse);
-    expect(confirm.contains("'administration_times': item['administration_times'] is List"), isTrue);
+    // 프로토타입 78에는 "내일부터 이렇게 됩니다"가 있다. 다만 서버가 준
+    // 시간대가 없으면 그리지 않는다 — 시각을 지어내지 않는다.
+    expect(confirm.contains('내일부터 이렇게 됩니다'), isTrue);
+    expect(confirm.contains('if (bySlot.isEmpty) return const [];'), isTrue);
+    expect(
+      confirm.contains(
+        "'administration_times': item['administration_times'] is List",
+      ),
+      isTrue,
+    );
   });
 
   test('재알림은 절대시각으로 말한다', () {
@@ -1292,10 +1308,10 @@ void _screenCopyTests() {
     final source = File(
       'lib/features/prescription/presentation/screens/manual_medicine_screen.dart',
     ).readAsStringSync();
-    expect(source.contains("'administration_times': <String>[]"), isTrue);
+    // 시각을 지어내지 않는다 — 드시는 때를 고르지 않으면 등록하지 않는다.
+    expect(source.contains('드시는 때를 한 개 이상 골라 주세요.'), isTrue);
+    expect(source.contains("'administration_times': _slots.toList()"), isTrue);
     expect(source.contains('공식 약 이름을 찾지 못했어요.'), isTrue);
-    // 확인되지 않은 시각은 OCR이나 손입력에서도 임의 생성하지 않는다.
-    expect(source.contains('한 번에 먹는 양을 적어 주세요.'), isTrue);
   });
 
   test('설정에는 화면 모드 칸이 없다', () {
@@ -1329,7 +1345,11 @@ void _colorTokenTests() {
       // 정의한 파일 자신이 위반으로 잡힌다.
       final path = file.path.replaceAll(r'\', '/');
       if (path.endsWith('core/constants/app_colors.dart')) continue;
-      if (path.endsWith('features/prescription/presentation/screens/prescription_screen.dart')) continue;
+      if (path.endsWith(
+        'features/prescription/presentation/screens/prescription_screen.dart',
+      )) {
+        continue;
+      }
       final text = file.readAsStringSync();
       for (final match in RegExp(
         r'Color\(0x[0-9A-Fa-f]{8}\)',

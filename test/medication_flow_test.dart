@@ -111,7 +111,10 @@ void main() {
         DoseCheckOutcome.recorded,
       );
       expect(
-        duplicateContainer.read(medicationProvider).doseOf(DoseSlot.dinner).taken,
+        duplicateContainer
+            .read(medicationProvider)
+            .doseOf(DoseSlot.dinner)
+            .taken,
         isTrue,
       );
     });

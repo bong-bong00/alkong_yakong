@@ -5,6 +5,8 @@ import 'package:go_router/go_router.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../domain/exclusive_choice.dart';
 import '../../../../core/network/api_client.dart';
+import '../../../../core/providers/user_role.dart';
+import '../../../../core/session/auth_session.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../core/widgets/senior_button.dart';
 import '../../../../core/widgets/senior_feedback.dart';
@@ -216,19 +218,23 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
       final body = _signupBody();
 
       final response = await _apiClient.post('/api/v1/users', body: body);
-      if (response is! Map) {
-        throw const ApiException('회원가입 응답에서 사용자 정보를 받지 못했어요.');
+      final userId = response is Map<String, dynamic>
+          ? response['id']?.toString()
+          : null;
+      if (userId == null || userId.isEmpty) {
+        throw const ApiException('회원가입 응답에 사용자 ID가 없습니다.');
       }
-      final rawProfile = Map<String, dynamic>.from(response);
-      final role = rawProfile['role']?.toString().trim().toLowerCase();
-      final profile = UserProfile.fromJson(rawProfile);
-      if (profile.id.isEmpty ||
-          profile.id == 'mvp-user' ||
-          (role != 'patient' && role != 'guardian')) {
-        throw const ApiException('회원가입 응답에서 사용자 정보를 확인하지 못했어요.');
+
+      await AuthSession.persistUserId(userId);
+      // 가입한 역할대로 로그인 상태를 만든다. 보호자로 가입하면 보호자 화면이 열린다.
+      await AuthSession.setLoggedIn(_role);
+      if (mounted) {
+        ref.read(userRoleProvider.notifier).state = _role == 'guardian'
+            ? UserRole.guardian
+            : UserRole.patient;
+        // 방금 만든 계정으로 바뀌었으니 앞사람의 약·가족·기록은 버린다.
+        resetUserScopedData(ref);
       }
-      if (!mounted) return;
-      await startSession(ref, profile);
       await _saveGuardianContact();
       if (!mounted) return;
       // 가입 완료 화면이 다음 길(약 등록 / 나중에 하기)을 스스로 정한다.

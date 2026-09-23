@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -9,15 +10,14 @@ import '../../../../core/theme/app_typography.dart';
 import '../../../../core/widgets/app_logo.dart';
 import '../../../../core/widgets/senior_button.dart';
 import '../../../../core/widgets/senior_feedback.dart';
-import '../../../onboarding/presentation/screens/first_run_screen.dart';
 import '../../../profile/application/current_user_controller.dart';
 import '../../../profile/application/session_actions.dart';
 import 'signup_screen.dart';
 
 /// 4i — 로그인 · 시작하기.
 ///
-/// 시작 화면에서부터 "가족이 대신 만들어 드리기"를 1급 경로로 올린다.
-/// 어르신이 혼자 가입에서 막히는 것이 첫 이탈 지점이기 때문이다.
+/// 프로토타입대로 전화번호·비밀번호·시작하기만 둔다.
+/// 가족이 대신 만들어 드리는 길은 가입 화면 안에서 잇는다.
 class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key});
 
@@ -153,24 +153,18 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
               ),
               const SizedBox(height: 30),
 
-              // ── 대행 경로 ──
-              SeniorButton(
-                label: '가족이 대신 만들어 드리기',
-                kind: SeniorButtonKind.secondary,
-                minHeight: 62,
-                fontSize: 20,
-                  onPressed: () => Navigator.of(context).push(
-                    MaterialPageRoute<void>(
-                      builder: (_) => const FirstRunScreen(),
-                    ),
-                  ),
-              ),
-              const SizedBox(height: 10),
-              Text(
-                '어려우시면 자녀분 전화번호로\n가입을 도와드릴 수 있어요.',
-                textAlign: TextAlign.center,
-                style: AppText.caption(),
-              ),
+              // 화면 확인용 임시 단추. 개발 빌드에서만 보인다.
+              // 확인이 끝나면 이 블록과 /demo-guardian, demo_guardian.dart 를 지운다.
+              if (kDebugMode) ...[
+                const SizedBox(height: 18),
+                SeniorButton(
+                  label: '화면 확인용 · 보호자 화면',
+                  kind: SeniorButtonKind.neutral,
+                  minHeight: 56,
+                  fontSize: 18,
+                  onPressed: () => context.push('/demo-guardian'),
+                ),
+              ],
             ],
           ),
         ),

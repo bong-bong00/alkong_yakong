@@ -156,6 +156,7 @@ class _PatientHomeScreenState extends ConsumerState<PatientHomeScreen> {
         final proceed = await showLateDoseSheet(context: context, slot: slot);
         if (proceed && mounted) {
           await controller.takeAnyway(slot);
+          if (!mounted) return;
           _afterRecord(choice, slot);
         }
       case DoseCheckOutcome.recorded:

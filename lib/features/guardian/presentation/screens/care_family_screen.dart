@@ -12,7 +12,6 @@ import '../../../../core/widgets/senior_header.dart';
 import '../../../dashboard/presentation/screens/patient_data.dart';
 import '../../application/guardians_provider.dart';
 import '../../data/guardian_repository.dart';
-import '../widgets/add_care_sheet.dart';
 
 /// 36 · 보호자 · 돌보는 분 목록.
 ///
@@ -23,37 +22,20 @@ class CareFamilyScreen extends ConsumerWidget {
   /// 어르신 카드를 눌렀을 때.
   final ValueChanged<CarePatient> onOpenPatient;
 
+  /// 헤더의 종 단추. 알림 화면을 연다.
+  final VoidCallback? onOpenAlerts;
+
   /// 요청을 보낼 곳. 없으면 이 화면이 하나 만들어 쓴다.
   final GuardianRepository? repository;
 
   const CareFamilyScreen({
     super.key,
     required this.onOpenPatient,
+    this.onOpenAlerts,
     this.repository,
   });
 
   GuardianRepository get _repository => repository ?? GuardianRepository();
-
-  Future<void> _add(BuildContext context, WidgetRef ref) async {
-    final draft = await showAddCareSheet(context);
-    if (draft == null || !context.mounted) return;
-
-    final result = await _repository.requestLink(
-      relation: draft.relation,
-      phone: draft.phone,
-    );
-    if (!context.mounted) return;
-
-    // 서버가 받아 준 뒤에만 목록에 올린다. 실패했는데 올려 두면
-    // 어르신은 요청을 받은 적이 없는데 보호자만 기다리게 된다.
-    if (!result.isSent) {
-      showSeniorSnackbar(context, result.error ?? '연결을 요청하지 못했어요', error: true);
-      return;
-    }
-    ref.invalidate(careOverviewProvider);
-    final name = result.invite!.name.isEmpty ? draft.name : result.invite!.name;
-    showSeniorSnackbar(context, '$name 님에게 연결을 요청했어요');
-  }
 
   Future<void> _cancel(
     BuildContext context,
@@ -83,14 +65,23 @@ class CareFamilyScreen extends ConsumerWidget {
     return Column(
       children: [
         SeniorHeader(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              Text('보호자 화면', style: AppText.label(size: 17)),
-              Text(
-                data == null ? '돌보는 분' : '돌보는 분 ${patients.length}명',
-                style: AppText.screenTitle(size: 28),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('보호자 화면', style: AppText.label(size: 17)),
+                    Text(
+                      data == null ? '돌보는 분' : '돌보는 분 ${patients.length}명',
+                      style: AppText.screenTitle(size: 28),
+                    ),
+                  ],
+                ),
               ),
+              if (onOpenAlerts != null)
+                _AlertBell(count: needAttention.length, onTap: onOpenAlerts!),
             ],
           ),
         ),
@@ -114,7 +105,7 @@ class CareFamilyScreen extends ConsumerWidget {
                   else if (patients.isEmpty && pending.isEmpty)
                     const _InfoCard(
                       text:
-                          '아직 연결된 어르신이 없어요. 아래 "돌보는 분 추가하기"에서 '
+                          '아직 연결된 어르신이 없어요. 정보 → 돌보는 분 관리에서 '
                           '어르신 전화번호로 연결을 요청해 주세요.',
                     ),
                   if (needAttention.isNotEmpty) ...[
@@ -135,51 +126,70 @@ class CareFamilyScreen extends ConsumerWidget {
                       onCancel: () => _cancel(context, ref, invite),
                     ),
                   ],
-                  if (patients.isNotEmpty) ...[
-                    const SizedBox(height: 12),
-                    SeniorCard(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 20,
-                        vertical: 18,
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            '한 분씩 따로 설정돼요',
-                            style: AppText.cardTitle(size: 20),
-                          ),
-                          const SizedBox(height: 6),
-                          Text(
-                            '알림 시간, 재알림 사다리, 전화 대상은 어르신마다 따로 저장됩니다. '
-                            '형제·자매가 같은 어르신을 함께 볼 수도 있어요.',
-                            style: AppText.body(size: 17.5),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                  const SizedBox(height: 16),
-                  SeniorButton(
-                    label: '돌보는 분 추가하기',
-                    icon: TablerIcons.user_plus,
-                    kind: SeniorButtonKind.secondary,
-                    minHeight: 64,
-                    fontSize: 21,
-                    onPressed: () => _add(context, ref),
-                  ),
-                  const SizedBox(height: 16),
-                  Text(
-                    '보호자 계정에서는 어르신 화면이 열리지 않습니다',
-                    textAlign: TextAlign.center,
-                    style: AppText.caption(size: 17),
-                  ),
                 ],
               ),
             ),
           ),
         ),
       ],
+    );
+  }
+}
+
+/// 헤더 오른쪽 종 단추. 확인이 필요한 분 수를 빨간 점에 적는다.
+class _AlertBell extends StatelessWidget {
+  final int count;
+  final VoidCallback onTap;
+
+  const _AlertBell({required this.count, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      button: true,
+      label: count == 0 ? '알림' : '알림 $count건',
+      child: ExcludeSemantics(
+        child: GestureDetector(
+          onTap: onTap,
+          child: Stack(
+            clipBehavior: Clip.none,
+            children: [
+              Container(
+                width: 62,
+                height: 62,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: AppColors.bg,
+                  borderRadius: BorderRadius.circular(18),
+                ),
+                child: const Icon(
+                  TablerIcons.bell,
+                  size: 30,
+                  color: AppColors.textPrimary,
+                ),
+              ),
+              if (count > 0)
+                Positioned(
+                  right: -6,
+                  top: -6,
+                  child: Container(
+                    width: 30,
+                    height: 30,
+                    alignment: Alignment.center,
+                    decoration: const BoxDecoration(
+                      color: AppColors.danger,
+                      shape: BoxShape.circle,
+                    ),
+                    child: Text(
+                      '$count',
+                      style: AppText.cardTitle(size: 16, color: Colors.white),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
@@ -223,39 +233,23 @@ class _AttentionBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(22),
-      child: IntrinsicHeight(
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Container(width: 6, color: AppColors.danger),
-            Expanded(
-              child: Container(
-                color: AppColors.dangerBgSoft,
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 20,
-                  vertical: 18,
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Text(
-                      '먼저 확인할 분',
-                      style: AppText.cardTitle(
-                        size: 18,
-                        color: AppColors.danger,
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    for (final patient in patients)
-                      Text(patient.title, style: AppText.cardTitle(size: 20)),
-                  ],
-                ),
-              ),
-            ),
-          ],
-        ),
+    return AccentCard(
+      accent: AppColors.danger,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            '먼저 확인할 분',
+            style: AppText.cardTitle(size: 18, color: AppColors.danger),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            patients
+                .map((p) => p.relation.isEmpty ? p.name : p.relation)
+                .join(', '),
+            style: AppText.cardTitle(size: 20),
+          ),
+        ],
       ),
     );
   }

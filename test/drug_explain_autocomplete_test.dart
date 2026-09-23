@@ -315,7 +315,10 @@ void main() {
 
     await tester.pumpWidget(appWith(client));
     await tester.pumpAndSettle();
-    expect(find.widgetWithText(ChoiceChip, '다른 약과 함께 먹어도 되나요?'), findsOneWidget);
+    expect(
+      find.widgetWithText(ChoiceChip, '다른 약과 함께 먹어도 되나요?'),
+      findsOneWidget,
+    );
     expect(find.text('같이 먹는 약'), findsNothing);
     expect(find.text('비슷한 약 중복'), findsNothing);
     expect(find.textContaining('#'), findsNothing);
@@ -383,10 +386,7 @@ void main() {
 
       final first = find.widgetWithText(ChoiceChip, '어디에 쓰는 약인가요?');
       expect(tester.getTopLeft(first).dx, greaterThanOrEqualTo(0));
-      final combination = find.widgetWithText(
-        ChoiceChip,
-        '다른 약과 함께 먹어도 되나요?',
-      );
+      final combination = find.widgetWithText(ChoiceChip, '다른 약과 함께 먹어도 되나요?');
       await tester.ensureVisible(combination);
       await tester.pumpAndSettle();
       expect(tester.getTopLeft(combination).dx, greaterThanOrEqualTo(0));

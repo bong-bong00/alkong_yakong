@@ -6,6 +6,51 @@ import '../theme/app_typography.dart';
 
 /// 카드. **그림자를 쓰지 않는다** — 배경색([AppColors.bg]) 대비로 분리한다.
 /// 강조가 필요한 카드만 3px 포인트/위험색 테두리를 두른다.
+/// 색 카드가 뒤에 한 장 더 깔린 카드.
+///
+/// 왼쪽으로 조금 삐져나온 둥근 네모가 "여기부터 보라"고 말한다.
+/// 일자 막대가 아니라 모서리가 같이 둥글어야 한 장이 겹친 것으로 보인다.
+class AccentCard extends StatelessWidget {
+  final Widget child;
+  final Color accent;
+  final Color color;
+  final EdgeInsetsGeometry padding;
+  final double radius;
+
+  /// 뒤 카드가 왼쪽으로 내다보이는 너비.
+  final double peek;
+
+  const AccentCard({
+    super.key,
+    required this.child,
+    required this.accent,
+    this.color = AppColors.surface,
+    this.padding = const EdgeInsets.fromLTRB(20, 18, 20, 18),
+    this.radius = 22,
+    this.peek = 8,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: accent,
+        borderRadius: BorderRadius.circular(radius),
+      ),
+      padding: EdgeInsets.only(left: peek),
+      child: Container(
+        width: double.infinity,
+        padding: padding,
+        decoration: BoxDecoration(
+          color: color,
+          borderRadius: BorderRadius.circular(radius),
+        ),
+        child: child,
+      ),
+    );
+  }
+}
+
 class SeniorCard extends StatelessWidget {
   final Widget child;
   final EdgeInsetsGeometry padding;

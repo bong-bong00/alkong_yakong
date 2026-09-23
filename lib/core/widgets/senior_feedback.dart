@@ -42,28 +42,6 @@ Future<bool> showSeniorYesNoDialog({
   return confirmed ?? false;
 }
 
-/// OCR 이름 수정 화면이 사용하는 기존 오류 안내.
-class SeniorErrorBox extends StatelessWidget {
-  final String message;
-  const SeniorErrorBox(this.message, {super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-      decoration: BoxDecoration(
-        color: AppColors.dangerBg,
-        borderRadius: BorderRadius.circular(18),
-      ),
-      child: Text(
-        message,
-        style: AppText.cardTitle(size: 18, color: AppColors.danger),
-      ),
-    );
-  }
-}
-
 /// 스낵바.
 ///
 /// **보호자에게 연락한 결과는 이것으로만 알린다.** 어르신 화면에는 전화 걸기

@@ -84,33 +84,35 @@ void main() {
     expect(find.byType(SavedScreen), findsNothing);
   });
 
-  testWidgets('monthly count is measured days, not a consecutive or normal claim',
-      (tester) async {
-    const data = HeartData(
-      today: HeartPair(),
-      todaySlotLabel: '',
-      beforeAt: '',
-      afterAt: '',
-      week: [],
-      month: [
-        HeartMonthDay(1, HeartPair(after: 81)),
-        HeartMonthDay(3, HeartPair(after: 79)),
-      ],
-      streakDays: 2,
-      bestStreakDays: 2,
-      anomaly: null,
-      sensorConnected: false,
-      sensorBattery: null,
-      sensorLastReadAt: '',
-      notifyGuardian: false,
-    );
-    await tester.pumpWidget(wrap(const MonthlyHeartScreen(data: data)));
-    await tester.pumpAndSettle();
-    expect(find.text('복약 후 심박\n기록이 있어요'), findsOneWidget);
-    expect(find.text('일째'), findsNothing);
-    expect(find.textContaining('가장 길었던 기록'), findsNothing);
-    expect(find.textContaining('정상'), findsNothing);
-  });
+  testWidgets(
+    'monthly count is measured days, not a consecutive or normal claim',
+    (tester) async {
+      const data = HeartData(
+        today: HeartPair(),
+        todaySlotLabel: '',
+        beforeAt: '',
+        afterAt: '',
+        week: [],
+        month: [
+          HeartMonthDay(1, HeartPair(after: 81)),
+          HeartMonthDay(3, HeartPair(after: 79)),
+        ],
+        streakDays: 2,
+        bestStreakDays: 2,
+        anomaly: null,
+        sensorConnected: false,
+        sensorBattery: null,
+        sensorLastReadAt: '',
+        notifyGuardian: false,
+      );
+      await tester.pumpWidget(wrap(const MonthlyHeartScreen(data: data)));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('월 한 달'), findsOneWidget);
+      expect(find.text('일째'), findsNothing);
+      expect(find.textContaining('가장 길었던 기록'), findsNothing);
+      expect(find.textContaining('정상'), findsNothing);
+    },
+  );
 
   testWidgets(
     'monthly without guardian connection shows no shared-view claim or invented name',
@@ -185,13 +187,13 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.textContaining('98회/분'), findsOneWidget);
       expect(find.textContaining('비교할 자료는 부족'), findsOneWidget);
-      expect(find.text('지난 기록 보기'), findsNothing);
-      expect(find.byType(SeniorListRow), findsNothing);
+      expect(find.text('지난 기록 보기'), findsOneWidget);
+      expect(find.byType(SeniorListRow), findsWidgets);
       expect(find.widgetWithText(SeniorSegmented, '이번 주'), findsOneWidget);
       expect(find.widgetWithText(SeniorSegmented, '한 달'), findsOneWidget);
       expect(find.text('지금 측정'), findsOneWidget);
       expect(find.text('폴라 센서'), findsOneWidget);
-      expect(find.text('보호자 자동 알림은\n아직 지원하지 않아요'), findsOneWidget);
+      expect(find.textContaining('에게 바로 알려요'), findsOneWidget);
       expect(gets, 1);
       await tester.tap(find.text('한 달'));
       await tester.pumpAndSettle();

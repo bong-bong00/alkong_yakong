@@ -4,12 +4,14 @@ import 'package:go_router/go_router.dart';
 
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/network/api_client.dart';
+import '../../../../core/network/api_config.dart';
 import '../../../../core/session/mvp_session.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../core/widgets/senior_button.dart';
 import '../../../../core/widgets/senior_card.dart';
 import '../../../../core/widgets/senior_feedback.dart';
 import '../../../../core/widgets/senior_header.dart';
+import '../../../dashboard/application/medication_history_provider.dart';
 import '../../../medication/application/medication_controller.dart';
 import '../../../medicines/application/user_medicines_controller.dart';
 
@@ -56,6 +58,7 @@ class ScheduleDaysScreen extends ConsumerStatefulWidget {
 
 class _ScheduleDaysScreenState extends ConsumerState<ScheduleDaysScreen> {
   static const List<String> _weekdays = ['월', '화', '수', '목', '금', '토', '일'];
+  final ApiClient _localApi = ApiClient(baseUrl: ApiConfig.localFeatureBaseUrl);
 
   late int _year;
   late int _month;
@@ -107,8 +110,7 @@ class _ScheduleDaysScreenState extends ConsumerState<ScheduleDaysScreen> {
   Future<void> _load() async {
     final prescriptionId = _prescriptionId;
     final widgetPrescriptionId = widget.prescriptionId?.trim() ?? '';
-    final sessionPrescriptionId =
-        MvpSession.latestPrescriptionId?.trim() ?? '';
+    final sessionPrescriptionId = MvpSession.latestPrescriptionId?.trim() ?? '';
     final prescriptionIdSource = widgetPrescriptionId.isNotEmpty
         ? 'widget'
         : sessionPrescriptionId.isNotEmpty
@@ -132,7 +134,7 @@ class _ScheduleDaysScreenState extends ConsumerState<ScheduleDaysScreen> {
         ? 'mvp-user'
         : MvpSession.userId.trim();
     try {
-      final response = await ApiClient().get(
+      final response = await _localApi.get(
         '/api/v1/users/$userId/prescriptions/$prescriptionId/schedule-days'
         '?year=$_year&month=$_month',
       );
@@ -145,8 +147,7 @@ class _ScheduleDaysScreenState extends ConsumerState<ScheduleDaysScreen> {
     } on ApiException catch (error) {
       final reason = switch (error.message) {
         '사용자가 없습니다.' => 'user_not_found',
-        '처방전을 찾지 못했어요.' =>
-          'prescription_not_found_or_not_owned',
+        '처방전을 찾지 못했어요.' => 'prescription_not_found_or_not_owned',
         _ when error.statusCode == null => 'network_or_unknown_error',
         _ => 'http_error',
       };
@@ -186,21 +187,36 @@ class _ScheduleDaysScreenState extends ConsumerState<ScheduleDaysScreen> {
             '${_month.toString().padLeft(2, '0')}-'
             '${day.toString().padLeft(2, '0')}',
           ),
-          isToday: today.year == _year &&
-              today.month == _month &&
-              today.day == day,
+          isToday:
+              today.year == _year && today.month == _month && today.day == day,
         ),
     ];
     final count = cached.length;
-    _headline = count == 0
-        ? '투약일수를 확인해 주세요'
-        : '오늘부터 $count일, 이 약을 드시는 날이에요';
+    _headline = count == 0 ? '투약일수를 확인해 주세요' : '오늘부터 $count일, 이 약을 드시는 날이에요';
+  }
+
+  void _mergeVisibleOnDaysIntoCache() {
+    final next = Set<String>.from(MvpSession.latestScheduleDates);
+    for (final day in _days) {
+      if (day.day < 1) continue;
+      final key =
+          '${_year.toString().padLeft(4, '0')}-'
+          '${_month.toString().padLeft(2, '0')}-'
+          '${day.day.toString().padLeft(2, '0')}';
+      if (day.on) {
+        next.add(key);
+      } else {
+        next.remove(key);
+      }
+    }
+    MvpSession.latestScheduleDates = next;
   }
 
   void _goHome() {
     if (widget.days == null) {
       ref.read(medicationProvider.notifier).refreshFromServer();
       ref.read(userMedicinesProvider.notifier).refresh();
+      ref.invalidate(medicationHistoryProvider);
     }
     final onConfirmed = widget.onConfirmed;
     if (onConfirmed != null) {
@@ -243,6 +259,7 @@ class _ScheduleDaysScreenState extends ConsumerState<ScheduleDaysScreen> {
       _saving = false;
       _busyDay = null;
     });
+    _mergeVisibleOnDaysIntoCache();
   }
 
   Future<void> _toggle(ScheduleDayCell cell) async {
@@ -265,6 +282,7 @@ class _ScheduleDaysScreenState extends ConsumerState<ScheduleDaysScreen> {
             ? '투약일수를 확인해 주세요'
             : '오늘부터 $count일, 이 약을 드시는 날이에요';
       });
+      _mergeVisibleOnDaysIntoCache();
       return;
     }
     if (!cell.on && !_hasTimes) {
@@ -285,7 +303,7 @@ class _ScheduleDaysScreenState extends ConsumerState<ScheduleDaysScreen> {
       _busyDay = cell.day;
     });
     try {
-      final response = await ApiClient().post(
+      final response = await _localApi.post(
         '/api/v1/users/$userId/prescriptions/$prescriptionId/schedule-days',
         body: {'date': date},
       );
@@ -359,10 +377,7 @@ class _ScheduleDaysScreenState extends ConsumerState<ScheduleDaysScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        Text(
-                          _headline,
-                          style: AppText.cardTitle(size: 22),
-                        ),
+                        Text(_headline, style: AppText.cardTitle(size: 22)),
                         const SizedBox(height: 8),
                         Text(
                           '파란 테두리 칸이 이 약을 드시는 날이에요. 칸을 누르면 빼거나 넣을 수 있어요.',
@@ -434,9 +449,9 @@ class _ScheduleDaysScreenState extends ConsumerState<ScheduleDaysScreen> {
                                                   cells[row * 7 + col] != null
                                               ? _DayCell(
                                                   cells[row * 7 + col]!,
-                                                  busy: _busyDay ==
-                                                      cells[row * 7 + col]!
-                                                          .day,
+                                                  busy:
+                                                      _busyDay ==
+                                                      cells[row * 7 + col]!.day,
                                                   onTap: () => _toggle(
                                                     cells[row * 7 + col]!,
                                                   ),
@@ -544,16 +559,19 @@ class _DayCell extends StatelessWidget {
                 children: [
                   Text(
                     '${day.day}',
-                    style: AppText.cardTitle(size: 20, color: ink)
-                        .copyWith(height: 1),
+                    style: AppText.cardTitle(
+                      size: 20,
+                      color: ink,
+                    ).copyWith(height: 1),
                   ),
                   if (todayMark.isNotEmpty) ...[
                     const SizedBox(height: 2),
                     Text(
                       todayMark,
-                      style: AppText.label(size: 13, color: ink).copyWith(
-                        height: 1,
-                      ),
+                      style: AppText.label(
+                        size: 13,
+                        color: ink,
+                      ).copyWith(height: 1),
                     ),
                   ],
                 ],

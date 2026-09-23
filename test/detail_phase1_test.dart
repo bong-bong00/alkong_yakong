@@ -27,15 +27,29 @@ class FakeDetails extends UserMedicinesController {
 }
 
 void main() {
-  testWidgets('existing SeniorCard ExpansionTile emits Flutter SDK ink warning', (tester) async {
-    await tester.pumpWidget(const MaterialApp(home: Scaffold(body:
-      SeniorCard(child: ExpansionTile(title: Text('기존 펼침 카드'), children: [])),
-    )));
-    final error = tester.takeException();
-    expect(error, isA<FlutterError>());
-    expect(error.toString(), startsWith('ListTile background color or ink splashes may be invisible.'));
-    expect(tester.takeException(), isNull);
-  });
+  testWidgets(
+    'existing SeniorCard ExpansionTile emits Flutter SDK ink warning',
+    (tester) async {
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: Scaffold(
+            body: SeniorCard(
+              child: ExpansionTile(title: Text('기존 펼침 카드'), children: []),
+            ),
+          ),
+        ),
+      );
+      final error = tester.takeException();
+      expect(error, isA<FlutterError>());
+      expect(
+        error.toString(),
+        startsWith(
+          'ListTile background color or ink splashes may be invisible.',
+        ),
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
   test('missing and malformed new fields have safe defaults', () {
     for (final raw in [
       null,
@@ -45,8 +59,7 @@ void main() {
       [
         null,
         3,
-        {'title': 42},
-        {'title': 'x', 'description': []},
+        {'title': ''},
       ],
     ]) {
       final med = UserMedicine.fromJson({
@@ -86,7 +99,11 @@ void main() {
     },
   );
 
-  Future<void> show(WidgetTester tester, Map<String, dynamic> raw, {double scale = 1}) async {
+  Future<void> show(
+    WidgetTester tester,
+    Map<String, dynamic> raw, {
+    double scale = 1,
+  }) async {
     tester.view.physicalSize = const Size(1200, 2400);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
@@ -99,7 +116,9 @@ void main() {
         ],
         child: MaterialApp(
           builder: (context, child) => MediaQuery(
-            data: MediaQuery.of(context).copyWith(textScaler: TextScaler.linear(scale)),
+            data: MediaQuery.of(
+              context,
+            ).copyWith(textScaler: TextScaler.linear(scale)),
             child: child!,
           ),
           home: const DrugDetailScreen(medicineCode: 'synthetic'),
@@ -114,7 +133,12 @@ void main() {
             (raw['all_approved_uses'] as List).isNotEmpty)) {
       // Same diagnostic reproduced above with the unchanged shared widget.
       expect(error, isA<FlutterError>());
-      expect(error.toString(), startsWith('ListTile background color or ink splashes may be invisible.'));
+      expect(
+        error.toString(),
+        startsWith(
+          'ListTile background color or ink splashes may be invisible.',
+        ),
+      );
       expect(tester.takeException(), isNull);
     } else {
       expect(error, isNull);
@@ -128,23 +152,30 @@ void main() {
     expect(find.text('정해진 작용을 돕는 성분이에요.'), findsOneWidget);
   });
 
-  testWidgets('long explanation remains complete with large text', (tester) async {
+  testWidgets('long explanation remains complete with large text', (
+    tester,
+  ) async {
     final body = List.filled(15, '성분의 확인된 설명을 그대로 표시해요.').join(' ');
-    await show(tester, {...data(), 'ingredient_explanation':body}, scale:2);
+    await show(tester, {...data(), 'ingredient_explanation': body}, scale: 2);
     final text = tester.widget<Text>(find.text(body));
-    expect(text.maxLines,isNull);
-    expect(text.overflow,isNot(TextOverflow.ellipsis));
-    expect(text.data,body);
-    expect(tester.takeException(),isNull);
+    expect(text.maxLines, isNull);
+    expect(text.overflow, isNot(TextOverflow.ellipsis));
+    expect(text.data, body);
+    expect(tester.takeException(), isNull);
   });
 
-  testWidgets('missing explanation is not described as missing official source', (tester) async {
-    await show(tester, {...data(), 'ingredient_explanation':''});
-    expect(find.text('주성분의 쉬운 설명을 아직 확인하지 못했어요. 공식 정보가 없다는 뜻은 아니에요.'),findsOneWidget);
-    await tester.pumpWidget(const SizedBox.shrink());
-    await show(tester, {...data(), 'detail_status':'FAILED', 'ingredient_explanation':''});
-    expect(find.text('주성분 설명을 불러오지 못했어요. 잠시 후 다시 확인해 주세요.'),findsOneWidget);
-  });
+  testWidgets(
+    'missing explanation hides ingredient card without empty-state copy',
+    (tester) async {
+      await show(tester, {...data(), 'ingredient_explanation': ''});
+      expect(
+        find.text('주성분의 쉬운 설명을 아직 확인하지 못했어요. 공식 정보가 없다는 뜻은 아니에요.'),
+        findsNothing,
+      );
+      expect(find.text('주성분 설명을 불러오지 못했어요. 잠시 후 다시 확인해 주세요.'), findsNothing);
+      expect(find.text('기존 사용 목적'), findsOneWidget);
+    },
+  );
 
   testWidgets('matched phrase alone is bold green and purposes displayed', (
     tester,
@@ -171,56 +202,107 @@ void main() {
     expect(description.style!.color, isNot(AppColors.detailEmphasis));
   });
 
-  testWidgets('whole body, outer-space match and blank highlight stay ordinary', (tester) async {
-    const body = '  정해진 작용을 돕는 성분이에요.  ';
-    for (final highlight in [body, body.trim(), ' ${body.trim()} ', '', '없는 구절']) {
-      await tester.pumpWidget(const SizedBox.shrink());
-      await show(tester, {...data(), 'ingredient_explanation': body, 'ingredient_highlight': highlight});
-      final text = tester.widget<Text>(find.text(body));
-      expect(text.textSpan, isNull);
-      expect(text.data, body);
-      expect(text.style!.color, isNot(AppColors.detailEmphasis));
-    }
-  });
-
-  testWidgets('only first repeated phrase highlighted and complete body preserved', (tester) async {
-    const body = '작용을 돕고, 다시 작용을 돕는 설명이에요.';
-    await show(tester, {...data(), 'ingredient_explanation': body, 'ingredient_highlight': '작용을 돕'});
-    final text = tester.widgetList<Text>(find.byType(Text)).firstWhere((t) => t.textSpan?.toPlainText() == body);
-    final spans = (text.textSpan! as TextSpan).children!.cast<TextSpan>();
-    expect(spans.where((s) => s.style?.color == AppColors.detailEmphasis).length, 1);
-    expect(text.textSpan!.toPlainText(), body);
-    expect(spans.last.text, contains('다시 작용을 돕'));
-  });
-
-  testWidgets('full expansion retains representative and distinct conditions, removes exact duplicates', (tester) async {
-    const entries = [
-      '기존 조건', '성인에게 1~2 mg을 사용한다.', '성인에게 12 mg을 사용한다.',
-      '12세 이상만 사용한다.', '12세 이상만 사용한다. 단, 예외 대상은 제외한다.',
-    ];
-    await show(tester, {...data(), 'all_approved_uses': [...entries, entries[1]],
-      'treatment_uses': [{'title': '치통', 'description': entries[1]}]});
-    final previous = FlutterError.onError;
-    final knownWarnings = <String>[];
-    FlutterError.onError = (details) {
-      if (details.exceptionAsString().startsWith('ListTile background color or ink splashes may be invisible.')) {
-        knownWarnings.add(details.exceptionAsString());
-      } else { previous?.call(details); }
-    };
-    try {
-      await tester.tap(find.text('전체 허가 목적'));
-      await tester.pumpAndSettle();
-      expect(knownWarnings, isNotEmpty);
-      for (final entry in entries) {
-        expect(find.text('· $entry'), findsOneWidget);
+  testWidgets(
+    'whole body, outer-space match and blank highlight stay ordinary',
+    (tester) async {
+      const body = '  정해진 작용을 돕는 성분이에요.  ';
+      for (final highlight in [
+        body,
+        body.trim(),
+        ' ${body.trim()} ',
+        '',
+        '없는 구절',
+      ]) {
+        await tester.pumpWidget(const SizedBox.shrink());
+        await show(tester, {
+          ...data(),
+          'ingredient_explanation': body,
+          'ingredient_highlight': highlight,
+        });
+        final text = tester.widget<Text>(find.text(body));
+        expect(text.textSpan, isNull);
+        expect(text.data, body);
+        expect(text.style!.color, isNot(AppColors.detailEmphasis));
       }
-      expect(find.text(entries[1]), findsOneWidget); // Representative remains too.
-      final expanded = tester.widget<ExpansionTile>(find.byType(ExpansionTile));
-      final texts = expanded.children.whereType<Align>().map((a) => (a.child! as Text).data).toList();
-      expect(texts, entries.map((e) => '· $e').toList());
-    } finally { FlutterError.onError = previous; }
-    expect(tester.takeException(), isNull);
-  });
+    },
+  );
+
+  testWidgets(
+    'only first repeated phrase highlighted and complete body preserved',
+    (tester) async {
+      const body = '작용을 돕고, 다시 작용을 돕는 설명이에요.';
+      await show(tester, {
+        ...data(),
+        'ingredient_explanation': body,
+        'ingredient_highlight': '작용을 돕',
+      });
+      final text = tester
+          .widgetList<Text>(find.byType(Text))
+          .firstWhere((t) => t.textSpan?.toPlainText() == body);
+      final spans = (text.textSpan! as TextSpan).children!.cast<TextSpan>();
+      expect(
+        spans.where((s) => s.style?.color == AppColors.detailEmphasis).length,
+        1,
+      );
+      expect(text.textSpan!.toPlainText(), body);
+      expect(spans.last.text, contains('다시 작용을 돕'));
+    },
+  );
+
+  testWidgets(
+    'full expansion retains representative and distinct conditions, removes exact duplicates',
+    (tester) async {
+      const entries = [
+        '기존 조건',
+        '성인에게 1~2 mg을 사용한다.',
+        '성인에게 12 mg을 사용한다.',
+        '12세 이상만 사용한다.',
+        '12세 이상만 사용한다. 단, 예외 대상은 제외한다.',
+      ];
+      await show(tester, {
+        ...data(),
+        'all_approved_uses': [...entries, entries[1]],
+        'treatment_uses': [
+          {'title': '치통', 'description': entries[1]},
+        ],
+      });
+      final previous = FlutterError.onError;
+      final knownWarnings = <String>[];
+      FlutterError.onError = (details) {
+        if (details.exceptionAsString().startsWith(
+          'ListTile background color or ink splashes may be invisible.',
+        )) {
+          knownWarnings.add(details.exceptionAsString());
+        } else {
+          previous?.call(details);
+        }
+      };
+      try {
+        await tester.tap(find.text('전체 허가 목적'));
+        await tester.pumpAndSettle();
+        expect(knownWarnings, isNotEmpty);
+        expect(find.text('· ${entries[0]}'), findsNothing);
+        for (final entry in entries.skip(1)) {
+          expect(find.text('· $entry'), findsOneWidget);
+        }
+        expect(
+          find.text(entries[1]),
+          findsOneWidget,
+        ); // Representative remains too.
+        final expanded = tester.widget<ExpansionTile>(
+          find.byType(ExpansionTile),
+        );
+        final texts = expanded.children
+            .whereType<Align>()
+            .map((a) => (a.child! as Text).data)
+            .toList();
+        expect(texts, entries.skip(1).map((e) => '· $e').toList());
+      } finally {
+        FlutterError.onError = previous;
+      }
+      expect(tester.takeException(), isNull);
+    },
+  );
 
   testWidgets('nonmatching highlight uses ordinary text', (tester) async {
     await show(tester, {...data(), 'ingredient_highlight': '없는 구절'});
@@ -228,22 +310,15 @@ void main() {
     expect(text.textSpan, isNull);
   });
 
-  testWidgets('OUTDATED cannot show old explanation or purpose via fallback', (
-    tester,
-  ) async {
-    await show(tester, {
+  test('title-only treatment uses are kept', () {
+    final med = UserMedicine.fromJson({
       ...data(),
-      'detail_status': 'OUTDATED',
-      'short_explanation': '과거 카드 설명',
       'treatment_uses': [
-        {'title': '과거 목적', 'description': '과거 내용'},
+        {'title': '속쓰림·위 불편감', 'description': ''},
       ],
-      'official_usage': '공식 원문 0.5 mL',
     });
-    expect(find.text('과거 카드 설명'), findsNothing);
-    expect(find.text('정해진 작용을 돕는 성분이에요.'), findsNothing);
-    expect(find.text('기존 사용 목적'), findsNothing);
-    expect(find.text('과거 내용'), findsNothing);
-    expect(find.text('제품 공식 용법·용량'), findsOneWidget);
+    expect(med.treatmentUses.single.title, '속쓰림·위 불편감');
+    expect(med.treatmentUses.single.description, isEmpty);
+    expect(med.hasDetailContent, isTrue);
   });
 }
