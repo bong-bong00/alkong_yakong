@@ -6,6 +6,28 @@ import '../../../core/session/mvp_session.dart';
 import '../domain/display_policy.dart';
 import '../domain/user_medicine_models.dart';
 
+/// 그 어르신의 약 보관 목록. 보호자가 돌보는 분 관리에서 본다.
+///
+/// 본인 목록([userMedicinesProvider])과 같은 응답을 쓰되, 누구 것인지만
+/// 다르다. 보호자 화면에서 본인 목록을 그대로 쓰면 남의 약을 자기 약으로
+/// 읽는다.
+final patientMedicinesProvider =
+    FutureProvider.family<List<UserMedicine>, String>((ref, patientId) async {
+      final id = patientId.trim();
+      if (id.isEmpty) return const [];
+      final response = await ApiClient(
+        baseUrl: ApiConfig.localFeatureBaseUrl,
+      ).get('/api/v1/users/${Uri.encodeComponent(id)}/medicines');
+      if (response is! Map) throw const ApiException('약 목록을 읽을 수 없습니다.');
+      final raw = response['medicines'];
+      if (raw is! List) throw const ApiException('약 목록을 읽을 수 없습니다.');
+      return [
+        for (final item in raw)
+          if (item is Map)
+            UserMedicine.fromJson(Map<String, dynamic>.from(item)),
+      ].where((med) => !isMockDrugInfoName(med.displayName)).toList();
+    });
+
 final userMedicinesProvider =
     AsyncNotifierProvider<UserMedicinesController, List<UserMedicine>>(
       UserMedicinesController.new,

@@ -462,7 +462,9 @@ void _signupTests() {
   testWidgets('걸음마다 지금 어디쯤인지 알려준다 (02~05)', (tester) async {
     await tester.pumpWidget(wrap(const SignupScreen()));
     expect(find.textContaining(stepLabel), findsOneWidget);
-    expect(find.text('1 / 10'), findsOneWidget);
+    // 총 개수는 박지 않는다 — 역할·성별에 따라, 그리고 묻는 것이 늘거나
+    // 줄면 달라진다. 첫 걸음이 1번째라는 것만 지킨다.
+    expect(find.textContaining(RegExp(r'^1 / \d+$')), findsOneWidget);
     expect(find.text('어떤 분이신가요?'), findsOneWidget);
   });
 
@@ -579,7 +581,8 @@ void _signupTests() {
       "title: '담배와 술은",
       "title: '약물 알레르기가",
       "title: '지금 앓고 있는",
-      "title: '크게 아팠던 적이나",
+      "title: '과거에 앓았던 병이",
+      "title: '가족이 앓은 병이",
       "title: '보호자 연락처를",
     ]) {
       expect(source.contains(question), isTrue, reason: '$question 단계가 없다');
@@ -1134,13 +1137,14 @@ void _rightAlignTests() {
     expect(tester.takeException(), isNull);
   });
 
-  test('달력 맨 아래에 기록으로 돌아가는 길이 있다', () {
-    // 달력은 한 화면을 넘는다. 아래까지 내려간 자리에서 위쪽 뒤로 버튼까지
-    // 다시 올라가게 두지 않는다 (프로토타입 22번).
+  test('달력에는 "약 있는 날" 표시를 두지 않는다', () {
+    // 아직 안 드신 날을 따로 칠하면 다 드신 날과 헷갈린다. 지난 날의
+    // 결과만 그린다.
     final source = File(
       'lib/features/dashboard/presentation/screens/month_calendar_screen.dart',
     ).readAsStringSync();
-    expect(source.contains('복약 기록으로 돌아가기'), isTrue);
+    expect(source.contains('약 있는 날'), isFalse);
+    expect(source.contains('DayMark.scheduled'), isFalse);
   });
 }
 
@@ -1170,7 +1174,7 @@ void _recordTimelineTests() {
     expect(find.text('오늘 화면으로 돌아가기'), findsOneWidget);
   });
 
-  test('기록 탭은 달성률·주간칸·달력만 둔다', () {
+  test('기록 탭은 주간칸과 달력으로 가는 길만 둔다', () {
     final source = File(
       'lib/features/dashboard/presentation/screens/medication_record_screen.dart',
     ).readAsStringSync();
@@ -1178,10 +1182,19 @@ void _recordTimelineTests() {
     // 달력에서 또 본다. 날짜별로 보는 일은 달력 화면이 맡는다.
     expect(source.contains('class _DayCard'), isFalse);
     expect(source.contains('class _TodayCard'), isFalse);
-    // 남는 것: 한 달 달성률, 이번 주 요일칸, 달력으로 가는 길.
-    expect(source.contains('class _MonthCard'), isTrue);
-    expect(source.contains('class _WeekCard'), isTrue);
+    // 남는 것: 이번 주 요일칸과 달력으로 가는 길. "이번 달" 달성률은
+    // 눌러서 열리는 달력이 그대로 보여주므로 두지 않는다.
+    expect(source.contains('class AdherenceMonthCard'), isFalse);
+    expect(source.contains('class AdherenceWeekCard'), isTrue);
     expect(source.contains('MonthCalendarScreen('), isTrue);
+
+    // 보호자 현황이 그 카드를 그대로 쓴다 — 두 화면의 그림이 갈리면
+    // 통화로 맞춰 볼 수가 없다.
+    final guardian = File(
+      'lib/features/dashboard/presentation/screens/guardian_home_screen.dart',
+    ).readAsStringSync();
+    expect(guardian.contains('AdherenceWeekCard('), isTrue);
+    expect(guardian.contains('MonthCalendarScreen('), isTrue);
   });
 
   testWidgets('달력에서 날짜를 누르면 그날 결과가 아래에 나온다', (tester) async {
@@ -1219,7 +1232,7 @@ void _recordTimelineTests() {
     await tester.pump();
 
     // 처음에는 오늘을 보여준다.
-    expect(find.textContaining('날짜를 누르면'), findsOneWidget);
+    expect(find.textContaining('오늘'), findsWidgets);
 
     await tester.tap(find.text('2'));
     await tester.pump();

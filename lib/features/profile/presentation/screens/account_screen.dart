@@ -37,7 +37,7 @@ class AccountScreen extends ConsumerWidget {
                   SeniorCard(
                     padding: const EdgeInsets.symmetric(
                       horizontal: 22,
-                      vertical: 20,
+                      vertical: 16,
                     ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -67,7 +67,7 @@ class AccountScreen extends ConsumerWidget {
                   SeniorCard(
                     padding: const EdgeInsets.symmetric(
                       horizontal: 22,
-                      vertical: 20,
+                      vertical: 16,
                     ),
                     borderColor: AppColors.dangerBorder,
                     borderWidth: 2,

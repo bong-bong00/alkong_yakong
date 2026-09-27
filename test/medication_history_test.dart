@@ -72,7 +72,13 @@ void main() {
     await tester.pump();
     await tester.pump();
 
-    expect(find.bySemanticsLabel(RegExp(r'일 .*요일, 약 있는 날')), findsOneWidget);
+    // "약 있는 날" 표시는 없앴다. 아직 안 드신 날을 따로 칠하면 다 드신
+    // 날과 헷갈린다 — 앞날은 아직 오지 않은 날로만 둔다.
+    expect(find.bySemanticsLabel(RegExp(r'약 있는 날')), findsNothing);
+    expect(
+      find.bySemanticsLabel(RegExp(r'일 .*요일, 아직 오지 않은 날')),
+      findsWidgets,
+    );
   });
 }
 

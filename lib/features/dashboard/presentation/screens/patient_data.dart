@@ -70,7 +70,11 @@ class CarePatient {
         if (slots is List)
           for (final slot in slots)
             if (slot is Map)
-              CareSlot(slot['label']?.toString() ?? '', slot['taken'] == true),
+              CareSlot(
+                slot['label']?.toString() ?? '',
+                slot['taken'] == true,
+                time: slot['taken_at']?.toString() ?? '',
+              ),
       ],
       heartRate: number(json['heart_rate']),
       heartRateNormal: json['heart_rate_normal'] as bool?,
@@ -98,7 +102,12 @@ class CarePatient {
 class CareSlot {
   final String label;
   final bool taken;
-  const CareSlot(this.label, this.taken);
+
+  /// 어르신이 직접 누른 시각 — "08:10". 아직 안 드셨거나 기록이 없으면 빈 글자.
+  /// 없는 시각을 지어내지 않는다. 빈 글자면 화면이 시각 자리를 비운다.
+  final String time;
+
+  const CareSlot(this.label, this.taken, {this.time = ''});
 }
 
 /// 보호자 한 사람이 보는 전체 — 연결된 분과 수락을 기다리는 요청.

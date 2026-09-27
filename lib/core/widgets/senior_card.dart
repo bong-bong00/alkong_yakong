@@ -17,7 +17,7 @@ class AccentCard extends StatelessWidget {
   final EdgeInsetsGeometry padding;
   final double radius;
 
-  /// 뒤 카드가 왼쪽으로 내다보이는 너비.
+  /// 뒤 카드가 왼쪽으로 내다보이는 너비 — 색 띠의 두께.
   final double peek;
 
   const AccentCard({
@@ -27,7 +27,7 @@ class AccentCard extends StatelessWidget {
     this.color = AppColors.surface,
     this.padding = const EdgeInsets.fromLTRB(20, 18, 20, 18),
     this.radius = 22,
-    this.peek = 8,
+    this.peek = 4,
   });
 
   @override

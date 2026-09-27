@@ -52,7 +52,7 @@ class NoticesScreen extends StatelessWidget {
                   SeniorCard(
                     padding: const EdgeInsets.symmetric(
                       horizontal: 22,
-                      vertical: 20,
+                      vertical: 16,
                     ),
                     child: LabelValueRow(
                       label: Text('지금 쓰시는 버전', style: AppText.label(size: 19)),

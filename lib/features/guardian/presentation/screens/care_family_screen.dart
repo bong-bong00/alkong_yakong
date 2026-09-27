@@ -64,70 +64,61 @@ class CareFamilyScreen extends ConsumerWidget {
 
     return Column(
       children: [
-        SeniorHeader(
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('보호자 화면', style: AppText.label(size: 17)),
-                    Text(
-                      data == null ? '돌보는 분' : '돌보는 분 ${patients.length}명',
-                      style: AppText.screenTitle(size: 28),
-                    ),
-                  ],
-                ),
-              ),
-              if (onOpenAlerts != null)
-                _AlertBell(count: needAttention.length, onTap: onOpenAlerts!),
-            ],
-          ),
+        // 제목은 한 줄로 둔다. 어르신 화면의 상단바와 같은 높이로 서야
+        // 탭을 옮길 때 바가 들썩이지 않는다. 보호자인지는 하단 탭 라벨
+        // (돌보는 분 · 정보)이 이미 말해 준다.
+        SeniorTitleHeader(
+          title: data == null ? '돌보는 분' : '돌보는 분 ${patients.length}명',
+          trailing: onOpenAlerts == null
+              ? null
+              : _AlertBell(count: needAttention.length, onTap: onOpenAlerts!),
         ),
         Expanded(
-          child: RefreshIndicator(
-            onRefresh: () => ref.refresh(careOverviewProvider.future),
-            child: SingleChildScrollView(
-              physics: const AlwaysScrollableScrollPhysics(),
-              padding: const EdgeInsets.fromLTRB(20, 16, 20, 28),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  if (data == null && overview.isLoading)
-                    const _InfoCard(text: '불러오는 중이에요')
-                  else if (data == null)
-                    _InfoCard(
-                      text: '돌보는 분 목록을 불러오지 못했어요',
-                      actionLabel: '다시 불러오기',
-                      onAction: () => ref.invalidate(careOverviewProvider),
-                    )
-                  else if (patients.isEmpty && pending.isEmpty)
-                    const _InfoCard(
-                      text:
-                          '아직 연결된 어르신이 없어요. 정보 → 돌보는 분 관리에서 '
-                          '어르신 전화번호로 연결을 요청해 주세요.',
-                    ),
-                  if (needAttention.isNotEmpty) ...[
-                    _AttentionBanner(patients: needAttention),
-                    const SizedBox(height: 12),
-                  ],
-                  for (int i = 0; i < patients.length; i++) ...[
-                    if (i > 0) const SizedBox(height: 12),
-                    _PatientCard(
-                      patient: patients[i],
-                      onTap: () => onOpenPatient(patients[i]),
-                    ),
-                  ],
-                  for (final invite in pending) ...[
-                    const SizedBox(height: 12),
-                    _PendingCard(
-                      invite: invite,
-                      onCancel: () => _cancel(context, ref, invite),
-                    ),
-                  ],
+          // 당겨서 새로고침을 두지 않는다. 돌보는 분이 몇 분 안 되면 목록이
+          // 화면에 다 들어가는데, 새로고침을 살리려면 늘 끌리게 만들어야 해
+          // 스크롤할 것이 없는데도 화면이 들썩였다. 목록은 화면에 들어오면
+          // 움직이지 않고, 길어지면 그때부터 평소대로 스크롤된다.
+          child: SingleChildScrollView(
+            // 아래 여백이 28이면 카드가 다 들어가고도 여백 때문에 몇 px이
+            // 넘쳐 목록이 헛돈다. 카드끼리 이미 12씩 띄우고 있어 16이면
+            // 탭바와 충분히 떨어진다.
+            padding: const EdgeInsets.fromLTRB(20, 16, 20, 16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                if (data == null && overview.isLoading)
+                  const _InfoCard(text: '불러오는 중이에요')
+                else if (data == null)
+                  _InfoCard(
+                    text: '돌보는 분 목록을 불러오지 못했어요',
+                    actionLabel: '다시 불러오기',
+                    onAction: () => ref.invalidate(careOverviewProvider),
+                  )
+                else if (patients.isEmpty && pending.isEmpty)
+                  const _InfoCard(
+                    text:
+                        '아직 연결된 어르신이 없어요. 정보 → 돌보는 분 관리에서 '
+                        '어르신 전화번호로 연결을 요청해 주세요.',
+                  ),
+                if (needAttention.isNotEmpty) ...[
+                  _AttentionBanner(patients: needAttention),
+                  const SizedBox(height: 12),
                 ],
-              ),
+                for (int i = 0; i < patients.length; i++) ...[
+                  if (i > 0) const SizedBox(height: 12),
+                  _PatientCard(
+                    patient: patients[i],
+                    onTap: () => onOpenPatient(patients[i]),
+                  ),
+                ],
+                for (final invite in pending) ...[
+                  const SizedBox(height: 12),
+                  _PendingCard(
+                    invite: invite,
+                    onCancel: () => _cancel(context, ref, invite),
+                  ),
+                ],
+              ],
             ),
           ),
         ),
@@ -155,8 +146,8 @@ class _AlertBell extends StatelessWidget {
             clipBehavior: Clip.none,
             children: [
               Container(
-                width: 62,
-                height: 62,
+                width: 52,
+                height: 52,
                 alignment: Alignment.center,
                 decoration: BoxDecoration(
                   color: AppColors.bg,
@@ -164,7 +155,7 @@ class _AlertBell extends StatelessWidget {
                 ),
                 child: const Icon(
                   TablerIcons.bell,
-                  size: 30,
+                  size: 26,
                   color: AppColors.textPrimary,
                 ),
               ),
@@ -204,7 +195,7 @@ class _InfoCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SeniorCard(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -277,7 +268,7 @@ class _PatientCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SeniorCard(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
       onTap: onTap,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,

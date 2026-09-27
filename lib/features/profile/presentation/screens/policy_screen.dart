@@ -37,7 +37,7 @@ class PolicyScreen extends StatelessWidget {
                 SeniorCard(
                   padding: const EdgeInsets.symmetric(
                     horizontal: 22,
-                    vertical: 20,
+                    vertical: 16,
                   ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -111,7 +111,7 @@ class _SectionCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SeniorCard(
-      padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 20),
+      padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
