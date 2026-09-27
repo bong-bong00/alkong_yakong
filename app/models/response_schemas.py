@@ -37,6 +37,8 @@ class UserCreateResponse(ApiResponse):
     diseases: list[str] = Field(default_factory=list)
     past_history: bool | None = None
     family_history: bool | None = None
+    past_illnesses: list[str] = Field(default_factory=list)
+    family_illnesses: list[str] = Field(default_factory=list)
 
 
 class UserResponse(UserCreateResponse):

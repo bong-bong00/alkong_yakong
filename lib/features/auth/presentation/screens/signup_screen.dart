@@ -17,6 +17,26 @@ import '../../../guardian/data/guardian_repository.dart';
 import '../../../profile/application/session_actions.dart';
 import '../../../profile/domain/user_profile.dart';
 
+/// 병력 선택값과 기존 불리언 계약을 함께 보낸다.
+Map<String, dynamic> buildIllnessHistoryPayload({
+  required Iterable<String> pastIllnesses,
+  required Iterable<String> familyIllnesses,
+}) {
+  List<String> selected(Iterable<String> values) => [
+    for (final value in values)
+      if (value.trim().isNotEmpty && value.trim() != '없어요') value.trim(),
+  ];
+
+  final past = selected(pastIllnesses);
+  final family = selected(familyIllnesses);
+  return {
+    'past_illnesses': past,
+    'family_illnesses': family,
+    'past_history': past.isNotEmpty,
+    'family_history': family.isNotEmpty,
+  };
+}
+
 /// 단계형 회원가입 (위저드).
 /// 위치: lib/features/auth/presentation/screens/signup_screen.dart
 class SignupScreen extends ConsumerStatefulWidget {
@@ -145,10 +165,6 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
     showSeniorSnackbar(context, message, error: true, bottom: actionsHeight);
   }
 
-  /// "없어요"만 골랐으면 앓은 적이 없는 것으로 본다.
-  static bool _hasIllness(Set<String> picked) =>
-      picked.isNotEmpty && !picked.contains('없어요');
-
   String? _optionalTrimmed(String value) {
     final trimmed = value.trim();
     return trimmed.isEmpty ? null : trimmed;
@@ -177,8 +193,10 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
           ? _picked(_allergens, _allergyOther, skip: '잘 모르겠어요')
           : <String>[],
       'diseases': _picked(_diseases, _diseaseOther, skip: '없어요'),
-      'past_history': _hasIllness(_pastIllnesses),
-      'family_history': _hasIllness(_familyIllnesses),
+      ...buildIllnessHistoryPayload(
+        pastIllnesses: _pastIllnesses,
+        familyIllnesses: _familyIllnesses,
+      ),
     });
   }
 

@@ -1,6 +1,6 @@
 from typing import List, Literal, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class UserCreate(BaseModel):
@@ -21,6 +21,13 @@ class UserCreate(BaseModel):
     diseases: List[str] = Field(default_factory=list)
     past_history: Optional[bool] = None
     family_history: Optional[bool] = None
+    past_illnesses: List[str] = Field(default_factory=list)
+    family_illnesses: List[str] = Field(default_factory=list)
+
+    @field_validator("past_illnesses", "family_illnesses", mode="before")
+    @classmethod
+    def empty_history_lists_for_null(cls, value):
+        return [] if value is None else value
 
 
 class UserUpdate(BaseModel):
@@ -41,6 +48,13 @@ class UserUpdate(BaseModel):
     diseases: Optional[List[str]] = None
     past_history: Optional[bool] = None
     family_history: Optional[bool] = None
+    past_illnesses: Optional[List[str]] = None
+    family_illnesses: Optional[List[str]] = None
+
+    @field_validator("past_illnesses", "family_illnesses", mode="before")
+    @classmethod
+    def empty_history_lists_for_null(cls, value):
+        return [] if value is None else value
 
 
 class UserLogin(BaseModel):

@@ -170,6 +170,12 @@ class _ProfileEditScreenState extends ConsumerState<ProfileEditScreen> {
       diseases: _isGuardian ? original.diseases : _diseases.toList(),
       pastHistory: _isGuardian ? original.pastHistory : _pastYes,
       familyHistory: _isGuardian ? original.familyHistory : _familyYes,
+      pastIllnesses: _isGuardian || _pastYes != false
+          ? original.pastIllnesses
+          : const [],
+      familyIllnesses: _isGuardian || _familyYes != false
+          ? original.familyIllnesses
+          : const [],
     );
 
     setState(() => _saving = true);

@@ -28,6 +28,8 @@ class UserProfile {
   final List<String> diseases;
   final bool? pastHistory;
   final bool? familyHistory;
+  final List<String> pastIllnesses;
+  final List<String> familyIllnesses;
 
   const UserProfile({
     required this.id,
@@ -47,6 +49,8 @@ class UserProfile {
     this.diseases = const [],
     this.pastHistory,
     this.familyHistory,
+    this.pastIllnesses = const [],
+    this.familyIllnesses = const [],
   });
 
   factory UserProfile.fromJson(Map<String, dynamic> json) {
@@ -68,6 +72,8 @@ class UserProfile {
       diseases: _texts(json['diseases']),
       pastHistory: _flag(json['past_history']),
       familyHistory: _flag(json['family_history']),
+      pastIllnesses: _texts(json['past_illnesses']),
+      familyIllnesses: _texts(json['family_illnesses']),
     );
   }
 
@@ -110,6 +116,8 @@ class UserProfile {
     'diseases': diseases,
     'past_history': pastHistory,
     'family_history': familyHistory,
+    'past_illnesses': pastIllnesses,
+    'family_illnesses': familyIllnesses,
   };
 
   /// 서버가 받는 날짜 모양 "1958-04-10".
