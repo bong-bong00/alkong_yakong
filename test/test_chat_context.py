@@ -136,6 +136,15 @@ class ChatContextTest(unittest.TestCase):
                 "app.services.dur_service.analyze_dur_consultation",
                 return_value={"status": "current", "items": []},
             ) as analyze,
+            patch(
+                "app.services.medication_feature_dur_client.load_remote_combination_context",
+                return_value={
+                    "status": "current",
+                    "items": [],
+                    "has_risk": False,
+                    "reason": None,
+                },
+            ) as remote,
         ):
             reply = gemini_service.generate_chat_response(
                 "빠른 질문",
@@ -143,7 +152,7 @@ class ChatContextTest(unittest.TestCase):
                 selected_medicine=selected,
                 intent=intent,
             )
-        return reply, analyze
+        return reply, remote if intent == "combination" else analyze
 
     def test_permission_db_item_seq_lookup_is_exact(self):
         handle = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
@@ -330,10 +339,6 @@ class ChatContextTest(unittest.TestCase):
             analyze.call_args.kwargs["selected_medicine"]["ingredient"],
             "공식성분 100mg",
         )
-        self.assertEqual(
-            analyze.call_args.kwargs["risk_types"],
-            {"병용금기", "중복성분", "효능군중복"},
-        )
 
     def test_e_drug_error_uses_exact_permission_fallback(self):
         reply, analyze = self._run_permission_only_safety(
@@ -412,10 +417,15 @@ class ChatContextTest(unittest.TestCase):
             patch("app.services.external_api_service.fetch_e_drug_info", return_value=None),
             patch.object(gemini_service, "_with_official_permission_ingredient", return_value=verified),
             patch(
-                "app.services.dur_service.analyze_dur_consultation",
-                return_value={"status": "current", "items": matches, "reason": None},
+                "app.services.medication_feature_dur_client.load_remote_combination_context",
+                return_value={
+                    "status": "current",
+                    "items": matches,
+                    "has_risk": True,
+                    "reason": None,
+                },
             ) as analyze,
-            patch("app.services.chat_context_service.enrich_dur_matches", side_effect=lambda items: items),
+            patch("app.services.dur_service.analyze_dur_consultation") as local_analyze,
             patch.object(
                 gemini_service,
                 "_generate_content_with_retry",
@@ -431,10 +441,7 @@ class ChatContextTest(unittest.TestCase):
             )
         self.assertIn("공식 확인 결과", reply)
         analyze.assert_called_once()
-        self.assertEqual(
-            analyze.call_args.kwargs["risk_types"],
-            {"병용금기", "중복성분", "효능군중복"},
-        )
+        local_analyze.assert_not_called()
         prompt = generate.call_args_list[1].kwargs["contents"]
         for reason in ("공식 함께 사용 주의", "공식 성분 중복", "공식 효과 중복"):
             self.assertIn(reason, prompt)
@@ -457,7 +464,10 @@ class ChatContextTest(unittest.TestCase):
                         gemini_service, "_generate_content_with_retry",
                         return_value=SimpleNamespace(parsed={"drug_names": []}),
                     ),
-                    patch("app.services.dur_service.analyze_dur_consultation", return_value=result),
+                    patch(
+                        "app.services.medication_feature_dur_client.load_remote_combination_context",
+                        return_value=result,
+                    ),
                 ):
                     reply = gemini_service.generate_chat_response(
                         "다른 약과 같이 먹기", user_id="U1",
@@ -727,9 +737,15 @@ class ChatContextTest(unittest.TestCase):
                 return_value=enriched,
             ),
             patch(
-                "app.services.dur_service.analyze_dur_consultation",
-                return_value={"status": "current", "items": []},
+                "app.services.medication_feature_dur_client.load_remote_combination_context",
+                return_value={
+                    "status": "current",
+                    "items": [],
+                    "has_risk": False,
+                    "reason": None,
+                },
             ) as analyze,
+            patch("app.services.dur_service.analyze_dur_consultation") as local_analyze,
         ):
             reply = gemini_service.generate_chat_response(
                 "같이 먹어도 돼?",
@@ -743,10 +759,7 @@ class ChatContextTest(unittest.TestCase):
             analyze.call_args.kwargs["selected_medicine"]["ingredient"],
             "알마게이트 500mg",
         )
-        self.assertEqual(
-            analyze.call_args.kwargs["risk_types"],
-            {"병용금기", "중복성분", "효능군중복"},
-        )
+        local_analyze.assert_not_called()
 
     def test_question_intents_and_minimal_official_fields(self):
         self.assertIn("combination", classify_question("A약과 B약 같이 먹어도 돼?"))

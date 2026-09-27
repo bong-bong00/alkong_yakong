@@ -23,6 +23,24 @@ DUR_API_KEY = os.getenv("DUR_API_KEY") or E_DRUG_API_KEY
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
 
+# AI 약사의 함께먹기 질문에서 실제 복용약과 DUR 결과를 읽는 약 데이터 서버.
+# 팀 Render 자신의 SQLite를 fallback으로 사용하지 않도록 반드시 별도 설정한다.
+MEDICATION_FEATURE_BASE_URL = os.getenv(
+    "MEDICATION_FEATURE_BASE_URL",
+    "",
+).strip().rstrip("/")
+_MEDICATION_FEATURE_TIMEOUT = os.getenv(
+    "MEDICATION_FEATURE_TIMEOUT_SECONDS",
+    "10",
+).strip()
+try:
+    MEDICATION_FEATURE_TIMEOUT_SECONDS = max(
+        1.0,
+        min(float(_MEDICATION_FEATURE_TIMEOUT), 30.0),
+    )
+except ValueError:
+    MEDICATION_FEATURE_TIMEOUT_SECONDS = 10.0
+
 E_DRUG_BASE_URL = (
     "https://apis.data.go.kr/1471000/DrbEasyDrugInfoService/getDrbEasyDrugList"
 )

@@ -10,17 +10,50 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
 void main() {
-  Widget appWith(http.Client client) {
-    return MaterialApp(
-      home: DrugExplainScreen(apiClient: ApiClient(client: client)),
-    );
-  }
-
   http.Response jsonResponse(Object body, {int statusCode = 200}) {
     return http.Response(
       jsonEncode(body),
       statusCode,
       headers: {'content-type': 'application/json; charset=utf-8'},
+    );
+  }
+
+  http.Client legacyMedicationClient(http.Client client) {
+    return MockClient((request) async {
+      final dashboardUrl = request.url.replace(
+        path: request.url.path.replaceFirst(
+          RegExp(r'/medicines$'),
+          '/dashboard',
+        ),
+      );
+      final response = await client.get(dashboardUrl);
+      final dashboard = jsonDecode(response.body) as Map<String, dynamic>;
+      final rows = <Map<String, dynamic>>[];
+      final prescription = dashboard['latest_prescription'];
+      if (prescription is Map && prescription['items'] is List) {
+        for (final item in prescription['items'] as List) {
+          if (item is Map) rows.add(Map<String, dynamic>.from(item));
+        }
+      }
+      final today = dashboard['today_medications'];
+      if (today is List) {
+        for (final item in today) {
+          if (item is Map) rows.add(Map<String, dynamic>.from(item));
+        }
+      }
+      return jsonResponse({'medicines': rows});
+    });
+  }
+
+  Widget appWith(http.Client client, {http.Client? medicationClient}) {
+    return MaterialApp(
+      home: DrugExplainScreen(
+        apiClient: ApiClient(baseUrl: 'https://team.test', client: client),
+        medicationApiClient: ApiClient(
+          baseUrl: 'https://medication.test',
+          client: medicationClient ?? legacyMedicationClient(client),
+        ),
+      ),
     );
   }
 
@@ -53,6 +86,70 @@ void main() {
     await tester.tap(find.text('다른 약 검색하기'));
     await tester.pumpAndSettle();
   }
+
+  testWidgets('일반 검색은 팀 서버, 내 복용약은 약 데이터 서버를 사용한다', (tester) async {
+    final teamPaths = <String>[];
+    final medicationPaths = <String>[];
+    final teamClient = MockClient((request) async {
+      teamPaths.add(request.url.path);
+      return jsonResponse({
+        'query': request.url.queryParameters['q'],
+        'count': 1,
+        'items': [
+          {'item_name': '검색약정', 'manufacturer': '제조사', 'item_seq': '900'},
+        ],
+      });
+    });
+    final medicationClient = MockClient((request) async {
+      medicationPaths.add(request.url.path);
+      return jsonResponse({
+        'medicines': [
+          {
+            'medicine_code': '100',
+            'product_name': 'OCR등록약정',
+            'ingredient': '등록성분',
+            'status': 'active',
+          },
+        ],
+      });
+    });
+
+    await tester.pumpWidget(
+      appWith(teamClient, medicationClient: medicationClient),
+    );
+    await tester.pumpAndSettle();
+    expect(medicationPaths, ['/api/v1/users/mvp-user/medicines']);
+    expect(teamPaths, isEmpty);
+
+    await openOtherMedicineSearch(tester);
+    await tester.enterText(
+      find.byKey(const Key('otherMedicineSearchField')),
+      '검색약',
+    );
+    await tester.pump(const Duration(milliseconds: 550));
+    await tester.pump();
+    expect(teamPaths, ['/api/v1/drugs/search']);
+    expect(find.text('검색약정'), findsOneWidget);
+
+    await tester.tap(find.text('취소'));
+    await tester.pumpAndSettle();
+    await pickSubject(tester, 'OCR등록약정');
+    expect(find.text('OCR등록약정'), findsOneWidget);
+  });
+
+  testWidgets('약 데이터 서버 목록 실패를 빈 목록으로 숨기지 않는다', (tester) async {
+    final teamClient = MockClient((_) async => jsonResponse({'reply': '미사용'}));
+    final medicationClient = MockClient(
+      (_) async => jsonResponse({'detail': 'failure'}, statusCode: 503),
+    );
+
+    await tester.pumpWidget(
+      appWith(teamClient, medicationClient: medicationClient),
+    );
+    await tester.pumpAndSettle();
+    expect(find.textContaining('HTTP 503'), findsOneWidget);
+    expect(find.text('등록된 처방/복용약이 없습니다.'), findsNothing);
+  });
 
   testWidgets('두 글자와 550ms debounce 뒤에만 공식 후보를 검색한다', (tester) async {
     var searchCalls = 0;

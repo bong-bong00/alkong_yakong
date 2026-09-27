@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/constants/app_colors.dart';
 import '../../core/network/api_client.dart';
+import '../../core/network/api_config.dart';
 import '../../core/session/mvp_session.dart';
 import '../../core/theme/app_typography.dart';
 import '../../core/widgets/senior_button.dart';
@@ -15,8 +16,13 @@ import '../../core/widgets/senior_wheel.dart';
 
 class DrugExplainScreen extends StatefulWidget {
   final ApiClient? apiClient;
+  final ApiClient? medicationApiClient;
 
-  const DrugExplainScreen({super.key, this.apiClient});
+  const DrugExplainScreen({
+    super.key,
+    this.apiClient,
+    this.medicationApiClient,
+  });
 
   @override
   State<DrugExplainScreen> createState() => _DrugExplainScreenState();
@@ -25,6 +31,7 @@ class DrugExplainScreen extends StatefulWidget {
 class _DrugExplainScreenState extends State<DrugExplainScreen>
     with WidgetsBindingObserver {
   late final ApiClient _apiClient;
+  late final ApiClient _medicationApiClient;
   final TextEditingController _chatController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
   final FocusNode _chatFocusNode = FocusNode();
@@ -99,6 +106,9 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _apiClient = widget.apiClient ?? ApiClient();
+    _medicationApiClient =
+        widget.medicationApiClient ??
+        ApiClient(baseUrl: ApiConfig.localFeatureBaseUrl);
     // 초기 안내 메시지 추가
     _messages.add({
       'isMe': false,
@@ -197,46 +207,23 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
       _medicineLoadError = null;
     });
     try {
-      final response = await _apiClient.get(
-        '/api/v1/users/${Uri.encodeComponent(userId)}/dashboard',
+      final response = await _medicationApiClient.get(
+        '/api/v1/users/${Uri.encodeComponent(userId)}/medicines',
       );
-      final dashboard = Map<String, dynamic>.from(response as Map);
-      final prescription = dashboard['latest_prescription'];
-      if (prescription is Map) {
-        final prescriptionItems = prescription['items'];
-        if (prescriptionItems is List) {
-          for (final item in prescriptionItems) {
-            if (item is Map) {
-              addMedicine(
-                item['medicine_name'] ??
-                    item['product_name'] ??
-                    item['drug_name'] ??
-                    item['ocr_drug_name'],
-                item['medicine_code'] ?? item['item_seq'] ?? item['itemSeq'],
-              );
-            }
-          }
-        }
-        final medicineNames = prescription['medicine_names'];
-        if (medicineNames is List) {
-          for (final name in medicineNames) {
-            addName(name);
-          }
-        }
+      final payload = Map<String, dynamic>.from(response as Map);
+      final medicines = payload['medicines'];
+      if (medicines is! List) {
+        throw const FormatException('medicines must be a list');
       }
-      final todayMedications = dashboard['today_medications'];
-      if (todayMedications is List) {
-        for (final medication in todayMedications) {
-          if (medication is Map) {
-            addMedicine(
-              medication['product_name'] ??
-                  medication['drug_name'] ??
-                  medication['medicine_name'],
-              medication['medicine_code'] ??
-                  medication['item_seq'] ??
-                  medication['itemSeq'],
-            );
-          }
+      for (final medicine in medicines) {
+        if (medicine is Map &&
+            (medicine['status']?.toString() ?? 'active') == 'active') {
+          addMedicine(
+            medicine['product_name'] ??
+                medicine['official_product_name'] ??
+                medicine['display_name'],
+            medicine['medicine_code'],
+          );
         }
       }
       if (!mounted) return;
@@ -263,7 +250,7 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
         _officialMedicinesByName
           ..clear()
           ..addAll(officialMedicines);
-        _medicineLoadError = names.isEmpty ? _apiError(error) : null;
+        _medicineLoadError = _apiError(error);
       });
     } catch (_) {
       if (!mounted) return;
@@ -274,7 +261,7 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
         _officialMedicinesByName
           ..clear()
           ..addAll(officialMedicines);
-        _medicineLoadError = names.isEmpty ? '내 약을 불러오지 못했습니다.' : null;
+        _medicineLoadError = '내 약을 불러오지 못했습니다.';
       });
     } finally {
       if (mounted) setState(() => _isLoadingMedicines = false);

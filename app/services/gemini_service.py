@@ -773,7 +773,16 @@ def generate_chat_response(
                 and item.get("식약처_공식정보")
             ]
             official_contexts = [item for item in official_contexts if item]
-            if safety_question and selected_official is not None:
+            if "combination" in intents:
+                from app.services.medication_feature_dur_client import (
+                    load_remote_combination_context,
+                )
+
+                dur_result = load_remote_combination_context(
+                    user_id=user_id,
+                    selected_medicine=selected_official,
+                )
+            elif safety_question and selected_official is not None:
                 wanted_types = set().union(
                     *(DUR_TYPES_BY_INTENT.get(intent, set()) for intent in intents)
                 )
