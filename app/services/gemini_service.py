@@ -16,6 +16,24 @@ from app.services.pharmacist.generate import generate_card_from_source
 logger = logging.getLogger(__name__)
 
 
+INCOMPLETE_CHAT_REPLY = (
+    "답변을 끝까지 준비하지 못했어요.\n"
+    "잠시 후 다시 물어봐 주세요.\n"
+    "그동안 약의 복용량이나 사용 방법을 임의로 바꾸지 마세요."
+)
+
+CHAT_RETRY_INSTRUCTION = """
+
+[답변 다시 작성]
+앞 답변을 이어 붙이거나 일부를 재사용하지 말고 처음부터 다시 작성하세요.
+더 짧게 작성하되 핵심 안전 조건은 빼지 마세요.
+모든 문장을 끝까지 완성하고 결론을 첫 문장에 쓰세요.
+공식정보의 숫자, 용량, 단위, 횟수, 기간, 연령, 금지·주의·예외 조건을 그대로 보존하세요.
+제품명과 성분명은 바꾸지 마세요.
+어려운 의학 용어가 꼭 필요하면 같은 문장이나 바로 다음 문장에서 쉬운 뜻을 설명하세요.
+""".strip()
+
+
 def _compact_product_name(value: object) -> str:
     return "".join(str(value or "").split()).casefold()
 
@@ -376,17 +394,85 @@ def _plain_chat_reply(value: str) -> str:
     """Remove AI reply markup only; preserve medicine text and clinical values."""
     text = value.replace("\r\n", "\n").replace("\r", "\n")
     text = re.sub(r"(?m)^[ \t]*```(?:[A-Za-z][A-Za-z0-9_-]*)?[ \t]*$", "", text)
+    text = re.sub(r"(?m)^[ \t]*(?:-{3,}|\*{3,}|_{3,})[ \t]*$", "", text)
     text = re.sub(r"(?m)^[ \t]{0,3}#{1,6}[ \t]+", "", text)
+    text = re.sub(r"(?m)^[ \t]{0,3}>+[ \t]?", "", text)
+    text = re.sub(r"(?m)^[ \t]{0,3}\d+[.)][ \t]+", "• ", text)
     text = re.sub(r"(?m)^[ \t]{0,3}[-*+][ \t]+", "• ", text)
     text = re.sub(r"\*\*([^*\n]+)\*\*", r"\1", text)
     text = re.sub(r"__([^\n]+?)__", r"\1", text)
     text = re.sub(r"(?<![\w*])\*([^*\s\n](?:[^*\n]*?[^*\s\n])?)\*(?!\*)", r"\1", text)
     text = re.sub(r"(?<![\w_])_([^_\s\n](?:[^_\n]*?[^_\s\n])?)_(?!_)", r"\1", text)
+    text = re.sub(
+        r'\[([^\]\n]+)\]\([^\s)]+(?:\s+"[^"]*")?\)',
+        r"\1",
+        text,
+    )
     text = text.replace("`", "")
+    text = "\n".join(
+        re.sub(r"[ \t]{3,}", " ", line).rstrip() for line in text.split("\n")
+    )
     return re.sub(r"\n{3,}", "\n\n", text).strip()
 
 
-def _finalize_chat_response(response) -> str:
+def _has_balanced_delimiters(reply: str) -> bool:
+    for opening, closing in (("(", ")"), ("[", "]"), ("{", "}"), ("“", "”"), ("‘", "’")):
+        if reply.count(opening) != reply.count(closing):
+            return False
+    if reply.count('"') % 2:
+        return False
+    return True
+
+
+def _has_complete_ending(reply: str) -> bool:
+    if not reply:
+        return False
+    stripped = reply.rstrip()
+    if not stripped or stripped.endswith((":", ";", ",", "·", "-", "–", "—", "/")):
+        return False
+    if re.search(
+        r"(?:다만|하지만|특히|그리고|또는|따라서|또한|예를 들어|다음과 같은|"
+        r"경우에는|때문에|그러므로|그러나|즉)$",
+        stripped,
+    ):
+        return False
+    if re.search(r"(?:은|는|이|가|을|를|에|에서|으로|와|과|의)$", stripped):
+        return False
+    return bool(
+        re.search(
+            r"(?:[.!?]|요|다|니다|세요|까요|죠|함|음|없음|있음)$",
+            stripped,
+        )
+    )
+
+
+_JARGON_EXPLANATION_HINTS = {
+    "DUR": ("약을 함께 사용할 때", "주의 정보를 확인"),
+    "상호작용": ("약끼리 서로 영향을", "함께 사용할 때 생길 수 있는 영향"),
+    "금기": ("사용하면 안", "함께 사용하면 안", "피해야 하는"),
+    "효능군중복": ("비슷한 효과의 약",),
+    "효능군 중복": ("비슷한 효과의 약",),
+    "융모": ("장 안쪽의 작은 돌기",),
+    "점막": ("몸 안쪽을 덮", "몸의 안쪽을 덮"),
+    "부정맥": ("심장 박동이 고르지", "불규칙한 박동"),
+    "심실": ("심장의 아래쪽 공간",),
+    "QT 연장": ("다음 박동을 준비하는 시간이 길",),
+    "항콜린": ("신경 신호", "입 마름"),
+    "비스테로이드성 소염진통제": ("스테로이드 성분 없이",),
+    "대사": ("몸이 약을 처리하는 과정",),
+    "수용체": ("약 성분이 작용하는 몸속 부분",),
+}
+
+
+def _unexplained_jargon(reply: str) -> list[str]:
+    return [
+        term
+        for term, hints in _JARGON_EXPLANATION_HINTS.items()
+        if term in reply and not any(hint in reply for hint in hints)
+    ]
+
+
+def _chat_response_quality(response) -> tuple[str, bool, list[str]]:
     response_text = _read_response_text(response)
     logger.debug("Gemini response.text length: %d", len(response_text))
 
@@ -399,8 +485,9 @@ def _finalize_chat_response(response) -> str:
     )
     logger.debug("Gemini final reply length: %d", len(reply))
 
-    has_valid_ending = reply.endswith((".", "요", "다", "니다"))
-    candidates = getattr(response, "candidates", None) or []
+    has_valid_ending = _has_complete_ending(reply)
+    candidate_value = getattr(response, "candidates", None)
+    candidates = candidate_value or []
     part_count = sum(
         len(getattr(getattr(candidate, "content", None), "parts", None) or [])
         for candidate in candidates
@@ -421,15 +508,67 @@ def _finalize_chat_response(response) -> str:
         getattr(usage_metadata, "thoughts_token_count", None),
         getattr(usage_metadata, "total_token_count", None),
     )
-    if len(reply) < 20 or not has_valid_ending:
+    quality_issues = []
+    normalized_reasons = {reason.upper() for reason in reasons}
+    if any("MAX_TOKENS" in reason or "LENGTH" in reason for reason in normalized_reasons):
+        quality_issues.append("token_limit")
+    if any(
+        marker in reason
+        for reason in normalized_reasons
+        for marker in ("SAFETY", "BLOCK", "RECITATION", "PROHIBITED", "SPII")
+    ):
+        quality_issues.append("blocked_finish")
+    if candidate_value is not None and not candidates:
+        quality_issues.append("no_candidate")
+    if not reply:
+        quality_issues.append("empty_reply")
+    if not has_valid_ending:
+        quality_issues.append("incomplete_ending")
+    if not _has_balanced_delimiters(reply):
+        quality_issues.append("unbalanced_delimiter")
+    jargon = _unexplained_jargon(reply)
+    if jargon:
+        quality_issues.append("unexplained_jargon")
+    if quality_issues:
         logger.warning(
-            "Gemini response may be incomplete: length=%d valid_ending=%s",
+            "Gemini response rejected: length=%d issues=%s jargon_count=%d",
             len(reply),
-            has_valid_ending,
+            ",".join(quality_issues),
+            len(jargon),
         )
-    if len(reply) < 20:
-        return "응답 생성이 불완전했습니다. 다시 질문해주세요."
-    return reply
+    return reply, not quality_issues, quality_issues
+
+
+def _finalize_chat_response(response) -> str:
+    reply, is_complete, _ = _chat_response_quality(response)
+    return reply if is_complete else INCOMPLETE_CHAT_REPLY
+
+
+def _generate_complete_chat_reply(client, *, prompt: str) -> str:
+    config = {
+        "temperature": 0.2,
+        "max_output_tokens": 512,
+        "thinking_config": {"thinking_budget": 0},
+    }
+    first_response = _generate_content_with_retry(
+        client,
+        model=GEMINI_MODEL,
+        contents=prompt,
+        config=config,
+    )
+    first_reply, is_complete, issues = _chat_response_quality(first_response)
+    if is_complete:
+        return first_reply
+
+    logger.warning("Gemini chat quality retry issues=%s", ",".join(issues))
+    retry_response = _generate_content_with_retry(
+        client,
+        model=GEMINI_MODEL,
+        contents=f"{prompt}\n\n{CHAT_RETRY_INSTRUCTION}",
+        config=config,
+    )
+    retry_reply, is_complete, _ = _chat_response_quality(retry_response)
+    return retry_reply if is_complete else INCOMPLETE_CHAT_REPLY
 
 
 def _dur_context_unavailable_reply(
@@ -826,22 +965,13 @@ def generate_chat_response(
                 dur_result=dur_result,
             )
 
-            response = _generate_content_with_retry(
-                client,
-                model=GEMINI_MODEL,
-                contents=prompt,
-                config={
-                    "temperature": 0.2,
-                    "max_output_tokens": 512,
-                    "thinking_config": {"thinking_budget": 0},
-                },
-            )
-            return _finalize_chat_response(response)
+            return _generate_complete_chat_reply(client, prompt=prompt)
     except HTTPException:
         raise
     except Exception as error:
         logger.warning("Gemini chat failed: %s", error, exc_info=True)
         return (
-            "현재 정보를 불러오는 중 문제가 발생했습니다. "
-            "잠시 후 다시 확인해주세요."
+            "지금은 답변을 불러오지 못했어요. "
+            "잠시 후 다시 시도해 주세요. "
+            "약의 사용 방법을 임의로 바꾸지는 마세요."
         )

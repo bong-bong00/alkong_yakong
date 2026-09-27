@@ -184,6 +184,7 @@ class DrugExplainChatRequest(BaseModel):
     selected_medicine: Optional[SelectedMedicine] = None
     intent: Optional[
         Literal[
+            "overview",
             "efficacy",
             "dosage",
             "precautions",

@@ -147,7 +147,11 @@ void main() {
       appWith(teamClient, medicationClient: medicationClient),
     );
     await tester.pumpAndSettle();
-    expect(find.textContaining('HTTP 503'), findsOneWidget);
+    expect(find.textContaining('HTTP 503'), findsNothing);
+    expect(
+      find.text('지금은 등록한 약을 불러오지 못했어요.\n잠시 후 다시 시도해 주세요.'),
+      findsOneWidget,
+    );
     expect(find.text('등록된 처방/복용약이 없습니다.'), findsNothing);
   });
 
@@ -277,11 +281,11 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('게보린정'), findsOneWidget);
-    await tester.tap(find.text('어떻게 먹나요?'));
+    await tester.tap(find.text('어떻게 사용하나요?'));
     await tester.pumpAndSettle();
     expect(
       chatBodies.last['message'],
-      '이 약은 보통 어떻게 먹나요? 제가 등록한 복용 방법과 제품의 일반적인 사용법을 구분해서 알려주세요.',
+      '이 약은 보통 어떻게 사용하나요? 제가 등록한 사용 방법과 제품의 일반적인 사용법을 구분해서 알려주세요.',
     );
     expect(chatBodies.last['selected_medicine'], {
       'medicine_code': '1',
@@ -290,9 +294,9 @@ void main() {
 
     // "약 전체"로 돌렸다가 다시 고르면 공식 품목 코드도 함께 돌아온다.
     await pickSubject(tester, '약 전체');
-    expect(find.text('어떻게 먹나요?'), findsNothing);
+    expect(find.text('어떻게 사용하나요?'), findsNothing);
     await pickSubject(tester, '게보린정');
-    await tester.tap(find.text('어떻게 먹나요?'));
+    await tester.tap(find.text('어떻게 사용하나요?'));
     await tester.pumpAndSettle();
     expect(chatBodies.last['selected_medicine'], {
       'medicine_code': '1',
@@ -357,9 +361,10 @@ void main() {
     });
     const expected = <String, String>{
       '어디에 쓰는 약인가요?': '이 약은 어디에 쓰는 약인가요?',
-      '어떻게 먹나요?': '이 약은 보통 어떻게 먹나요? 제가 등록한 복용 방법과 제품의 일반적인 사용법을 구분해서 알려주세요.',
-      '무엇을 조심해야 하나요?': '이 약을 먹을 때 무엇을 조심해야 하나요?',
-      '먹고 불편하면 어떻게 하나요?': '이 약을 먹고 불편한 증상이 생기면 어떻게 해야 하나요?',
+      '어떻게 사용하나요?':
+          '이 약은 보통 어떻게 사용하나요? 제가 등록한 사용 방법과 제품의 일반적인 사용법을 구분해서 알려주세요.',
+      '무엇을 조심해야 하나요?': '이 약을 사용할 때 무엇을 조심해야 하나요?',
+      '사용 뒤 증상이 생기면?': '이 약을 사용한 뒤 평소와 다른 증상이 생기면 어떻게 해야 하나요?',
       '다른 약과 함께 먹어도 되나요?':
           '이 약을 제가 먹고 있는 약들과 같이 먹어도 되는지 확인해 주세요. 같은 성분이나 비슷한 역할의 약이 겹치는지도 알려주세요.',
       '나이에 따라 조심할 점': '제 나이에 이 약을 사용할 때 조심할 점이 있나요?',
@@ -367,9 +372,9 @@ void main() {
     };
     const expectedIntents = <String, String>{
       '어디에 쓰는 약인가요?': 'efficacy',
-      '어떻게 먹나요?': 'dosage',
+      '어떻게 사용하나요?': 'dosage',
       '무엇을 조심해야 하나요?': 'precautions',
-      '먹고 불편하면 어떻게 하나요?': 'side_effects',
+      '사용 뒤 증상이 생기면?': 'side_effects',
       '다른 약과 함께 먹어도 되나요?': 'combination',
       '나이에 따라 조심할 점': 'age',
       '임신 중에 조심할 점': 'pregnancy',
@@ -525,12 +530,14 @@ void main() {
       addTearDown(tester.view.reset);
       const question = '**이 약**을 물어볼게요.';
       const rawReply =
-          '## 쉽게 말하면\n**공식 제품_A정**의 주성분은 __성분_X__예요.\n'
+          '## 쉽게 말하면\n> [공식 제품_A정](https://example.test)의 주성분은 __성분_X__예요.\n'
+          '1. 만 65세 이상은 확인해 주세요.\n'
           '- 1~2 mg, 0.5 mg, 1일 2회, 5% 이하·10% 초과\n'
-          '*확인할 점*은 `공식 자료`에 있어요.\n\n'
+          '*확인할 점*은 `공식 자료`에 있어요.\n---\n\n'
           '마지막 문장도 끝까지 읽을 수 있어요.';
       const plainReply =
           '쉽게 말하면\n공식 제품_A정의 주성분은 성분_X예요.\n'
+          '• 만 65세 이상은 확인해 주세요.\n'
           '• 1~2 mg, 0.5 mg, 1일 2회, 5% 이하·10% 초과\n'
           '확인할 점은 공식 자료에 있어요.\n\n'
           '마지막 문장도 끝까지 읽을 수 있어요.';
@@ -667,12 +674,12 @@ void main() {
 
     await selectSearchResult('검색C', '검색약C');
     await pickSubject(tester, '기존약A');
-    await tester.tap(find.text('어떻게 먹나요?'));
+    await tester.tap(find.text('어떻게 사용하나요?'));
     await tester.pumpAndSettle();
     expect(chatBodies.last.containsKey('selected_medicine'), isFalse);
 
     await selectSearchResult('검색D', '검색약D');
-    await tester.tap(find.text('어떻게 먹나요?'));
+    await tester.tap(find.text('어떻게 사용하나요?'));
     await tester.pumpAndSettle();
     expect(chatBodies.last['selected_medicine'], {
       'medicine_code': '4',
@@ -682,7 +689,7 @@ void main() {
     await openOtherMedicineSearch(tester);
     await tester.tap(find.text('취소'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('어떻게 먹나요?'));
+    await tester.tap(find.text('어떻게 사용하나요?'));
     await tester.pumpAndSettle();
     expect(chatBodies.last['selected_medicine'], {
       'medicine_code': '4',
@@ -711,6 +718,32 @@ void main() {
     expect(chatCalls, 0);
     // 대신 바로 누를 수 있는 예시 질문이 있다.
     expect(find.text('이 약은 무슨 약이에요?'), findsOneWidget);
+  });
+
+  testWidgets('약 개요 추천 질문은 overview이고 효능 질문은 efficacy를 유지한다', (tester) async {
+    final bodies = <Map<String, dynamic>>[];
+    final client = MockClient((request) async {
+      if (request.url.path.endsWith('/dashboard')) {
+        return jsonResponse({
+          'latest_prescription': null,
+          'today_medications': [
+            {'product_name': '게보린정'},
+          ],
+        });
+      }
+      bodies.add(jsonDecode(request.body) as Map<String, dynamic>);
+      return jsonResponse({'reply': '공식 답변'});
+    });
+
+    await tester.pumpWidget(appWith(client));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('이 약은 무슨 약이에요?'));
+    await tester.pumpAndSettle();
+    expect(bodies.last['intent'], 'overview');
+
+    await tester.tap(find.text('어디에 쓰는 약인가요?'));
+    await tester.pumpAndSettle();
+    expect(bodies.last['intent'], 'efficacy');
   });
 
   testWidgets('창에서 고른 약 하나만 물어볼 약이 된다', (tester) async {
@@ -784,13 +817,13 @@ void main() {
     await tester.pumpWidget(appWith(client));
     await tester.pumpAndSettle();
     await tester.ensureVisible(
-      find.widgetWithText(ChoiceChip, '먹고 불편하면 어떻게 하나요?'),
+      find.widgetWithText(ChoiceChip, '사용 뒤 증상이 생기면?'),
     );
-    await tester.tap(find.text('먹고 불편하면 어떻게 하나요?'));
+    await tester.tap(find.text('사용 뒤 증상이 생기면?'));
     await tester.pump();
-    await tester.tap(find.text('어떻게 먹나요?'), warnIfMissed: false);
+    await tester.tap(find.text('어떻게 사용하나요?'), warnIfMissed: false);
     await tester.pump();
-    expect(sentMessages, ['이 약을 먹고 불편한 증상이 생기면 어떻게 해야 하나요?']);
+    expect(sentMessages, ['이 약을 사용한 뒤 평소와 다른 증상이 생기면 어떻게 해야 하나요?']);
 
     firstReply.complete(jsonResponse({'reply': '부작용 답변'}));
     await tester.pumpAndSettle();
@@ -832,6 +865,38 @@ void main() {
     await tester.pump();
     expect(find.text('네트워크 연결을 확인한 후 다시 시도해주세요.'), findsOneWidget);
     expect(find.textContaining('private network detail'), findsNothing);
+  });
+
+  testWidgets('AI 답변 오류는 HTTP 상태와 내부 예외 대신 쉬운 안내를 표시한다', (tester) async {
+    final client = MockClient((request) async {
+      if (request.url.path.endsWith('/dashboard')) {
+        return jsonResponse({
+          'latest_prescription': null,
+          'today_medications': [],
+        });
+      }
+      return jsonResponse({
+        'detail': 'SocketException https://private.example/api',
+      }, statusCode: 500);
+    });
+
+    await tester.pumpWidget(appWith(client));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField), '이 약을 알려주세요.');
+    await tester.tap(find.byIcon(Icons.send_rounded));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.text(
+        '지금은 답변을 불러오지 못했어요.\n'
+        '잠시 후 다시 시도해 주세요.\n'
+        '약의 사용 방법을 임의로 바꾸지는 마세요.',
+      ),
+      findsOneWidget,
+    );
+    for (final internal in ['HTTP 500', 'SocketException', 'private.example']) {
+      expect(find.textContaining(internal), findsNothing);
+    }
   });
 
   testWidgets('동일 검색어의 진행 중 요청과 직전 성공 요청을 중복 전송하지 않는다', (tester) async {

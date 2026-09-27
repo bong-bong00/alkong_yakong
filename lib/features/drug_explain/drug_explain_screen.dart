@@ -50,11 +50,11 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
     {
       'label': '이 약은 무슨 약이에요?',
       'prompt': '{medicine}이 무슨 약인지 쉬운 말로 알려주세요.',
-      'intent': 'efficacy',
+      'intent': 'overview',
     },
     {
-      'label': '언제 먹어야 해요?',
-      'prompt': '{medicine}을 언제 어떻게 먹어야 하는지 쉬운 말로 알려주세요.',
+      'label': '언제 어떻게 사용하나요?',
+      'prompt': '{medicine}을 언제 어떻게 사용하는지 쉬운 말로 알려주세요.',
       'intent': 'dosage',
     },
   ];
@@ -67,19 +67,19 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
       'intent': 'efficacy',
     },
     {
-      'label': '어떻게 먹나요?',
-      'prompt': '이 약은 보통 어떻게 먹나요? 제가 등록한 복용 방법과 제품의 일반적인 사용법을 구분해서 알려주세요.',
-      'display': '이 약은 보통 어떻게 먹나요?',
+      'label': '어떻게 사용하나요?',
+      'prompt': '이 약은 보통 어떻게 사용하나요? 제가 등록한 사용 방법과 제품의 일반적인 사용법을 구분해서 알려주세요.',
+      'display': '이 약은 보통 어떻게 사용하나요?',
       'intent': 'dosage',
     },
     {
       'label': '무엇을 조심해야 하나요?',
-      'prompt': '이 약을 먹을 때 무엇을 조심해야 하나요?',
+      'prompt': '이 약을 사용할 때 무엇을 조심해야 하나요?',
       'intent': 'precautions',
     },
     {
-      'label': '먹고 불편하면 어떻게 하나요?',
-      'prompt': '이 약을 먹고 불편한 증상이 생기면 어떻게 해야 하나요?',
+      'label': '사용 뒤 증상이 생기면?',
+      'prompt': '이 약을 사용한 뒤 평소와 다른 증상이 생기면 어떻게 해야 하나요?',
       'intent': 'side_effects',
     },
     {
@@ -241,7 +241,7 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
             _officialMedicinesByName[_selectedMedicine];
         _medicineLoadError = names.isEmpty ? '등록된 처방/복용약이 없습니다.' : null;
       });
-    } on ApiException catch (error) {
+    } on ApiException {
       if (!mounted) return;
       setState(() {
         _medicines
@@ -250,7 +250,7 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
         _officialMedicinesByName
           ..clear()
           ..addAll(officialMedicines);
-        _medicineLoadError = _apiError(error);
+        _medicineLoadError = _medicineLoadFailureMessage;
       });
     } catch (_) {
       if (!mounted) return;
@@ -396,13 +396,10 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
       setState(() {
         _messages.add({'isMe': false, 'text': _plainAiReply(reply)});
       });
-    } on ApiException catch (error) {
+    } on ApiException {
       if (!mounted) return;
       setState(() {
-        _messages.add({
-          'isMe': false,
-          'text': '죄송합니다. 오류가 발생했어요.\n${_apiError(error)}',
-        });
+        _messages.add({'isMe': false, 'text': _chatFailureMessage});
       });
     } catch (error) {
       if (!mounted) return;
@@ -1001,11 +998,12 @@ class _ChatBubble extends StatelessWidget {
   }
 }
 
-String _apiError(ApiException error) {
-  return error.statusCode == null
-      ? error.message
-      : '${error.message} (HTTP ${error.statusCode})';
-}
+const _medicineLoadFailureMessage = '지금은 등록한 약을 불러오지 못했어요.\n잠시 후 다시 시도해 주세요.';
+
+const _chatFailureMessage =
+    '지금은 답변을 불러오지 못했어요.\n'
+    '잠시 후 다시 시도해 주세요.\n'
+    '약의 사용 방법을 임의로 바꾸지는 마세요.';
 
 String _plainAiReply(String value) {
   var text = value.replaceAll('\r\n', '\n').replaceAll('\r', '\n');
@@ -1014,8 +1012,17 @@ String _plainAiReply(String value) {
     '',
   );
   text = text.replaceAll(
+    RegExp(r'^[ \t]*(?:-{3,}|\*{3,}|_{3,})[ \t]*$', multiLine: true),
+    '',
+  );
+  text = text.replaceAll(
     RegExp(r'^[ \t]{0,3}#{1,6}[ \t]+', multiLine: true),
     '',
+  );
+  text = text.replaceAll(RegExp(r'^[ \t]{0,3}>+[ \t]?', multiLine: true), '');
+  text = text.replaceAll(
+    RegExp(r'^[ \t]{0,3}\d+[.)][ \t]+', multiLine: true),
+    '• ',
   );
   text = text.replaceAll(
     RegExp(r'^[ \t]{0,3}[-*+][ \t]+', multiLine: true),
@@ -1037,5 +1044,14 @@ String _plainAiReply(String value) {
     RegExp(r'(?<![A-Za-z0-9가-힣_])_([^_\s\n](?:[^_\n]*?[^_\s\n])?)_(?!_)'),
     (match) => match.group(1)!,
   );
-  return text.replaceAll('`', '').replaceAll(RegExp(r'\n{3,}'), '\n\n').trim();
+  text = text.replaceAllMapped(
+    RegExp(r'\[([^\]\n]+)\]\([^\s)]+(?:\s+"[^"]*")?\)'),
+    (match) => match.group(1)!,
+  );
+  text = text.replaceAll('`', '');
+  text = text
+      .split('\n')
+      .map((line) => line.replaceAll(RegExp(r'[ \t]{3,}'), ' ').trimRight())
+      .join('\n');
+  return text.replaceAll(RegExp(r'\n{3,}'), '\n\n').trim();
 }

@@ -6,8 +6,12 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
-from fastapi import HTTPException
+from fastapi import FastAPI, HTTPException
+from fastapi.testclient import TestClient
+from pydantic import ValidationError
 
+from app.models.schemas import DrugExplainChatRequest
+from app.routes.drug_explain import router as drug_explain_router
 from app.services import chat_context_service, gemini_service
 from app.services.mfds_drug_permission import client as permission_client
 from app.services.mfds_drug_permission import db as permission_db
@@ -49,7 +53,113 @@ def _database(*, current, analyzed=None, matches=None, include_result=True):
     return conn
 
 
+def _chat_response(text, *, finish_reason="STOP", candidates=True):
+    candidate_list = []
+    if candidates:
+        candidate_list = [
+            SimpleNamespace(
+                finish_reason=finish_reason,
+                content=SimpleNamespace(parts=[SimpleNamespace(text=text)]),
+            )
+        ]
+    return SimpleNamespace(
+        text=text,
+        candidates=candidate_list,
+        usage_metadata=None,
+    )
+
+
 class ChatContextTest(unittest.TestCase):
+    def test_chat_request_contract_accepts_overview_and_existing_intents(self):
+        existing = (
+            "efficacy",
+            "dosage",
+            "precautions",
+            "side_effects",
+            "combination",
+            "age",
+            "pregnancy",
+            "duplicate",
+        )
+        for intent in ("overview", *existing):
+            with self.subTest(intent=intent):
+                request = DrugExplainChatRequest(
+                    user_id="synthetic-user",
+                    message="합성 질문",
+                    selected_medicine={
+                        "medicine_code": "202400001",
+                        "product_name": "공식허가약정",
+                    },
+                    intent=intent,
+                )
+                self.assertEqual(request.intent, intent)
+                self.assertEqual(request.user_id, "synthetic-user")
+                self.assertEqual(request.message, "합성 질문")
+                self.assertEqual(request.selected_medicine.medicine_code, "202400001")
+                self.assertEqual(request.selected_medicine.product_name, "공식허가약정")
+
+        with self.assertRaises(ValidationError):
+            DrugExplainChatRequest(
+                user_id="synthetic-user",
+                message="합성 질문",
+                intent="unknown-intent",
+            )
+
+        legacy = DrugExplainChatRequest(
+            user_id="legacy-user",
+            message="기존 앱 질문",
+        )
+        self.assertIsNone(legacy.selected_medicine)
+        self.assertIsNone(legacy.intent)
+        self.assertEqual(
+            set(DrugExplainChatRequest.model_fields),
+            {"user_id", "message", "selected_medicine", "intent"},
+        )
+
+    def test_chat_endpoint_accepts_overview_and_rejects_unknown_intent(self):
+        app = FastAPI()
+        app.include_router(drug_explain_router)
+        client = TestClient(app)
+        payload = {
+            "user_id": "synthetic-user",
+            "message": "이 약은 무슨 약이에요?",
+            "selected_medicine": {
+                "medicine_code": "202400001",
+                "product_name": "공식허가약정",
+            },
+            "intent": "overview",
+        }
+        with patch.object(
+            gemini_service,
+            "generate_chat_response",
+            return_value="공식정보에 근거한 개요예요.",
+        ):
+            response = client.post("/api/v1/drug-explain/chat", json=payload)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json(), {"reply": "공식정보에 근거한 개요예요."})
+
+        payload["intent"] = "unknown-intent"
+        response = client.post("/api/v1/drug-explain/chat", json=payload)
+        self.assertEqual(response.status_code, 422)
+
+    def test_overview_and_efficacy_keep_distinct_official_contexts(self):
+        official = {
+            "medicine_code": "1",
+            "product_name": "공식약정",
+            "ingredient": "공식성분",
+            "manufacturer": "공식제조사",
+            "efficacy": "공식 사용 목적",
+            "cautions": "공식 핵심 주의",
+        }
+        overview = select_official_context(official, {"overview"})
+        efficacy = select_official_context(official, {"efficacy"})
+        self.assertEqual(resolve_question_intents("무슨 약이에요?", "overview"), {"overview"})
+        self.assertEqual(resolve_question_intents("어디에 쓰나요?", "efficacy"), {"efficacy"})
+        self.assertIn("manufacturer", overview)
+        self.assertIn("cautions", overview)
+        self.assertNotIn("manufacturer", efficacy)
+        self.assertNotIn("cautions", efficacy)
+
     def _run_permission_general(
         self,
         *,
@@ -944,14 +1054,20 @@ class ChatContextTest(unittest.TestCase):
         raw = (
             "# 쉽게 말하면\n"
             "**제품_AB-12정**의 주성분은 __성분_X__예요.\n"
+            "> [공식 설명](https://example.test/drug)을 확인했어요.\n"
+            "1. 만 65세 이상은 주의해 주세요.\n"
+            "2) 성분-Z 10 mg은 그대로예요.\n"
             "- 1~2 mg, 0.5 mg, 1일 2회, 5% 이하·10% 초과\n"
             "*꼭 확인할 점*은 다음과 같아요.\n"
             "* `-0.5 mg`은 음수 표기예요.\n\n\n"
-            "`공식 제품명`은 그대로 둬요.\n```0.5 mg```도 유지해요."
+            "---\n`공식 제품명`은 그대로 둬요.\n```0.5 mg```도 유지해요."
         )
         expected = (
             "쉽게 말하면\n"
             "제품_AB-12정의 주성분은 성분_X예요.\n"
+            "공식 설명을 확인했어요.\n"
+            "• 만 65세 이상은 주의해 주세요.\n"
+            "• 성분-Z 10 mg은 그대로예요.\n"
             "• 1~2 mg, 0.5 mg, 1일 2회, 5% 이하·10% 초과\n"
             "꼭 확인할 점은 다음과 같아요.\n"
             "• -0.5 mg은 음수 표기예요.\n\n"
@@ -962,14 +1078,104 @@ class ChatContextTest(unittest.TestCase):
         self.assertEqual(gemini_service._plain_chat_reply(cleaned), cleaned)
 
     def test_generated_reply_is_plain_text_without_changing_reply_contract(self):
-        response = SimpleNamespace(
-            text="## 쉽게 말하면\n**공식 근거를 확인했어요.** 1일 2회예요.",
-            candidates=[], usage_metadata=None,
+        response = _chat_response(
+            "## 쉽게 말하면\n**공식 근거를 확인했어요.** 1일 2회예요."
         )
         self.assertEqual(
             gemini_service._finalize_chat_response(response),
             "쉽게 말하면\n공식 근거를 확인했어요. 1일 2회예요.",
         )
+
+    def test_long_but_truncated_reply_is_rejected(self):
+        response = _chat_response(
+            "공식 자료를 확인했어요. 만 65세 이상은 특히",
+            finish_reason="STOP",
+        )
+        self.assertEqual(
+            gemini_service._finalize_chat_response(response),
+            gemini_service.INCOMPLETE_CHAT_REPLY,
+        )
+
+    def test_short_complete_reply_is_allowed(self):
+        response = _chat_response("확인이 필요해요.")
+        self.assertEqual(
+            gemini_service._finalize_chat_response(response),
+            "확인이 필요해요.",
+        )
+
+    def test_max_tokens_retries_once_and_uses_complete_retry(self):
+        first = _chat_response(
+            "1~2 mg을 사용하지만",
+            finish_reason="MAX_TOKENS",
+        )
+        second = _chat_response(
+            "공식 사용량은 1~2 mg이며, 실제 처방 지시를 먼저 따라야 해요."
+        )
+        client = MagicMock()
+        with patch.object(
+            gemini_service,
+            "_generate_content_with_retry",
+            side_effect=[first, second],
+        ) as generate:
+            reply = gemini_service._generate_complete_chat_reply(
+                client,
+                prompt="공식 용량과 조건을 설명하세요.",
+            )
+        self.assertEqual(
+            reply,
+            "공식 사용량은 1~2 mg이며, 실제 처방 지시를 먼저 따라야 해요.",
+        )
+        self.assertEqual(generate.call_count, 2)
+        retry_prompt = generate.call_args_list[1].kwargs["contents"]
+        self.assertIn("처음부터 다시 작성", retry_prompt)
+        self.assertIn("숫자, 용량, 단위, 횟수, 기간, 연령", retry_prompt)
+        self.assertNotIn("1~2 mg을 사용하지만", retry_prompt)
+
+    def test_second_incomplete_reply_returns_fallback_without_joining(self):
+        first = _chat_response("첫 번째 잘린 답변은", finish_reason="MAX_TOKENS")
+        second = _chat_response("두 번째 답변도 하지만", finish_reason="STOP")
+        with patch.object(
+            gemini_service,
+            "_generate_content_with_retry",
+            side_effect=[first, second],
+        ) as generate:
+            reply = gemini_service._generate_complete_chat_reply(
+                MagicMock(),
+                prompt="처음 질문",
+            )
+        self.assertEqual(generate.call_count, 2)
+        self.assertEqual(reply, gemini_service.INCOMPLETE_CHAT_REPLY)
+        self.assertNotIn("첫 번째", reply)
+        self.assertNotIn("두 번째", reply)
+
+    def test_unbalanced_or_unexplained_jargon_is_rejected(self):
+        for text in (
+            "공식 조건(만 65세 이상을 확인해야 해요.",
+            "QT 연장이 나타날 수 있어요.",
+            "이 약은 DUR 결과를 확인했어요.",
+        ):
+            with self.subTest(text=text):
+                self.assertEqual(
+                    gemini_service._finalize_chat_response(_chat_response(text)),
+                    gemini_service.INCOMPLETE_CHAT_REPLY,
+                )
+
+        explained = _chat_response(
+            "QT 연장, 즉 심장이 다음 박동을 준비하는 시간이 길어지는 상태를 확인해야 해요."
+        )
+        self.assertEqual(
+            gemini_service._finalize_chat_response(explained),
+            "QT 연장, 즉 심장이 다음 박동을 준비하는 시간이 길어지는 상태를 확인해야 해요.",
+        )
+
+    def test_general_replies_use_plain_explanations(self):
+        greeting = general_conversation_reply("안녕하세요")
+        capability = general_conversation_reply("무슨 기능이 있어?")
+        for reply in (greeting, capability):
+            self.assertNotIn("DUR", reply)
+            self.assertNotIn("상호작용", reply)
+        self.assertIn("약끼리 서로 영향을 주는 경우", greeting)
+        self.assertIn("약을 함께 사용할 때의 주의 정보", capability)
 
     def test_fixed_replies_preserve_missing_stale_and_zero_result_meanings(self):
         for intent in ("combination", "age", "pregnancy", "duplicate"):
@@ -992,7 +1198,7 @@ class ChatContextTest(unittest.TestCase):
     def test_general_conversation_rules_do_not_match_drug_questions(self):
         self.assertIn("안녕하세요", general_conversation_reply("안녕하세요"))
         self.assertIn("도움이 되어", general_conversation_reply("고마워"))
-        self.assertIn("e약은요", general_conversation_reply("무슨 기능이 있어?"))
+        self.assertIn("식약처 공식정보", general_conversation_reply("무슨 기능이 있어?"))
         self.assertIsNone(general_conversation_reply("이 약 같이 먹어도 돼?"))
 
     def test_general_rules_bypass_gemini_and_safety_fallback_remains(self):
@@ -1036,7 +1242,8 @@ class ChatContextTest(unittest.TestCase):
             ),
         ):
             reply = gemini_service.generate_chat_response("약 질문", user_id="U1")
-        self.assertIn("정보를 불러오는 중 문제가 발생했습니다", reply)
+        self.assertIn("지금은 답변을 불러오지 못했어요", reply)
+        self.assertIn("사용 방법을 임의로 바꾸지는 마세요", reply)
 
 
 if __name__ == "__main__":
