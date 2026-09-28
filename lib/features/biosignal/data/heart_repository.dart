@@ -83,7 +83,14 @@ class HeartRepository {
     if (id == null || bpm == null || at == null || !at.isUtc) {
       throw const FormatException('Invalid heart reading');
     }
-    return HeartReading(id: id, bpm: bpm, measuredAt: at.toLocal());
+    return HeartReading(
+      id: id,
+      bpm: bpm,
+      measuredAt: at.toLocal(),
+      measurementContext: HeartMeasurementContext.fromValue(
+        raw['measurement_context'],
+      ),
+    );
   }
 
   /// 서버의 "17:45"를 앱이 늘 쓰는 "오후 5시 45분"으로.

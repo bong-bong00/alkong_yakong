@@ -5,6 +5,7 @@ import 'package:alkong_yakong/core/widgets/senior_button.dart';
 import 'package:alkong_yakong/features/biosignal/application/heart_sensor.dart';
 import 'package:alkong_yakong/features/biosignal/data/biosignal_dataset_collector.dart';
 import 'package:alkong_yakong/features/biosignal/data/polar_service.dart';
+import 'package:alkong_yakong/features/biosignal/domain/heart_data.dart';
 import 'package:alkong_yakong/features/biosignal/presentation/screens/measure_screen.dart';
 import 'package:alkong_yakong/features/biosignal/presentation/screens/saved_screen.dart';
 // Already supplied by flutter_test; do not change application dependencies.
@@ -155,8 +156,12 @@ class Rig {
     datasetCollector: NoDataset(),
     requestPermissions: () async => true,
   );
-  void start(FakeAsync clock) {
-    unawaited(sensor.start());
+  void start(
+    FakeAsync clock, {
+    HeartMeasurementContext measurementContext =
+        HeartMeasurementContext.general,
+  }) {
+    unawaited(sensor.start(measurementContext: measurementContext));
     clock.flushMicrotasks();
     expect(sensor.status, HeartSensorStatus.streaming);
   }
@@ -259,6 +264,7 @@ void main() {
         expect(r.api.requests.single['bpm'], 82);
         expect(r.api.paths.single, '/api/v1/biosignal/heart-rate');
         expect(r.api.requests.single['source'], 'POLAR_30S_AVERAGE');
+        expect(r.api.requests.single['measurement_context'], 'general');
         expect(r.sensor.changePercent, closeTo(35.833333, 0.0001));
         expect(r.sensor.saveStatus, HeartSaveStatus.saving);
         expect(r.sensor.savedBpm, isNull);
@@ -275,6 +281,30 @@ void main() {
       });
     },
   );
+
+  for (final context in [
+    HeartMeasurementContext.beforeMedication,
+    HeartMeasurementContext.afterMedication,
+  ]) {
+    test(
+      '${context.value} is frozen for one upload and next run is general',
+      () {
+        fakeAsync((clock) {
+          final r = Rig();
+          r.start(clock, measurementContext: context);
+          r.window(clock);
+          expect(r.api.requests.single['measurement_context'], context.value);
+          r.api.succeed(0);
+          clock.flushMicrotasks();
+          expect(r.sensor.savedMeasurementContext, context);
+          r.sensor.beginMeasurement();
+          expect(r.sensor.measurementContext, HeartMeasurementContext.general);
+          r.sensor.dispose();
+          clock.flushMicrotasks();
+        });
+      },
+    );
+  }
 
   for (final failure in [
     const ApiException('rejected', statusCode: 404),
@@ -471,7 +501,7 @@ void main() {
       button.onPressed!();
       await tester.pumpAndSettle();
       expect(find.byType(SavedScreen), findsOneWidget);
-      expect(find.text('82회 / 분 · 서버에 저장된 심박수'), findsOneWidget);
+      expect(find.text('82회 / 분 · 일반 측정 · 서버에 저장된 심박수'), findsOneWidget);
       expect(find.text('보호자 자동 알림은 지원하지 않아요'), findsOneWidget);
       expect(r.api.requests, hasLength(1));
       await tester.pumpWidget(const SizedBox());

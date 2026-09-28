@@ -3,12 +3,14 @@ import 'dart:convert';
 
 import 'package:alkong_yakong/core/network/api_client.dart';
 import 'package:alkong_yakong/core/theme/app_theme.dart';
+import 'package:alkong_yakong/core/widgets/senior_button.dart';
 import 'package:alkong_yakong/core/widgets/senior_card.dart';
 import 'package:alkong_yakong/core/widgets/senior_feedback.dart';
 import 'package:alkong_yakong/features/biosignal/data/heart_repository.dart';
 import 'package:alkong_yakong/features/biosignal/domain/heart_data.dart';
 import 'package:alkong_yakong/features/biosignal/domain/heart_time.dart';
 import 'package:alkong_yakong/features/biosignal/presentation/screens/heart_screen.dart';
+import 'package:alkong_yakong/features/biosignal/presentation/screens/measure_screen.dart';
 import 'package:alkong_yakong/features/biosignal/presentation/screens/monthly_heart_screen.dart';
 import 'package:alkong_yakong/features/biosignal/presentation/screens/saved_screen.dart';
 import 'package:flutter/material.dart';
@@ -291,4 +293,84 @@ void main() {
       await tester.pump();
     },
   );
+
+  testWidgets(
+    'measurement purpose is selected before start and resets to general',
+    (tester) async {
+      final rig = Rig();
+      await rig.sensor.start(measure: false);
+      final repository = HeartRepository(
+        apiClient: ApiClient(client: MockClient((_) async => response())),
+      );
+      await tester.pumpWidget(
+        wrap(HeartScreen(repository: repository, sensor: rig.sensor)),
+      );
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(find.text('복약 전'));
+      await tester.tap(find.text('복약 전'));
+      await tester.ensureVisible(find.text('지금 측정'));
+      final startButton = tester.widget<SeniorButton>(
+        find.ancestor(
+          of: find.text('지금 측정'),
+          matching: find.byType(SeniorButton),
+        ),
+      );
+      startButton.onPressed!();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(find.byType(MeasureScreen), findsOneWidget);
+      expect(
+        rig.sensor.measurementContext,
+        HeartMeasurementContext.beforeMedication,
+      );
+      expect(
+        find.descendant(
+          of: find.byType(MeasureScreen),
+          matching: find.text('복약 후'),
+        ),
+        findsNothing,
+      );
+      tester.state<NavigatorState>(find.byType(Navigator)).pop();
+      await tester.pumpAndSettle();
+      final selector = tester.widget<SeniorSegmented>(
+        find.widgetWithText(SeniorSegmented, '일반 측정'),
+      );
+      expect(selector.index, 0);
+      expect(rig.sensor.measurementContext, HeartMeasurementContext.general);
+      await tester.pumpWidget(const SizedBox());
+      rig.sensor.dispose();
+      await tester.pump();
+    },
+  );
+
+  for (final width in [320.0, 360.0]) {
+    testWidgets('measurement purpose fits ${width.toInt()}px at 1.3x text', (
+      tester,
+    ) async {
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = Size(width, 800);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      addTearDown(tester.view.resetPhysicalSize);
+      final repository = HeartRepository(
+        apiClient: ApiClient(client: MockClient((_) async => response())),
+      );
+      await tester.pumpWidget(
+        ProviderScope(
+          child: MaterialApp(
+            theme: AppTheme.build(),
+            home: MediaQuery(
+              data: const MediaQueryData(textScaler: TextScaler.linear(1.3)),
+              child: HeartScreen(repository: repository),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.scrollUntilVisible(find.text('측정 목적'), -200);
+      expect(find.text('일반 측정'), findsOneWidget);
+      expect(find.text('복약 전'), findsOneWidget);
+      expect(find.text('복약 후'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+  }
 }

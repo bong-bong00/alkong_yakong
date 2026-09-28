@@ -3,41 +3,43 @@ import unittest
 
 from app.services.biosignal_service import (
     _best_streak,
-    _pair_for,
+    _pair_for_date,
     _streak,
 )
 
 
 class HeartPairingTest(unittest.TestCase):
-    """복약 시각을 기준으로 전·후를 맞춘다."""
+    """사용자가 고른 측정 목적만 전·후로 맞춘다."""
 
     def setUp(self):
         self.taken_at = datetime(2026, 9, 10, 18, 0, 0)
 
-    def test_picks_closest_reading_on_each_side(self):
+    def test_picks_latest_reading_for_each_explicit_context(self):
         readings = [
-            (self.taken_at - timedelta(minutes=60), 90),
-            (self.taken_at - timedelta(minutes=10), 78),  # 가장 가까운 이전
-            (self.taken_at + timedelta(minutes=12), 72),  # 가장 가까운 이후
-            (self.taken_at + timedelta(minutes=70), 68),
+            (self.taken_at - timedelta(minutes=60), 90, "before_medication"),
+            (self.taken_at - timedelta(minutes=10), 78, "before_medication"),
+            (self.taken_at + timedelta(minutes=12), 72, "after_medication"),
+            (self.taken_at + timedelta(minutes=70), 68, "after_medication"),
         ]
-        pair = _pair_for(self.taken_at, readings)
+        pair = _pair_for_date(readings)
         self.assertEqual(pair["before"], 78)
-        self.assertEqual(pair["after"], 72)
+        self.assertEqual(pair["after"], 68)
 
-    def test_readings_outside_the_window_are_ignored(self):
+    def test_general_readings_are_not_inferred_from_time(self):
         readings = [
-            (self.taken_at - timedelta(hours=5), 80),
-            (self.taken_at + timedelta(hours=5), 70),
+            (self.taken_at - timedelta(minutes=5), 80, "general"),
+            (self.taken_at + timedelta(minutes=5), 70, "general"),
         ]
-        pair = _pair_for(self.taken_at, readings)
+        pair = _pair_for_date(readings)
         self.assertIsNone(pair["before"])
         self.assertIsNone(pair["after"])
 
     def test_missing_side_stays_none(self):
         """없는 값을 지어내지 않는다."""
-        readings = [(self.taken_at + timedelta(minutes=5), 74)]
-        pair = _pair_for(self.taken_at, readings)
+        readings = [
+            (self.taken_at + timedelta(minutes=5), 74, "after_medication")
+        ]
+        pair = _pair_for_date(readings)
         self.assertIsNone(pair["before"])
         self.assertEqual(pair["after"], 74)
 

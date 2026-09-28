@@ -12,6 +12,7 @@ import '../../../../core/widgets/recovery_view.dart';
 import '../../../../core/widgets/senior_header.dart';
 import '../../../medication/domain/medication_models.dart';
 import '../../application/heart_sensor.dart';
+import '../../domain/heart_data.dart';
 import 'saved_screen.dart';
 
 /// 27 / 28 · 심박수 재는 중 → 측정이 끝났어요.
@@ -22,8 +23,14 @@ class MeasureScreen extends StatefulWidget {
 
   /// 밖에서 넣어 주는 센서. 없으면 이 화면이 하나 만들어 쓴다.
   final HeartSensor? sensor;
+  final HeartMeasurementContext measurementContext;
 
-  const MeasureScreen({super.key, this.guardianTitle = '', this.sensor});
+  const MeasureScreen({
+    super.key,
+    this.guardianTitle = '',
+    this.sensor,
+    this.measurementContext = HeartMeasurementContext.general,
+  });
 
   @override
   State<MeasureScreen> createState() => _MeasureScreenState();
@@ -61,9 +68,9 @@ class _MeasureScreenState extends State<MeasureScreen> {
     super.initState();
     _sensor.addListener(_onSensor);
     if (_ownsSensor) {
-      unawaited(_sensor.start());
+      unawaited(_sensor.start(measurementContext: widget.measurementContext));
     } else {
-      _sensor.beginMeasurement();
+      _sensor.beginMeasurement(measurementContext: widget.measurementContext);
     }
   }
 
@@ -295,6 +302,8 @@ class _MeasureScreenState extends State<MeasureScreen> {
                             builder: (_) => SavedScreen(
                               bpm: savedBpm,
                               savedAt: savedAt,
+                              measurementContext:
+                                  _sensor.savedMeasurementContext,
                               guardianTitle: widget.guardianTitle,
                             ),
                           ),

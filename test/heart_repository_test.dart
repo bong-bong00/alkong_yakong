@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:alkong_yakong/core/network/api_client.dart';
 import 'package:alkong_yakong/core/session/mvp_session.dart';
 import 'package:alkong_yakong/features/biosignal/data/heart_repository.dart';
+import 'package:alkong_yakong/features/biosignal/domain/heart_data.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
@@ -169,10 +170,19 @@ void main() {
       'week': [],
       'month': [],
       'readings': [
-        {'id': 7, 'bpm': 98, 'measured_at': '2026-09-18T05:42:00Z'},
+        {
+          'id': 7,
+          'bpm': 98,
+          'measured_at': '2026-09-18T05:42:00Z',
+          'measurement_context': 'before_medication',
+        },
       ],
     }).fetch();
     expect(data!.readings.single.bpm, 98);
+    expect(
+      data.readings.single.measurementContext,
+      HeartMeasurementContext.beforeMedication,
+    );
     expect(data.today.isComplete, isFalse);
     expect(data.today.before, isNull);
     expect(data.today.after, isNull);
@@ -181,6 +191,27 @@ void main() {
       DateTime.parse('2026-09-18T05:42:00Z').toLocal(),
     );
     expect(data.hasReadings, isTrue);
+  });
+
+  test('목적 필드가 없는 이전 응답과 알 수 없는 값은 일반 측정이다', () async {
+    final data = await repositoryReturning({
+      'today': {},
+      'week': [],
+      'month': [],
+      'readings': [
+        {'id': 1, 'bpm': 70, 'measured_at': '2026-09-18T05:42:00Z'},
+        {
+          'id': 2,
+          'bpm': 71,
+          'measured_at': '2026-09-18T05:43:00Z',
+          'measurement_context': 'unknown',
+        },
+      ],
+    }).fetch();
+    expect(
+      data!.readings.map((reading) => reading.measurementContext),
+      everyElement(HeartMeasurementContext.general),
+    );
   });
 
   test('기록 목록 누락 또는 잘못된 시간은 빈 기록으로 간주하지 않는다', () async {

@@ -27,6 +27,11 @@ class HeartReadingsCard extends StatelessWidget {
             '${DoseSlot.absoluteTime(reading.measuredAt.toLocal())} · ${reading.bpm}회/분',
             style: AppText.body(size: 18),
           ),
+          const SizedBox(height: 3),
+          Text(
+            reading.measurementContext.label,
+            style: AppText.caption(size: 16),
+          ),
         ],
         const SizedBox(height: 12),
         Text(

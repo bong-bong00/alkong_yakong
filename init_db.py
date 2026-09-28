@@ -254,6 +254,8 @@ TABLE_DEFINITIONS = {
             measured_at TEXT NOT NULL,
             device_id TEXT,
             source TEXT NOT NULL DEFAULT 'POLAR',
+            measurement_context TEXT NOT NULL DEFAULT 'general'
+                CHECK (measurement_context IN ('general', 'before_medication', 'after_medication')),
             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
         )
@@ -581,6 +583,9 @@ ADDITIVE_COLUMNS = {
         "family_history": "INTEGER",
         "past_illnesses": "TEXT NOT NULL DEFAULT '[]'",
         "family_illnesses": "TEXT NOT NULL DEFAULT '[]'",
+    },
+    "heart_rate_logs": {
+        "measurement_context": "TEXT NOT NULL DEFAULT 'general' CHECK (measurement_context IN ('general', 'before_medication', 'after_medication'))",
     },
 }
 

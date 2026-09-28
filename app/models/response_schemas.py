@@ -298,6 +298,7 @@ class HeartRateResponse(ApiResponse):
     heart_rate_log_id: int
     bpm: int
     measured_at: str
+    measurement_context: str = "general"
     baseline: BaselineResponse | None = None
     abnormal_event: AbnormalEventSummaryResponse | None = None
 

@@ -185,6 +185,9 @@ class HeartRateCreate(BaseModel):
     measured_at: Optional[str] = None
     device_id: Optional[str] = None
     source: str = "POLAR"
+    measurement_context: Literal[
+        "general", "before_medication", "after_medication"
+    ] = "general"
 
 
 class SelectedMedicine(BaseModel):

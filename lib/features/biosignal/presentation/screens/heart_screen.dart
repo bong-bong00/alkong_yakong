@@ -69,6 +69,7 @@ class _HeartScreenState extends State<HeartScreen> {
 
   /// 보호자 알림 스위치. 기록이 아니라 설정이라 기록과 따로 든다.
   bool _notifyGuardian = true;
+  HeartMeasurementContext _measurementContext = HeartMeasurementContext.general;
 
   /// 다른 사람(어르신)의 기록을 보는 중인지. 그러면 이 전화기로 재지 않는다.
   bool get _viewingOther => widget.userId != null;
@@ -152,11 +153,14 @@ class _HeartScreenState extends State<HeartScreen> {
   }
 
   Future<void> _openMeasure() async {
+    final measurementContext = _measurementContext;
+    setState(() => _measurementContext = HeartMeasurementContext.general);
     await Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => MeasureScreen(
           guardianTitle: resolveGuardianTitle(context, widget.guardianTitle),
           sensor: widget.sensor,
+          measurementContext: measurementContext,
         ),
       ),
     );
@@ -236,6 +240,30 @@ class _HeartScreenState extends State<HeartScreen> {
                   ],
                   if (!_viewingOther) ...[
                     const SizedBox(height: 16),
+                    SeniorCard(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 16,
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Text('측정 목적', style: AppText.cardTitle(size: 20)),
+                          const SizedBox(height: 12),
+                          SeniorSegmented(
+                            labels: const ['일반 측정', '복약 전', '복약 후'],
+                            index: HeartMeasurementContext.values.indexOf(
+                              _measurementContext,
+                            ),
+                            onChanged: (index) => setState(
+                              () => _measurementContext =
+                                  HeartMeasurementContext.values[index],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 12),
                     SeniorButton(
                       label: '지금 측정',
                       minHeight: 66,

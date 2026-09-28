@@ -9,6 +9,7 @@ import '../../../../core/widgets/senior_button.dart';
 import '../../../../core/widgets/senior_card.dart';
 import '../../../../core/widgets/senior_header.dart';
 import '../../domain/heart_time.dart';
+import '../../domain/heart_data.dart';
 
 /// 30 · 기록 저장.
 ///
@@ -27,6 +28,7 @@ class SavedScreen extends StatelessWidget {
 
   /// 저장한 시각. 없으면 화면을 여는 지금 시각을 쓴다.
   final DateTime? savedAt;
+  final HeartMeasurementContext measurementContext;
 
   /// 기록 탭으로 보내는 길. 없으면 버튼을 그리지 않는다.
   final VoidCallback? onOpenRecord;
@@ -38,6 +40,7 @@ class SavedScreen extends StatelessWidget {
     this.fromAlert = false,
     this.doseSummary,
     this.savedAt,
+    this.measurementContext = HeartMeasurementContext.general,
     this.onOpenRecord,
   });
 
@@ -112,7 +115,8 @@ class SavedScreen extends StatelessWidget {
                   _SavedItem(
                     icon: TablerIcons.activity_heartbeat,
                     title: '심박수 기록',
-                    description: '$bpm회 / 분 · 서버에 저장된 심박수',
+                    description:
+                        '$bpm회 / 분 · ${measurementContext.label} · 서버에 저장된 심박수',
                   ),
                   const SizedBox(height: 12),
                   Container(
