@@ -64,6 +64,7 @@ def _with_official_permission_ingredient(
     api_call_succeeded = False
     exact_item_seq_match = False
     exact_product_name_match = False
+    local_identity_matches = False
     if not code or not expected_name:
         logger.warning(
             "Permission ingredient diagnostic selected_code_present=%s "
@@ -87,6 +88,11 @@ def _with_official_permission_ingredient(
                 local_medicine.get("ingredient"),
                 local_medicine.get("product_name"),
             )
+            local_identity_matches = (
+                str(local_medicine.get("medicine_code") or "").strip() == code
+                and _compact_product_name(local_medicine.get("product_name"))
+                == expected_name
+            )
             candidates.append(local_medicine)
     except Exception as error:
         logger.warning(
@@ -95,7 +101,11 @@ def _with_official_permission_ingredient(
         )
 
     required = required_fields or {"ingredient"}
-    if not candidates or any(not candidates[0].get(field) for field in required):
+    if (
+        not candidates
+        or not local_identity_matches
+        or any(not candidates[0].get(field) for field in required)
+    ):
         api_fallback_attempted = True
         try:
             detail = fetch_permission_detail(

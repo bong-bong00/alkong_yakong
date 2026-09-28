@@ -155,6 +155,122 @@ void main() {
     expect(find.text('등록된 처방/복용약이 없습니다.'), findsNothing);
   });
 
+  testWidgets('공식 제품명이 OCR 표시명보다 우선하고 같은 코드 중복을 제거한다', (tester) async {
+    final originalOcr = MvpSession.latestOcrItems;
+    MvpSession.latestOcrItems = [
+      {
+        'medicine_code': '20000001',
+        'drug_name': '아디팜정',
+        'official_product_name': '아디팜정(히드록시진염산염)',
+      },
+    ];
+    addTearDown(() => MvpSession.latestOcrItems = originalOcr);
+    Map<String, dynamic>? sent;
+    final teamClient = MockClient((request) async {
+      if (request.url.path.endsWith('/drug-explain/chat')) {
+        sent = jsonDecode(request.body) as Map<String, dynamic>;
+        return jsonResponse({'reply': '공식정보 답변'});
+      }
+      throw StateError('unexpected team request: ${request.url.path}');
+    });
+    final medicationClient = MockClient((request) async {
+      expect(request.url.path, endsWith('/medicines'));
+      return jsonResponse({
+        'medicines': [
+          {
+            'medicine_code': '20000001',
+            'product_name': '아디팜정',
+            'official_product_name': '아디팜정(히드록시진염산염)',
+            'ingredient': '히드록시진염산염',
+          },
+          {
+            'medicine_code': '20000001',
+            'product_name': '아디팜정',
+            'official_product_name': '아디팜정(히드록시진염산염)',
+            'ingredient': '히드록시진염산염',
+          },
+        ],
+      });
+    });
+
+    await tester.pumpWidget(
+      appWith(teamClient, medicationClient: medicationClient),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('아디팜정'), findsOneWidget);
+    expect(find.text('아디팜정(히드록시진염산염)'), findsNothing);
+
+    await tester.tap(find.text('어디에 쓰는 약인가요?'));
+    await tester.pumpAndSettle();
+    expect(sent?['selected_medicine'], {
+      'medicine_code': '20000001',
+      'product_name': '아디팜정(히드록시진염산염)',
+    });
+  });
+
+  testWidgets('서로 다른 코드의 같은 표시명은 자동 병합하지 않는다', (tester) async {
+    Map<String, dynamic>? sent;
+    final teamClient = MockClient((request) async {
+      if (request.url.path.endsWith('/drug-explain/chat')) {
+        sent = jsonDecode(request.body) as Map<String, dynamic>;
+        return jsonResponse({'reply': '답변'});
+      }
+      throw StateError('unexpected team request: ${request.url.path}');
+    });
+    final medicationClient = MockClient((request) async {
+      return jsonResponse({
+        'medicines': [
+          {
+            'medicine_code': 'code-a',
+            'official_product_name': '같은약정(성분A)',
+            'ingredient': '성분A',
+          },
+          {
+            'medicine_code': 'code-b',
+            'official_product_name': '같은약정(성분B)',
+            'ingredient': '성분B',
+          },
+        ],
+      });
+    });
+
+    await tester.pumpWidget(
+      appWith(teamClient, medicationClient: medicationClient),
+    );
+    await tester.pumpAndSettle();
+    // 같은 표시명은 하나로 합쳐 전송하지 않고, 기존 모호성 방지 정책으로
+    // 공식 품목을 자동 선택하지 않는다.
+    expect(find.text('같은약정'), findsOneWidget);
+    await tester.tap(find.text('어디에 쓰는 약인가요?'));
+    await tester.pumpAndSettle();
+    expect(sent, isNotNull);
+    expect(sent!.containsKey('selected_medicine'), isFalse);
+  });
+
+  testWidgets('코드가 없는 약은 정규화된 표시명으로만 중복을 제거한다', (tester) async {
+    final teamClient = MockClient((request) async {
+      if (request.url.path.endsWith('/drug-explain/chat')) {
+        return jsonResponse({'reply': '답변'});
+      }
+      throw StateError('unexpected team request: ${request.url.path}');
+    });
+    final medicationClient = MockClient((request) async {
+      return jsonResponse({
+        'medicines': [
+          {'official_product_name': '무 코드 정'},
+          {'official_product_name': '무코드정'},
+        ],
+      });
+    });
+
+    await tester.pumpWidget(
+      appWith(teamClient, medicationClient: medicationClient),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('무 코드 정'), findsOneWidget);
+    expect(find.text('무코드정'), findsNothing);
+  });
+
   testWidgets('두 글자와 550ms debounce 뒤에만 공식 후보를 검색한다', (tester) async {
     var searchCalls = 0;
     final client = MockClient((request) async {

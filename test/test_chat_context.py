@@ -439,6 +439,71 @@ class ChatContextTest(unittest.TestCase):
             result = gemini_service._with_official_permission_ingredient(selected)
         self.assertIsNone(result["ingredient"])
 
+    def test_permission_name_mismatch_retries_mfds_even_when_local_has_ingredient(self):
+        selected = {
+            "medicine_code": "202400001",
+            "product_name": "공식허가약정(정확한명칭)",
+            "ingredient": None,
+        }
+        local_row = {
+            "item_seq": "202400001",
+            "item_name": "다른표기약정",
+            "main_item_ingr": "오래된성분 100mg",
+        }
+        detail = {
+            "ITEM_SEQ": "202400001",
+            "ITEM_NAME": "공식허가약정(정확한명칭)",
+            "MAIN_ITEM_INGR": "확인된성분 100mg",
+        }
+        with (
+            patch(
+                "app.services.mfds_drug_permission.db.find_permission_product_by_item_seq",
+                return_value=local_row,
+            ),
+            patch(
+                "app.services.mfds_drug_permission.client.fetch_permission_detail",
+                return_value=detail,
+            ) as fetch_detail,
+        ):
+            result = gemini_service._with_official_permission_ingredient(selected)
+
+        fetch_detail.assert_called_once_with(
+            "공식허가약정(정확한명칭)",
+            item_seq="202400001",
+        )
+        self.assertEqual(result["ingredient"], "확인된성분 100mg")
+
+    def test_permission_name_mismatch_fallback_is_not_accepted(self):
+        selected = {
+            "medicine_code": "202400001",
+            "product_name": "공식허가약정(정확한명칭)",
+            "ingredient": None,
+        }
+        local_row = {
+            "item_seq": "202400001",
+            "item_name": "다른표기약정",
+            "main_item_ingr": "오래된성분 100mg",
+        }
+        detail = {
+            "ITEM_SEQ": "202400001",
+            "ITEM_NAME": "또다른공식제품정",
+            "MAIN_ITEM_INGR": "추측하면안되는성분 100mg",
+        }
+        with (
+            patch(
+                "app.services.mfds_drug_permission.db.find_permission_product_by_item_seq",
+                return_value=local_row,
+            ),
+            patch(
+                "app.services.mfds_drug_permission.client.fetch_permission_detail",
+                return_value=detail,
+            ) as fetch_detail,
+        ):
+            result = gemini_service._with_official_permission_ingredient(selected)
+
+        fetch_detail.assert_called_once()
+        self.assertIsNone(result["ingredient"])
+
     def test_permission_only_selected_medicine_reaches_combination_consultation(self):
         reply, analyze = self._run_permission_only_safety(
             intent="combination",

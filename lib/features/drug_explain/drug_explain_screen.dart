@@ -13,6 +13,7 @@ import '../../core/widgets/senior_feedback.dart';
 import '../../core/widgets/senior_header.dart';
 import '../../core/widgets/senior_sheet.dart';
 import '../../core/widgets/senior_wheel.dart';
+import '../medicines/domain/display_policy.dart';
 
 class DrugExplainScreen extends StatefulWidget {
   final ApiClient? apiClient;
@@ -157,17 +158,47 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
     final names = <String>[];
     final officialMedicines = <String, _DrugSearchCandidate>{};
     final ambiguousNames = <String>{};
+    final namesByCode = <String, String>{};
+    final namesByNormalizedName = <String, String>{};
+
+    String firstText(Iterable<dynamic> values) {
+      for (final value in values) {
+        final text = value?.toString().trim() ?? '';
+        if (text.isNotEmpty) return text;
+      }
+      return '';
+    }
 
     void addName(dynamic value) {
       final name = value?.toString().trim() ?? '';
       if (name.isNotEmpty && !names.contains(name)) names.add(name);
     }
 
-    void addMedicine(dynamic nameValue, dynamic codeValue) {
-      final name = nameValue?.toString().trim() ?? '';
+    void addMedicine(dynamic nameValue, dynamic codeValue, {String? label}) {
+      final officialName = nameValue?.toString().trim() ?? '';
+      final name = (label ?? officialName).trim();
       final code = codeValue?.toString().trim() ?? '';
+      if (code.isNotEmpty) {
+        final oldName = namesByCode[code];
+        if (oldName != null && oldName != name) {
+          names.remove(oldName);
+          officialMedicines.remove(oldName);
+        }
+        namesByCode[code] = name;
+      } else if (name.isNotEmpty) {
+        final normalizedName = name
+            .replaceAll(RegExp(r'\s+'), '')
+            .toLowerCase();
+        if (namesByNormalizedName.containsKey(normalizedName)) return;
+        namesByNormalizedName[normalizedName] = name;
+      }
       addName(name);
-      if (name.isEmpty || code.isEmpty || ambiguousNames.contains(name)) return;
+      if (name.isEmpty ||
+          officialName.isEmpty ||
+          code.isEmpty ||
+          ambiguousNames.contains(name)) {
+        return;
+      }
       final existing = officialMedicines[name];
       if (existing != null && existing.itemSeq != code) {
         officialMedicines.remove(name);
@@ -175,15 +206,28 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
         return;
       }
       officialMedicines[name] = _DrugSearchCandidate(
-        itemName: name,
+        itemName: officialName,
         itemSeq: code,
       );
     }
 
     for (final item in MvpSession.latestOcrItems) {
+      final officialName = firstText([
+        item['official_product_name'],
+        item['product_name'],
+      ]);
+      final label = firstText([
+        item['medicine_name'],
+        item['drug_name'],
+        item['ocr_drug_name'],
+        officialName,
+      ]);
       addMedicine(
-        item['medicine_name'] ?? item['drug_name'] ?? item['ocr_drug_name'],
-        item['medicine_code'] ?? item['item_seq'] ?? item['itemSeq'],
+        officialName,
+        officialName.isEmpty
+            ? null
+            : item['medicine_code'] ?? item['item_seq'] ?? item['itemSeq'],
+        label: label,
       );
     }
 
@@ -215,14 +259,28 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
       if (medicines is! List) {
         throw const FormatException('medicines must be a list');
       }
+      // 성공한 약 데이터 Render 조회가 OCR 임시 목록을 대체하도록 한다.
+      names.clear();
+      officialMedicines.clear();
+      ambiguousNames.clear();
+      namesByCode.clear();
+      namesByNormalizedName.clear();
       for (final medicine in medicines) {
         if (medicine is Map &&
             (medicine['status']?.toString() ?? 'active') == 'active') {
+          final officialName = firstText([
+            medicine['official_product_name'],
+            medicine['product_name'],
+            medicine['display_name'],
+          ]);
+          final ingredient = firstText([
+            medicine['ingredient_name'],
+            medicine['ingredient'],
+          ]);
           addMedicine(
-            medicine['product_name'] ??
-                medicine['official_product_name'] ??
-                medicine['display_name'],
+            officialName,
             medicine['medicine_code'],
+            label: compactProductName(officialName, ingredient: ingredient),
           );
         }
       }
@@ -237,8 +295,7 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
         if (_selectedMedicine == null && names.length == 1) {
           _selectedMedicine = names.first;
         }
-        _selectedOfficialMedicine ??=
-            _officialMedicinesByName[_selectedMedicine];
+        _selectedOfficialMedicine = _officialMedicinesByName[_selectedMedicine];
         _medicineLoadError = names.isEmpty ? '등록된 처방/복용약이 없습니다.' : null;
       });
     } on ApiException {
