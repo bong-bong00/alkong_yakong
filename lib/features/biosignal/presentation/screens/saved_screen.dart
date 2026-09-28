@@ -36,6 +36,7 @@ class SavedScreen extends StatelessWidget {
   /// 심박수 관리 화면에서 시작한 측정이면, 그 화면으로만 돌아간다.
   /// 다른 진입 경로는 기존의 최상위 경로 복귀 동작을 유지한다.
   final bool returnToPreviousScreen;
+  final Future<void> Function()? onConfirmed;
 
   const SavedScreen({
     super.key,
@@ -47,13 +48,24 @@ class SavedScreen extends StatelessWidget {
     this.measurementContext = HeartMeasurementContext.general,
     this.onOpenRecord,
     this.returnToPreviousScreen = false,
+    this.onConfirmed,
   });
 
-  void _confirm(BuildContext context) {
+  Future<void> _confirm(BuildContext context) async {
+    if (returnToPreviousScreen) {
+      final router = GoRouter.maybeOf(context);
+      if (router != null) {
+        // MaterialRoute와 GoRoute가 섞인 스택을 pop 횟수로 추측하지 않고,
+        // 심박수 관리 화면을 명시적인 복귀 대상으로 지정한다.
+        await onConfirmed?.call();
+        if (context.mounted) router.go('/biosignal');
+        return;
+      }
+    }
     final navigator = Navigator.of(context);
     if (navigator.canPop()) {
       if (returnToPreviousScreen) {
-        navigator.pop();
+        navigator.pop(true);
         return;
       }
       navigator.popUntil((route) => route.isFirst);
@@ -182,6 +194,23 @@ class SavedScreen extends StatelessWidget {
       ),
     );
   }
+}
+
+/// GoRouter가 관리하는 저장 완료 경로에 전달하는 내부 화면 인자.
+class HeartSavedRouteArgs {
+  final int bpm;
+  final DateTime? savedAt;
+  final HeartMeasurementContext measurementContext;
+  final String guardianTitle;
+  final Future<void> Function()? onSaved;
+
+  const HeartSavedRouteArgs({
+    required this.bpm,
+    required this.savedAt,
+    required this.measurementContext,
+    required this.guardianTitle,
+    this.onSaved,
+  });
 }
 
 class _SavedItem extends StatelessWidget {

@@ -11,6 +11,9 @@ import 'core/theme/app_theme.dart';
 import 'features/auth/presentation/screens/login_screen.dart';
 import 'features/auth/presentation/screens/signup_screen.dart';
 import 'features/biosignal/presentation/screens/heart_screen.dart';
+import 'features/biosignal/presentation/screens/measure_screen.dart';
+import 'features/biosignal/presentation/screens/saved_screen.dart';
+import 'features/biosignal/domain/heart_data.dart';
 import 'features/dashboard/presentation/screens/dashboard_screen.dart';
 import 'features/dashboard/presentation/screens/guardian_home_screen.dart';
 import 'features/dashboard/presentation/screens/home_screen.dart';
@@ -121,7 +124,41 @@ final _router = GoRouter(
     ),
     GoRoute(
       path: '/biosignal',
-      builder: (context, state) => const HeartScreen(),
+      builder: (context, state) =>
+          const HeartScreen(routeBasedMeasurement: true),
+      routes: [
+        GoRoute(
+          path: 'measure',
+          builder: (context, state) {
+            final args = state.extra;
+            return MeasureScreen(
+              guardianTitle: args is HeartMeasureRouteArgs
+                  ? args.guardianTitle
+                  : '',
+              sensor: args is HeartMeasureRouteArgs ? args.sensor : null,
+              measurementContext: args is HeartMeasureRouteArgs
+                  ? args.measurementContext
+                  : HeartMeasurementContext.general,
+              onSaved: args is HeartMeasureRouteArgs ? args.onSaved : null,
+              returnToPreviousScreen: true,
+            );
+          },
+        ),
+        GoRoute(
+          path: 'saved',
+          builder: (context, state) {
+            final args = state.extra! as HeartSavedRouteArgs;
+            return SavedScreen(
+              bpm: args.bpm,
+              savedAt: args.savedAt,
+              measurementContext: args.measurementContext,
+              guardianTitle: args.guardianTitle,
+              onConfirmed: args.onSaved,
+              returnToPreviousScreen: true,
+            );
+          },
+        ),
+      ],
     ),
     GoRoute(
       path: '/alarm',

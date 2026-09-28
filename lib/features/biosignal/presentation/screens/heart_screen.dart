@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import '../../../medication/application/medication_controller.dart';
 import 'package:flutter_tabler_icons/flutter_tabler_icons.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
@@ -40,12 +41,18 @@ class HeartScreen extends StatefulWidget {
   /// 없으면 이 화면은 센서를 붙잡지 않는다 — 목록만 보는 화면이기 때문이다.
   final HeartSensor? sensor;
 
+  /// 앱의 /biosignal route에서 열렸을 때 측정 화면도 GoRouter 경로로 연다.
+  /// EasyFlow 등 화면을 직접 포함하는 기존 진입점은 false로 두어 기존
+  /// Navigator 동작을 유지한다.
+  final bool routeBasedMeasurement;
+
   const HeartScreen({
     super.key,
     this.guardianTitle = '',
     this.userId,
     this.repository,
     this.sensor,
+    this.routeBasedMeasurement = false,
   });
 
   @override
@@ -155,18 +162,31 @@ class _HeartScreenState extends State<HeartScreen> {
   Future<void> _openMeasure() async {
     final measurementContext = _measurementContext;
     setState(() => _measurementContext = HeartMeasurementContext.general);
-    await Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => MeasureScreen(
-          guardianTitle: resolveGuardianTitle(context, widget.guardianTitle),
-          sensor: widget.sensor,
-          measurementContext: measurementContext,
-          returnToPreviousScreen: true,
-        ),
-      ),
-    );
-    // 방금 잰 값이 서버에 올라갔을 수 있으니 조용히 다시 읽는다.
-    if (mounted) unawaited(_load(quiet: true));
+    final guardianTitle = resolveGuardianTitle(context, widget.guardianTitle);
+    final saved =
+        widget.routeBasedMeasurement && GoRouter.maybeOf(context) != null
+        ? await context.push<bool>(
+            '/biosignal/measure',
+            extra: HeartMeasureRouteArgs(
+              guardianTitle: guardianTitle,
+              sensor: widget.sensor,
+              measurementContext: measurementContext,
+              onSaved: () => _load(quiet: true),
+            ),
+          )
+        : await Navigator.of(context).push<bool>(
+            MaterialPageRoute<bool>(
+              builder: (_) => MeasureScreen(
+                guardianTitle: guardianTitle,
+                sensor: widget.sensor,
+                measurementContext: measurementContext,
+                returnToPreviousScreen: true,
+              ),
+            ),
+          );
+    // 저장 완료 화면이 성공을 확인해 준 경우에만 최신 서버 기록을 읽는다.
+    // 취소·연결 실패·저장 실패는 성공 기록처럼 갱신하지 않는다.
+    if (saved == true && mounted) unawaited(_load(quiet: true));
   }
 
   @override
@@ -182,7 +202,11 @@ class _HeartScreenState extends State<HeartScreen> {
               children: [
                 Row(
                   children: [
-                    const SeniorBackButton(),
+                    SeniorBackButton(
+                      onTap: widget.routeBasedMeasurement
+                          ? () => context.go('/')
+                          : null,
+                    ),
                     const SizedBox(width: 14),
                     Expanded(
                       child: Text(

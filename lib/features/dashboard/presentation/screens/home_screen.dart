@@ -52,7 +52,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         children: [
           PatientHomeScreen(
             onOpenRecord: () => setState(() => _index = 1),
-            onOpenHeartbeat: () => context.push('/biosignal'),
+            // 심박수 관리는 자체 측정 하위 경로를 가진 화면이다. 홈 위에
+            // imperative stack으로 섞지 않고 명시 경로로 전환한다.
+            onOpenHeartbeat: () => context.go('/biosignal'),
             onOpenPrescription: () => context.push('/prescription'),
             onOpenChat: () => context.push('/drug-explain'),
             onOpenMedicines: () => Navigator.of(context).push(

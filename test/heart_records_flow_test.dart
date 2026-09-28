@@ -98,6 +98,61 @@ HeartData monthlyData(
   notifyGuardian: false,
 );
 
+GoRouter heartFlowRouter({
+  required HeartRepository repository,
+  required Rig rig,
+}) => GoRouter(
+  initialLocation: '/',
+  routes: [
+    GoRoute(
+      path: '/',
+      builder: (context, _) => Scaffold(
+        body: TextButton(
+          onPressed: () => context.go('/biosignal'),
+          child: const Text('홈에서 심박수 관리 열기'),
+        ),
+      ),
+    ),
+    GoRoute(
+      path: '/biosignal',
+      builder: (_, _) => HeartScreen(
+        repository: repository,
+        sensor: rig.sensor,
+        routeBasedMeasurement: true,
+      ),
+      routes: [
+        GoRoute(
+          path: 'measure',
+          builder: (_, state) {
+            final args = state.extra! as HeartMeasureRouteArgs;
+            return MeasureScreen(
+              guardianTitle: args.guardianTitle,
+              sensor: args.sensor,
+              measurementContext: args.measurementContext,
+              onSaved: args.onSaved,
+              returnToPreviousScreen: true,
+            );
+          },
+        ),
+        GoRoute(
+          path: 'saved',
+          builder: (_, state) {
+            final args = state.extra! as HeartSavedRouteArgs;
+            return SavedScreen(
+              bpm: args.bpm,
+              savedAt: args.savedAt,
+              measurementContext: args.measurementContext,
+              guardianTitle: args.guardianTitle,
+              onConfirmed: args.onSaved,
+              returnToPreviousScreen: true,
+            );
+          },
+        ),
+      ],
+    ),
+  ],
+);
+
 void main() {
   testWidgets('saved confirmation leaves a first-route completion screen', (
     tester,
@@ -607,73 +662,204 @@ void main() {
     },
   );
 
-  testWidgets(
-    'measurement started from a nested heart screen returns there after save',
-    (tester) async {
-      final rig = Rig();
-      await rig.sensor.start(measure: false);
-      var stored = false;
-      final repository = HeartRepository(
-        apiClient: ApiClient(
-          client: MockClient((request) async {
-            expect(request.method, 'GET');
-            return response(bpm: stored ? 82 : null);
-          }),
-        ),
-      );
+  for (final purpose in HeartMeasurementContext.values) {
+    testWidgets(
+      'real GoRouter flow returns ${purpose.value} measurement to heart screen',
+      (tester) async {
+        final rig = Rig();
+        await rig.sensor.start(measure: false);
+        var stored = false;
+        var gets = 0;
+        final measuredAt = DateTime.now();
+        final repository = HeartRepository(
+          apiClient: ApiClient(
+            client: MockClient((request) async {
+              expect(request.method, 'GET');
+              gets++;
+              if (!stored) return response();
+              final payload = bodyWithReading(
+                bpm: 82,
+                measuredAt: measuredAt.toUtc().toIso8601String(),
+                measurementContext: purpose.value,
+              );
+              if (purpose == HeartMeasurementContext.beforeMedication) {
+                payload['today'] = {'before': 82};
+                payload['before_at'] = '10:30';
+              } else if (purpose == HeartMeasurementContext.afterMedication) {
+                payload['today'] = {'after': 82};
+                payload['after_at'] = '10:30';
+              }
+              return http.Response(
+                jsonEncode(payload),
+                200,
+                headers: {'content-type': 'application/json'},
+              );
+            }),
+          ),
+        );
+        final router = heartFlowRouter(repository: repository, rig: rig);
+        addTearDown(router.dispose);
 
-      await tester.pumpWidget(
-        ProviderScope(
-          child: MaterialApp(
-            theme: AppTheme.build(),
-            home: Scaffold(
-              body: Center(
-                child: TextButton(
-                  onPressed: () =>
-                      Navigator.of(
-                        tester.element(find.byType(TextButton)),
-                      ).push(
-                        MaterialPageRoute(
-                          builder: (_) => HeartScreen(
-                            repository: repository,
-                            sensor: rig.sensor,
-                          ),
-                        ),
-                      ),
-                  child: const Text('심박 화면 열기'),
-                ),
-              ),
+        await tester.pumpWidget(
+          ProviderScope(
+            child: MaterialApp.router(
+              theme: AppTheme.build(),
+              routerConfig: router,
             ),
           ),
+        );
+        await tester.tap(find.text('홈에서 심박수 관리 열기'));
+        await tester.pumpAndSettle();
+        if (purpose != HeartMeasurementContext.general) {
+          await tester.ensureVisible(find.text(purpose.label));
+          await tester.tap(find.text(purpose.label));
+        }
+        await tester.ensureVisible(find.text('지금 측정'));
+        await tester.tap(find.text('지금 측정'));
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 400));
+        await rig.widgetWindow(tester);
+        stored = true;
+        rig.api.succeed(0);
+        await tester.pump();
+        await tester.pump();
+        await tester.ensureVisible(find.text('저장된 기록 확인하기'));
+        await tester.tap(find.text('저장된 기록 확인하기'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('확인했어요'));
+        await tester.pumpAndSettle();
+
+        expect(router.routeInformationProvider.value.uri.path, '/biosignal');
+        expect(find.text('홈에서 심박수 관리 열기'), findsNothing);
+        expect(find.byType(HeartScreen), findsOneWidget);
+        expect(find.byType(SavedScreen), findsNothing);
+        final readingsCard = find.ancestor(
+          of: find.text('저장된 심박 기록'),
+          matching: find.byType(SeniorCard),
+        );
+        expect(
+          find.descendant(
+            of: readingsCard,
+            matching: find.textContaining('82회/분'),
+          ),
+          findsOneWidget,
+        );
+        expect(
+          find.descendant(of: readingsCard, matching: find.text(purpose.label)),
+          findsOneWidget,
+        );
+        expect(gets, 2);
+        expect(rig.api.requests, hasLength(1));
+
+        await tester.pumpWidget(const SizedBox());
+        rig.sensor.dispose();
+        await tester.pump();
+      },
+    );
+  }
+
+  for (final saveFailure in <({String label, bool rejected})>[
+    (label: '기록을 저장하지 못했어요', rejected: true),
+    (label: '저장 여부를 확인하지 못했어요', rejected: false),
+  ]) {
+    testWidgets(
+      'real GoRouter keeps ${saveFailure.label} out of success navigation',
+      (tester) async {
+        final rig = Rig();
+        await rig.sensor.start(measure: false);
+        final repository = HeartRepository(
+          apiClient: ApiClient(client: MockClient((_) async => response())),
+        );
+        final router = heartFlowRouter(repository: repository, rig: rig);
+        addTearDown(router.dispose);
+
+        await tester.pumpWidget(
+          ProviderScope(
+            child: MaterialApp.router(
+              theme: AppTheme.build(),
+              routerConfig: router,
+            ),
+          ),
+        );
+        await tester.tap(find.text('홈에서 심박수 관리 열기'));
+        await tester.pumpAndSettle();
+        await tester.ensureVisible(find.text('지금 측정'));
+        await tester.tap(find.text('지금 측정'));
+        await tester.pump(const Duration(milliseconds: 400));
+        await rig.widgetWindow(tester);
+        if (saveFailure.rejected) {
+          rig.api.pending.single.completeError(
+            const ApiException('synthetic rejection', statusCode: 400),
+          );
+        } else {
+          rig.api.pending.single.complete(null);
+        }
+        await tester.pump();
+        await tester.pump();
+
+        expect(find.text(saveFailure.label), findsOneWidget);
+        expect(find.byType(SavedScreen), findsNothing);
+        expect(router.routeInformationProvider.value.uri.path, '/biosignal');
+        await tester.ensureVisible(find.text('그만두기'));
+        await tester.tap(find.text('그만두기'));
+        await tester.pumpAndSettle();
+
+        expect(router.routeInformationProvider.value.uri.path, '/biosignal');
+        expect(find.byType(HeartScreen), findsOneWidget);
+        expect(find.byType(MeasureScreen), findsNothing);
+        expect(find.textContaining('82회/분'), findsNothing);
+
+        await tester.pumpWidget(const SizedBox());
+        rig.sensor.dispose();
+        await tester.pump();
+      },
+    );
+  }
+
+  testWidgets('real GoRouter cancellation returns to heart without saving', (
+    tester,
+  ) async {
+    final rig = Rig();
+    await rig.sensor.start(measure: false);
+    final repository = HeartRepository(
+      apiClient: ApiClient(client: MockClient((_) async => response())),
+    );
+    final router = heartFlowRouter(repository: repository, rig: rig);
+    addTearDown(router.dispose);
+
+    await tester.pumpWidget(
+      ProviderScope(
+        child: MaterialApp.router(
+          theme: AppTheme.build(),
+          routerConfig: router,
         ),
-      );
-      await tester.tap(find.text('심박 화면 열기'));
-      await tester.pumpAndSettle();
-      await tester.ensureVisible(find.text('지금 측정'));
-      await tester.tap(find.text('지금 측정'));
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 400));
-      await rig.widgetWindow(tester);
-      stored = true;
-      rig.api.succeed(0);
-      await tester.pump();
-      await tester.pump();
-      await tester.ensureVisible(find.text('저장된 기록 확인하기'));
-      await tester.tap(find.text('저장된 기록 확인하기'));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('확인했어요'));
-      await tester.pumpAndSettle();
+      ),
+    );
+    await tester.tap(find.text('홈에서 심박수 관리 열기'));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('지금 측정'));
+    await tester.tap(find.text('지금 측정'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(find.byType(MeasureScreen), findsOneWidget);
+    await tester.tap(
+      find.descendant(
+        of: find.byType(MeasureScreen),
+        matching: find.byType(SeniorBackButton),
+      ),
+    );
+    await tester.pumpAndSettle();
 
-      expect(find.text('심박 화면 열기'), findsNothing);
-      expect(find.byType(HeartScreen), findsOneWidget);
-      await tester.scrollUntilVisible(find.text('82회/분'), -250);
-      expect(find.text('82회/분'), findsOneWidget);
+    expect(router.routeInformationProvider.value.uri.path, '/biosignal');
+    expect(find.byType(HeartScreen), findsOneWidget);
+    expect(find.byType(MeasureScreen), findsNothing);
+    expect(find.byType(SavedScreen), findsNothing);
+    expect(rig.api.requests, isEmpty);
 
-      await tester.pumpWidget(const SizedBox());
-      rig.sensor.dispose();
-      await tester.pump();
-    },
-  );
+    await tester.pumpWidget(const SizedBox());
+    rig.sensor.dispose();
+    await tester.pump();
+  });
 
   testWidgets(
     'measurement purpose is selected before start and resets to general',

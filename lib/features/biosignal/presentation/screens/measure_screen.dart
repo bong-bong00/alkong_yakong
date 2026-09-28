@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_tabler_icons/flutter_tabler_icons.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
@@ -25,6 +26,7 @@ class MeasureScreen extends StatefulWidget {
   final HeartSensor? sensor;
   final HeartMeasurementContext measurementContext;
   final bool returnToPreviousScreen;
+  final Future<void> Function()? onSaved;
 
   const MeasureScreen({
     super.key,
@@ -32,10 +34,29 @@ class MeasureScreen extends StatefulWidget {
     this.sensor,
     this.measurementContext = HeartMeasurementContext.general,
     this.returnToPreviousScreen = false,
+    this.onSaved,
   });
 
   @override
   State<MeasureScreen> createState() => _MeasureScreenState();
+}
+
+/// GoRouter가 관리하는 심박 측정 경로에 전달하는 내부 화면 인자.
+///
+/// 공개 API나 저장 계약이 아니라 기존 HeartScreen 인스턴스의 센서와
+/// 사용자가 고른 측정 목적을 다음 화면에 그대로 넘기기 위한 값이다.
+class HeartMeasureRouteArgs {
+  final String guardianTitle;
+  final HeartSensor? sensor;
+  final HeartMeasurementContext measurementContext;
+  final Future<void> Function()? onSaved;
+
+  const HeartMeasureRouteArgs({
+    required this.guardianTitle,
+    required this.sensor,
+    required this.measurementContext,
+    this.onSaved,
+  });
 }
 
 class _MeasureScreenState extends State<MeasureScreen> {
@@ -64,6 +85,17 @@ class _MeasureScreenState extends State<MeasureScreen> {
   bool get _lost =>
       _sensor.status == HeartSensorStatus.disconnected ||
       _sensor.status == HeartSensorStatus.failed;
+
+  Future<void> _leaveMeasurement() async {
+    final router = widget.returnToPreviousScreen
+        ? GoRouter.maybeOf(context)
+        : null;
+    if (router != null) {
+      router.go('/biosignal');
+      return;
+    }
+    await Navigator.of(context).maybePop();
+  }
 
   @override
   void initState() {
@@ -142,7 +174,7 @@ class _MeasureScreenState extends State<MeasureScreen> {
         backgroundColor: AppColors.bg,
         body: Column(
           children: [
-            const SeniorBackHeader(title: '심박수 관리'),
+            SeniorBackHeader(title: '심박수 관리', onBack: _leaveMeasurement),
             Expanded(child: _recovery()),
           ],
         ),
@@ -153,7 +185,10 @@ class _MeasureScreenState extends State<MeasureScreen> {
       backgroundColor: AppColors.bg,
       body: Column(
         children: [
-          SeniorBackHeader(title: _done ? '측정이 끝났어요' : '심박수 측정 중'),
+          SeniorBackHeader(
+            title: _done ? '측정이 끝났어요' : '심박수 측정 중',
+            onBack: _leaveMeasurement,
+          ),
           Expanded(
             child: SingleChildScrollView(
               padding: const EdgeInsets.fromLTRB(20, 16, 20, 28),
@@ -257,7 +292,7 @@ class _MeasureScreenState extends State<MeasureScreen> {
                       kind: SeniorButtonKind.secondary,
                       minHeight: 66,
                       fontSize: 21,
-                      onPressed: () => Navigator.of(context).maybePop(),
+                      onPressed: _leaveMeasurement,
                     ),
                   ] else if (_saveFailed) ...[
                     _NoValueCard(
@@ -277,7 +312,7 @@ class _MeasureScreenState extends State<MeasureScreen> {
                       kind: SeniorButtonKind.secondary,
                       minHeight: 66,
                       fontSize: 21,
-                      onPressed: () => Navigator.of(context).maybePop(),
+                      onPressed: _leaveMeasurement,
                     ),
                   ] else ...[
                     _ResultCard(
@@ -290,7 +325,7 @@ class _MeasureScreenState extends State<MeasureScreen> {
                       minHeight: 74,
                       fontSize: 24,
                       elevated: true,
-                      onPressed: () {
+                      onPressed: () async {
                         if (_openingSaved ||
                             !_done ||
                             _sensor.savedBpm == null) {
@@ -299,19 +334,46 @@ class _MeasureScreenState extends State<MeasureScreen> {
                         _openingSaved = true;
                         final savedBpm = _sensor.savedBpm!;
                         final savedAt = _sensor.savedAt;
-                        Navigator.of(context).pushReplacement(
-                          MaterialPageRoute(
-                            builder: (_) => SavedScreen(
+                        final route = MaterialPageRoute<bool>(
+                          builder: (_) => SavedScreen(
+                            bpm: savedBpm,
+                            savedAt: savedAt,
+                            measurementContext: _sensor.savedMeasurementContext,
+                            guardianTitle: widget.guardianTitle,
+                            returnToPreviousScreen:
+                                widget.returnToPreviousScreen,
+                          ),
+                        );
+                        final router = widget.returnToPreviousScreen
+                            ? GoRouter.maybeOf(context)
+                            : null;
+                        if (router != null) {
+                          router.go(
+                            '/biosignal/saved',
+                            extra: HeartSavedRouteArgs(
                               bpm: savedBpm,
                               savedAt: savedAt,
                               measurementContext:
                                   _sensor.savedMeasurementContext,
                               guardianTitle: widget.guardianTitle,
-                              returnToPreviousScreen:
-                                  widget.returnToPreviousScreen,
+                              onSaved: widget.onSaved,
                             ),
-                          ),
-                        );
+                          );
+                          return;
+                        }
+                        if (widget.returnToPreviousScreen) {
+                          final confirmed = await Navigator.of(
+                            context,
+                          ).push<bool>(route);
+                          if (!context.mounted) return;
+                          if (confirmed == true) {
+                            Navigator.of(context).pop(true);
+                          } else {
+                            setState(() => _openingSaved = false);
+                          }
+                          return;
+                        }
+                        Navigator.of(context).pushReplacement(route);
                       },
                     ),
                   ],
