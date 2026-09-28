@@ -454,7 +454,6 @@ _JARGON_EXPLANATION_HINTS = {
     "효능군 중복": ("비슷한 효과의 약",),
     "융모": ("장 안쪽의 작은 돌기",),
     "점막": ("몸 안쪽을 덮", "몸의 안쪽을 덮"),
-    "부정맥": ("심장 박동이 고르지", "불규칙한 박동"),
     "심실": ("심장의 아래쪽 공간",),
     "QT 연장": ("다음 박동을 준비하는 시간이 길",),
     "항콜린": ("신경 신호", "입 마름"),
@@ -463,13 +462,69 @@ _JARGON_EXPLANATION_HINTS = {
     "수용체": ("약 성분이 작용하는 몸속 부분",),
 }
 
+_JARGON_DIAGNOSTIC_CODES = {
+    "DUR": "dur_abbreviation",
+    "상호작용": "interaction_term",
+    "금기": "contraindication_term",
+    "효능군중복": "therapeutic_duplication_term",
+    "효능군 중복": "therapeutic_duplication_term",
+    "융모": "villus_term",
+    "점막": "mucosa_term",
+    "심실": "ventricle_term",
+    "QT 연장": "qt_interval_term",
+    "항콜린": "anticholinergic_term",
+    "비스테로이드성 소염진통제": "nsaid_term",
+    "대사": "metabolism_term",
+    "수용체": "receptor_term",
+}
+
+
+def _sentence_windows(reply: str, term: str) -> list[str]:
+    """용어가 나온 문장과 바로 앞·뒤 문장만 반환한다."""
+    sentences = [
+        sentence.strip()
+        for sentence in re.split(r"(?<=[.!?。！？])\s+|\n+", reply)
+        if sentence.strip()
+    ]
+    return [
+        " ".join(sentences[max(0, index - 1) : index + 2])
+        for index, sentence in enumerate(sentences)
+        if term in sentence
+    ]
+
+
+def _has_meaningful_parenthetical(window: str, term: str) -> bool:
+    """용어 직후 괄호가 반복어가 아닌 실제 쉬운 설명인지 보수적으로 본다."""
+    pattern = rf"{re.escape(term)}\s*[（(]([^()（）]{{2,100}})[）)]"
+    for match in re.finditer(pattern, window):
+        explanation = match.group(1).strip()
+        normalized_explanation = re.sub(r"[^0-9A-Za-z가-힣]", "", explanation).casefold()
+        normalized_term = re.sub(r"[^0-9A-Za-z가-힣]", "", term).casefold()
+        if not normalized_explanation or normalized_explanation == normalized_term:
+            continue
+        if len(re.findall(r"[가-힣]", explanation)) < 5:
+            continue
+        if re.search(r"상태|현상|과정|공간|부분|영향|신호|약|몸|심장|장|피부", explanation):
+            return True
+    return False
+
+
+def _jargon_occurrence_is_explained(window: str, term: str, hints: tuple[str, ...]) -> bool:
+    return any(hint in window for hint in hints) or _has_meaningful_parenthetical(
+        window, term
+    )
+
 
 def _unexplained_jargon(reply: str) -> list[str]:
-    return [
-        term
-        for term, hints in _JARGON_EXPLANATION_HINTS.items()
-        if term in reply and not any(hint in reply for hint in hints)
-    ]
+    unexplained = []
+    for term, hints in _JARGON_EXPLANATION_HINTS.items():
+        windows = _sentence_windows(reply, term)
+        if windows and not all(
+            _jargon_occurrence_is_explained(window, term, hints)
+            for window in windows
+        ):
+            unexplained.append(term)
+    return unexplained
 
 
 def _chat_response_quality(response) -> tuple[str, bool, list[str]]:
@@ -530,11 +585,19 @@ def _chat_response_quality(response) -> tuple[str, bool, list[str]]:
     if jargon:
         quality_issues.append("unexplained_jargon")
     if quality_issues:
+        jargon_codes = sorted(
+            {
+                _JARGON_DIAGNOSTIC_CODES.get(term, "other_medical_term")
+                for term in jargon
+            }
+        )
         logger.warning(
-            "Gemini response rejected: length=%d issues=%s jargon_count=%d",
+            "Gemini response rejected: length=%d issues=%s jargon_count=%d "
+            "jargon_codes=%s",
             len(reply),
             ",".join(quality_issues),
             len(jargon),
+            ",".join(jargon_codes) or "none",
         )
     return reply, not quality_issues, quality_issues
 

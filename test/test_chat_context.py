@@ -1168,6 +1168,97 @@ class ChatContextTest(unittest.TestCase):
             "QT 연장, 즉 심장이 다음 박동을 준비하는 시간이 길어지는 상태를 확인해야 해요.",
         )
 
+    def test_jargon_with_adjacent_plain_explanation_passes_without_retry(self):
+        replies = (
+            "QT 연장(심장이 다음 박동을 준비하는 시간이 길어지는 상태)을 확인해야 해요.",
+            "심장이 다음 박동을 준비하는 시간이 길어지는 상태를 QT 연장이라고 해요.",
+            "심장이 다음 박동을 준비하는 시간이 길어지는 상태예요. 이를 QT 연장이라고 해요.",
+            "QT 연장을 확인해야 해요. 이는 다음 박동을 준비하는 시간이 길어지는 상태예요.",
+        )
+        for reply in replies:
+            with self.subTest(reply=reply):
+                client = MagicMock()
+                with patch.object(
+                    gemini_service,
+                    "_generate_content_with_retry",
+                    return_value=_chat_response(reply),
+                ) as generate:
+                    actual = gemini_service._generate_complete_chat_reply(
+                        client,
+                        prompt="주의사항을 설명하세요.",
+                    )
+                self.assertEqual(actual, reply)
+                self.assertEqual(generate.call_count, 1)
+
+    def test_unexplained_jargon_retries_once_and_accepts_explained_retry(self):
+        first = _chat_response("QT 연장이 나타날 수 있어요.")
+        second = _chat_response(
+            "QT 연장, 즉 심장이 다음 박동을 준비하는 시간이 길어지는 상태가 나타날 수 있어요."
+        )
+        with patch.object(
+            gemini_service,
+            "_generate_content_with_retry",
+            side_effect=[first, second],
+        ) as generate:
+            reply = gemini_service._generate_complete_chat_reply(
+                MagicMock(),
+                prompt="주의사항을 설명하세요.",
+            )
+        self.assertEqual(generate.call_count, 2)
+        self.assertEqual(reply, second.text)
+
+    def test_still_unexplained_retry_uses_safe_fallback(self):
+        with patch.object(
+            gemini_service,
+            "_generate_content_with_retry",
+            side_effect=[
+                _chat_response("QT 연장이 나타날 수 있어요."),
+                _chat_response("QT 연장을 확인해야 해요."),
+            ],
+        ) as generate:
+            reply = gemini_service._generate_complete_chat_reply(
+                MagicMock(),
+                prompt="주의사항을 설명하세요.",
+            )
+        self.assertEqual(generate.call_count, 2)
+        self.assertEqual(reply, gemini_service.INCOMPLETE_CHAT_REPLY)
+
+    def test_official_names_are_not_rejected_as_unexplained_jargon(self):
+        reply = "아디팜정의 성분은 히드록시진염산염이며 부정맥 병력은 의료진에게 알려 주세요."
+        self.assertEqual(
+            gemini_service._finalize_chat_response(_chat_response(reply)),
+            reply,
+        )
+
+    def test_empty_or_repeated_parenthetical_is_not_an_explanation(self):
+        for reply in (
+            "QT 연장(QT 연장)이 나타날 수 있어요.",
+            "QT 연장(주의)이 나타날 수 있어요.",
+        ):
+            with self.subTest(reply=reply):
+                self.assertEqual(
+                    gemini_service._finalize_chat_response(_chat_response(reply)),
+                    gemini_service.INCOMPLETE_CHAT_REPLY,
+                )
+
+    def test_jargon_retry_still_preserves_dose_and_prohibition_conditions(self):
+        first = _chat_response("QT 연장은")
+        second_text = (
+            "QT 연장, 즉 심장이 다음 박동을 준비하는 시간이 길어지는 상태를 확인해야 해요. "
+            "만 12세 미만은 사용하면 안 되며, 1~2 mg을 1일 2회 사용한다는 공식 조건은 그대로 확인하세요."
+        )
+        with patch.object(
+            gemini_service,
+            "_generate_content_with_retry",
+            side_effect=[first, _chat_response(second_text)],
+        ):
+            reply = gemini_service._generate_complete_chat_reply(
+                MagicMock(),
+                prompt="공식 조건을 설명하세요.",
+            )
+        for expected in ("만 12세 미만", "사용하면 안", "1~2 mg", "1일 2회"):
+            self.assertIn(expected, reply)
+
     def test_general_replies_use_plain_explanations(self):
         greeting = general_conversation_reply("안녕하세요")
         capability = general_conversation_reply("무슨 기능이 있어?")
