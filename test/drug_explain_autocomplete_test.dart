@@ -207,6 +207,76 @@ void main() {
     ]);
   });
 
+  for (final serverAvailable in [true, false]) {
+    testWidgets('짧은 OCR 이름 대신 공식 이름 전송 (서버 조회 $serverAvailable)', (
+      tester,
+    ) async {
+      final originalUserId = MvpSession.userId;
+      final originalOcr = MvpSession.latestOcrItems;
+      MvpSession.userId = 'official-name-test-user';
+      MvpSession.latestOcrItems = [
+        {
+          'medicine_code': '20000001',
+          'drug_name': '아디팜정',
+          'official_product_name': '아디팜정(히드록시진염산염)',
+        },
+      ];
+      addTearDown(() {
+        MvpSession.userId = originalUserId;
+        MvpSession.latestOcrItems = originalOcr;
+      });
+      Map<String, dynamic>? sent;
+      final chatClient = MockClient((request) async {
+        sent = jsonDecode(request.body) as Map<String, dynamic>;
+        return jsonResponse({'reply': '공식정보 답변'});
+      });
+      final medicineClient = MockClient((request) async {
+        if (!serverAvailable) {
+          return jsonResponse({'detail': '조회 실패'}, statusCode: 503);
+        }
+        return jsonResponse({
+          'medicines': [
+            for (var i = 0; i < 2; i++)
+              {
+                'medicine_code': '20000001',
+                'official_product_name': '아디팜정(히드록시진염산염)',
+                'product_name': '아디팜정',
+                'ingredient': '히드록시진염산염',
+              },
+          ],
+        });
+      });
+      await tester.pumpWidget(
+        MaterialApp(
+          home: DrugExplainScreen(
+            apiClient: ApiClient(client: chatClient),
+            medicineApiClient: ApiClient(client: medicineClient),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      if (!serverAvailable) await pickSubject(tester, '아디팜정');
+      // 서버 성공이면 코드 중복 두 행과 OCR 별칭이 하나로 합쳐져 자동 선택된다.
+      expect(find.text('아디팜정'), findsOneWidget);
+      expect(find.text('아디팜정(히드록시진염산염)'), findsNothing);
+      await tester.tap(find.text('어디에 쓰는 약인가요?'));
+      await tester.pumpAndSettle();
+      expect(sent?['selected_medicine'], {
+        'medicine_code': '20000001',
+        'product_name': '아디팜정(히드록시진염산염)',
+      });
+      if (serverAvailable) {
+        expect((sent?['current_medicines'] as List).length, 1);
+        expect(
+          (sent?['current_medicines'] as List).single['product_name'],
+          '아디팜정(히드록시진염산염)',
+        );
+      } else {
+        expect(sent?['current_medicines'], isEmpty);
+      }
+    });
+  }
+
   testWidgets('사용자가 고른 공식 품목명이 선택되고 빠른 질문에 사용된다', (tester) async {
     final chatBodies = <Map<String, dynamic>>[];
     final client = MockClient((request) async {

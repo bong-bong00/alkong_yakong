@@ -13,6 +13,7 @@ import '../../core/widgets/senior_feedback.dart';
 import '../../core/widgets/senior_header.dart';
 import '../../core/widgets/senior_sheet.dart';
 import '../../core/widgets/senior_wheel.dart';
+import '../medicines/domain/display_policy.dart';
 
 class DrugExplainScreen extends StatefulWidget {
   /// AI 약사 Render로만 요청을 보낸다.
@@ -157,17 +158,40 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
     final names = <String>[];
     final officialMedicines = <String, _DrugSearchCandidate>{};
     final ambiguousNames = <String>{};
+    final namesByCode = <String, String>{};
+
+    String firstText(Iterable<dynamic> values) {
+      for (final value in values) {
+        final text = value?.toString().trim() ?? '';
+        if (text.isNotEmpty) return text;
+      }
+      return '';
+    }
 
     void addName(dynamic value) {
       final name = value?.toString().trim() ?? '';
       if (name.isNotEmpty && !names.contains(name)) names.add(name);
     }
 
-    void addMedicine(dynamic nameValue, dynamic codeValue) {
-      final name = nameValue?.toString().trim() ?? '';
+    void addMedicine(dynamic nameValue, dynamic codeValue, {String? label}) {
+      final officialName = nameValue?.toString().trim() ?? '';
+      final name = (label ?? officialName).trim();
       final code = codeValue?.toString().trim() ?? '';
+      if (code.isNotEmpty) {
+        final oldName = namesByCode[code];
+        if (oldName != null && oldName != name) {
+          names.remove(oldName);
+          officialMedicines.remove(oldName);
+        }
+        namesByCode[code] = name;
+      }
       addName(name);
-      if (name.isEmpty || code.isEmpty || ambiguousNames.contains(name)) return;
+      if (name.isEmpty ||
+          officialName.isEmpty ||
+          code.isEmpty ||
+          ambiguousNames.contains(name)) {
+        return;
+      }
       final existing = officialMedicines[name];
       if (existing != null && existing.itemSeq != code) {
         officialMedicines.remove(name);
@@ -175,21 +199,13 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
         return;
       }
       officialMedicines[name] = _DrugSearchCandidate(
-        itemName: name,
+        itemName: officialName,
         itemSeq: code,
       );
     }
 
     void addCurrentMedicine(dynamic raw) {
       if (raw is! Map) return;
-      String firstText(Iterable<dynamic> values) {
-        for (final value in values) {
-          final text = value?.toString().trim() ?? '';
-          if (text.isNotEmpty) return text;
-        }
-        return '';
-      }
-
       final code = raw['medicine_code']?.toString().trim() ?? '';
       final productName = firstText([
         raw['official_product_name'],
@@ -197,7 +213,11 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
         raw['display_name'],
       ]);
       final ingredient = firstText([raw['ingredient_name'], raw['ingredient']]);
-      addMedicine(productName, code);
+      addMedicine(
+        productName,
+        code,
+        label: compactProductName(productName, ingredient: ingredient),
+      );
       if (code.isEmpty || productName.isEmpty) return;
       if (_currentMedicines.any((item) => item['medicine_code'] == code)) {
         return;
@@ -210,9 +230,22 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
     }
 
     for (final item in MvpSession.latestOcrItems) {
+      final officialName = firstText([
+        item['official_product_name'],
+        item['product_name'],
+      ]);
+      final label = firstText([
+        item['medicine_name'],
+        item['drug_name'],
+        item['ocr_drug_name'],
+        officialName,
+      ]);
       addMedicine(
-        item['medicine_name'] ?? item['drug_name'] ?? item['ocr_drug_name'],
-        item['medicine_code'] ?? item['item_seq'] ?? item['itemSeq'],
+        officialName,
+        officialName.isEmpty
+            ? null
+            : item['medicine_code'] ?? item['item_seq'] ?? item['itemSeq'],
+        label: label,
       );
     }
 
@@ -245,6 +278,12 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
         throw const ApiException('내 약 목록을 읽을 수 없습니다.');
       }
       _currentMedicines.clear();
+      // 성공한 원본 조회는 OCR 임시 목록을 대체한다. 같은 코드의 짧은 이름과
+      // 공식 이름이 별도 선택지로 남거나 과거 OCR 약이 섞이지 않게 한다.
+      names.clear();
+      officialMedicines.clear();
+      ambiguousNames.clear();
+      namesByCode.clear();
       for (final medicine in response['medicines'] as List) {
         addCurrentMedicine(medicine);
       }
@@ -259,8 +298,7 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
         if (_selectedMedicine == null && names.length == 1) {
           _selectedMedicine = names.first;
         }
-        _selectedOfficialMedicine ??=
-            _officialMedicinesByName[_selectedMedicine];
+        _selectedOfficialMedicine = _officialMedicinesByName[_selectedMedicine];
         _medicineLoadError = names.isEmpty ? '등록된 처방/복용약이 없습니다.' : null;
       });
     } on ApiException catch (error) {
