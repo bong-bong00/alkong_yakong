@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:alkong_yakong/core/network/api_client.dart';
 import 'package:alkong_yakong/core/theme/app_theme.dart';
 import 'package:alkong_yakong/core/widgets/senior_button.dart';
+import 'package:alkong_yakong/core/widgets/senior_card.dart';
 import 'package:alkong_yakong/core/widgets/senior_feedback.dart';
 import 'package:alkong_yakong/core/widgets/senior_header.dart';
 import 'package:alkong_yakong/features/biosignal/data/heart_repository.dart';
@@ -13,6 +14,7 @@ import 'package:alkong_yakong/features/biosignal/presentation/screens/heart_scre
 import 'package:alkong_yakong/features/biosignal/presentation/screens/measure_screen.dart';
 import 'package:alkong_yakong/features/biosignal/presentation/screens/monthly_heart_screen.dart';
 import 'package:alkong_yakong/features/biosignal/presentation/screens/saved_screen.dart';
+import 'package:alkong_yakong/features/medication/domain/medication_models.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -36,6 +38,32 @@ Map<String, dynamic> body({int? bpm}) {
       if (bpm != null)
         {'id': 1, 'bpm': bpm, 'measured_at': now.toUtc().toIso8601String()},
     ],
+  };
+}
+
+Map<String, dynamic> bodyWithReading({
+  required int bpm,
+  required String measuredAt,
+  String? measurementContext,
+  String? periodDate,
+}) {
+  final parsed = DateTime.parse(measuredAt).toLocal();
+  final reading = <String, dynamic>{
+    'id': 1,
+    'bpm': bpm,
+    'measured_at': measuredAt,
+  };
+  if (measurementContext != null) {
+    reading['measurement_context'] = measurementContext;
+  }
+  return {
+    'today': {},
+    'week': [],
+    'month': [],
+    'period_date':
+        periodDate ??
+        '${parsed.year}-${parsed.month.toString().padLeft(2, '0')}-${parsed.day.toString().padLeft(2, '0')}',
+    'readings': [reading],
   };
 }
 
@@ -216,7 +244,7 @@ void main() {
   );
 
   testWidgets(
-    'one explicit before/after pair shows values without a conclusion',
+    'one explicit before/after pair shows one-week bars without a conclusion',
     (tester) async {
       final data = monthlyData([
         HeartReading(
@@ -240,7 +268,11 @@ void main() {
 
       expect(find.text('복약 전 90회/분 · 복약 후 91회/분'), findsOneWidget);
       expect(find.text('비교 가능한 주는 1주예요.'), findsOneWidget);
-      expect(find.text('주별 평균'), findsNothing);
+      expect(find.text('주별 평균'), findsOneWidget);
+      expect(find.text('단위: 회/분 · 비교 가능한 주 1주'), findsOneWidget);
+      expect(find.text('복약 전 평균'), findsOneWidget);
+      expect(find.text('복약 후 평균'), findsOneWidget);
+      expect(find.text('9/7~9/13'), findsOneWidget);
       expect(find.textContaining('비슷했어요'), findsNothing);
       expect(find.textContaining('효과'), findsNothing);
       expect(find.textContaining('약 때문에'), findsNothing);
@@ -385,7 +417,8 @@ void main() {
         wrap(HeartScreen(repository: repository, guardianTitle: '합성 보호자')),
       );
       await tester.pumpAndSettle();
-      expect(find.textContaining('98회/분'), findsOneWidget);
+      expect(find.textContaining('98회/분'), findsWidgets);
+      expect(find.text('평소 심박 측정'), findsWidgets);
       expect(find.textContaining('비교할 자료는 부족'), findsOneWidget);
       expect(find.text('지난 기록 보기'), findsNothing);
       expect(find.widgetWithText(SeniorSegmented, '이번 주'), findsOneWidget);
@@ -412,6 +445,89 @@ void main() {
     },
   );
 
+  testWidgets(
+    'today card shows a general reading with value, local time, and purpose',
+    (tester) async {
+      final now = DateTime.now();
+      final measuredAt = DateTime(now.year, now.month, now.day, 14, 42);
+      final repository = HeartRepository(
+        apiClient: ApiClient(
+          client: MockClient(
+            (_) async => http.Response(
+              jsonEncode(
+                bodyWithReading(
+                  bpm: 92,
+                  measuredAt: measuredAt.toUtc().toIso8601String(),
+                  measurementContext: 'general',
+                ),
+              ),
+              200,
+              headers: {'content-type': 'application/json'},
+            ),
+          ),
+        ),
+      );
+
+      await tester.pumpWidget(wrap(HeartScreen(repository: repository)));
+      await tester.pumpAndSettle();
+
+      final todayCard = find.ancestor(
+        of: find.text('오늘 측정'),
+        matching: find.byType(SeniorCard),
+      );
+      expect(
+        find.descendant(of: todayCard, matching: find.text('92회/분')),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(of: todayCard, matching: find.text('평소 심박 측정')),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: todayCard,
+          matching: find.text(DoseSlot.absoluteTime(measuredAt)),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(of: todayCard, matching: find.text('오늘은 아직 재지 않았어요')),
+        findsNothing,
+      );
+    },
+  );
+
+  testWidgets(
+    'legacy reading without measurement context appears as a usual heart reading',
+    (tester) async {
+      final now = DateTime.now();
+      final measuredAt = DateTime(now.year, now.month, now.day, 9, 5);
+      final repository = HeartRepository(
+        apiClient: ApiClient(
+          client: MockClient(
+            (_) async => http.Response(
+              jsonEncode(
+                bodyWithReading(
+                  bpm: 74,
+                  measuredAt: measuredAt.toUtc().toIso8601String(),
+                ),
+              ),
+              200,
+              headers: {'content-type': 'application/json'},
+            ),
+          ),
+        ),
+      );
+
+      await tester.pumpWidget(wrap(HeartScreen(repository: repository)));
+      await tester.pumpAndSettle();
+
+      expect(find.text('평소 심박 측정'), findsWidgets);
+      expect(find.text('74회/분'), findsOneWidget);
+      expect(find.text('오늘은 아직 재지 않았어요'), findsNothing);
+    },
+  );
+
   testWidgets('outdated response cannot replace newer query', (tester) async {
     final pending = <Completer<http.Response>>[];
     final repository = HeartRepository(
@@ -434,7 +550,7 @@ void main() {
     await tester.pumpAndSettle();
     pending[0].complete(response(bpm: 71));
     await tester.pumpAndSettle();
-    expect(find.textContaining('98회/분'), findsOneWidget);
+    expect(find.textContaining('98회/분'), findsWidgets);
     expect(find.textContaining('71회/분'), findsNothing);
   });
 
@@ -481,8 +597,8 @@ void main() {
       await tester.ensureVisible(find.text('확인했어요'));
       await tester.tap(find.text('확인했어요'));
       await tester.pumpAndSettle();
-      await tester.scrollUntilVisible(find.textContaining('82회/분'), -250);
-      expect(find.textContaining('82회/분'), findsOneWidget);
+      await tester.scrollUntilVisible(find.text('82회/분'), -250);
+      expect(find.text('82회/분'), findsOneWidget);
       expect(gets, greaterThanOrEqualTo(2));
       expect(rig.api.requests, hasLength(1));
       await tester.pumpWidget(const SizedBox());
@@ -503,8 +619,8 @@ void main() {
         wrap(HeartScreen(repository: repository, sensor: rig.sensor)),
       );
       await tester.pumpAndSettle();
-      await tester.ensureVisible(find.text('복약 전'));
-      await tester.tap(find.text('복약 전'));
+      await tester.ensureVisible(find.text('복약 전 측정'));
+      await tester.tap(find.text('복약 전 측정'));
       await tester.ensureVisible(find.text('지금 측정'));
       final startButton = tester.widget<SeniorButton>(
         find.ancestor(
@@ -523,14 +639,14 @@ void main() {
       expect(
         find.descendant(
           of: find.byType(MeasureScreen),
-          matching: find.text('복약 후'),
+          matching: find.text('복약 후 측정'),
         ),
         findsNothing,
       );
       tester.state<NavigatorState>(find.byType(Navigator)).pop();
       await tester.pumpAndSettle();
       final selector = tester.widget<SeniorSegmented>(
-        find.widgetWithText(SeniorSegmented, '일반 측정'),
+        find.widgetWithText(SeniorSegmented, '평소 심박 측정'),
       );
       expect(selector.index, 0);
       expect(rig.sensor.measurementContext, HeartMeasurementContext.general);
@@ -564,9 +680,9 @@ void main() {
       );
       await tester.pumpAndSettle();
       await tester.scrollUntilVisible(find.text('측정 목적'), -200);
-      expect(find.text('일반 측정'), findsOneWidget);
-      expect(find.text('복약 전'), findsOneWidget);
-      expect(find.text('복약 후'), findsOneWidget);
+      expect(find.text('평소 심박 측정'), findsOneWidget);
+      expect(find.text('복약 전 측정'), findsOneWidget);
+      expect(find.text('복약 후 측정'), findsOneWidget);
       expect(tester.takeException(), isNull);
     });
   }

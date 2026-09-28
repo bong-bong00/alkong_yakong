@@ -214,6 +214,32 @@ void main() {
     );
   });
 
+  test('한국 현지 자정 경계에서 오늘 기록만 고른다', () async {
+    final data = await repositoryReturning({
+      'period_date': '2026-06-01',
+      'today': {},
+      'week': [],
+      'month': [],
+      'readings': [
+        {
+          'id': 1,
+          'bpm': 80,
+          'measured_at': '2026-05-31T14:59:00Z',
+          'measurement_context': 'general',
+        },
+        {
+          'id': 2,
+          'bpm': 81,
+          'measured_at': '2026-05-31T15:00:00Z',
+          'measurement_context': 'general',
+        },
+      ],
+    }).fetch();
+
+    expect(DateTime.now().timeZoneOffset, const Duration(hours: 9));
+    expect(data!.todayReadings.map((reading) => reading.id), [2]);
+  });
+
   test('기록 목록 누락 또는 잘못된 시간은 빈 기록으로 간주하지 않는다', () async {
     expect(await repositoryReturning({'readings': null}).fetch(), isNull);
     expect(

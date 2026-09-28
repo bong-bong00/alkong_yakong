@@ -251,7 +251,9 @@ class _HeartScreenState extends State<HeartScreen> {
                           Text('측정 목적', style: AppText.cardTitle(size: 20)),
                           const SizedBox(height: 12),
                           SeniorSegmented(
-                            labels: const ['일반 측정', '복약 전', '복약 후'],
+                            labels: HeartMeasurementContext.values
+                                .map((context) => context.label)
+                                .toList(growable: false),
                             index: HeartMeasurementContext.values.indexOf(
                               _measurementContext,
                             ),
@@ -448,7 +450,14 @@ class _TodayCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final today = data.today;
-    final measuredToday = today.before != null || today.after != null;
+    final generalReadings = data.todayReadings
+        .where(
+          (reading) =>
+              reading.measurementContext == HeartMeasurementContext.general,
+        )
+        .toList(growable: false);
+    final hasMedicationReading = today.before != null || today.after != null;
+    final measuredToday = hasMedicationReading || generalReadings.isNotEmpty;
     final drop = today.drop;
     final measuredLine = _measuredLine();
 
@@ -461,7 +470,7 @@ class _TodayCard extends StatelessWidget {
             children: [
               Expanded(child: Text('오늘 측정', style: AppText.cardTitle())),
               // 오늘 잰 것이 없으면 "저녁 약"이라고 붙일 근거도 없다.
-              if (measuredToday && data.todaySlotLabel.isNotEmpty)
+              if (hasMedicationReading && data.todaySlotLabel.isNotEmpty)
                 // Flexible로 두면 남은 폭을 제목과 반씩 나눠 가져
                 // 때 이름이 화면 한가운데로 밀려난다. 폭 상한만 건다.
                 ConstrainedBox(
@@ -492,7 +501,7 @@ class _TodayCard extends StatelessWidget {
                 style: AppText.label(size: 18.5, color: AppColors.textPrimary),
               ),
             )
-          else
+          else if (hasMedicationReading)
             Row(
               children: [
                 Expanded(
@@ -525,6 +534,44 @@ class _TodayCard extends StatelessWidget {
                 ),
               ],
             ),
+          for (final reading in generalReadings) ...[
+            if (hasMedicationReading || reading != generalReadings.first)
+              const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+              decoration: BoxDecoration(
+                color: AppColors.sunken,
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          reading.measurementContext.label,
+                          style: AppText.label(
+                            size: 17,
+                            color: AppColors.textSecondary,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          '${reading.bpm}회/분',
+                          style: AppText.emphasis(size: 24),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Text(
+                    DoseSlot.absoluteTime(reading.measuredAt.toLocal()),
+                    style: AppText.caption(size: 16),
+                  ),
+                ],
+              ),
+            ),
+          ],
           if (drop != null) ...[
             const SizedBox(height: 14),
             Container(

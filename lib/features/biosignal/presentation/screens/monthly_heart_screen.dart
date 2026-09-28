@@ -93,7 +93,7 @@ class _MonthlyHeartScreenState extends State<MonthlyHeartScreen> {
                       ),
                       const SizedBox(height: 12),
                       _MonthSummaryCard(month: _month, comparison: comparison),
-                      if (comparison.weeks.length >= 2) ...[
+                      if (comparison.weeks.isNotEmpty) ...[
                         const SizedBox(height: 12),
                         _WeeklyBars(weeks: comparison.weeks),
                       ],
@@ -211,7 +211,7 @@ class _MonthSummaryCard extends StatelessWidget {
   }
 }
 
-/// 비교 가능한 주가 둘 이상일 때만 전·후 평균을 나란히 보여준다.
+/// 비교 가능한 주가 하나라도 있으면 전·후 평균을 나란히 보여준다.
 class _WeeklyBars extends StatelessWidget {
   final List<_WeekAverage> weeks;
 

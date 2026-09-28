@@ -1,9 +1,9 @@
 import 'package:flutter/foundation.dart';
 
 enum HeartMeasurementContext {
-  general('general', '일반 측정'),
-  beforeMedication('before_medication', '복약 전'),
-  afterMedication('after_medication', '복약 후');
+  general('general', '평소 심박 측정'),
+  beforeMedication('before_medication', '복약 전 측정'),
+  afterMedication('after_medication', '복약 후 측정');
 
   const HeartMeasurementContext(this.value, this.label);
   final String value;
@@ -93,6 +93,20 @@ class HeartData {
       final at = r.measuredAt.toLocal();
       return !at.isBefore(start) && at.isBefore(end);
     }).toList();
+  }
+
+  /// 서버가 정한 조회 기준일의 현지 날짜에 저장된 실제 측정 기록.
+  ///
+  /// 복약 전·후 요약과 별개로 `general` 기록도 오늘 카드에 보여 주기 위해
+  /// 원시 기록에서 고른다. 시각으로 측정 목적을 추정하지 않는다.
+  List<HeartReading> get todayReadings {
+    final now = periodDate ?? DateTime.now();
+    final start = DateTime(now.year, now.month, now.day);
+    final end = start.add(const Duration(days: 1));
+    return readings.where((reading) {
+      final at = reading.measuredAt.toLocal();
+      return !at.isBefore(start) && at.isBefore(end);
+    }).toList()..sort((a, b) => b.measuredAt.compareTo(a.measuredAt));
   }
 
   /// 오늘 잰 것.

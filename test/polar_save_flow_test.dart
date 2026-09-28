@@ -501,7 +501,7 @@ void main() {
       button.onPressed!();
       await tester.pumpAndSettle();
       expect(find.byType(SavedScreen), findsOneWidget);
-      expect(find.text('82회 / 분 · 일반 측정 · 서버에 저장된 심박수'), findsOneWidget);
+      expect(find.text('82회 / 분 · 평소 심박 측정 · 서버에 저장된 심박수'), findsOneWidget);
       expect(find.text('보호자 자동 알림은 지원하지 않아요'), findsOneWidget);
       expect(r.api.requests, hasLength(1));
       await tester.pumpWidget(const SizedBox());
