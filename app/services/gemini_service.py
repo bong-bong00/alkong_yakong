@@ -30,7 +30,8 @@ CHAT_RETRY_INSTRUCTION = """
 모든 문장을 끝까지 완성하고 결론을 첫 문장에 쓰세요.
 공식정보의 숫자, 용량, 단위, 횟수, 기간, 연령, 금지·주의·예외 조건을 그대로 보존하세요.
 제품명과 성분명은 바꾸지 마세요.
-어려운 의학 용어가 꼭 필요하면 같은 문장이나 바로 다음 문장에서 쉬운 뜻을 설명하세요.
+어려운 의학 용어가 꼭 필요하면 처음 등장할 때 같은 문장이나 바로 다음 문장에서 쉬운 뜻을 설명하세요. 같은 답변에서 반복 설명하지 마세요.
+사용자에게 직접 호칭을 붙일 때는 "선생님"만 자연스럽게 한 번 사용하세요.
 """.strip()
 
 
@@ -470,6 +471,7 @@ _JARGON_EXPLANATION_HINTS = {
     "비스테로이드성 소염진통제": ("스테로이드 성분 없이",),
     "대사": ("몸이 약을 처리하는 과정",),
     "수용체": ("약 성분이 작용하는 몸속 부분",),
+    "고초열": ("꽃가루", "알레르기"),
 }
 
 _JARGON_DIAGNOSTIC_CODES = {
@@ -486,6 +488,7 @@ _JARGON_DIAGNOSTIC_CODES = {
     "비스테로이드성 소염진통제": "nsaid_term",
     "대사": "metabolism_term",
     "수용체": "receptor_term",
+    "고초열": "hay_fever_term",
 }
 
 
@@ -529,10 +532,7 @@ def _unexplained_jargon(reply: str) -> list[str]:
     unexplained = []
     for term, hints in _JARGON_EXPLANATION_HINTS.items():
         windows = _sentence_windows(reply, term)
-        if windows and not all(
-            _jargon_occurrence_is_explained(window, term, hints)
-            for window in windows
-        ):
+        if windows and not _jargon_occurrence_is_explained(windows[0], term, hints):
             unexplained.append(term)
     return unexplained
 

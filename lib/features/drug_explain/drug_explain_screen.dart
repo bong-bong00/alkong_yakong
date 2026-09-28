@@ -140,7 +140,7 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
     // 초기 안내 메시지 추가
     _messages.add({
       'isMe': false,
-      'text': '안녕하세요! 약에 대해 궁금한 것을 편하게 물어보세요.\n어려운 말은 쉬운 말로 바꿔서 알려드릴게요.',
+      'text': '안녕하세요, 선생님! 약에 대해 궁금한 것을 편하게 물어보세요.\n어려운 말은 쉬운 말로 바꿔서 알려드릴게요.',
     });
     WidgetsBinding.instance.addPostFrameCallback((_) => _loadMedicines());
   }
@@ -694,7 +694,7 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
                   ],
                   if (_isLoading) ...[
                     const SizedBox(height: 4),
-                    Text('AI 약사가 답을 쓰고 있어요…', style: AppText.caption(size: 18)),
+                    Text('답변을 작성하고 있어요', style: AppText.caption(size: 18)),
                   ],
                 ],
               ),

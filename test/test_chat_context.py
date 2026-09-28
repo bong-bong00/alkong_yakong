@@ -1135,7 +1135,10 @@ class ChatContextTest(unittest.TestCase):
             with self.subTest(term=term):
                 self.assertIn(term, prompt_text)
                 self.assertIn(explanation, prompt_text)
-        self.assertIn("전문용어를 괄호 안에 덧붙이지 마세요", prompt_text)
+        self.assertIn('처음 등장할 때만 "전문용어(짧고 쉬운 뜻)"', prompt_text)
+        self.assertIn("같은 답변에서 반복 설명하지 마세요", prompt_text)
+        self.assertIn('직접 호칭을 붙일 때는 "선생님"만 사용', prompt_text)
+        self.assertIn("고초열처럼 낯선 공식 질환명", prompt_text)
         self.assertIn("주성분, 복용량, 공식 의약품명·제품명·성분명은 원래 표현을 유지", prompt_text)
         self.assertIn("추측하지 말고", prompt_text)
         self.assertIn("의료적 판단을 단정하지 마세요", prompt_text)
@@ -1338,6 +1341,33 @@ class ChatContextTest(unittest.TestCase):
                     )
                 self.assertEqual(actual, reply)
                 self.assertEqual(generate.call_count, 1)
+
+    def test_jargon_is_explained_on_first_occurrence_only(self):
+        reply = (
+            "고초열(꽃가루 때문에 생기는 알레르기 증상)에 사용할 수 있어요. "
+            "고초열에 관한 공식 사용 조건도 함께 확인해 주세요."
+        )
+        self.assertEqual(
+            gemini_service._finalize_chat_response(_chat_response(reply)),
+            reply,
+        )
+
+    def test_unexplained_hay_fever_retries_once(self):
+        first = _chat_response("고초열에 사용할 수 있어요.")
+        second = _chat_response(
+            "고초열(꽃가루 때문에 생기는 알레르기 증상)에 사용할 수 있어요."
+        )
+        with patch.object(
+            gemini_service,
+            "_generate_content_with_retry",
+            side_effect=[first, second],
+        ) as generate:
+            reply = gemini_service._generate_complete_chat_reply(
+                MagicMock(),
+                prompt="공식 효능을 설명하세요.",
+            )
+        self.assertEqual(generate.call_count, 2)
+        self.assertEqual(reply, second.text)
 
     def test_unexplained_jargon_retries_once_and_accepts_explained_retry(self):
         first = _chat_response("QT 연장이 나타날 수 있어요.")

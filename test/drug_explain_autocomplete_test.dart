@@ -722,6 +722,37 @@ void main() {
     expect(chatBody?.containsKey('intent'), isFalse);
   });
 
+  testWidgets('답변 대기 중 쉬운 문구를 표시하고 첫 안내는 선생님 호칭을 사용한다', (tester) async {
+    final response = Completer<http.Response>();
+    final client = MockClient((request) async {
+      if (request.url.path.endsWith('/dashboard')) {
+        return jsonResponse({
+          'latest_prescription': null,
+          'today_medications': [
+            {'product_name': '게보린정'},
+          ],
+        });
+      }
+      return response.future;
+    });
+
+    await tester.pumpWidget(appWith(client));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('안녕하세요, 선생님!'), findsOneWidget);
+
+    await tester.ensureVisible(find.text('어디에 쓰는 약인가요?'));
+    await tester.tap(find.text('어디에 쓰는 약인가요?'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+
+    expect(find.text('답변을 작성하고 있어요'), findsOneWidget);
+    expect(find.textContaining('AI가 답변을 작성 중입니다'), findsNothing);
+    expect(find.textContaining('AI 약사가 답을 쓰고 있어요'), findsNothing);
+
+    response.complete(jsonResponse({'reply': '확인한 답변이에요.'}));
+    await tester.pumpAndSettle();
+  });
+
   testWidgets('서버 fallback 응답을 다른 약의 데모 답변으로 바꾸지 않는다', (tester) async {
     const serverReply = '현재 AI 약사가 설정되지 않아 공식 답변을 생성할 수 없습니다.';
     final client = MockClient((request) async {
