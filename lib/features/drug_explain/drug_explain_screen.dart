@@ -102,6 +102,33 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
     },
   ];
 
+  static const List<Map<String, String>> _allMedicinePrompts = [
+    {
+      'label': '제가 먹는 약 알려주세요',
+      'prompt': '제가 현재 먹는 약 전체를 쉬운 말로 알려주세요.',
+      'display': '제가 먹는 약 알려주세요',
+      'intent': 'overview',
+    },
+    {
+      'label': '같이 먹어도 괜찮나요?',
+      'prompt': '제가 현재 먹는 약 전체를 같이 먹을 때 주의할 점이 있는지 확인해 주세요.',
+      'display': '같이 먹어도 괜찮나요?',
+      'intent': 'combination',
+    },
+    {
+      'label': '같은 성분의 약이 있나요?',
+      'prompt': '제가 현재 먹는 약 전체에서 같은 성분이나 비슷한 역할이 겹치는 약이 있는지 확인해 주세요.',
+      'display': '같은 성분의 약이 있나요?',
+      'intent': 'duplicate',
+    },
+    {
+      'label': '약마다 주의할 점은요?',
+      'prompt': '제가 현재 먹는 약마다 공식 자료에서 확인되는 주의할 점을 알려주세요.',
+      'display': '약마다 주의할 점은요?',
+      'intent': 'precautions',
+    },
+  ];
+
   @override
   void initState() {
     super.initState();
@@ -141,10 +168,8 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
     if (label == null || prompt == null || intent == null) return;
 
     final medicine = _selectedMedicine;
-    if (medicine == null || medicine.isEmpty) {
-      showSeniorSnackbar(context, '먼저 궁금한 약을 선택해주세요.', error: true);
-      return;
-    }
+    final isAllMedicines = medicine == null || medicine.isEmpty;
+    if (isAllMedicines && !_allMedicinePrompts.contains(keyword)) return;
 
     setState(() => _selectedKeyword = label);
     await _sendMessage(
@@ -471,16 +496,16 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
     }
   }
 
-  Widget _buildKeywordBar() {
+  Widget _buildKeywordBar(List<Map<String, String>> prompts) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 4, 20, 0),
       child: LayoutBuilder(
         builder: (context, constraints) => Scrollbar(
           child: SingleChildScrollView(
-            key: ValueKey(_selectedMedicine),
+            key: ValueKey(_selectedMedicine ?? 'all-medicines'),
             scrollDirection: Axis.horizontal,
             child: Row(
-              children: _keywordPrompts.map((keyword) {
+              children: prompts.map((keyword) {
                 final label = keyword['label']!;
                 final selected = label == _selectedKeyword;
                 return Padding(
@@ -528,7 +553,10 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
   @override
   Widget build(BuildContext context) {
     // 아직 아무것도 안 물어봤을 때만 예시 질문을 보여준다.
-    final showSuggestions = _messages.length <= 1;
+    final showSuggestions =
+        _messages.length <= 1 &&
+        _selectedMedicine != null &&
+        _selectedMedicine!.isNotEmpty;
     final subject = _selectedMedicine?.trim();
 
     return Scaffold(
@@ -671,9 +699,12 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
                 ],
               ),
             ),
-            // 빠른 질문은 약을 고른 뒤에만 내놓는다. 무엇에 대한 질문인지
-            // 정해지지 않으면 눌러도 되묻게 된다.
-            if (subject != null && subject.isNotEmpty) _buildKeywordBar(),
+            if (!_isLoadingMedicines)
+              _buildKeywordBar(
+                subject == null || subject.isEmpty
+                    ? _allMedicinePrompts
+                    : _keywordPrompts,
+              ),
             Padding(
               padding: const EdgeInsets.fromLTRB(20, 10, 20, 14),
               child: Row(

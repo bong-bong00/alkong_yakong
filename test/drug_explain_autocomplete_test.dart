@@ -813,7 +813,7 @@ void main() {
     });
   });
 
-  testWidgets('약을 안 골랐으면 빠른 질문을 아예 내놓지 않는다', (tester) async {
+  testWidgets('약 전체는 전체 복용약용 빠른 질문만 보여 준다', (tester) async {
     var chatCalls = 0;
     final client = MockClient((request) async {
       if (request.url.path.endsWith('/dashboard')) {
@@ -830,11 +830,122 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('약 전체'), findsOneWidget);
+    expect(find.text('제가 먹는 약 알려주세요'), findsOneWidget);
+    expect(find.text('같이 먹어도 괜찮나요?'), findsOneWidget);
+    expect(find.text('같은 성분의 약이 있나요?'), findsOneWidget);
+    expect(find.text('약마다 주의할 점은요?'), findsOneWidget);
+    expect(find.text('이 약은 무슨 약이에요?'), findsNothing);
     expect(find.text('어디에 쓰는 약인가요?'), findsNothing);
     expect(chatCalls, 0);
-    // 대신 바로 누를 수 있는 예시 질문이 있다.
-    expect(find.text('이 약은 무슨 약이에요?'), findsOneWidget);
   });
+
+  testWidgets('약 전체 질문은 기존 필드만으로 전체용 intent와 쉬운 질문을 전송한다', (tester) async {
+    final originalUserId = MvpSession.userId;
+    MvpSession.userId = 'all-medicines-user';
+    addTearDown(() => MvpSession.userId = originalUserId);
+    final bodies = <Map<String, dynamic>>[];
+    final teamClient = MockClient((request) async {
+      expect(request.url.path, '/api/v1/drug-explain/chat');
+      bodies.add(jsonDecode(request.body) as Map<String, dynamic>);
+      return jsonResponse({'reply': '확인된 범위를 알려드릴게요.'});
+    });
+    final medicationClient = MockClient((request) async {
+      expect(request.url.path, '/api/v1/users/all-medicines-user/medicines');
+      return jsonResponse({
+        'medicines': [
+          {
+            'medicine_code': '100',
+            'official_product_name': 'OCR등록약정',
+            'status': 'active',
+          },
+          {'medicine_code': '200', 'product_name': '손입력약정', 'status': 'active'},
+        ],
+      });
+    });
+    await tester.pumpWidget(
+      appWith(teamClient, medicationClient: medicationClient),
+    );
+    await tester.pumpAndSettle();
+
+    const expected = <String, (String, String)>{
+      '제가 먹는 약 알려주세요': ('overview', '제가 현재 먹는 약 전체를 쉬운 말로 알려주세요.'),
+      '같이 먹어도 괜찮나요?': (
+        'combination',
+        '제가 현재 먹는 약 전체를 같이 먹을 때 주의할 점이 있는지 확인해 주세요.',
+      ),
+      '같은 성분의 약이 있나요?': (
+        'duplicate',
+        '제가 현재 먹는 약 전체에서 같은 성분이나 비슷한 역할이 겹치는 약이 있는지 확인해 주세요.',
+      ),
+      '약마다 주의할 점은요?': (
+        'precautions',
+        '제가 현재 먹는 약마다 공식 자료에서 확인되는 주의할 점을 알려주세요.',
+      ),
+    };
+    for (final entry in expected.entries) {
+      final chip = find.widgetWithText(ChoiceChip, entry.key);
+      await tester.ensureVisible(chip);
+      await tester.tap(chip);
+      await tester.pumpAndSettle();
+      expect(bodies.last['intent'], entry.value.$1);
+      expect(bodies.last['message'], entry.value.$2);
+      expect(bodies.last.containsKey('selected_medicine'), isFalse);
+      expect(bodies.last.containsKey('current_medicines'), isFalse);
+      expect(
+        find.descendant(
+          of: find.byType(ListView).first,
+          matching: find.text(entry.key),
+        ),
+        findsOneWidget,
+      );
+    }
+
+    await pickSubject(tester, 'OCR등록약정');
+    expect(find.text('어디에 쓰는 약인가요?'), findsOneWidget);
+    expect(find.text('제가 먹는 약 알려주세요'), findsNothing);
+    await pickSubject(tester, '약 전체');
+    expect(find.text('제가 먹는 약 알려주세요'), findsOneWidget);
+    expect(find.text('어디에 쓰는 약인가요?'), findsNothing);
+  });
+
+  for (final width in [320.0, 360.0]) {
+    testWidgets('약 전체 빠른 질문은 ${width.toInt()}px 큰 글꼴에서도 가로로 접근한다', (
+      tester,
+    ) async {
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = Size(width, 800);
+      addTearDown(tester.view.reset);
+      final teamClient = MockClient(
+        (_) async => jsonResponse({'reply': '전체 약 답변'}),
+      );
+      final medicationClient = MockClient(
+        (_) async => jsonResponse({
+          'medicines': [
+            {'medicine_code': '100', 'product_name': '첫째약정'},
+            {'medicine_code': '200', 'product_name': '둘째약정'},
+          ],
+        }),
+      );
+      await tester.pumpWidget(
+        MediaQuery(
+          data: MediaQueryData.fromView(
+            tester.view,
+          ).copyWith(textScaler: const TextScaler.linear(1.3)),
+          child: appWith(teamClient, medicationClient: medicationClient),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final first = find.widgetWithText(ChoiceChip, '제가 먹는 약 알려주세요');
+      expect(tester.getTopLeft(first).dx, greaterThanOrEqualTo(0));
+      final last = find.widgetWithText(ChoiceChip, '약마다 주의할 점은요?');
+      await tester.ensureVisible(last);
+      await tester.pumpAndSettle();
+      expect(tester.getTopLeft(last).dx, greaterThanOrEqualTo(0));
+      expect(tester.getBottomRight(last).dx, lessThanOrEqualTo(width));
+      expect(tester.takeException(), isNull);
+    });
+  }
 
   testWidgets('약 개요 추천 질문은 overview이고 효능 질문은 efficacy를 유지한다', (tester) async {
     final bodies = <Map<String, dynamic>>[];

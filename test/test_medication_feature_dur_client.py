@@ -172,6 +172,80 @@ class MedicationFeatureDurClientTest(unittest.TestCase):
                 self.assertEqual(result["status"], "missing")
                 post.assert_not_called()
 
+    def test_all_medicines_uses_active_ocr_and_manual_rows_for_one_dur_analysis(self):
+        medicines = {
+            "medicines": [
+                {"medicine_code": "100", "official_product_name": "OCR등록약정", "status": "active"},
+                {"medicine_code": "200", "product_name": "손입력약정", "status": "active"},
+                {"medicine_code": "300", "product_name": "지난약정", "status": "inactive"},
+            ]
+        }
+        with (
+            patch.object(remote_dur, "MEDICATION_FEATURE_BASE_URL", "https://med.example"),
+            patch.object(remote_dur.requests, "get", return_value=self.response(medicines)),
+            patch.object(
+                remote_dur.requests,
+                "post",
+                return_value=self.response(
+                    {
+                        "assessment_status": "SAFE",
+                        "analysis_complete": True,
+                        "incomplete": False,
+                        "has_risk": False,
+                        "matches": [],
+                    }
+                ),
+            ) as post,
+        ):
+            result = remote_dur.load_remote_combination_context(
+                user_id="user-1",
+                selected_medicine=None,
+            )
+        self.assertEqual(result["status"], "current")
+        self.assertFalse(result["has_risk"])
+        post.assert_called_once()
+        self.assertEqual(post.call_args.kwargs["json"], {"user_id": "user-1", "medicine_codes": []})
+
+    def test_all_medicines_distinguishes_empty_failure_and_incomplete_identity(self):
+        cases = (
+            ({"medicines": []}, "empty"),
+            ({"medicines": [{"medicine_code": "100", "status": "active"}]}, "incomplete"),
+            (
+                {
+                    "medicines": [
+                        {"medicine_code": "100", "product_name": "첫이름", "status": "active"},
+                        {"medicine_code": "100", "product_name": "다른이름", "status": "active"},
+                    ]
+                },
+                "incomplete",
+            ),
+        )
+        for payload, expected_status in cases:
+            with (
+                self.subTest(expected_status=expected_status),
+                patch.object(remote_dur, "MEDICATION_FEATURE_BASE_URL", "https://med.example"),
+                patch.object(remote_dur.requests, "get", return_value=self.response(payload)),
+                patch.object(remote_dur.requests, "post") as post,
+            ):
+                result = remote_dur.load_remote_combination_context(
+                    user_id="user-1",
+                    selected_medicine=None,
+                )
+                self.assertEqual(result["status"], expected_status)
+                self.assertIsNone(result["has_risk"])
+                post.assert_not_called()
+
+        with (
+            patch.object(remote_dur, "MEDICATION_FEATURE_BASE_URL", "https://med.example"),
+            patch.object(remote_dur.requests, "get", side_effect=requests.Timeout("timeout")),
+        ):
+            result = remote_dur.load_remote_combination_context(
+                user_id="user-1",
+                selected_medicine=None,
+            )
+        self.assertEqual(result["status"], "missing")
+        self.assertEqual(result["reason"], "medication_service_unavailable")
+
 
 if __name__ == "__main__":
     unittest.main()

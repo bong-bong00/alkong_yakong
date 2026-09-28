@@ -784,6 +784,10 @@ def generate_chat_response(
 
     intents = resolve_question_intents(message, intent)
     safety_question = is_safety_question(intents)
+    all_medicines_question = (
+        selected_medicine is None
+        and intent in {"overview", "combination", "duplicate", "precautions"}
+    )
     unavailable_reply = (
         "현재 확인된 식약처 정보만으로는 답변하기 어려워요. "
         "현재 복용약으로 다시 확인하고, 복용 중인 약 전체를 의사 또는 약사에게 알려 주세요."
@@ -803,6 +807,89 @@ def generate_chat_response(
 
         selected_official = None
         official_data_list = []
+        all_medicines_context = None
+        unverified_all_medicine_names: list[str] = []
+        if all_medicines_question:
+            from app.services.medication_feature_dur_client import (
+                load_remote_current_medicines,
+            )
+
+            all_medicines_context = load_remote_current_medicines(user_id=user_id)
+            all_status = all_medicines_context.get("status")
+            all_items = all_medicines_context.get("items") or []
+            if all_status == "empty":
+                return "현재 등록되어 복용 중인 약이 없어요. 약을 등록한 뒤 다시 물어봐 주세요."
+            if all_status in {"missing", "malformed"}:
+                return (
+                    "현재 복용약 목록을 불러오지 못했어요. 잠시 후 다시 시도해 주세요. "
+                    "이 상태에서는 약이 없거나 안전하다고 판단할 수 없어요."
+                )
+            if not all_items:
+                return (
+                    "현재 복용약의 공식 제품명과 코드를 확인하지 못했어요. "
+                    "확인되지 않은 약을 추측해서 설명하지 않을게요."
+                )
+
+            required_fields = (
+                {"ingredient"}
+                if intents & {"combination", "duplicate"}
+                else _required_official_fields(intents)
+            )
+            for medicine in all_items:
+                code = str(medicine.get("medicine_code") or "").strip()
+                name = str(medicine.get("product_name") or "").strip()
+                verified = None
+                if code.isdigit() and name:
+                    try:
+                        candidate = fetch_e_drug_info(medicine_code=code)
+                    except Exception as error:
+                        logger.warning(
+                            "All-medicine e_drug_lookup_failed error_type=%s",
+                            type(error).__name__,
+                        )
+                        candidate = None
+                    if (
+                        candidate
+                        and str(candidate.get("medicine_code") or "").strip() == code
+                        and _compact_product_name(candidate.get("product_name"))
+                        == _compact_product_name(name)
+                    ):
+                        verified = candidate
+                        if any(
+                            not verified.get(field) for field in required_fields
+                        ):
+                            verified = _with_official_permission_ingredient(
+                                verified,
+                                required_fields=required_fields,
+                            )
+                    if verified is None:
+                        permission_candidate = _with_official_permission_ingredient(
+                            {
+                                "medicine_code": code,
+                                "product_name": name,
+                                "source": "식약처 의약품 제품 허가정보",
+                            },
+                            required_fields=required_fields,
+                        )
+                        if (
+                            permission_candidate.get("_permission_identity_verified")
+                            and _compact_product_name(permission_candidate.get("product_name"))
+                            == _compact_product_name(name)
+                        ):
+                            verified = permission_candidate
+                if verified and (
+                    intents & {"combination", "duplicate"}
+                    or _has_requested_official_content(verified, intents)
+                ):
+                    official_data_list.append(
+                        {
+                            "검색된_약품명": verified["product_name"],
+                            "match_type": "exact",
+                            "식약처_공식정보": verified,
+                        }
+                    )
+                else:
+                    unverified_all_medicine_names.append(name or "이름을 확인하지 못한 약")
         if selected_medicine is not None:
             required_fields = (
                 {"ingredient"}
@@ -985,7 +1072,9 @@ def generate_chat_response(
                 and item.get("식약처_공식정보")
             ]
             official_contexts = [item for item in official_contexts if item]
-            if "combination" in intents:
+            if "combination" in intents or (
+                all_medicines_question and "duplicate" in intents
+            ):
                 from app.services.medication_feature_dur_client import (
                     load_remote_combination_context,
                 )
@@ -994,6 +1083,21 @@ def generate_chat_response(
                     user_id=user_id,
                     selected_medicine=selected_official,
                 )
+                if all_medicines_question and "duplicate" in intents:
+                    duplicate_items = [
+                        item
+                        for item in dur_result.get("items", [])
+                        if item.get("type") in {"중복성분", "효능군중복"}
+                    ]
+                    dur_result = {
+                        **dur_result,
+                        "items": duplicate_items,
+                        "has_risk": (
+                            bool(duplicate_items)
+                            if dur_result.get("status") == "current"
+                            else None
+                        ),
+                    }
             elif safety_question and selected_official is not None:
                 wanted_types = set().union(
                     *(DUR_TYPES_BY_INTENT.get(intent, set()) for intent in intents)
@@ -1010,7 +1114,13 @@ def generate_chat_response(
             if safety_question and (
                 dur_result.get("status") in {"stale", "missing"}
                 or (
-                    "combination" in intents
+                    (
+                        "combination" in intents
+                        or (
+                            all_medicines_question
+                            and "duplicate" in intents
+                        )
+                    )
                     and (
                         dur_result.get("status") != "current"
                         or dur_result.get("has_risk", False) is None
@@ -1037,6 +1147,21 @@ def generate_chat_response(
                 official_contexts=official_contexts,
                 dur_result=dur_result,
             )
+            if all_medicines_question:
+                verified_count = len(official_contexts)
+                total_count = len((all_medicines_context or {}).get("items") or [])
+                prompt += (
+                    "\n\n[현재 복용약 전체 확인 범위]\n"
+                    f"약 데이터 서버의 현재 복용약 {total_count}개 중 "
+                    f"공식정보가 정확히 확인된 약은 {verified_count}개입니다.\n"
+                    "확인되지 않은 약이 있으면 그 약까지 확인한 것처럼 말하지 말고, "
+                    "확인된 범위와 확인하지 못한 범위를 쉬운 말로 구분하세요."
+                )
+                if unverified_all_medicine_names:
+                    prompt += (
+                        "\n공식정보를 끝까지 확인하지 못한 제품명: "
+                        + ", ".join(unverified_all_medicine_names)
+                    )
 
             return _generate_complete_chat_reply(client, prompt=prompt)
     except HTTPException:

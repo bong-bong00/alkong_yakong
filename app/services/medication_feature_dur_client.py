@@ -21,6 +21,70 @@ from app.core.config import (
 _COMBINATION_TYPES = {"병용금기", "중복성분", "효능군중복"}
 
 
+def load_remote_current_medicines(*, user_id: str) -> dict[str, Any]:
+    """Load the signed-in user's active medicines from the source-of-truth service."""
+
+    uid = str(user_id or "").strip()
+    if not uid:
+        return _unavailable("missing_user_id")
+    if not MEDICATION_FEATURE_BASE_URL:
+        return _unavailable("medication_service_not_configured")
+    try:
+        response = requests.get(
+            f"{MEDICATION_FEATURE_BASE_URL}/api/v1/users/{quote(uid, safe='')}/medicines",
+            timeout=MEDICATION_FEATURE_TIMEOUT_SECONDS,
+        )
+        response.raise_for_status()
+        payload = response.json()
+    except (requests.RequestException, ValueError):
+        return _unavailable("medication_service_unavailable")
+
+    if not isinstance(payload, dict) or not isinstance(payload.get("medicines"), list):
+        return _malformed()
+
+    active_rows = [
+        row
+        for row in payload["medicines"]
+        if isinstance(row, dict)
+        and str(row.get("status") or "active") == "active"
+    ]
+    if not active_rows:
+        return {"status": "empty", "items": [], "reason": "no_active_medicines"}
+
+    items: list[dict[str, str]] = []
+    names_by_code: dict[str, str] = {}
+    incomplete = False
+    for row in active_rows:
+        code = str(row.get("medicine_code") or row.get("item_seq") or "").strip()
+        name = str(
+            row.get("official_product_name")
+            or row.get("product_name")
+            or ""
+        ).strip()
+        if not code or not name:
+            incomplete = True
+            continue
+        previous_name = names_by_code.get(code)
+        if previous_name is not None:
+            if previous_name != name:
+                incomplete = True
+            continue
+        names_by_code[code] = name
+        items.append({"medicine_code": code, "product_name": name})
+
+    if incomplete or len(items) != len({
+        str(row.get("medicine_code") or row.get("item_seq") or "").strip()
+        for row in active_rows
+        if str(row.get("medicine_code") or row.get("item_seq") or "").strip()
+    }):
+        return {
+            "status": "incomplete",
+            "items": items,
+            "reason": "medicine_identity_incomplete",
+        }
+    return {"status": "current", "items": items, "reason": None}
+
+
 def load_remote_combination_context(
     *,
     user_id: str,
@@ -33,49 +97,39 @@ def load_remote_combination_context(
         return _unavailable("missing_user_id")
     if not MEDICATION_FEATURE_BASE_URL:
         return _unavailable("medication_service_not_configured")
-    if not isinstance(selected_medicine, dict):
+    medicines_context = load_remote_current_medicines(user_id=uid)
+    if medicines_context["status"] != "current":
+        return {
+            **medicines_context,
+            "has_risk": None,
+        }
+    medicines = medicines_context["items"]
+
+    if selected_medicine is not None and not isinstance(selected_medicine, dict):
         return _unavailable("selected_medicine_unavailable")
 
-    selected_code = str(selected_medicine.get("medicine_code") or "").strip()
-    selected_name = str(selected_medicine.get("product_name") or "").strip()
-    if not selected_code or not selected_name:
+    selected_code = str((selected_medicine or {}).get("medicine_code") or "").strip()
+    selected_name = str((selected_medicine or {}).get("product_name") or "").strip()
+    if selected_medicine is not None and (not selected_code or not selected_name):
         return _unavailable("selected_medicine_unavailable")
-
-    try:
-        medicines_response = requests.get(
-            f"{MEDICATION_FEATURE_BASE_URL}/api/v1/users/{quote(uid, safe='')}/medicines",
-            timeout=MEDICATION_FEATURE_TIMEOUT_SECONDS,
-        )
-        medicines_response.raise_for_status()
-        medicines_payload = medicines_response.json()
-    except (requests.RequestException, ValueError):
-        return _unavailable("medication_service_unavailable")
-
-    if not isinstance(medicines_payload, dict):
-        return _malformed()
-    medicines = medicines_payload.get("medicines")
-    if not isinstance(medicines, list):
-        return _malformed()
 
     selected_row = next(
         (
             row
             for row in medicines
-            if isinstance(row, dict)
-            and str(row.get("status") or "active") == "active"
-            and str(row.get("medicine_code") or "").strip() == selected_code
+            if str(row.get("medicine_code") or "").strip() == selected_code
         ),
         None,
-    )
-    if selected_row is None:
+    ) if selected_medicine is not None else None
+    if selected_medicine is not None and selected_row is None:
         return _unavailable("selected_medicine_not_registered")
     stored_name = str(
-        selected_row.get("product_name")
-        or selected_row.get("official_product_name")
-        or selected_row.get("display_name")
+        (selected_row or {}).get("product_name")
         or ""
     ).strip()
-    if not stored_name or stored_name != selected_name:
+    if selected_medicine is not None and (
+        not stored_name or stored_name != selected_name
+    ):
         return _unavailable("selected_medicine_identity_mismatch")
 
     try:
