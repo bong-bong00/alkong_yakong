@@ -161,6 +161,7 @@ class _HeartScreenState extends State<HeartScreen> {
           guardianTitle: resolveGuardianTitle(context, widget.guardianTitle),
           sensor: widget.sensor,
           measurementContext: measurementContext,
+          returnToPreviousScreen: true,
         ),
       ),
     );

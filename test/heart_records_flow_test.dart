@@ -608,6 +608,74 @@ void main() {
   );
 
   testWidgets(
+    'measurement started from a nested heart screen returns there after save',
+    (tester) async {
+      final rig = Rig();
+      await rig.sensor.start(measure: false);
+      var stored = false;
+      final repository = HeartRepository(
+        apiClient: ApiClient(
+          client: MockClient((request) async {
+            expect(request.method, 'GET');
+            return response(bpm: stored ? 82 : null);
+          }),
+        ),
+      );
+
+      await tester.pumpWidget(
+        ProviderScope(
+          child: MaterialApp(
+            theme: AppTheme.build(),
+            home: Scaffold(
+              body: Center(
+                child: TextButton(
+                  onPressed: () =>
+                      Navigator.of(
+                        tester.element(find.byType(TextButton)),
+                      ).push(
+                        MaterialPageRoute(
+                          builder: (_) => HeartScreen(
+                            repository: repository,
+                            sensor: rig.sensor,
+                          ),
+                        ),
+                      ),
+                  child: const Text('심박 화면 열기'),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.tap(find.text('심박 화면 열기'));
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(find.text('지금 측정'));
+      await tester.tap(find.text('지금 측정'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      await rig.widgetWindow(tester);
+      stored = true;
+      rig.api.succeed(0);
+      await tester.pump();
+      await tester.pump();
+      await tester.ensureVisible(find.text('저장된 기록 확인하기'));
+      await tester.tap(find.text('저장된 기록 확인하기'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('확인했어요'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('심박 화면 열기'), findsNothing);
+      expect(find.byType(HeartScreen), findsOneWidget);
+      await tester.scrollUntilVisible(find.text('82회/분'), -250);
+      expect(find.text('82회/분'), findsOneWidget);
+
+      await tester.pumpWidget(const SizedBox());
+      rig.sensor.dispose();
+      await tester.pump();
+    },
+  );
+
+  testWidgets(
     'measurement purpose is selected before start and resets to general',
     (tester) async {
       final rig = Rig();

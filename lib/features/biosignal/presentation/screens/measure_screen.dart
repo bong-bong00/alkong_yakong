@@ -24,12 +24,14 @@ class MeasureScreen extends StatefulWidget {
   /// 밖에서 넣어 주는 센서. 없으면 이 화면이 하나 만들어 쓴다.
   final HeartSensor? sensor;
   final HeartMeasurementContext measurementContext;
+  final bool returnToPreviousScreen;
 
   const MeasureScreen({
     super.key,
     this.guardianTitle = '',
     this.sensor,
     this.measurementContext = HeartMeasurementContext.general,
+    this.returnToPreviousScreen = false,
   });
 
   @override
@@ -305,6 +307,8 @@ class _MeasureScreenState extends State<MeasureScreen> {
                               measurementContext:
                                   _sensor.savedMeasurementContext,
                               guardianTitle: widget.guardianTitle,
+                              returnToPreviousScreen:
+                                  widget.returnToPreviousScreen,
                             ),
                           ),
                         );

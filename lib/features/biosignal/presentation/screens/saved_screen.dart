@@ -33,6 +33,10 @@ class SavedScreen extends StatelessWidget {
   /// 기록 탭으로 보내는 길. 없으면 버튼을 그리지 않는다.
   final VoidCallback? onOpenRecord;
 
+  /// 심박수 관리 화면에서 시작한 측정이면, 그 화면으로만 돌아간다.
+  /// 다른 진입 경로는 기존의 최상위 경로 복귀 동작을 유지한다.
+  final bool returnToPreviousScreen;
+
   const SavedScreen({
     super.key,
     required this.bpm,
@@ -42,11 +46,16 @@ class SavedScreen extends StatelessWidget {
     this.savedAt,
     this.measurementContext = HeartMeasurementContext.general,
     this.onOpenRecord,
+    this.returnToPreviousScreen = false,
   });
 
   void _confirm(BuildContext context) {
     final navigator = Navigator.of(context);
     if (navigator.canPop()) {
+      if (returnToPreviousScreen) {
+        navigator.pop();
+        return;
+      }
       navigator.popUntil((route) => route.isFirst);
       return;
     }
