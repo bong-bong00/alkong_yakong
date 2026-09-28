@@ -72,9 +72,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               }
               context.push('/medicines/$code');
             },
-            onMeasure: (_) => Navigator.of(
-              context,
-            ).push(MaterialPageRoute(builder: (_) => const MeasureScreen())),
+            onMeasure: (_) => Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (_) =>
+                    const MeasureScreen(returnToPreviousScreen: true),
+              ),
+            ),
           ),
           MedicationRecordScreen(
             // 기록에서 나가는 길이 탭바뿐이면 길을 잃는다.

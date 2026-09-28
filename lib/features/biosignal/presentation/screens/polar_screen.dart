@@ -78,7 +78,10 @@ class _PolarScreenState extends State<PolarScreen> {
                       fontSize: 24,
                       onPressed: () => Navigator.of(context).push(
                         MaterialPageRoute(
-                          builder: (_) => MeasureScreen(sensor: _sensor),
+                          builder: (_) => MeasureScreen(
+                            sensor: _sensor,
+                            returnToPreviousScreen: true,
+                          ),
                         ),
                       ),
                     ),

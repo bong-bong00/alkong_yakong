@@ -193,7 +193,7 @@ class _EasyFlowShellState extends ConsumerState<EasyFlowShell> {
       case EasyScreen.chat:
         return const PharmacistChatScreen();
       case EasyScreen.measure:
-        return const MeasureScreen();
+        return const MeasureScreen(returnToPreviousScreen: true);
       case EasyScreen.myInfo:
         return const MyPageScreen();
     }
