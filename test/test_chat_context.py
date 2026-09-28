@@ -221,6 +221,26 @@ class ChatContextTest(unittest.TestCase):
         fake_client.__enter__.return_value = fake_client
         fake_client.__exit__.return_value = False
         fetch_effect = e_drug_error if e_drug_error is not None else None
+        type_by_intent = {
+            "combination": ["병용금기", "중복성분", "효능군중복"],
+            "duplicate": ["중복성분", "효능군중복"],
+            "age": ["연령금기"],
+            "pregnancy": ["임부금기"],
+        }
+        checked_types = type_by_intent[intent]
+        completed_zero = {
+            "status": "current",
+            "items": [],
+            "checked_types": checked_types,
+            "zero_result_types": checked_types,
+            "user_context": {
+                "age_known": intent == "age",
+                "pregnancy_known": intent == "pregnancy",
+                "pregnancy_status": (
+                    "pregnant" if intent == "pregnancy" else "unknown"
+                ),
+            },
+        }
         with (
             patch.object(gemini_service, "GEMINI_API_KEY", "configured"),
             patch("google.genai.Client", return_value=fake_client),
@@ -244,7 +264,7 @@ class ChatContextTest(unittest.TestCase):
             ),
             patch(
                 "app.services.dur_service.analyze_dur_consultation",
-                return_value={"status": "current", "items": []},
+                return_value=completed_zero,
             ) as analyze,
             patch(
                 "app.services.medication_feature_dur_client.load_remote_combination_context",
@@ -253,6 +273,8 @@ class ChatContextTest(unittest.TestCase):
                     "items": [],
                     "has_risk": False,
                     "reason": None,
+                    "checked_types": ["병용금기", "중복성분", "효능군중복"],
+                    "zero_result_types": ["병용금기", "중복성분", "효능군중복"],
                 },
             ) as remote,
         ):
@@ -509,7 +531,10 @@ class ChatContextTest(unittest.TestCase):
             intent="combination",
             e_drug_result=None,
         )
-        self.assertIn("함께 사용할 때 주의할 정보나", reply)
+        self.assertIn(
+            "선택한 약과 지금 드시는 약 사이에서 함께 먹으면 안 되는 조합은 확인되지 않았어요.",
+            reply,
+        )
         self.assertEqual(
             analyze.call_args.kwargs["selected_medicine"]["ingredient"],
             "공식성분 100mg",
@@ -520,7 +545,10 @@ class ChatContextTest(unittest.TestCase):
             intent="combination",
             e_drug_error=RuntimeError("upstream unavailable"),
         )
-        self.assertIn("함께 사용할 때 주의할 정보나", reply)
+        self.assertIn(
+            "선택한 약과 지금 드시는 약 사이에서 함께 먹으면 안 되는 조합은 확인되지 않았어요.",
+            reply,
+        )
         analyze.assert_called_once()
 
     def test_permission_only_selected_medicine_reaches_duplicate_consultation(self):
@@ -598,6 +626,8 @@ class ChatContextTest(unittest.TestCase):
                     "items": matches,
                     "has_risk": True,
                     "reason": None,
+                    "checked_types": ["병용금기", "중복성분", "효능군중복"],
+                    "zero_result_types": [],
                 },
             ) as analyze,
             patch("app.services.dur_service.analyze_dur_consultation") as local_analyze,
@@ -615,6 +645,7 @@ class ChatContextTest(unittest.TestCase):
                 intent="combination",
             )
         self.assertIn("공식 확인 결과", reply)
+        self.assertNotIn("함께 먹으면 안 되는 조합은 확인되지 않았어요", reply)
         analyze.assert_called_once()
         local_analyze.assert_not_called()
         prompt = generate.call_args_list[1].kwargs["contents"]
@@ -655,6 +686,8 @@ class ChatContextTest(unittest.TestCase):
                     "items": [],
                     "has_risk": False,
                     "reason": None,
+                    "checked_types": ["병용금기", "중복성분", "효능군중복"],
+                    "zero_result_types": ["병용금기", "중복성분", "효능군중복"],
                 },
             ) as remote_dur,
             patch("app.services.external_api_service.fetch_e_drug_info", side_effect=official),
@@ -671,10 +704,65 @@ class ChatContextTest(unittest.TestCase):
                 selected_medicine=None,
                 intent="combination",
             )
+        self.assertIn(
+            "지금 드시는 약 중에 함께 먹으면 안 되는 조합은 확인되지 않았어요.",
+            reply,
+        )
         self.assertIn("안전하다고 단정할 수는 없어요", reply)
         load_medicines.assert_called_once_with(user_id="U1")
         remote_dur.assert_called_once_with(user_id="U1", selected_medicine=None)
         local_dur.assert_not_called()
+
+    def test_combination_zero_does_not_hide_duplicate_warning(self):
+        selected = {"medicine_code": "202400001", "product_name": "공식허가약정"}
+        verified = {**selected, "ingredient": "공식성분 100mg"}
+        duplicate_reason = "같은 성분이 겹쳐 있어 확인이 필요해요."
+        fake_client = MagicMock()
+        fake_client.__enter__.return_value = fake_client
+        fake_client.__exit__.return_value = False
+        with (
+            patch.object(gemini_service, "GEMINI_API_KEY", "configured"),
+            patch("google.genai.Client", return_value=fake_client),
+            patch("app.services.external_api_service.fetch_e_drug_info", return_value=None),
+            patch.object(
+                gemini_service,
+                "_with_official_permission_ingredient",
+                return_value=verified,
+            ),
+            patch(
+                "app.services.medication_feature_dur_client.load_remote_combination_context",
+                return_value={
+                    "status": "current",
+                    "items": [{"type": "중복성분", "reason": duplicate_reason}],
+                    "has_risk": True,
+                    "reason": None,
+                    "checked_types": ["병용금기", "중복성분", "효능군중복"],
+                    "zero_result_types": ["병용금기", "효능군중복"],
+                },
+            ),
+            patch.object(
+                gemini_service,
+                "_generate_content_with_retry",
+                side_effect=[
+                    SimpleNamespace(parsed={"drug_names": []}),
+                    SimpleNamespace(text=f"선생님, {duplicate_reason}"),
+                ],
+            ) as generate,
+        ):
+            reply = gemini_service.generate_chat_response(
+                "같이 먹어도 괜찮나요?",
+                user_id="U1",
+                selected_medicine=selected,
+                intent="combination",
+            )
+        self.assertIn(
+            "선택한 약과 지금 드시는 약 사이에서 함께 먹으면 안 되는 조합은 확인되지 않았어요.",
+            reply,
+        )
+        self.assertIn(duplicate_reason, reply)
+        prompt = generate.call_args_list[1].kwargs["contents"]
+        self.assertIn(duplicate_reason, prompt)
+        self.assertIn("정상 완료된 0건 안내", prompt)
 
     def test_all_medicines_empty_and_lookup_failure_are_distinct(self):
         for context, expected in (
@@ -704,6 +792,61 @@ class ChatContextTest(unittest.TestCase):
                     )
                 self.assertIn(expected, reply)
                 client.assert_not_called()
+
+    def test_direct_all_medicine_combination_uses_remote_completed_zero(self):
+        medicines = {
+            "status": "current",
+            "items": [{"medicine_code": "100", "product_name": "등록약정"}],
+            "reason": None,
+        }
+        official = {
+            "medicine_code": "100",
+            "product_name": "등록약정",
+            "ingredient": "공식성분",
+        }
+        fake_client = MagicMock()
+        fake_client.__enter__.return_value = fake_client
+        fake_client.__exit__.return_value = False
+        with (
+            patch.object(gemini_service, "GEMINI_API_KEY", "configured"),
+            patch("google.genai.Client", return_value=fake_client),
+            patch(
+                "app.services.medication_feature_dur_client.load_remote_current_medicines",
+                return_value=medicines,
+            ) as load_medicines,
+            patch(
+                "app.services.medication_feature_dur_client.load_remote_combination_context",
+                return_value={
+                    "status": "current",
+                    "items": [],
+                    "has_risk": False,
+                    "reason": None,
+                    "checked_types": ["병용금기", "중복성분", "효능군중복"],
+                    "zero_result_types": ["병용금기", "중복성분", "효능군중복"],
+                },
+            ) as remote_dur,
+            patch(
+                "app.services.external_api_service.fetch_e_drug_info",
+                return_value=official,
+            ),
+            patch.object(
+                gemini_service,
+                "_generate_content_with_retry",
+                return_value=SimpleNamespace(parsed={"drug_names": []}),
+            ),
+        ):
+            reply = gemini_service.generate_chat_response(
+                "제가 먹는 약을 같이 먹어도 괜찮나요?",
+                user_id="U1",
+                selected_medicine=None,
+                intent=None,
+            )
+        self.assertIn(
+            "지금 드시는 약 중에 함께 먹으면 안 되는 조합은 확인되지 않았어요.",
+            reply,
+        )
+        load_medicines.assert_called_once_with(user_id="U1")
+        remote_dur.assert_called_once_with(user_id="U1", selected_medicine=None)
 
     def test_combination_incomplete_or_unknown_risk_is_not_zero_match(self):
         selected = {"medicine_code": "202400001", "product_name": "공식허가약정"}
@@ -1002,6 +1145,8 @@ class ChatContextTest(unittest.TestCase):
                     "items": [],
                     "has_risk": False,
                     "reason": None,
+                    "checked_types": ["병용금기", "중복성분", "효능군중복"],
+                    "zero_result_types": ["병용금기", "중복성분", "효능군중복"],
                 },
             ) as analyze,
             patch("app.services.dur_service.analyze_dur_consultation") as local_analyze,
@@ -1013,7 +1158,10 @@ class ChatContextTest(unittest.TestCase):
                 intent="combination",
             )
 
-        self.assertIn("함께 사용할 때 주의할 정보나", reply)
+        self.assertIn(
+            "선택한 약과 지금 드시는 약 사이에서 함께 먹으면 안 되는 조합은 확인되지 않았어요.",
+            reply,
+        )
         self.assertEqual(
             analyze.call_args.kwargs["selected_medicine"]["ingredient"],
             "알마게이트 500mg",
@@ -1448,22 +1596,158 @@ class ChatContextTest(unittest.TestCase):
         self.assertIn("약을 함께 사용할 때의 주의 정보", capability)
 
     def test_fixed_replies_preserve_missing_stale_and_zero_result_meanings(self):
+        zero_type_by_intent = {
+            "combination": ["병용금기", "중복성분", "효능군중복"],
+            "age": ["연령금기"],
+            "pregnancy": ["임부금기"],
+            "duplicate": ["중복성분", "효능군중복"],
+        }
         for intent in ("combination", "age", "pregnancy", "duplicate"):
             with self.subTest(intent=intent):
                 missing = gemini_service._dur_context_unavailable_reply({intent}, "missing")
                 stale = gemini_service._dur_context_unavailable_reply({intent}, "stale")
-                zero = gemini_service._dur_no_match_reply({intent})
+                zero = gemini_service._dur_no_match_reply(
+                    {intent},
+                    {
+                        "status": "current",
+                        "items": [],
+                        "zero_result_types": zero_type_by_intent[intent],
+                        "user_context": {
+                            "age_known": intent == "age",
+                            "pregnancy_known": intent == "pregnancy",
+                            "pregnancy_status": (
+                                "pregnant" if intent == "pregnancy" else "unknown"
+                            ),
+                        },
+                    },
+                )
                 self.assertIn("확인한 결과를 찾지 못했어요", missing)
                 self.assertNotIn("복용 중인 약이 바뀌어", missing)
                 self.assertIn("복용 중인 약이 바뀌어", stale)
                 self.assertIn("이전 결과를 그대로 사용하기 어려워요", stale)
-                self.assertIn("찾지 못했어요", zero)
+                self.assertTrue(
+                    "확인되지 않았어요" in zero or "찾지 못했어요" in zero
+                )
                 self.assertNotIn("다시 시도", zero)
                 for reply in (missing, stale, zero):
                     for jargon in ("DUR", "병용금기", "연령금기", "임부금기", "효능군중복"):
                         self.assertNotIn(jargon, reply)
                     self.assertNotIn("안전합니다", reply)
                     self.assertNotIn("복용해도 됩니다", reply)
+
+    def test_completed_zero_messages_are_specific_to_checked_type_and_scope(self):
+        all_combination = gemini_service._dur_no_match_reply(
+            {"combination"},
+            {
+                "status": "current",
+                "items": [],
+                "zero_result_types": ["병용금기", "중복성분", "효능군중복"],
+            },
+        )
+        selected_combination = gemini_service._dur_no_match_reply(
+            {"combination"},
+            {
+                "status": "current",
+                "items": [],
+                "zero_result_types": ["병용금기", "중복성분", "효능군중복"],
+            },
+            selected_medicine={
+                "medicine_code": "100",
+                "product_name": "등록약정",
+            },
+        )
+        age = gemini_service._dur_no_match_reply(
+            {"age"},
+            {
+                "status": "current",
+                "items": [],
+                "zero_result_types": ["연령금기"],
+                "user_context": {"age_known": True, "pregnancy_known": False},
+            },
+        )
+        pregnancy = gemini_service._dur_no_match_reply(
+            {"pregnancy"},
+            {
+                "status": "current",
+                "items": [],
+                "zero_result_types": ["임부금기"],
+                "user_context": {
+                    "age_known": False,
+                    "pregnancy_known": True,
+                    "pregnancy_status": "pregnant",
+                },
+            },
+        )
+        self.assertIn(
+            "지금 드시는 약 중에 함께 먹으면 안 되는 조합은 확인되지 않았어요.",
+            all_combination,
+        )
+        self.assertIn(
+            "선택한 약과 지금 드시는 약 사이에서 함께 먹으면 안 되는 조합은 확인되지 않았어요.",
+            selected_combination,
+        )
+        self.assertIn(
+            "확인된 나이를 기준으로, 사용하면 안 되는 약은 확인되지 않았어요.",
+            age,
+        )
+        self.assertIn(
+            "임신 중 사용하면 안 되는 약은 확인되지 않았어요.",
+            pregnancy,
+        )
+
+    def test_missing_age_or_pregnancy_context_is_not_reported_as_zero(self):
+        age = gemini_service._dur_no_match_reply(
+            {"age"},
+            {"status": "current", "items": [], "zero_result_types": []},
+        )
+        pregnancy = gemini_service._dur_no_match_reply(
+            {"pregnancy"},
+            {"status": "current", "items": [], "zero_result_types": []},
+        )
+        self.assertIn("생년월일을 확인할 수 없어", age)
+        self.assertNotIn("확인된 나이를 기준으로", age)
+        self.assertIn("임신 여부를 확인할 수 없어", pregnancy)
+        self.assertNotIn("임신 중 사용하면 안 되는 약은 확인되지 않았어요", pregnancy)
+
+    def test_not_pregnant_user_does_not_receive_personal_pregnancy_zero_result(self):
+        result = {
+            "status": "current",
+            "items": [],
+            "zero_result_types": ["임부금기"],
+            "user_context": {
+                "pregnancy_known": True,
+                "pregnancy_status": "not_pregnant",
+            },
+        }
+        messages = gemini_service._confirmed_zero_messages(
+            {"pregnancy"}, result, selected_medicine=None
+        )
+        reply = gemini_service._dur_no_match_reply({"pregnancy"}, result)
+        self.assertEqual(messages, [])
+        self.assertIn("현재 임신 중이 아닌 것으로 확인되어", reply)
+        self.assertNotIn("임신 중 사용하면 안 되는 약은 확인되지 않았어요", reply)
+
+    def test_incomplete_or_positive_type_never_gets_zero_message(self):
+        incomplete = gemini_service._confirmed_zero_messages(
+            {"combination"},
+            {
+                "status": "incomplete",
+                "items": [],
+                "zero_result_types": [],
+            },
+            selected_medicine=None,
+        )
+        positive = gemini_service._confirmed_zero_messages(
+            {"combination"},
+            {
+                "status": "current",
+                "items": [{"type": "병용금기"}],
+                "zero_result_types": ["중복성분", "효능군중복"],
+            },
+            selected_medicine=None,
+        )
+        self.assertEqual(incomplete, [])
+        self.assertEqual(positive, [])
 
     def test_general_conversation_rules_do_not_match_drug_questions(self):
         self.assertIn("안녕하세요", general_conversation_reply("안녕하세요"))

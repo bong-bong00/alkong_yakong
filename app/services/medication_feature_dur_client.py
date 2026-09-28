@@ -173,6 +173,11 @@ def load_remote_combination_context(
         for item in matches
         if item.get("type") in _COMBINATION_TYPES
     ]
+    matched_types = {
+        str(item.get("type") or "").strip()
+        for item in items
+        if str(item.get("type") or "").strip()
+    }
     combination_has_risk = bool(items)
     if assessment == "SAFE" and (has_risk or matches):
         return _malformed()
@@ -183,6 +188,8 @@ def load_remote_combination_context(
         "items": items,
         "has_risk": combination_has_risk,
         "reason": None,
+        "checked_types": sorted(_COMBINATION_TYPES),
+        "zero_result_types": sorted(_COMBINATION_TYPES - matched_types),
     }
 
 

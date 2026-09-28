@@ -510,6 +510,16 @@ def analyze_dur_consultation(
             _without_internal_match_fields(match)
             for match in relevant_matches
         ]
+        checked_types = set(risk_types)
+        if age is None:
+            checked_types.discard("연령금기")
+        if is_pregnant is None:
+            checked_types.discard("임부금기")
+        matched_types = {
+            str(match.get("type") or "").strip()
+            for match in matches
+            if str(match.get("type") or "").strip()
+        }
         logger.warning(
             "DUR consultation diagnostic risk_types=%s selected=true "
             "ingredient_usable=true ingredient_key_count=%d "
@@ -543,6 +553,19 @@ def analyze_dur_consultation(
             "items": matches,
             "scope": "consultation",
             "reason": None,
+            "checked_types": sorted(checked_types),
+            "zero_result_types": sorted(checked_types - matched_types),
+            "user_context": {
+                "age_known": age is not None,
+                "pregnancy_known": is_pregnant is not None,
+                "pregnancy_status": (
+                    "pregnant"
+                    if is_pregnant is True
+                    else "not_pregnant"
+                    if is_pregnant is False
+                    else "unknown"
+                ),
+            },
         }
     finally:
         conn.close()

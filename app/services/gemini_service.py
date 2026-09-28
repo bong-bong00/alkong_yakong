@@ -732,33 +732,95 @@ def _dur_context_unavailable_reply(
     )
 
 
-def _dur_no_match_reply(intents: set[str]) -> str:
-    if "combination" in intents:
-        return (
-            "현재 저장된 약과 공식 자료를 확인한 범위에서는 함께 사용할 때 주의할 정보나 "
-            "성분·역할이 겹치는 약 정보를 찾지 못했어요. "
-            "이것만으로 안전하다고 단정할 수는 없어요."
+def _confirmed_zero_messages(
+    intents: set[str],
+    dur_result: dict[str, Any],
+    *,
+    selected_medicine: dict[str, Any] | None,
+) -> list[str]:
+    if dur_result.get("status") != "current":
+        return []
+    zero_types = {
+        str(value or "").strip()
+        for value in dur_result.get("zero_result_types") or []
+    }
+    messages = []
+    if intents & {"combination", "interaction"} and "병용금기" in zero_types:
+        messages.append(
+            "선택한 약과 지금 드시는 약 사이에서 함께 먹으면 안 되는 조합은 확인되지 않았어요."
+            if selected_medicine is not None
+            else "지금 드시는 약 중에 함께 먹으면 안 되는 조합은 확인되지 않았어요."
         )
-    if "interaction" in intents:
-        risk_type = "함께 사용하면 안 되는 조합"
-    elif "age" in intents:
-        risk_type = "나이에 따른 약 사용 제한"
-    elif "pregnancy" in intents:
-        risk_type = "임신 중 약 사용 제한"
-    elif "duplicate" in intents:
+    user_context = dur_result.get("user_context") or {}
+    if (
+        "age" in intents
+        and "연령금기" in zero_types
+        and user_context.get("age_known") is True
+    ):
+        messages.append("확인된 나이를 기준으로, 사용하면 안 되는 약은 확인되지 않았어요.")
+    if (
+        "pregnancy" in intents
+        and "임부금기" in zero_types
+        and user_context.get("pregnancy_status") == "pregnant"
+    ):
+        messages.append("임신 중 사용하면 안 되는 약은 확인되지 않았어요.")
+    return messages
+
+
+def _dur_no_match_reply(
+    intents: set[str],
+    dur_result: dict[str, Any] | None = None,
+    *,
+    selected_medicine: dict[str, Any] | None = None,
+) -> str:
+    result = dur_result or {}
+    zero_messages = _confirmed_zero_messages(
+        intents,
+        result,
+        selected_medicine=selected_medicine,
+    )
+    if "age" in intents and not zero_messages:
+        return (
+            "생년월일을 확인할 수 없어 나이를 기준으로 사용하면 안 되는 약이 있는지 "
+            "끝까지 확인하지 못했어요."
+        )
+    if (
+        "pregnancy" in intents
+        and not zero_messages
+        and (result.get("user_context") or {}).get("pregnancy_status")
+        == "not_pregnant"
+    ):
+        return (
+            "현재 임신 중이 아닌 것으로 확인되어 임신 중 사용 제한 결과를 "
+            "개인 검사 결과로 안내하지 않았어요."
+        )
+    if "pregnancy" in intents and not zero_messages:
+        return (
+            "임신 여부를 확인할 수 없어 임신 중 사용하면 안 되는 약이 있는지 "
+            "끝까지 확인하지 못했어요."
+        )
+    if zero_messages:
+        return " ".join(
+            [*zero_messages, "이 결과만으로 모든 약 사용이 안전하다고 단정할 수는 없어요."]
+        )
+    if "duplicate" in intents:
         return (
             "현재 복용 중인 약과 선택한 약 사이에서 성분이나 비슷한 효과가 겹친다는 정보를 "
             "확인한 공식 자료에서는 찾지 못했어요. 이것이 모든 위험이 없다는 뜻은 아니에요. "
             "함께 사용할 때 생기는 다른 영향이나 개인 상태에 따른 주의사항은 "
             "따로 확인해야 해요."
         )
-    else:
-        risk_type = "약 사용 시 주의할 내용"
     return (
-        f"현재 저장된 최신 확인 결과에서는 {risk_type}에 해당하는 정보를 "
-        "찾지 못했어요. 이 결과만으로 안전하다고 단정할 수는 없어요. "
-        "약 사용 여부는 의사 또는 약사에게 확인해 주세요."
+        "현재 약 사용 시 주의할 내용을 끝까지 확인하지 못했어요. "
+        "이 결과만으로 안전하다고 판단할 수 없어요."
     )
+
+
+def _prepend_confirmed_zero_messages(reply: str, messages: list[str]) -> str:
+    if not messages or reply == INCOMPLETE_CHAT_REPLY:
+        return reply
+    missing = [message for message in messages if message not in reply]
+    return "\n".join([*missing, reply]) if missing else reply
 
 
 def generate_chat_response(
@@ -786,7 +848,10 @@ def generate_chat_response(
     safety_question = is_safety_question(intents)
     all_medicines_question = (
         selected_medicine is None
-        and intent in {"overview", "combination", "duplicate", "precautions"}
+        and (
+            intent in {"overview", "combination", "duplicate", "precautions"}
+            or (intent is None and bool(intents & {"combination", "duplicate"}))
+        )
     )
     unavailable_reply = (
         "현재 확인된 식약처 정보만으로는 답변하기 어려워요. "
@@ -1137,15 +1202,28 @@ def generate_chat_response(
                 and dur_result["status"] == "current"
                 and not dur_result["items"]
             ):
-                return _dur_no_match_reply(intents)
+                return _dur_no_match_reply(
+                    intents,
+                    dur_result,
+                    selected_medicine=selected_medicine,
+                )
             if not official_contexts and not dur_result["items"]:
                 return unavailable_reply
 
+            confirmed_zero_messages = _confirmed_zero_messages(
+                intents,
+                dur_result,
+                selected_medicine=selected_medicine,
+            )
+            prompt_dur_result = {
+                **dur_result,
+                "confirmed_zero_messages": confirmed_zero_messages,
+            }
             prompt = build_grounded_chat_prompt(
                 message=message,
                 intents=intents,
                 official_contexts=official_contexts,
-                dur_result=dur_result,
+                dur_result=prompt_dur_result,
             )
             if all_medicines_question:
                 verified_count = len(official_contexts)
@@ -1163,7 +1241,11 @@ def generate_chat_response(
                         + ", ".join(unverified_all_medicine_names)
                     )
 
-            return _generate_complete_chat_reply(client, prompt=prompt)
+            reply = _generate_complete_chat_reply(client, prompt=prompt)
+            return _prepend_confirmed_zero_messages(
+                reply,
+                confirmed_zero_messages,
+            )
     except HTTPException:
         raise
     except Exception as error:

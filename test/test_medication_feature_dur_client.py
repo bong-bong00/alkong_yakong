@@ -61,6 +61,8 @@ class MedicationFeatureDurClientTest(unittest.TestCase):
             result = self.call()
         self.assertEqual(result["status"], "current")
         self.assertEqual(result["items"], [match])
+        self.assertNotIn("병용금기", result["zero_result_types"])
+        self.assertIn("중복성분", result["zero_result_types"])
         self.assertIn("/api/v1/users/user-1/medicines", get.call_args.args[0])
         self.assertEqual(post.call_args.kwargs["json"], {"user_id": "user-1", "medicine_codes": []})
 
@@ -83,7 +85,13 @@ class MedicationFeatureDurClientTest(unittest.TestCase):
             ),
         ):
             result = self.call()
-        self.assertEqual(result, {"status": "current", "items": [], "has_risk": False, "reason": None})
+        self.assertEqual(result["status"], "current")
+        self.assertEqual(result["items"], [])
+        self.assertFalse(result["has_risk"])
+        self.assertEqual(
+            set(result["zero_result_types"]),
+            {"병용금기", "중복성분", "효능군중복"},
+        )
 
     def test_incomplete_is_never_safe(self):
         with (
