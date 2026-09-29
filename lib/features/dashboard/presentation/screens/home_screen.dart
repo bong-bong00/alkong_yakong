@@ -80,10 +80,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             ),
           ),
           const MyMedicinesScreen(asTab: true),
-          MedicationRecordScreen(
-            // 기록에서 나가는 길이 탭바뿐이면 길을 잃는다.
-            onBackToToday: () => setState(() => _index = 0),
-          ),
+          // 탭이 오늘로 돌아가는 길이므로 화면 안에 단추를 두지 않는다.
+          const MedicationRecordScreen(),
           const MyPageScreen(),
         ],
       ),

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_tabler_icons/flutter_tabler_icons.dart';
 
@@ -64,20 +65,48 @@ class MedicationRecordScreen extends ConsumerWidget {
 
     final title = patientName == null ? '복약 기록' : '$patientName님 복약 기록';
 
-    return Column(
+    final heartCheck = _todayHeartCheck(today);
+
+    return Container(
+      color: AppColors.bgTinted,
+      child: Column(
       children: [
         if (showBack)
           SeniorBackHeader(title: title)
         else
-          SeniorTitleHeader(title: title),
+          // 시안은 제목을 머리띠가 아니라 본문 맨 위에 큼직하게 적는다.
+          const SizedBox.shrink(),
         Expanded(
           child: SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(20, 16, 20, 28),
+            padding: const EdgeInsets.fromLTRB(16, 14, 16, 28),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                // 기록에서 홈으로 돌아가는 길이 탭바뿐이면 길을 잃는다.
-                if (patientId == null && onBackToToday != null) ...[
+                if (!showBack) ...[
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(6, 6, 6, 0),
+                    child: Text.rich(
+                      TextSpan(
+                        children: [
+                          TextSpan(
+                            text: patientName == null ? '나의 ' : '$patientName님 ',
+                            style: AppText.screenTitle(
+                              size: 28,
+                            ).copyWith(fontWeight: FontWeight.w500),
+                          ),
+                          TextSpan(
+                            text: '복약 기록',
+                            style: AppText.screenTitle(size: 28),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                ],
+                // 쉬운 화면에는 탭이 없다. 거기서만 돌아가는 길을 낸다 —
+                // 탭이 있는 일반 화면에서는 시안대로 두지 않는다.
+                if (onBackToToday != null) ...[
                   SeniorButton(
                     label: '오늘 화면으로 돌아가기',
                     icon: TablerIcons.calendar_event,
@@ -106,6 +135,17 @@ class MedicationRecordScreen extends ConsumerWidget {
                   doses: today.doses,
                   footnote: '날짜를 누르면 그날 결과가 여기에 나와요.',
                 ),
+                // 먹기 전과 후를 나란히 놓는 자리는 여기 하나다.
+                // 오늘 홈은 "지금 할 일" 한 가지만 말한다.
+                if (heartCheck != null) ...[
+                  const SizedBox(height: 12),
+                  _TodayHeartCard(
+                    check: heartCheck,
+                    onTap: patientId == null
+                        ? () => context.go('/biosignal')
+                        : null,
+                  ),
+                ],
                 // 함께먹기 주의 화면은 로그인한 본인 약만 분석한다.
                 if (patientId == null) ...[
                   const SizedBox(height: 12),
@@ -134,6 +174,94 @@ class MedicationRecordScreen extends ConsumerWidget {
           ),
         ),
       ],
+      ),
+    );
+  }
+
+  /// 오늘 심박수를 잰 시간대. 여러 번 쟀으면 가장 나중 것을 쓴다.
+  static DoseHeartCheck? _todayHeartCheck(TodayMedication today) {
+    DoseHeartCheck? found;
+    for (final dose in today.doses) {
+      if (dose.heartCheck != null) found = dose.heartCheck;
+    }
+    return found;
+  }
+}
+
+/// 오늘 심박수 — 먹기 전과 후를 한 줄에 놓는다.
+class _TodayHeartCard extends StatelessWidget {
+  final DoseHeartCheck check;
+  final VoidCallback? onTap;
+
+  const _TodayHeartCard({required this.check, this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return SeniorCard(
+      radius: 26,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      onTap: onTap,
+      child: Row(
+        children: [
+          Container(
+            width: 56,
+            height: 56,
+            alignment: Alignment.center,
+            decoration: const BoxDecoration(
+              color: AppColors.pointTint,
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(
+              TablerIcons.heart,
+              size: 28,
+              color: AppColors.point,
+            ),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text('오늘 심박수', style: AppText.cardTitle(size: 20)),
+                const SizedBox(height: 2),
+                Text.rich(
+                  TextSpan(
+                    children: [
+                      TextSpan(
+                        text: '먹기 전 ',
+                        style: AppText.body(
+                          size: 17,
+                          color: AppColors.textSecondary,
+                        ),
+                      ),
+                      TextSpan(
+                        text: '${check.before}',
+                        style: AppText.cardTitle(size: 20),
+                      ),
+                      TextSpan(
+                        text: ' → 후 ',
+                        style: AppText.body(
+                          size: 17,
+                          color: AppColors.textSecondary,
+                        ),
+                      ),
+                      TextSpan(
+                        text: '${check.after}',
+                        style: AppText.cardTitle(
+                          size: 20,
+                          color: AppColors.point,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          if (onTap != null) const SeniorChevron(),
+        ],
+      ),
     );
   }
 }
