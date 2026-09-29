@@ -385,7 +385,10 @@ void main() {
       addTearDown(tester.view.resetDevicePixelRatio);
       await tester.pumpWidget(
         MediaQuery(
-          data: const MediaQueryData(textScaler: TextScaler.linear(1.3)),
+          data: const MediaQueryData(
+              textScaler: TextScaler.linear(1.3),
+              disableAnimations: true,
+            ),
           child: wrap(
             MonthlyHeartScreen(data: data, now: DateTime(2026, 9, 28)),
           ),
@@ -419,7 +422,10 @@ void main() {
         addTearDown(tester.view.resetDevicePixelRatio);
         await tester.pumpWidget(
           MediaQuery(
-            data: const MediaQueryData(textScaler: TextScaler.linear(1.3)),
+            data: const MediaQueryData(
+              textScaler: TextScaler.linear(1.3),
+              disableAnimations: true,
+            ),
             child: wrap(
               MonthlyHeartScreen(data: data, now: DateTime(2026, 9, 28)),
             ),
@@ -1001,7 +1007,10 @@ void main() {
           child: MaterialApp(
             theme: AppTheme.build(),
             home: MediaQuery(
-              data: const MediaQueryData(textScaler: TextScaler.linear(1.3)),
+              data: const MediaQueryData(
+              textScaler: TextScaler.linear(1.3),
+              disableAnimations: true,
+            ),
               child: HeartScreen(repository: repository),
             ),
           ),

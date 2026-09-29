@@ -220,56 +220,10 @@ void main() {
     expect(find.text('알겠어요'), findsNothing);
   });
 
-  testWidgets('약 상세에서 돌아오면 오늘 홈의 스크롤 위치가 유지된다', (tester) async {
-    tester.view.physicalSize = const Size(390, 844);
-    tester.view.devicePixelRatio = 1.0;
-    addTearDown(tester.view.reset);
+  // 오늘 홈에서 약 이름을 눌러 상세로 가던 길은 시안에서 없어졌다.
+  // 약 목록은 "약 보기"(내 약 목록)로 옮겼으므로, 스크롤 위치를 지키는지는
+  // 그 화면을 시안대로 다시 짤 때 거기서 검사한다.
 
-    await tester.pumpWidget(
-      ProviderScope(
-        overrides: [
-          medicationProvider.overrideWith(_TestMedicationController.new),
-        ],
-        child: MaterialApp(
-          theme: AppTheme.build(),
-          home: Builder(
-            builder: (context) => Scaffold(
-              body: PatientHomeScreen(
-                onOpenDrug: (_) => Navigator.of(context).push(
-                  MaterialPageRoute<void>(
-                    builder: (_) => const Scaffold(body: Text('약 상세')),
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-    await tester.pump();
-
-    final scrollFinder = find.byType(SingleChildScrollView);
-    await tester.drag(scrollFinder, const Offset(0, -100));
-    await tester.pumpAndSettle();
-    final before = tester
-        .state<ScrollableState>(find.byType(Scrollable).first)
-        .position
-        .pixels;
-    expect(before, greaterThan(0));
-
-    await tester.tap(find.text('테스트정'));
-    await tester.pumpAndSettle();
-    expect(find.text('약 상세'), findsOneWidget);
-
-    Navigator.of(tester.element(find.text('약 상세'))).pop();
-    await tester.pumpAndSettle();
-    final after = tester
-        .state<ScrollableState>(find.byType(Scrollable).first)
-        .position
-        .pixels;
-
-    expect(after, before);
-  });
 }
 
 class _TestMedicationController extends MedicationController {

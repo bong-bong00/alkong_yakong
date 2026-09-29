@@ -19,6 +19,13 @@ abstract final class AppColors {
   /// 완료 배지 배경, 강조 안내 박스.
   static const Color pointTint = Color(0xFFEDEEFB);
 
+  /// 시안의 채움 파랑. 큰 동그란 버튼과 고른 칩에 쓴다.
+  /// 글자·밑줄에 쓰는 [point]보다 한 단계 밝다.
+  static const Color pointFill = Color(0xFF3052E6);
+
+  /// 큰 동그란 버튼을 두르는 연한 테. 그림자 대신 자리를 잡아 준다.
+  static const Color pointRing = Color(0xFFE3E8F8);
+
   /// 위험 경고 전용 (약 함께먹기 주의, 미복약 알림).
   static const Color danger = Color(0xFFC0392B);
 
@@ -49,6 +56,9 @@ abstract final class AppColors {
 
   /// 화면 배경.
   static const Color bg = Color(0xFFF2F2F6);
+
+  /// 오늘 홈의 바탕. 흰 카드가 떠 보이도록 아주 옅은 파랑을 깐다.
+  static const Color bgTinted = Color(0xFFF4F6FD);
 
   /// 카드.
   static const Color surface = Color(0xFFFFFFFF);

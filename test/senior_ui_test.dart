@@ -123,7 +123,10 @@ void main() {
       child: MaterialApp(
         theme: AppTheme.build(),
         home: MediaQuery(
-          data: MediaQueryData(textScaler: TextScaler.linear(textScale)),
+          data: MediaQueryData(
+            textScaler: TextScaler.linear(textScale),
+            disableAnimations: true,
+          ),
           child: Scaffold(body: child),
         ),
       ),
@@ -299,7 +302,13 @@ void _easyModeTests() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [appModeProvider.overrideWith((ref) => _EasyMode())],
-        child: MaterialApp(theme: AppTheme.build(), home: const HomeScreen()),
+        child: MaterialApp(
+          theme: AppTheme.build(),
+          home: const MediaQuery(
+            data: MediaQueryData(disableAnimations: true),
+            child: HomeScreen(),
+          ),
+        ),
       ),
     );
     await tester.pump();
@@ -320,7 +329,13 @@ void _easyModeTests() {
           appModeProvider.overrideWith((ref) => _EasyMode()),
           medicationProvider.overrideWith(_SeniorTestMedicationController.new),
         ],
-        child: MaterialApp(theme: AppTheme.build(), home: const HomeScreen()),
+        child: MaterialApp(
+          theme: AppTheme.build(),
+          home: const MediaQuery(
+            data: MediaQueryData(disableAnimations: true),
+            child: HomeScreen(),
+          ),
+        ),
       ),
     );
     await tester.pump();
@@ -529,7 +544,10 @@ void _signupTests() {
         child: MaterialApp(
           theme: AppTheme.build(),
           home: MediaQuery(
-            data: const MediaQueryData(textScaler: TextScaler.linear(2.0)),
+            data: const MediaQueryData(
+              textScaler: TextScaler.linear(2.0),
+              disableAnimations: true,
+            ),
             child: const SignupScreen(),
           ),
         ),
@@ -809,7 +827,10 @@ void _backButtonTests() {
     child: MaterialApp(
       theme: AppTheme.build(),
       home: MediaQuery(
-        data: MediaQueryData(textScaler: TextScaler.linear(textScale)),
+        data: MediaQueryData(
+            textScaler: TextScaler.linear(textScale),
+            disableAnimations: true,
+          ),
         child: child,
       ),
     ),
@@ -882,11 +903,16 @@ void _backButtonTests() {
 
 /// B장 — 홈은 시간 축이다.
 void _homeTimelineTests() {
+  /// 오늘 홈의 동그라미는 심장처럼 계속 뛴다. 켜 둔 채로는
+  /// `pumpAndSettle`이 끝나지 않으므로 테스트에서는 움직임을 끈다.
   Widget home({required List<DoseEntry> doses}) => ProviderScope(
     overrides: [medicationProvider.overrideWith(() => _FixedMedication(doses))],
     child: MaterialApp(
       theme: AppTheme.build(),
-      home: const Scaffold(body: PatientHomeScreen()),
+      home: const MediaQuery(
+        data: MediaQueryData(disableAnimations: true),
+        child: Scaffold(body: PatientHomeScreen()),
+      ),
     ),
   );
 
@@ -965,7 +991,9 @@ void _homeTimelineTests() {
     expect(find.text('아침 심박수'), findsNothing);
   });
 
-  testWidgets('잰 시간대에는 전·후가 함께 보인다', (tester) async {
+  testWidgets('오늘 홈은 심박수를 싣지 않는다', (tester) async {
+    // 시안의 오늘 홈에는 심박 수치가 없다. 한 화면에서 두 가지를 말하면
+    // 무엇을 해야 하는지가 흐려진다 — 심박은 심박수 화면에서 본다.
     await tester.pumpWidget(
       home(
         doses: [
@@ -983,8 +1011,8 @@ void _homeTimelineTests() {
       ),
     );
     await tester.pump();
-    expect(find.text('아침 심박수'), findsOneWidget);
-    expect(find.textContaining('78 → 72'), findsOneWidget);
+    expect(find.text('아침 심박수'), findsNothing);
+    expect(find.textContaining('78 → 72'), findsNothing);
   });
 
   test('심박수 문구는 빠른 쪽을 먼저 말한다', () {
@@ -1012,7 +1040,7 @@ void _homeTimelineTests() {
     expect(same.phrase, '평소와 비슷');
   });
 
-  testWidgets('이미 드신 약은 "오늘 다른 약"에 이름으로 남는다', (tester) async {
+  testWidgets('드신 때와 아직인 때를 때 칩으로 말한다', (tester) async {
     await tester.pumpWidget(
       home(
         doses: const [
@@ -1033,13 +1061,17 @@ void _homeTimelineTests() {
     );
     await tester.pump();
 
-    // 지난 복약을 행으로 쌓지 않고, 지금 카드 안에서 한 번만 말한다.
-    expect(find.text('오늘 다른 약'), findsOneWidget);
-    expect(find.text('메트포르민'), findsOneWidget);
-    expect(find.text('아스피린'), findsOneWidget);
+    // 약이 없는 때는 "없음"으로, 드실 차례는 시각까지 적는다.
+    expect(find.text('아침 없음'), findsOneWidget);
+    expect(find.text('점심'), findsOneWidget);
+    expect(find.text('저녁 6:00'), findsOneWidget);
+
+    // 약 이름은 홈에 늘어놓지 않는다 — "약 보기"에서 본다.
+    expect(find.text('메트포르민'), findsNothing);
+    expect(find.text('약 보기'), findsOneWidget);
   });
 
-  testWidgets('아직 오지 않은 약은 오늘 다른 약에 이름만 남긴다', (tester) async {
+  testWidgets('아직 드시지 않았으면 큰 단추가 "먹었어요"다', (tester) async {
     await tester.pumpWidget(
       home(
         doses: const [
@@ -1056,10 +1088,9 @@ void _homeTimelineTests() {
     );
     await tester.pump();
 
-    expect(find.text('아침정'), findsOneWidget);
-    expect(find.text('저녁정'), findsOneWidget);
-    expect(find.text('저녁에 있어요'), findsOneWidget);
+    expect(find.textContaining('2번 남았어요'), findsOneWidget);
     expect(find.text('먹었어요'), findsOneWidget);
+    expect(find.text('30분 뒤'), findsOneWidget);
   });
 
   test('접고 펴는 버튼에 화살표 장식을 붙이지 않는다', () {

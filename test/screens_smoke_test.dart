@@ -144,7 +144,10 @@ void main() {
       child: MaterialApp(
         theme: AppTheme.build(),
         home: MediaQuery(
-          data: MediaQueryData(textScaler: TextScaler.linear(textScale)),
+          data: MediaQueryData(
+            textScaler: TextScaler.linear(textScale),
+            disableAnimations: true,
+          ),
           child: child,
         ),
       ),
