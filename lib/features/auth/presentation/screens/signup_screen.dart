@@ -173,20 +173,8 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
     }
   }
 
-  /// 누르면 바로 다음 걸음으로 넘어가는 답.
-  ///
-  /// "네"라고 하시면 자세히 고르는 화면이 목록에 끼어들므로, 번호를 하나
-  /// 올리는 것만으로 그 화면이 다음에 온다.
-  void _answerAndGo(VoidCallback apply) {
-    ScaffoldMessenger.of(context).hideCurrentSnackBar();
-    setState(() {
-      apply();
-      _step++;
-    });
-  }
-
   /// "네 / 아니요"를 먼저 묻는 건강 질문 한 걸음.
-  /// "네"일 때만 자세히 고르는 화면을 뒤에 붙인다.
+  /// "네"라고 하시면 자세히 고르는 화면이 뒤에 한 장 붙는다.
   _StepDef _yesNoStep({
     required String title,
     required String subtitle,
@@ -197,7 +185,6 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
     String? unsureLabel,
   }) {
     return _StepDef(
-      auto: true,
       title: title,
       subtitle: subtitle,
       validate: () => answer == null ? '있는지 없는지 골라주세요' : null,
@@ -208,14 +195,14 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
             yesLabel,
             icon: TablerIcons.check,
             selected: answer == 'y',
-            onTap: () => _answerAndGo(() => onAnswer('y')),
+            onTap: () => setState(() => onAnswer('y')),
           ),
           const SizedBox(height: 12),
           _choice(
             noLabel,
             icon: TablerIcons.x,
             selected: answer == 'n',
-            onTap: () => _answerAndGo(() => onAnswer('n')),
+            onTap: () => setState(() => onAnswer('n')),
           ),
           if (unsureLabel != null) ...[
             const SizedBox(height: 12),
@@ -224,7 +211,7 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
             _choice(
               unsureLabel,
               selected: answer == 'u',
-              onTap: () => _answerAndGo(() => onAnswer('u')),
+              onTap: () => setState(() => onAnswer('u')),
             ),
           ],
         ],
@@ -374,6 +361,9 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
   /// 시안 1c — 건강 질문은 "네 / 아니요"를 먼저 크게 묻고, "네"라고 하신
   /// 질문에만 자세히 고르는 화면이 한 장 더 붙는다. 큰 단계는 13개이고
   /// 임신·수유를 여쭤보지 않는 남성은 12개다.
+  ///
+  /// 고르는 것과 넘어가는 것은 떼어 둔다 — 답을 고른 뒤 "다음"을 눌러야
+  /// 넘어간다. 잘못 눌렀을 때 그 자리에서 고쳐 누를 수 있어야 한다.
   List<_StepDef> _buildSteps() {
     final steps = <_StepDef>[];
     var no = 0;
@@ -384,7 +374,6 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
 
     big(
       _StepDef(
-        auto: true,
         title: '어떤 분이신가요?',
         subtitle: '고르시면 여쭤보는 것이 달라져요.',
         validate: () => _rolePicked ? null : '어떤 분인지 골라주세요',
@@ -581,7 +570,6 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
       if (_gender == 'F') {
         big(
           _StepDef(
-            auto: true,
             title: '지금 임신 중이거나\n젖을 먹이고 계신가요?',
             subtitle: '이때는 피해야 하는 약이 있어요.',
             validate: () => _pregnant == null ? '해당하는 것을 골라주세요' : null,
@@ -592,14 +580,14 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
                   '네',
                   icon: TablerIcons.check,
                   selected: _pregnant == true,
-                  onTap: () => _answerAndGo(() => _pregnant = true),
+                  onTap: () => setState(() => _pregnant = true),
                 ),
                 const SizedBox(height: 12),
                 _choice(
                   '아니요',
                   icon: TablerIcons.x,
                   selected: _pregnant == false,
-                  onTap: () => _answerAndGo(() => _pregnant = false),
+                  onTap: () => setState(() => _pregnant = false),
                 ),
               ],
             ),
@@ -609,7 +597,6 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
 
       big(
         _StepDef(
-          auto: true,
           title: '담배를\n피우시나요?',
           subtitle: '함께 먹으면 안 좋은 약이 있어요.',
           validate: () => _smoking == null ? '담배를 피우시는지 골라주세요' : null,
@@ -620,7 +607,7 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
                 _choice(
                   entry.key,
                   selected: _smoking == entry.value,
-                  onTap: () => _answerAndGo(() => _smoking = entry.value),
+                  onTap: () => setState(() => _smoking = entry.value),
                 ),
                 const SizedBox(height: 12),
               ],
@@ -630,7 +617,6 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
       );
       big(
         _StepDef(
-          auto: true,
           title: '술은 얼마나\n드시나요?',
           subtitle: '술과 같이 먹으면 위험한 약이 있어요.',
           validate: () => _drinking == null ? '술을 얼마나 드시는지 골라주세요' : null,
@@ -641,19 +627,19 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
                 '자주 마셔요',
                 sub: '일주일에 세 번 넘게',
                 selected: _drinking == '자주 마셔요',
-                onTap: () => _answerAndGo(() => _drinking = '자주 마셔요'),
+                onTap: () => setState(() => _drinking = '자주 마셔요'),
               ),
               const SizedBox(height: 12),
               _choice(
                 '가끔 마셔요',
                 selected: _drinking == '가끔 마셔요',
-                onTap: () => _answerAndGo(() => _drinking = '가끔 마셔요'),
+                onTap: () => setState(() => _drinking = '가끔 마셔요'),
               ),
               const SizedBox(height: 12),
               _choice(
                 '안 마셔요',
                 selected: _drinking == '안 마셔요',
-                onTap: () => _answerAndGo(() => _drinking = '안 마셔요'),
+                onTap: () => setState(() => _drinking = '안 마셔요'),
               ),
             ],
           ),
@@ -765,7 +751,6 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
 
       big(
         _StepDef(
-          auto: true,
           title: '약을 놓치시면\n가족에게 알려드릴까요?',
           subtitle: '심박수가 빠를 때도 함께 알려드려요.',
           validate: () => _guardianAnswer == null ? '알려드릴지 골라주세요' : null,
@@ -777,7 +762,7 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
                 sub: '다음 화면에서 번호를 적어요',
                 icon: TablerIcons.users,
                 selected: _guardianAnswer == 'y',
-                onTap: () => _answerAndGo(() => _guardianAnswer = 'y'),
+                onTap: () => setState(() => _guardianAnswer = 'y'),
               ),
               const SizedBox(height: 12),
               _choice(
@@ -785,7 +770,7 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
                 sub: '내 정보에서 언제든 넣어요',
                 icon: TablerIcons.clock,
                 selected: _guardianAnswer == 'n',
-                onTap: () => _answerAndGo(() {
+                onTap: () => setState(() {
                   _guardianAnswer = 'n';
                   _guardianName.clear();
                   _guardianPhone.clear();
@@ -1025,29 +1010,26 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
                 ),
               ),
             ),
-            // 누르면 바로 넘어가는 화면에는 "다음"을 두지 않는다.
-            // 버튼이 있으면 답을 고르고도 한 번 더 눌러야 하는 줄 안다.
-            if (!cur.auto)
-              Padding(
-                key: _actionsKey,
-                padding: const EdgeInsets.fromLTRB(20, 0, 20, 30),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    SeniorButton(
-                      label: isLast && _isSubmitting
-                          ? '가입 중...'
-                          : isLast
-                          ? '가입하기'
-                          : '다음',
-                      minHeight: 74,
-                      fontSize: 24,
-                      onPressed: _isSubmitting ? null : () => _next(steps),
-                    ),
-                  ],
-                ),
+            Padding(
+              key: _actionsKey,
+              padding: const EdgeInsets.fromLTRB(20, 0, 20, 30),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  SeniorButton(
+                    label: isLast && _isSubmitting
+                        ? '가입 중...'
+                        : isLast
+                        ? '가입하기'
+                        : '다음',
+                    minHeight: 74,
+                    fontSize: 24,
+                    onPressed: _isSubmitting ? null : () => _next(steps),
+                  ),
+                ],
               ),
+            ),
           ],
         ),
       ),
@@ -1093,7 +1075,7 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
       selected: selected,
       label: '$title, $sub',
       child: GestureDetector(
-        onTap: () => _answerAndGo(() {
+        onTap: () => setState(() {
           _role = role;
           _rolePicked = true;
         }),
@@ -1145,7 +1127,7 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
     );
   }
 
-  /// 누르면 바로 넘어가는 큰 답 하나. 한 줄에 하나씩 쌓는다.
+  /// 큰 답 하나. 한 줄에 하나씩 쌓아 한 번에 하나씩 읽게 둔다.
   Widget _choice(
     String label, {
     String? sub,
@@ -1389,8 +1371,6 @@ class _StepDef {
   final String title;
   final String? subtitle;
 
-  /// 누르면 바로 넘어가는 답. 아래 "다음" 버튼을 두지 않는다.
-  final bool auto;
   final String? Function() validate;
   final Widget child;
 
@@ -1398,7 +1378,6 @@ class _StepDef {
     this.confirm,
     required this.title,
     this.subtitle,
-    this.auto = false,
     String? Function()? validate,
     required this.child,
   }) : validate = validate ?? (() => null);

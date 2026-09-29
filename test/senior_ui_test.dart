@@ -468,16 +468,14 @@ void _signupTests() {
     expect(find.text('어떤 분이신가요?'), findsOneWidget);
   });
 
-  testWidgets('고르지 않고는 역할 화면을 지나갈 수 없다 (02)', (tester) async {
+  testWidgets('역할을 고르지 않으면 스낵바로 이유를 알린다 (02)', (tester) async {
     await tester.pumpWidget(wrap(const SignupScreen()));
-    // 누르면 바로 넘어가므로 "다음"을 두지 않는다. 고르지 않고 넘어갈
-    // 길이 아예 없으니 "골라주세요" 스낵바로 막을 일도 없다.
-    expect(find.text('다음'), findsNothing);
+    await tester.tap(find.text('다음'));
+    await tester.pump();
+    expect(find.byType(SnackBar), findsOneWidget);
+    expect(find.text('어떤 분인지 골라주세요'), findsOneWidget);
+    // 오류가 떠도 화면은 그대로다 — 다음으로 넘어가지 않는다.
     expect(find.text('어떤 분이신가요?'), findsOneWidget);
-
-    await tester.tap(find.text('약을 드시는 분'));
-    await tester.pumpAndSettle();
-    expect(find.text('어떤 분이신가요?'), findsNothing);
   });
 
   test('"잘 모르겠어요"를 누르면 고른 약 이름이 비워진다 (05)', () {
@@ -503,6 +501,8 @@ void _signupTests() {
     await tester.pumpWidget(wrap(const SignupScreen()));
 
     await tester.tap(find.text('약을 드시는 분'));
+    await tester.pump();
+    await tester.tap(find.text('다음'));
     await tester.pumpAndSettle();
 
     await tester.enterText(find.byType(TextField).at(0), '김복자');
@@ -518,9 +518,9 @@ void _signupTests() {
     await tester.pumpWidget(wrap(const SignupScreen()));
     // 보호자는 남의 복약을 지켜볼 뿐이라 자기 지병을 물을 이유가 없다.
     await tester.tap(find.text('돌보는 가족'));
-    await tester.pumpAndSettle();
+    await tester.pump();
     // 역할 · 기본 정보 · 약관, 세 걸음이 전부다.
-    expect(find.text('2 / 3'), findsOneWidget);
+    expect(find.text('1 / 3'), findsOneWidget);
   });
 
   testWidgets('되살린 건강 질문들이 글자 2배에서도 버틴다 (5h)', (tester) async {
@@ -536,8 +536,10 @@ void _signupTests() {
       ),
     );
 
-    // 1걸음 · 역할 — 누르면 바로 넘어간다
+    // 1걸음 · 역할
     await tester.tap(find.text('약을 드시는 분'));
+    await tester.pump();
+    await tester.tap(find.text('다음'));
     await tester.pumpAndSettle();
 
     // 2걸음 · 기본 정보
