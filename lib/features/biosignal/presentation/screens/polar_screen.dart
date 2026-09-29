@@ -78,7 +78,10 @@ class _PolarScreenState extends State<PolarScreen> {
                       fontSize: 24,
                       onPressed: () => Navigator.of(context).push(
                         MaterialPageRoute(
-                          builder: (_) => MeasureScreen(sensor: _sensor),
+                          builder: (_) => MeasureScreen(
+                            sensor: _sensor,
+                            returnToPreviousScreen: true,
+                          ),
                         ),
                       ),
                     ),
@@ -95,7 +98,7 @@ class _PolarScreenState extends State<PolarScreen> {
                   SeniorCard(
                     padding: const EdgeInsets.symmetric(
                       horizontal: 20,
-                      vertical: 14,
+                      vertical: 18,
                     ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -161,7 +164,7 @@ class _StatusCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SeniorCard(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
       child: Column(
         children: [
           Container(

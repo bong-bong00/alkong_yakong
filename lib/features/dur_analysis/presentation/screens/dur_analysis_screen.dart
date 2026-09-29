@@ -15,6 +15,7 @@ import '../../../../core/widgets/senior_card.dart';
 import '../../../../core/widgets/senior_feedback.dart';
 import '../../../../core/widgets/senior_header.dart';
 import '../../../medication/application/medication_controller.dart';
+import '../../../prescription/domain/registration_result.dart';
 
 const _pairTypes = {'병용금기', '중복성분', '효능군중복'};
 
@@ -109,16 +110,15 @@ class _DurAnalysisScreenState extends ConsumerState<DurAnalysisScreen> {
     final incompleteTypes = incompleteTypesRaw is List
         ? incompleteTypesRaw.map((e) => e.toString()).toSet()
         : <String>{};
-    final incomplete = response['incomplete'] == true;
+    final incomplete = !registrationDurComplete(response);
 
     void assign() {
       _matches = parsedMatches;
       _incomplete = incomplete;
-      _assessmentStatus =
-          response['assessment_status']?.toString() ??
-          (parsedMatches.isNotEmpty
-              ? 'RISK_FOUND'
-              : (incomplete ? 'INCOMPLETE' : 'SAFE'));
+      _assessmentStatus = incomplete
+          ? 'INCOMPLETE'
+          : response['assessment_status']?.toString() ??
+                (parsedMatches.isNotEmpty ? 'RISK_FOUND' : 'SAFE');
       _incompleteTypes = incompleteTypes;
       _loading = false;
       _failed = false;
@@ -280,7 +280,9 @@ class _DurAnalysisScreenState extends ConsumerState<DurAnalysisScreen> {
             child: Text(
               pairs.isNotEmpty
                   ? '같이 먹으면 안 되는 약이 있어요'
-                  : '지금 같이 보는 약끼리 부딪히는 것은 없어요',
+                  : (_incomplete
+                        ? '약은 등록됐지만 함께먹기 확인을 마치지 못했어요.'
+                        : '확인한 범위에서 약끼리 함께먹기 주의 항목은 없어요.'),
               style: AppText.cardTitle(
                 color: pairs.isNotEmpty ? AppColors.danger : AppColors.point,
               ),
@@ -296,7 +298,7 @@ class _DurAnalysisScreenState extends ConsumerState<DurAnalysisScreen> {
             const SizedBox(height: 12),
           ],
           SeniorCard(
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
             onTap: () => context.push('/drug-explain'),
             child: Row(
               children: [
@@ -326,9 +328,14 @@ class _DurAnalysisScreenState extends ConsumerState<DurAnalysisScreen> {
               onPressed: _afterConfirm,
             ),
           ],
-          // 아래쪽 "○○에게 알리기"는 두지 않는다. 여기서 누른 알림은
-          // 가족에게 "약이 부딪힌다"만 전할 뿐, 어르신이 할 일은 그대로
-          // 남는다. 도움을 청하는 길은 읽지 못했을 때의 회복 화면에 있다.
+          const SizedBox(height: 16),
+          SeniorButton(
+            label: '$_guardianTitle에게 알리기',
+            kind: SeniorButtonKind.outline,
+            minHeight: 64,
+            fontSize: 21,
+            onPressed: _callGuardian,
+          ),
         ],
       ),
     );
@@ -375,7 +382,7 @@ class _ConflictCard extends StatelessWidget {
     final source = _sourceLabel(match);
 
     return SeniorCard(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
       borderColor: AppColors.danger,
       borderWidth: 3,
       child: Column(

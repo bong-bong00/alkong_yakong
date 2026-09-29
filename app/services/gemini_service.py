@@ -16,6 +16,25 @@ from app.services.pharmacist.generate import generate_card_from_source
 logger = logging.getLogger(__name__)
 
 
+INCOMPLETE_CHAT_REPLY = (
+    "답변을 끝까지 준비하지 못했어요.\n"
+    "잠시 후 다시 물어봐 주세요.\n"
+    "그동안 약의 복용량이나 사용 방법을 임의로 바꾸지 마세요."
+)
+
+CHAT_RETRY_INSTRUCTION = """
+
+[답변 다시 작성]
+앞 답변을 이어 붙이거나 일부를 재사용하지 말고 처음부터 다시 작성하세요.
+더 짧게 작성하되 핵심 안전 조건은 빼지 마세요.
+모든 문장을 끝까지 완성하고 결론을 첫 문장에 쓰세요.
+공식정보의 숫자, 용량, 단위, 횟수, 기간, 연령, 금지·주의·예외 조건을 그대로 보존하세요.
+제품명과 성분명은 바꾸지 마세요.
+어려운 의학 용어가 꼭 필요하면 처음 등장할 때 같은 문장이나 바로 다음 문장에서 쉬운 뜻을 설명하세요. 같은 답변에서 반복 설명하지 마세요.
+사용자에게 직접 호칭을 붙일 때는 "선생님"만 자연스럽게 한 번 사용하세요.
+""".strip()
+
+
 def _compact_product_name(value: object) -> str:
     return "".join(str(value or "").split()).casefold()
 
@@ -46,6 +65,7 @@ def _with_official_permission_ingredient(
     api_call_succeeded = False
     exact_item_seq_match = False
     exact_product_name_match = False
+    local_identity_matches = False
     if not code or not expected_name:
         logger.warning(
             "Permission ingredient diagnostic selected_code_present=%s "
@@ -69,6 +89,11 @@ def _with_official_permission_ingredient(
                 local_medicine.get("ingredient"),
                 local_medicine.get("product_name"),
             )
+            local_identity_matches = (
+                str(local_medicine.get("medicine_code") or "").strip() == code
+                and _compact_product_name(local_medicine.get("product_name"))
+                == expected_name
+            )
             candidates.append(local_medicine)
     except Exception as error:
         logger.warning(
@@ -77,7 +102,11 @@ def _with_official_permission_ingredient(
         )
 
     required = required_fields or {"ingredient"}
-    if not candidates or any(not candidates[0].get(field) for field in required):
+    if (
+        not candidates
+        or not local_identity_matches
+        or any(not candidates[0].get(field) for field in required)
+    ):
         api_fallback_attempted = True
         try:
             detail = fetch_permission_detail(
@@ -376,17 +405,144 @@ def _plain_chat_reply(value: str) -> str:
     """Remove AI reply markup only; preserve medicine text and clinical values."""
     text = value.replace("\r\n", "\n").replace("\r", "\n")
     text = re.sub(r"(?m)^[ \t]*```(?:[A-Za-z][A-Za-z0-9_-]*)?[ \t]*$", "", text)
+    text = re.sub(r"(?m)^[ \t]*(?:-{3,}|\*{3,}|_{3,})[ \t]*$", "", text)
     text = re.sub(r"(?m)^[ \t]{0,3}#{1,6}[ \t]+", "", text)
+    text = re.sub(r"(?m)^[ \t]{0,3}>+[ \t]?", "", text)
+    text = re.sub(r"(?m)^[ \t]{0,3}\d+[.)][ \t]+", "• ", text)
     text = re.sub(r"(?m)^[ \t]{0,3}[-*+][ \t]+", "• ", text)
     text = re.sub(r"\*\*([^*\n]+)\*\*", r"\1", text)
     text = re.sub(r"__([^\n]+?)__", r"\1", text)
     text = re.sub(r"(?<![\w*])\*([^*\s\n](?:[^*\n]*?[^*\s\n])?)\*(?!\*)", r"\1", text)
     text = re.sub(r"(?<![\w_])_([^_\s\n](?:[^_\n]*?[^_\s\n])?)_(?!_)", r"\1", text)
+    text = re.sub(
+        r'\[([^\]\n]+)\]\([^\s)]+(?:\s+"[^"]*")?\)',
+        r"\1",
+        text,
+    )
     text = text.replace("`", "")
+    text = "\n".join(
+        re.sub(r"[ \t]{3,}", " ", line).rstrip() for line in text.split("\n")
+    )
     return re.sub(r"\n{3,}", "\n\n", text).strip()
 
 
-def _finalize_chat_response(response) -> str:
+def _has_balanced_delimiters(reply: str) -> bool:
+    for opening, closing in (("(", ")"), ("[", "]"), ("{", "}"), ("“", "”"), ("‘", "’")):
+        if reply.count(opening) != reply.count(closing):
+            return False
+    if reply.count('"') % 2:
+        return False
+    return True
+
+
+def _has_complete_ending(reply: str) -> bool:
+    if not reply:
+        return False
+    stripped = reply.rstrip()
+    if not stripped or stripped.endswith((":", ";", ",", "·", "-", "–", "—", "/")):
+        return False
+    if re.search(
+        r"(?:다만|하지만|특히|그리고|또는|따라서|또한|예를 들어|다음과 같은|"
+        r"경우에는|때문에|그러므로|그러나|즉)$",
+        stripped,
+    ):
+        return False
+    if re.search(r"(?:은|는|이|가|을|를|에|에서|으로|와|과|의)$", stripped):
+        return False
+    return bool(
+        re.search(
+            r"(?:[.!?]|요|다|니다|세요|까요|죠|함|음|없음|있음)$",
+            stripped,
+        )
+    )
+
+
+_JARGON_EXPLANATION_HINTS = {
+    "DUR": ("약을 함께 사용할 때", "주의 정보를 확인"),
+    "상호작용": ("약끼리 서로 영향을", "함께 사용할 때 생길 수 있는 영향"),
+    "금기": ("사용하면 안", "함께 사용하면 안", "피해야 하는"),
+    "효능군중복": ("비슷한 효과의 약",),
+    "효능군 중복": ("비슷한 효과의 약",),
+    "융모": ("장 안쪽의 작은 돌기",),
+    "점막": ("몸 안쪽을 덮", "몸의 안쪽을 덮"),
+    "심실": ("심장의 아래쪽 공간",),
+    "QT 연장": ("다음 박동을 준비하는 시간이 길",),
+    "항콜린": ("신경 신호", "입 마름"),
+    "비스테로이드성 소염진통제": ("스테로이드 성분 없이",),
+    "대사": ("몸이 약을 처리하는 과정",),
+    "수용체": ("약 성분이 작용하는 몸속 부분",),
+    "고초열": ("꽃가루", "알레르기"),
+}
+
+_JARGON_DIAGNOSTIC_CODES = {
+    "DUR": "dur_abbreviation",
+    "상호작용": "interaction_term",
+    "금기": "contraindication_term",
+    "효능군중복": "therapeutic_duplication_term",
+    "효능군 중복": "therapeutic_duplication_term",
+    "융모": "villus_term",
+    "점막": "mucosa_term",
+    "심실": "ventricle_term",
+    "QT 연장": "qt_interval_term",
+    "항콜린": "anticholinergic_term",
+    "비스테로이드성 소염진통제": "nsaid_term",
+    "대사": "metabolism_term",
+    "수용체": "receptor_term",
+    "고초열": "hay_fever_term",
+}
+
+
+def _sentence_windows(reply: str, term: str) -> list[str]:
+    """용어가 나온 문장과 바로 앞·뒤 문장만 반환한다."""
+    sentences = [
+        sentence.strip()
+        for sentence in re.split(r"(?<=[.!?。！？])\s+|\n+", reply)
+        if sentence.strip()
+    ]
+    return [
+        " ".join(sentences[max(0, index - 1) : index + 2])
+        for index, sentence in enumerate(sentences)
+        if term in sentence
+    ]
+
+
+def _has_meaningful_parenthetical(window: str, term: str) -> bool:
+    """용어 직후 괄호가 반복어가 아닌 실제 쉬운 설명인지 보수적으로 본다."""
+    pattern = rf"{re.escape(term)}\s*[（(]([^()（）]{{2,100}})[）)]"
+    for match in re.finditer(pattern, window):
+        explanation = match.group(1).strip()
+        normalized_explanation = re.sub(r"[^0-9A-Za-z가-힣]", "", explanation).casefold()
+        normalized_term = re.sub(r"[^0-9A-Za-z가-힣]", "", term).casefold()
+        if not normalized_explanation or normalized_explanation == normalized_term:
+            continue
+        if len(re.findall(r"[가-힣]", explanation)) < 5:
+            continue
+        if re.search(r"상태|현상|과정|공간|부분|영향|신호|약|몸|심장|장|피부", explanation):
+            return True
+    return False
+
+
+def _jargon_occurrence_is_explained(window: str, term: str, hints: tuple[str, ...]) -> bool:
+    return any(hint in window for hint in hints) or _has_meaningful_parenthetical(
+        window, term
+    )
+
+
+def _unexplained_jargon(reply: str) -> list[str]:
+    unexplained = []
+    for term, hints in _JARGON_EXPLANATION_HINTS.items():
+        windows = _sentence_windows(reply, term)
+        if windows and not _jargon_occurrence_is_explained(windows[0], term, hints):
+            unexplained.append(term)
+    return unexplained
+
+
+def _chat_response_quality(
+    response,
+    *,
+    required_medicine_names: tuple[str, ...] = (),
+    forbidden_phrases: tuple[str, ...] = (),
+) -> tuple[str, bool, list[str]]:
     response_text = _read_response_text(response)
     logger.debug("Gemini response.text length: %d", len(response_text))
 
@@ -399,8 +555,9 @@ def _finalize_chat_response(response) -> str:
     )
     logger.debug("Gemini final reply length: %d", len(reply))
 
-    has_valid_ending = reply.endswith((".", "요", "다", "니다"))
-    candidates = getattr(response, "candidates", None) or []
+    has_valid_ending = _has_complete_ending(reply)
+    candidate_value = getattr(response, "candidates", None)
+    candidates = candidate_value or []
     part_count = sum(
         len(getattr(getattr(candidate, "content", None), "parts", None) or [])
         for candidate in candidates
@@ -421,15 +578,118 @@ def _finalize_chat_response(response) -> str:
         getattr(usage_metadata, "thoughts_token_count", None),
         getattr(usage_metadata, "total_token_count", None),
     )
-    if len(reply) < 20 or not has_valid_ending:
-        logger.warning(
-            "Gemini response may be incomplete: length=%d valid_ending=%s",
-            len(reply),
-            has_valid_ending,
+    quality_issues = []
+    normalized_reasons = {reason.upper() for reason in reasons}
+    if any("MAX_TOKENS" in reason or "LENGTH" in reason for reason in normalized_reasons):
+        quality_issues.append("token_limit")
+    if any(
+        marker in reason
+        for reason in normalized_reasons
+        for marker in ("SAFETY", "BLOCK", "RECITATION", "PROHIBITED", "SPII")
+    ):
+        quality_issues.append("blocked_finish")
+    if candidate_value is not None and not candidates:
+        quality_issues.append("no_candidate")
+    if not reply:
+        quality_issues.append("empty_reply")
+    if not has_valid_ending:
+        quality_issues.append("incomplete_ending")
+    if not _has_balanced_delimiters(reply):
+        quality_issues.append("unbalanced_delimiter")
+    jargon = _unexplained_jargon(reply)
+    if jargon:
+        quality_issues.append("unexplained_jargon")
+    compact_reply = _compact_product_name(reply)
+    if any(
+        _compact_product_name(name) not in compact_reply
+        for name in required_medicine_names
+        if _compact_product_name(name)
+    ):
+        quality_issues.append("missing_medicine_coverage")
+    if any(phrase in reply for phrase in forbidden_phrases if phrase):
+        quality_issues.append("wrong_medicine_scope")
+    if quality_issues:
+        jargon_codes = sorted(
+            {
+                _JARGON_DIAGNOSTIC_CODES.get(term, "other_medical_term")
+                for term in jargon
+            }
         )
-    if len(reply) < 20:
-        return "응답 생성이 불완전했습니다. 다시 질문해주세요."
-    return reply
+        logger.warning(
+            "Gemini response rejected: length=%d issues=%s jargon_count=%d "
+            "jargon_codes=%s",
+            len(reply),
+            ",".join(quality_issues),
+            len(jargon),
+            ",".join(jargon_codes) or "none",
+        )
+    return reply, not quality_issues, quality_issues
+
+
+def _finalize_chat_response(response) -> str:
+    reply, is_complete, _ = _chat_response_quality(response)
+    return reply if is_complete else INCOMPLETE_CHAT_REPLY
+
+
+def _generate_complete_chat_reply(
+    client,
+    *,
+    prompt: str,
+    max_output_tokens: int = 512,
+    required_medicine_names: tuple[str, ...] = (),
+    forbidden_phrases: tuple[str, ...] = (),
+) -> str:
+    config = {
+        "temperature": 0.2,
+        "max_output_tokens": max_output_tokens,
+        "thinking_config": {"thinking_budget": 0},
+    }
+    first_response = _generate_content_with_retry(
+        client,
+        model=GEMINI_MODEL,
+        contents=prompt,
+        config=config,
+    )
+    first_reply, is_complete, issues = _chat_response_quality(
+        first_response,
+        required_medicine_names=required_medicine_names,
+        forbidden_phrases=forbidden_phrases,
+    )
+    if is_complete:
+        return first_reply
+
+    logger.warning("Gemini chat quality retry issues=%s", ",".join(issues))
+    retry_response = _generate_content_with_retry(
+        client,
+        model=GEMINI_MODEL,
+        contents=f"{prompt}\n\n{CHAT_RETRY_INSTRUCTION}",
+        config=config,
+    )
+    retry_reply, is_complete, _ = _chat_response_quality(
+        retry_response,
+        required_medicine_names=required_medicine_names,
+        forbidden_phrases=forbidden_phrases,
+    )
+    return retry_reply if is_complete else INCOMPLETE_CHAT_REPLY
+
+
+def _all_medicine_verification_summary(
+    *,
+    verified_names: list[str],
+    unverified_names: list[str],
+    identity_incomplete: bool,
+) -> str:
+    lines = ["현재 복용약 확인 범위"]
+    lines.extend(f"{name}: 공식정보를 확인했어요." for name in verified_names)
+    lines.extend(
+        f"{name}: 공식정보를 끝까지 확인하지 못했어요."
+        for name in unverified_names
+    )
+    if identity_incomplete:
+        lines.append(
+            "제품명이나 코드를 확인하지 못한 등록 약이 있어 전체 목록을 끝까지 확인하지 못했어요."
+        )
+    return "\n".join(lines)
 
 
 def _dur_context_unavailable_reply(
@@ -520,33 +780,99 @@ def _dur_context_unavailable_reply(
     )
 
 
-def _dur_no_match_reply(intents: set[str]) -> str:
-    if "combination" in intents:
-        return (
-            "현재 저장된 약과 공식 자료를 확인한 범위에서는 함께 사용할 때 주의할 정보나 "
-            "성분·역할이 겹치는 약 정보를 찾지 못했어요. "
-            "이것만으로 안전하다고 단정할 수는 없어요."
+def _confirmed_zero_messages(
+    intents: set[str],
+    dur_result: dict[str, Any],
+    *,
+    selected_medicine: dict[str, Any] | None,
+) -> list[str]:
+    if dur_result.get("status") != "current":
+        return []
+    zero_types = {
+        str(value or "").strip()
+        for value in dur_result.get("zero_result_types") or []
+    }
+    messages = []
+    if intents & {"combination", "interaction"} and "병용금기" in zero_types:
+        messages.append(
+            "선택한 약과 지금 드시는 약 사이에서 함께 먹으면 안 되는 조합은 확인되지 않았어요."
+            if selected_medicine is not None
+            else "지금 드시는 약 중에 함께 먹으면 안 되는 조합은 확인되지 않았어요."
         )
-    if "interaction" in intents:
-        risk_type = "함께 사용하면 안 되는 조합"
-    elif "age" in intents:
-        risk_type = "나이에 따른 약 사용 제한"
-    elif "pregnancy" in intents:
-        risk_type = "임신 중 약 사용 제한"
-    elif "duplicate" in intents:
+    user_context = dur_result.get("user_context") or {}
+    if (
+        "age" in intents
+        and "연령금기" in zero_types
+        and user_context.get("age_known") is True
+    ):
+        messages.append("확인된 나이를 기준으로, 사용하면 안 되는 약은 확인되지 않았어요.")
+    if (
+        "pregnancy" in intents
+        and "임부금기" in zero_types
+        and user_context.get("pregnancy_status") == "pregnant"
+    ):
+        messages.append("임신 중 사용하면 안 되는 약은 확인되지 않았어요.")
+    return messages
+
+
+def _dur_no_match_reply(
+    intents: set[str],
+    dur_result: dict[str, Any] | None = None,
+    *,
+    selected_medicine: dict[str, Any] | None = None,
+) -> str:
+    result = dur_result or {}
+    zero_messages = _confirmed_zero_messages(
+        intents,
+        result,
+        selected_medicine=selected_medicine,
+    )
+    if "age" in intents and not zero_messages:
         return (
-            "현재 복용 중인 약과 선택한 약 사이에서 성분이나 비슷한 효과가 겹친다는 정보를 "
+            "생년월일을 확인할 수 없어 나이를 기준으로 사용하면 안 되는 약이 있는지 "
+            "끝까지 확인하지 못했어요."
+        )
+    if (
+        "pregnancy" in intents
+        and not zero_messages
+        and (result.get("user_context") or {}).get("pregnancy_status")
+        == "not_pregnant"
+    ):
+        return (
+            "현재 임신 중이 아닌 것으로 확인되어 임신 중 사용 제한 결과를 "
+            "개인 검사 결과로 안내하지 않았어요."
+        )
+    if "pregnancy" in intents and not zero_messages:
+        return (
+            "임신 여부를 확인할 수 없어 임신 중 사용하면 안 되는 약이 있는지 "
+            "끝까지 확인하지 못했어요."
+        )
+    if zero_messages:
+        return " ".join(
+            [*zero_messages, "이 결과만으로 모든 약 사용이 안전하다고 단정할 수는 없어요."]
+        )
+    if "duplicate" in intents:
+        scope = (
+            "현재 복용 중인 약들 사이에서 성분이나 비슷한 효과가 겹친다는 정보를 "
+            if selected_medicine is None
+            else "현재 복용 중인 약과 선택한 약 사이에서 성분이나 비슷한 효과가 겹친다는 정보를 "
+        )
+        return scope + (
             "확인한 공식 자료에서는 찾지 못했어요. 이것이 모든 위험이 없다는 뜻은 아니에요. "
             "함께 사용할 때 생기는 다른 영향이나 개인 상태에 따른 주의사항은 "
             "따로 확인해야 해요."
         )
-    else:
-        risk_type = "약 사용 시 주의할 내용"
     return (
-        f"현재 저장된 최신 확인 결과에서는 {risk_type}에 해당하는 정보를 "
-        "찾지 못했어요. 이 결과만으로 안전하다고 단정할 수는 없어요. "
-        "약 사용 여부는 의사 또는 약사에게 확인해 주세요."
+        "현재 약 사용 시 주의할 내용을 끝까지 확인하지 못했어요. "
+        "이 결과만으로 안전하다고 판단할 수 없어요."
     )
+
+
+def _prepend_confirmed_zero_messages(reply: str, messages: list[str]) -> str:
+    if not messages or reply == INCOMPLETE_CHAT_REPLY:
+        return reply
+    missing = [message for message in messages if message not in reply]
+    return "\n".join([*missing, reply]) if missing else reply
 
 
 def generate_chat_response(
@@ -554,7 +880,6 @@ def generate_chat_response(
     *,
     user_id: str = "",
     selected_medicine: dict[str, Any] | None = None,
-    current_medicines: list[dict[str, Any]] | None = None,
     intent: str | None = None,
 ) -> str:
     from app.services.chat_context_service import (
@@ -573,15 +898,13 @@ def generate_chat_response(
 
     intents = resolve_question_intents(message, intent)
     safety_question = is_safety_question(intents)
-    # 약 데이터 Render에서 읽은 목록이 없으면 팀 서버 DB로 대체하지 않는다.
-    # 서로 다른 SQLite DB의 오래된 약으로 함께먹기를 판단하면 위험하다.
-    # [] means the current app asked the medication-data Render but received
-    # no usable list. None remains compatibility for older internal callers.
-    if "combination" in intents and current_medicines == []:
-        return (
-            "현재 복용약 목록을 불러오지 못해서 함께먹기 확인을 할 수 없어요. "
-            "약 목록을 다시 불러온 뒤 확인해 주세요."
+    all_medicines_question = (
+        selected_medicine is None
+        and (
+            intent in {"overview", "combination", "duplicate", "precautions"}
+            or (intent is None and bool(intents & {"combination", "duplicate"}))
         )
+    )
     unavailable_reply = (
         "현재 확인된 식약처 정보만으로는 답변하기 어려워요. "
         "현재 복용약으로 다시 확인하고, 복용 중인 약 전체를 의사 또는 약사에게 알려 주세요."
@@ -601,6 +924,91 @@ def generate_chat_response(
 
         selected_official = None
         official_data_list = []
+        all_medicines_context = None
+        verified_all_medicine_names: list[str] = []
+        unverified_all_medicine_names: list[str] = []
+        if all_medicines_question:
+            from app.services.medication_feature_dur_client import (
+                load_remote_current_medicines,
+            )
+
+            all_medicines_context = load_remote_current_medicines(user_id=user_id)
+            all_status = all_medicines_context.get("status")
+            all_items = all_medicines_context.get("items") or []
+            if all_status == "empty":
+                return "현재 등록되어 복용 중인 약이 없어요. 약을 등록한 뒤 다시 물어봐 주세요."
+            if all_status in {"missing", "malformed"}:
+                return (
+                    "현재 복용약 목록을 불러오지 못했어요. 잠시 후 다시 시도해 주세요. "
+                    "이 상태에서는 약이 없거나 안전하다고 판단할 수 없어요."
+                )
+            if not all_items:
+                return (
+                    "현재 복용약의 공식 제품명과 코드를 확인하지 못했어요. "
+                    "확인되지 않은 약을 추측해서 설명하지 않을게요."
+                )
+
+            required_fields = (
+                {"ingredient"}
+                if intents & {"combination", "duplicate"}
+                else _required_official_fields(intents)
+            )
+            for medicine in all_items:
+                code = str(medicine.get("medicine_code") or "").strip()
+                name = str(medicine.get("product_name") or "").strip()
+                verified = None
+                if code.isdigit() and name:
+                    try:
+                        candidate = fetch_e_drug_info(medicine_code=code)
+                    except Exception as error:
+                        logger.warning(
+                            "All-medicine e_drug_lookup_failed error_type=%s",
+                            type(error).__name__,
+                        )
+                        candidate = None
+                    if (
+                        candidate
+                        and str(candidate.get("medicine_code") or "").strip() == code
+                        and _compact_product_name(candidate.get("product_name"))
+                        == _compact_product_name(name)
+                    ):
+                        verified = candidate
+                        if any(
+                            not verified.get(field) for field in required_fields
+                        ):
+                            verified = _with_official_permission_ingredient(
+                                verified,
+                                required_fields=required_fields,
+                            )
+                    if verified is None:
+                        permission_candidate = _with_official_permission_ingredient(
+                            {
+                                "medicine_code": code,
+                                "product_name": name,
+                                "source": "식약처 의약품 제품 허가정보",
+                            },
+                            required_fields=required_fields,
+                        )
+                        if (
+                            permission_candidate.get("_permission_identity_verified")
+                            and _compact_product_name(permission_candidate.get("product_name"))
+                            == _compact_product_name(name)
+                        ):
+                            verified = permission_candidate
+                if verified and (
+                    intents & {"combination", "duplicate"}
+                    or _has_requested_official_content(verified, intents)
+                ):
+                    verified_all_medicine_names.append(name)
+                    official_data_list.append(
+                        {
+                            "검색된_약품명": verified["product_name"],
+                            "match_type": "exact",
+                            "식약처_공식정보": verified,
+                        }
+                    )
+                else:
+                    unverified_all_medicine_names.append(name or "이름을 확인하지 못한 약")
         if selected_medicine is not None:
             required_fields = (
                 {"ingredient"}
@@ -783,12 +1191,33 @@ def generate_chat_response(
                 and item.get("식약처_공식정보")
             ]
             official_contexts = [item for item in official_contexts if item]
-            if "combination" in intents and selected_official is None:
-                return (
-                    "함께먹기 확인할 약을 먼저 선택해 주세요. "
-                    "선택한 약과 현재 복용약 전체를 함께 살펴볼게요."
+            if "combination" in intents or (
+                all_medicines_question and "duplicate" in intents
+            ):
+                from app.services.medication_feature_dur_client import (
+                    load_remote_combination_context,
                 )
-            if safety_question and selected_official is not None:
+
+                dur_result = load_remote_combination_context(
+                    user_id=user_id,
+                    selected_medicine=selected_official,
+                )
+                if all_medicines_question and "duplicate" in intents:
+                    duplicate_items = [
+                        item
+                        for item in dur_result.get("items", [])
+                        if item.get("type") in {"중복성분", "효능군중복"}
+                    ]
+                    dur_result = {
+                        **dur_result,
+                        "items": duplicate_items,
+                        "has_risk": (
+                            bool(duplicate_items)
+                            if dur_result.get("status") == "current"
+                            else None
+                        ),
+                    }
+            elif safety_question and selected_official is not None:
                 wanted_types = set().union(
                     *(DUR_TYPES_BY_INTENT.get(intent, set()) for intent in intents)
                 )
@@ -796,7 +1225,6 @@ def generate_chat_response(
                     user_id=user_id,
                     selected_medicine=selected_official,
                     risk_types=wanted_types,
-                    current_medicines=current_medicines,
                 )
                 dur_result["items"] = enrich_dur_matches(dur_result["items"])
             else:
@@ -805,7 +1233,13 @@ def generate_chat_response(
             if safety_question and (
                 dur_result.get("status") in {"stale", "missing"}
                 or (
-                    "combination" in intents
+                    (
+                        "combination" in intents
+                        or (
+                            all_medicines_question
+                            and "duplicate" in intents
+                        )
+                    )
                     and (
                         dur_result.get("status") != "current"
                         or dur_result.get("has_risk", False) is None
@@ -822,33 +1256,121 @@ def generate_chat_response(
                 and dur_result["status"] == "current"
                 and not dur_result["items"]
             ):
-                return _dur_no_match_reply(intents)
+                return _dur_no_match_reply(
+                    intents,
+                    dur_result,
+                    selected_medicine=selected_medicine,
+                )
             if not official_contexts and not dur_result["items"]:
+                if all_medicines_question:
+                    summary = _all_medicine_verification_summary(
+                        verified_names=verified_all_medicine_names,
+                        unverified_names=unverified_all_medicine_names,
+                        identity_incomplete=(
+                            (all_medicines_context or {}).get("status") == "incomplete"
+                        ),
+                    )
+                    return (
+                        f"{summary}\n"
+                        "확인된 공식정보가 없어 약별 설명을 추측해서 만들지 않을게요. "
+                        "잠시 후 다시 확인해 주세요."
+                    )
                 return unavailable_reply
 
+            confirmed_zero_messages = _confirmed_zero_messages(
+                intents,
+                dur_result,
+                selected_medicine=selected_medicine,
+            )
+            prompt_dur_result = {
+                **dur_result,
+                "confirmed_zero_messages": confirmed_zero_messages,
+            }
             prompt = build_grounded_chat_prompt(
                 message=message,
                 intents=intents,
                 official_contexts=official_contexts,
-                dur_result=dur_result,
+                dur_result=prompt_dur_result,
             )
+            if all_medicines_question:
+                verified_count = len(official_contexts)
+                total_count = len((all_medicines_context or {}).get("items") or [])
+                prompt += (
+                    "\n\n[현재 복용약 전체 확인 범위]\n"
+                    f"약 데이터 서버의 현재 복용약 {total_count}개 중 "
+                    f"공식정보가 정확히 확인된 약은 {verified_count}개입니다.\n"
+                    "확인되지 않은 약이 있으면 그 약까지 확인한 것처럼 말하지 말고, "
+                    "확인된 범위와 확인하지 못한 범위를 쉬운 말로 구분하세요.\n"
+                    "약 전체 질문에서는 각 제품명을 한 번 이상 직접 쓰고, 한 제품의 정보를 "
+                    "다른 제품에 적용하거나 제품을 조용히 누락하지 마세요.\n"
+                    '약 전체 질문을 "선택한 약"이나 단일 제품만 확인한 것처럼 표현하지 마세요.'
+                )
+                if verified_all_medicine_names:
+                    prompt += (
+                        "\n공식정보를 확인한 제품명: "
+                        + ", ".join(verified_all_medicine_names)
+                    )
+                if unverified_all_medicine_names:
+                    prompt += (
+                        "\n공식정보를 끝까지 확인하지 못한 제품명: "
+                        + ", ".join(unverified_all_medicine_names)
+                    )
+                if (all_medicines_context or {}).get("status") == "incomplete":
+                    prompt += (
+                        "\n제품명이나 코드를 확인하지 못한 등록 약도 있으므로, "
+                        "현재 복용약 전체를 확인했다고 말하지 마세요."
+                    )
 
-            response = _generate_content_with_retry(
-                client,
-                model=GEMINI_MODEL,
-                contents=prompt,
-                config={
-                    "temperature": 0.2,
-                    "max_output_tokens": 512,
-                    "thinking_config": {"thinking_budget": 0},
-                },
+            required_names = (
+                tuple(
+                    str(item.get("product_name") or "").strip()
+                    for item in (all_medicines_context or {}).get("items") or []
+                    if str(item.get("product_name") or "").strip()
+                )
+                if all_medicines_question
+                and bool(intents & {"overview", "precautions"})
+                else ()
             )
-            return _finalize_chat_response(response)
+            reply = _generate_complete_chat_reply(
+                client,
+                prompt=prompt,
+                max_output_tokens=(
+                    1024
+                    if all_medicines_question and "precautions" in intents
+                    else 512
+                ),
+                required_medicine_names=required_names,
+                forbidden_phrases=(
+                    ("선택한 약",)
+                    if all_medicines_question
+                    and bool(intents & {"combination", "duplicate"})
+                    else ()
+                ),
+            )
+            reply = _prepend_confirmed_zero_messages(
+                reply,
+                confirmed_zero_messages,
+            )
+            if (
+                all_medicines_question
+                and bool(intents & {"overview", "precautions"})
+                and reply != INCOMPLETE_CHAT_REPLY
+            ):
+                summary = _all_medicine_verification_summary(
+                    verified_names=verified_all_medicine_names,
+                    unverified_names=unverified_all_medicine_names,
+                    identity_incomplete=(
+                        (all_medicines_context or {}).get("status") == "incomplete"
+                    ),
+                )
+                return f"{summary}\n{reply}"
+            return reply
     except HTTPException:
         raise
     except Exception as error:
         logger.warning("Gemini chat failed: %s", error, exc_info=True)
         return (
-            "현재 정보를 불러오는 중 문제가 발생했습니다. "
-            "잠시 후 다시 확인해주세요."
+            "지금은 답변을 불러오지 못했어요. "
+            "잠시 후 다시 시도해 주세요. "
+            "약의 사용 방법을 임의로 바꾸지는 마세요."
         )

@@ -26,6 +26,8 @@ TABLE_DEFINITIONS = {
             diseases TEXT NOT NULL DEFAULT '[]',
             past_history INTEGER,
             family_history INTEGER,
+            past_illnesses TEXT NOT NULL DEFAULT '[]',
+            family_illnesses TEXT NOT NULL DEFAULT '[]',
             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
             updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
         )
@@ -252,6 +254,8 @@ TABLE_DEFINITIONS = {
             measured_at TEXT NOT NULL,
             device_id TEXT,
             source TEXT NOT NULL DEFAULT 'POLAR',
+            measurement_context TEXT NOT NULL DEFAULT 'general'
+                CHECK (measurement_context IN ('general', 'before_medication', 'after_medication')),
             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
         )
@@ -577,12 +581,29 @@ ADDITIVE_COLUMNS = {
         "diseases": "TEXT NOT NULL DEFAULT '[]'",
         "past_history": "INTEGER",
         "family_history": "INTEGER",
+        "past_illnesses": "TEXT NOT NULL DEFAULT '[]'",
+        "family_illnesses": "TEXT NOT NULL DEFAULT '[]'",
+    },
+    "heart_rate_logs": {
+        "measurement_context": "TEXT NOT NULL DEFAULT 'general' CHECK (measurement_context IN ('general', 'before_medication', 'after_medication'))",
     },
 }
 
 
 def _existing_columns(cursor: sqlite3.Cursor, table: str) -> set[str]:
     return {row[1] for row in cursor.execute(f"PRAGMA table_info({table})")}
+
+
+def ensure_additive_columns(cursor: sqlite3.Cursor) -> None:
+    """기존 행을 건드리지 않고 빠진 열만 더한다."""
+    for table, columns in ADDITIVE_COLUMNS.items():
+        existing = _existing_columns(cursor, table)
+        for column, definition in columns.items():
+            if existing and column not in existing:
+                cursor.execute(
+                    f"ALTER TABLE {table} ADD COLUMN {column} {definition}"
+                )
+                existing.add(column)
 
 
 _REVIEWED_HOME_EXPLANATIONS = {
@@ -617,28 +638,6 @@ def _deactivate_legacy_demo_medicines(cursor: sqlite3.Cursor) -> None:
 
 
 _REVIEWED_INGREDIENT_EXPLANATIONS = {
-    # 무료 Render는 재시작 때 SQLite가 초기화될 수 있다. 발표·테스트에
-    # 사용하는 약의 검토된 성분 설명은 매 기동 시 다시 준비한다.
-    "히드록시진염산염": {
-        "explanation": "히드록시진염산염은 알레르기로 인한 가려움 같은 증상을 줄이는 데 사용되는 성분이에요.",
-        "role_explanation": "알레르기로 인한 가려움 증상을 줄여요.",
-        "use_help": "가려움과 불안·긴장 증상을 완화하는 데 도움을 줘요.",
-    },
-    "시메티딘": {
-        "explanation": "시메티딘은 위산과 관련된 속쓰림과 위 불편감을 줄이는 데 사용되는 성분이에요.",
-        "role_explanation": "위산과 관련된 불편한 증상을 줄여요.",
-        "use_help": "속쓰림과 위 불편감을 줄이는 데 도움을 줘요.",
-    },
-    "메퀴타진": {
-        "explanation": "메퀴타진은 알레르기 증상으로 생기는 가려움과 두드러기를 줄이는 데 도움을 주는 성분이에요.",
-        "role_explanation": "알레르기로 인한 가려움 증상을 줄여요.",
-        "use_help": "가려움과 두드러기 증상을 완화하는 데 도움을 줘요.",
-    },
-    "프레드니카르베이트": {
-        "explanation": "프레드니카르베이트는 피부의 염증과 가려움 증상을 줄이는 데 사용되는 성분이에요.",
-        "role_explanation": "피부의 염증과 가려움 증상을 줄여요.",
-        "use_help": "피부 염증과 가려움 증상을 완화하는 데 도움을 줘요.",
-    },
     "아미오다론염산염": {
         "explanation": "아미오다론염산염은 심장 박동을 만드는 전기 신호가 지나치게 빠르거나 불규칙해지는 것을 조절하는 성분이에요.",
         "role_explanation": "심장 박동을 만드는 전기 신호를 조절해요.",
@@ -860,13 +859,7 @@ def initialize_database() -> None:
         if _existing_columns(cursor, table):
             cursor.execute(f"ALTER TABLE {table} RENAME TO legacy_{table}_{suffix}")
 
-    for table, columns in ADDITIVE_COLUMNS.items():
-        existing = _existing_columns(cursor, table)
-        for column, definition in columns.items():
-            if existing and column not in existing:
-                cursor.execute(
-                    f"ALTER TABLE {table} ADD COLUMN {column} {definition}"
-                )
+    ensure_additive_columns(cursor)
 
     for table, definition in TABLE_DEFINITIONS.items():
         existing = _existing_columns(cursor, table)

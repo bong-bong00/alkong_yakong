@@ -140,7 +140,20 @@ class DurConsultationTest(unittest.TestCase):
             )
 
         self.assertEqual(result["status"], "current")
-        self.assertEqual(set(result), {"status", "items", "scope", "reason"})
+        self.assertEqual(
+            set(result),
+            {
+                "status",
+                "items",
+                "scope",
+                "reason",
+                "checked_types",
+                "zero_result_types",
+                "user_context",
+            },
+        )
+        self.assertEqual(result["checked_types"], ["병용금기"])
+        self.assertEqual(result["zero_result_types"], [])
         self.assertEqual(len(result["items"]), 1)
         self.assertEqual(result["items"][0]["external_id"], "C-B")
         self.assertEqual(self._snapshot(), before)
@@ -484,6 +497,7 @@ class DurConsultationTest(unittest.TestCase):
         )
         self.assertEqual(result["status"], "current")
         self.assertEqual(result["items"][0]["user_applicability"], "unknown")
+        self.assertEqual(result["user_context"]["pregnancy_status"], "unknown")
 
     def test_true_pregnancy_status_runs_pregnancy_check(self):
         conn = self._connect()
@@ -508,6 +522,7 @@ class DurConsultationTest(unittest.TestCase):
         self.assertEqual(result["status"], "current")
         self.assertEqual(result["items"][0]["external_id"], "PREG-C")
         self.assertEqual(result["items"][0]["user_applicability"], "applicable")
+        self.assertEqual(result["user_context"]["pregnancy_status"], "pregnant")
 
     def test_false_pregnancy_status_still_returns_official_criteria(self):
         conn = self._connect()
@@ -533,6 +548,9 @@ class DurConsultationTest(unittest.TestCase):
         self.assertEqual(result["status"], "current")
         self.assertEqual(result["items"][0]["external_id"], "PREG-C")
         self.assertEqual(result["items"][0]["user_applicability"], "not_applicable")
+        self.assertEqual(
+            result["user_context"]["pregnancy_status"], "not_pregnant"
+        )
 
     def test_persistent_analysis_still_inserts_risk_result(self):
         before = self._snapshot()[1]

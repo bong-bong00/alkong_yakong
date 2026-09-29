@@ -1360,8 +1360,9 @@ void _colorTokenTests() {
       if (path.endsWith('core/constants/app_colors.dart')) continue;
       if (path.endsWith(
         'features/prescription/presentation/screens/prescription_screen.dart',
-      ))
+      )) {
         continue;
+      }
       final text = file.readAsStringSync();
       for (final match in RegExp(
         r'Color\(0x[0-9A-Fa-f]{8}\)',

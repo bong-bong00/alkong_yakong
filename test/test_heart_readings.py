@@ -34,9 +34,9 @@ class HeartReadingsTest(unittest.TestCase):
         self.addCleanup(conn.close)
         return conn
 
-    def save(self, at, bpm=98, user='test-a'):
+    def save(self, at, bpm=98, user='test-a', context='general'):
         return service.save_heart_rate(HeartRateCreate(user_id=user, bpm=bpm,
-            measured_at=at, source='POLAR_30S_AVERAGE'))
+            measured_at=at, source='POLAR_30S_AVERAGE', measurement_context=context))
 
     def summary(self, now='2026-09-18T06:00:00Z'):
         return service.get_heart_summary('test-a', datetime.fromisoformat(now.replace('Z', '+00:00')),
@@ -46,7 +46,8 @@ class HeartReadingsTest(unittest.TestCase):
         saved = self.save('2026-09-18T05:42:00Z')
         data = self.summary()
         self.assertEqual(data['readings'], [{'id': saved['heart_rate_log_id'], 'bpm': 98,
-                                             'measured_at': '2026-09-18T14:42:00+09:00'}])
+                                             'measured_at': '2026-09-18T14:42:00+09:00',
+                                             'measurement_context': 'general'}])
         self.assertEqual(data['today'], {'before': None, 'after': None})
         self.assertTrue(all(d['before'] is None and d['after'] is None for d in data['week'] + data['month']))
         self.summary()
@@ -78,8 +79,8 @@ class HeartReadingsTest(unittest.TestCase):
         self.assertEqual([r['bpm'] for r in data['readings']], [71])
 
     def test_legacy_contract_unchanged_and_comparison_not_duplicated(self):
-        self.save('2026-09-18T05:00:00Z', 90)
-        self.save('2026-09-18T06:00:00Z', 98)
+        self.save('2026-09-18T05:00:00Z', 90, context='before_medication')
+        self.save('2026-09-18T06:00:00Z', 98, context='after_medication')
         with self.connection() as conn:
             conn.execute("INSERT INTO medication_logs (user_id, taken_at, status) VALUES (?, ?, ?)",
                          ('test-a', '2026-09-18 05:30:00', 'TAKEN'))
@@ -91,6 +92,29 @@ class HeartReadingsTest(unittest.TestCase):
         self.assertNotIn('readings', legacy)
         self.assertEqual(legacy['today'], data['today'])
         self.assertEqual(legacy['before_at'], '05:00')
+
+    def test_general_measurements_are_not_inferred_as_medication_pairs(self):
+        self.save('2026-09-18T05:00:00Z', 90)
+        self.save('2026-09-18T06:00:00Z', 98)
+        with self.connection() as conn:
+            conn.execute("INSERT INTO medication_logs (user_id, taken_at, status) VALUES (?, ?, ?)",
+                         ('test-a', '2026-09-18 05:30:00', 'TAKEN'))
+        data = self.summary()
+        self.assertEqual(data['today'], {'before': None, 'after': None})
+        self.assertEqual(len(data['readings']), 2)
+
+    def test_context_default_allowed_values_and_unknown_rejection(self):
+        saved = self.save('2026-09-18T05:00:00Z')
+        self.assertEqual(saved['measurement_context'], 'general')
+        for context in ('general', 'before_medication', 'after_medication'):
+            self.assertEqual(
+                HeartRateCreate(user_id='test-a', bpm=70,
+                                measurement_context=context).measurement_context,
+                context,
+            )
+        with self.assertRaises(ValueError):
+            HeartRateCreate(user_id='test-a', bpm=70,
+                            measurement_context='invalid')
 
     def test_naive_server_time_gets_zone_without_changing_stored_value(self):
         raw = '2026-09-18T05:42:00'

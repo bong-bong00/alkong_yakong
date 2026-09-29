@@ -201,7 +201,7 @@ class _ProxySignupScreenState extends ConsumerState<ProxySignupScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.surface,
+      backgroundColor: AppColors.bg,
       body: Column(
         children: [
           _ProxyStepHeader(

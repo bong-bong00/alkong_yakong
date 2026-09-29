@@ -1,6 +1,6 @@
 from typing import List, Literal, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class UserCreate(BaseModel):
@@ -21,6 +21,13 @@ class UserCreate(BaseModel):
     diseases: List[str] = Field(default_factory=list)
     past_history: Optional[bool] = None
     family_history: Optional[bool] = None
+    past_illnesses: List[str] = Field(default_factory=list)
+    family_illnesses: List[str] = Field(default_factory=list)
+
+    @field_validator("past_illnesses", "family_illnesses", mode="before")
+    @classmethod
+    def empty_history_lists_for_null(cls, value):
+        return [] if value is None else value
 
 
 class UserUpdate(BaseModel):
@@ -41,6 +48,13 @@ class UserUpdate(BaseModel):
     diseases: Optional[List[str]] = None
     past_history: Optional[bool] = None
     family_history: Optional[bool] = None
+    past_illnesses: Optional[List[str]] = None
+    family_illnesses: Optional[List[str]] = None
+
+    @field_validator("past_illnesses", "family_illnesses", mode="before")
+    @classmethod
+    def empty_history_lists_for_null(cls, value):
+        return [] if value is None else value
 
 
 class UserLogin(BaseModel):
@@ -55,8 +69,6 @@ class GuardianCreate(BaseModel):
     phone: Optional[str] = None
     fcm_token: Optional[str] = None
     notification_enabled: bool = True
-    # 보호자가 어르신을 부르는 말("어머니"). 보호자 화면이 이 말로 어르신을 가른다.
-    patient_relation: Optional[str] = None
 
 
 class GuardianLinkRequest(BaseModel):
@@ -173,6 +185,9 @@ class HeartRateCreate(BaseModel):
     measured_at: Optional[str] = None
     device_id: Optional[str] = None
     source: str = "POLAR"
+    measurement_context: Literal[
+        "general", "before_medication", "after_medication"
+    ] = "general"
 
 
 class SelectedMedicine(BaseModel):
@@ -180,25 +195,13 @@ class SelectedMedicine(BaseModel):
     product_name: str
 
 
-class CurrentMedicine(BaseModel):
-    """AI 약사 요청에만 동봉하는 현재 복용약 식별값.
-
-    약 데이터 Render가 원본이므로, AI 약사 서버 DB의 user_medicines를
-    대신 읽지 않는다.
-    """
-
-    medicine_code: str
-    product_name: str
-    ingredient: Optional[str] = None
-
-
 class DrugExplainChatRequest(BaseModel):
     user_id: str
     message: str
     selected_medicine: Optional[SelectedMedicine] = None
-    current_medicines: List[CurrentMedicine] = Field(default_factory=list)
     intent: Optional[
         Literal[
+            "overview",
             "efficacy",
             "dosage",
             "precautions",

@@ -13,15 +13,17 @@ import '../../core/widgets/senior_feedback.dart';
 import '../../core/widgets/senior_header.dart';
 import '../../core/widgets/senior_sheet.dart';
 import '../../core/widgets/senior_wheel.dart';
+import '../medicines/domain/display_policy.dart';
 
 class DrugExplainScreen extends StatefulWidget {
-  /// AI 약사 Render로만 요청을 보낸다.
   final ApiClient? apiClient;
+  final ApiClient? medicationApiClient;
 
-  /// 실제 복용약은 약 데이터 Render에서 읽는다.
-  final ApiClient? medicineApiClient;
-
-  const DrugExplainScreen({super.key, this.apiClient, this.medicineApiClient});
+  const DrugExplainScreen({
+    super.key,
+    this.apiClient,
+    this.medicationApiClient,
+  });
 
   @override
   State<DrugExplainScreen> createState() => _DrugExplainScreenState();
@@ -29,8 +31,8 @@ class DrugExplainScreen extends StatefulWidget {
 
 class _DrugExplainScreenState extends State<DrugExplainScreen>
     with WidgetsBindingObserver {
-  late final ApiClient _chatApiClient;
-  late final ApiClient _medicineApiClient;
+  late final ApiClient _apiClient;
+  late final ApiClient _medicationApiClient;
   final TextEditingController _chatController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
   final FocusNode _chatFocusNode = FocusNode();
@@ -41,7 +43,6 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
   String? _selectedMedicine;
   _DrugSearchCandidate? _selectedOfficialMedicine;
   final Map<String, _DrugSearchCandidate> _officialMedicinesByName = {};
-  final List<Map<String, String>> _currentMedicines = [];
   String? _medicineLoadError;
   final List<String> _medicines = [];
   final List<Map<String, dynamic>> _messages = [];
@@ -50,11 +51,11 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
     {
       'label': '이 약은 무슨 약이에요?',
       'prompt': '{medicine}이 무슨 약인지 쉬운 말로 알려주세요.',
-      'intent': 'efficacy',
+      'intent': 'overview',
     },
     {
-      'label': '언제 먹어야 해요?',
-      'prompt': '{medicine}을 언제 어떻게 먹어야 하는지 쉬운 말로 알려주세요.',
+      'label': '언제 어떻게 사용하나요?',
+      'prompt': '{medicine}을 언제 어떻게 사용하는지 쉬운 말로 알려주세요.',
       'intent': 'dosage',
     },
   ];
@@ -67,19 +68,19 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
       'intent': 'efficacy',
     },
     {
-      'label': '어떻게 먹나요?',
-      'prompt': '이 약은 보통 어떻게 먹나요? 제가 등록한 복용 방법과 제품의 일반적인 사용법을 구분해서 알려주세요.',
-      'display': '이 약은 보통 어떻게 먹나요?',
+      'label': '어떻게 사용하나요?',
+      'prompt': '이 약은 보통 어떻게 사용하나요? 제가 등록한 사용 방법과 제품의 일반적인 사용법을 구분해서 알려주세요.',
+      'display': '이 약은 보통 어떻게 사용하나요?',
       'intent': 'dosage',
     },
     {
       'label': '무엇을 조심해야 하나요?',
-      'prompt': '이 약을 먹을 때 무엇을 조심해야 하나요?',
+      'prompt': '이 약을 사용할 때 무엇을 조심해야 하나요?',
       'intent': 'precautions',
     },
     {
-      'label': '먹고 불편하면 어떻게 하나요?',
-      'prompt': '이 약을 먹고 불편한 증상이 생기면 어떻게 해야 하나요?',
+      'label': '사용 뒤 증상이 생기면?',
+      'prompt': '이 약을 사용한 뒤 평소와 다른 증상이 생기면 어떻게 해야 하나요?',
       'intent': 'side_effects',
     },
     {
@@ -101,18 +102,45 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
     },
   ];
 
+  static const List<Map<String, String>> _allMedicinePrompts = [
+    {
+      'label': '제가 먹는 약 알려주세요',
+      'prompt': '제가 현재 먹는 약 전체를 쉬운 말로 알려주세요.',
+      'display': '제가 먹는 약 알려주세요',
+      'intent': 'overview',
+    },
+    {
+      'label': '같이 먹어도 괜찮나요?',
+      'prompt': '제가 현재 먹는 약 전체를 같이 먹을 때 주의할 점이 있는지 확인해 주세요.',
+      'display': '같이 먹어도 괜찮나요?',
+      'intent': 'combination',
+    },
+    {
+      'label': '같은 성분의 약이 있나요?',
+      'prompt': '제가 현재 먹는 약 전체에서 같은 성분이나 비슷한 역할이 겹치는 약이 있는지 확인해 주세요.',
+      'display': '같은 성분의 약이 있나요?',
+      'intent': 'duplicate',
+    },
+    {
+      'label': '약마다 주의할 점은요?',
+      'prompt': '제가 현재 먹는 약마다 공식 자료에서 확인되는 주의할 점을 알려주세요.',
+      'display': '약마다 주의할 점은요?',
+      'intent': 'precautions',
+    },
+  ];
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _chatApiClient = widget.apiClient ?? ApiClient();
-    _medicineApiClient =
-        widget.medicineApiClient ??
+    _apiClient = widget.apiClient ?? ApiClient();
+    _medicationApiClient =
+        widget.medicationApiClient ??
         ApiClient(baseUrl: ApiConfig.localFeatureBaseUrl);
     // 초기 안내 메시지 추가
     _messages.add({
       'isMe': false,
-      'text': '안녕하세요! 약에 대해 궁금한 것을 편하게 물어보세요.\n어려운 말은 쉬운 말로 바꿔서 알려드릴게요.',
+      'text': '안녕하세요, 선생님! 약에 대해 궁금한 것을 편하게 물어보세요.\n어려운 말은 쉬운 말로 바꿔서 알려드릴게요.',
     });
     WidgetsBinding.instance.addPostFrameCallback((_) => _loadMedicines());
   }
@@ -140,10 +168,8 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
     if (label == null || prompt == null || intent == null) return;
 
     final medicine = _selectedMedicine;
-    if (medicine == null || medicine.isEmpty) {
-      showSeniorSnackbar(context, '먼저 궁금한 약을 선택해주세요.', error: true);
-      return;
-    }
+    final isAllMedicines = medicine == null || medicine.isEmpty;
+    if (isAllMedicines && !_allMedicinePrompts.contains(keyword)) return;
 
     setState(() => _selectedKeyword = label);
     await _sendMessage(
@@ -157,17 +183,47 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
     final names = <String>[];
     final officialMedicines = <String, _DrugSearchCandidate>{};
     final ambiguousNames = <String>{};
+    final namesByCode = <String, String>{};
+    final namesByNormalizedName = <String, String>{};
+
+    String firstText(Iterable<dynamic> values) {
+      for (final value in values) {
+        final text = value?.toString().trim() ?? '';
+        if (text.isNotEmpty) return text;
+      }
+      return '';
+    }
 
     void addName(dynamic value) {
       final name = value?.toString().trim() ?? '';
       if (name.isNotEmpty && !names.contains(name)) names.add(name);
     }
 
-    void addMedicine(dynamic nameValue, dynamic codeValue) {
-      final name = nameValue?.toString().trim() ?? '';
+    void addMedicine(dynamic nameValue, dynamic codeValue, {String? label}) {
+      final officialName = nameValue?.toString().trim() ?? '';
+      final name = (label ?? officialName).trim();
       final code = codeValue?.toString().trim() ?? '';
+      if (code.isNotEmpty) {
+        final oldName = namesByCode[code];
+        if (oldName != null && oldName != name) {
+          names.remove(oldName);
+          officialMedicines.remove(oldName);
+        }
+        namesByCode[code] = name;
+      } else if (name.isNotEmpty) {
+        final normalizedName = name
+            .replaceAll(RegExp(r'\s+'), '')
+            .toLowerCase();
+        if (namesByNormalizedName.containsKey(normalizedName)) return;
+        namesByNormalizedName[normalizedName] = name;
+      }
       addName(name);
-      if (name.isEmpty || code.isEmpty || ambiguousNames.contains(name)) return;
+      if (name.isEmpty ||
+          officialName.isEmpty ||
+          code.isEmpty ||
+          ambiguousNames.contains(name)) {
+        return;
+      }
       final existing = officialMedicines[name];
       if (existing != null && existing.itemSeq != code) {
         officialMedicines.remove(name);
@@ -175,44 +231,28 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
         return;
       }
       officialMedicines[name] = _DrugSearchCandidate(
-        itemName: name,
+        itemName: officialName,
         itemSeq: code,
       );
     }
 
-    void addCurrentMedicine(dynamic raw) {
-      if (raw is! Map) return;
-      String firstText(Iterable<dynamic> values) {
-        for (final value in values) {
-          final text = value?.toString().trim() ?? '';
-          if (text.isNotEmpty) return text;
-        }
-        return '';
-      }
-
-      final code = raw['medicine_code']?.toString().trim() ?? '';
-      final productName = firstText([
-        raw['official_product_name'],
-        raw['product_name'],
-        raw['display_name'],
-      ]);
-      final ingredient = firstText([raw['ingredient_name'], raw['ingredient']]);
-      addMedicine(productName, code);
-      if (code.isEmpty || productName.isEmpty) return;
-      if (_currentMedicines.any((item) => item['medicine_code'] == code)) {
-        return;
-      }
-      _currentMedicines.add({
-        'medicine_code': code,
-        'product_name': productName,
-        'ingredient': ingredient,
-      });
-    }
-
     for (final item in MvpSession.latestOcrItems) {
+      final officialName = firstText([
+        item['official_product_name'],
+        item['product_name'],
+      ]);
+      final label = firstText([
+        item['medicine_name'],
+        item['drug_name'],
+        item['ocr_drug_name'],
+        officialName,
+      ]);
       addMedicine(
-        item['medicine_name'] ?? item['drug_name'] ?? item['ocr_drug_name'],
-        item['medicine_code'] ?? item['item_seq'] ?? item['itemSeq'],
+        officialName,
+        officialName.isEmpty
+            ? null
+            : item['medicine_code'] ?? item['item_seq'] ?? item['itemSeq'],
+        label: label,
       );
     }
 
@@ -236,17 +276,38 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
       _medicineLoadError = null;
     });
     try {
-      // OCR·홈·약 자세히와 같은 약 데이터 Render를 원본으로 쓴다.
-      // AI 약사 Render의 SQLite 약 목록을 읽으면 두 서버의 약이 어긋난다.
-      final response = await _medicineApiClient.get(
+      final response = await _medicationApiClient.get(
         '/api/v1/users/${Uri.encodeComponent(userId)}/medicines',
       );
-      if (response is! Map || response['medicines'] is! List) {
-        throw const ApiException('내 약 목록을 읽을 수 없습니다.');
+      final payload = Map<String, dynamic>.from(response as Map);
+      final medicines = payload['medicines'];
+      if (medicines is! List) {
+        throw const FormatException('medicines must be a list');
       }
-      _currentMedicines.clear();
-      for (final medicine in response['medicines'] as List) {
-        addCurrentMedicine(medicine);
+      // 성공한 약 데이터 Render 조회가 OCR 임시 목록을 대체하도록 한다.
+      names.clear();
+      officialMedicines.clear();
+      ambiguousNames.clear();
+      namesByCode.clear();
+      namesByNormalizedName.clear();
+      for (final medicine in medicines) {
+        if (medicine is Map &&
+            (medicine['status']?.toString() ?? 'active') == 'active') {
+          final officialName = firstText([
+            medicine['official_product_name'],
+            medicine['product_name'],
+            medicine['display_name'],
+          ]);
+          final ingredient = firstText([
+            medicine['ingredient_name'],
+            medicine['ingredient'],
+          ]);
+          addMedicine(
+            officialName,
+            medicine['medicine_code'],
+            label: compactProductName(officialName, ingredient: ingredient),
+          );
+        }
       }
       if (!mounted) return;
       setState(() {
@@ -259,11 +320,10 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
         if (_selectedMedicine == null && names.length == 1) {
           _selectedMedicine = names.first;
         }
-        _selectedOfficialMedicine ??=
-            _officialMedicinesByName[_selectedMedicine];
+        _selectedOfficialMedicine = _officialMedicinesByName[_selectedMedicine];
         _medicineLoadError = names.isEmpty ? '등록된 처방/복용약이 없습니다.' : null;
       });
-    } on ApiException catch (error) {
+    } on ApiException {
       if (!mounted) return;
       setState(() {
         _medicines
@@ -272,7 +332,7 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
         _officialMedicinesByName
           ..clear()
           ..addAll(officialMedicines);
-        _medicineLoadError = names.isEmpty ? _apiError(error) : null;
+        _medicineLoadError = _medicineLoadFailureMessage;
       });
     } catch (_) {
       if (!mounted) return;
@@ -283,7 +343,7 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
         _officialMedicinesByName
           ..clear()
           ..addAll(officialMedicines);
-        _medicineLoadError = names.isEmpty ? '내 약을 불러오지 못했습니다.' : null;
+        _medicineLoadError = '내 약을 불러오지 못했습니다.';
       });
     } finally {
       if (mounted) setState(() => _isLoadingMedicines = false);
@@ -347,7 +407,7 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
   Future<void> _enterOtherMedicine() async {
     final medicine = await SeniorSheet.show<_DrugSearchCandidate>(
       context: context,
-      builder: (_) => _OtherMedicineDialog(apiClient: _chatApiClient),
+      builder: (_) => _OtherMedicineDialog(apiClient: _apiClient),
     );
     if (!mounted || medicine == null) return;
     setState(() {
@@ -397,9 +457,6 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
       final body = <String, dynamic>{
         'user_id': MvpSession.userId,
         'message': text,
-        // AI 약사 Render는 약을 저장하지 않는다. 매 질문마다 약 데이터
-        // Render의 현재 복용약 전체를 전달해 함께먹기 판단에만 사용한다.
-        'current_medicines': _currentMedicines,
       };
       if (intent != null) body['intent'] = intent;
       final selectedOfficial = _selectedOfficialMedicine;
@@ -409,7 +466,7 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
           'product_name': selectedOfficial.itemName,
         };
       }
-      final response = await _chatApiClient.post(
+      final response = await _apiClient.post(
         '/api/v1/drug-explain/chat', // 가상의 챗봇 엔드포인트
         body: body,
       );
@@ -421,13 +478,10 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
       setState(() {
         _messages.add({'isMe': false, 'text': _plainAiReply(reply)});
       });
-    } on ApiException catch (error) {
+    } on ApiException {
       if (!mounted) return;
       setState(() {
-        _messages.add({
-          'isMe': false,
-          'text': '죄송합니다. 오류가 발생했어요.\n${_apiError(error)}',
-        });
+        _messages.add({'isMe': false, 'text': _chatFailureMessage});
       });
     } catch (error) {
       if (!mounted) return;
@@ -442,16 +496,16 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
     }
   }
 
-  Widget _buildKeywordBar() {
+  Widget _buildKeywordBar(List<Map<String, String>> prompts) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 4, 20, 0),
       child: LayoutBuilder(
         builder: (context, constraints) => Scrollbar(
           child: SingleChildScrollView(
-            key: ValueKey(_selectedMedicine),
+            key: ValueKey(_selectedMedicine ?? 'all-medicines'),
             scrollDirection: Axis.horizontal,
             child: Row(
-              children: _keywordPrompts.map((keyword) {
+              children: prompts.map((keyword) {
                 final label = keyword['label']!;
                 final selected = label == _selectedKeyword;
                 return Padding(
@@ -499,7 +553,10 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
   @override
   Widget build(BuildContext context) {
     // 아직 아무것도 안 물어봤을 때만 예시 질문을 보여준다.
-    final showSuggestions = _messages.length <= 1;
+    final showSuggestions =
+        _messages.length <= 1 &&
+        _selectedMedicine != null &&
+        _selectedMedicine!.isNotEmpty;
     final subject = _selectedMedicine?.trim();
 
     return Scaffold(
@@ -637,14 +694,17 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
                   ],
                   if (_isLoading) ...[
                     const SizedBox(height: 4),
-                    Text('AI 약사가 답을 쓰고 있어요…', style: AppText.caption(size: 18)),
+                    Text('답변을 작성하고 있어요', style: AppText.caption(size: 18)),
                   ],
                 ],
               ),
             ),
-            // 빠른 질문은 약을 고른 뒤에만 내놓는다. 무엇에 대한 질문인지
-            // 정해지지 않으면 눌러도 되묻게 된다.
-            if (subject != null && subject.isNotEmpty) _buildKeywordBar(),
+            if (!_isLoadingMedicines)
+              _buildKeywordBar(
+                subject == null || subject.isEmpty
+                    ? _allMedicinePrompts
+                    : _keywordPrompts,
+              ),
             Padding(
               padding: const EdgeInsets.fromLTRB(20, 10, 20, 14),
               child: Row(
@@ -1026,11 +1086,12 @@ class _ChatBubble extends StatelessWidget {
   }
 }
 
-String _apiError(ApiException error) {
-  return error.statusCode == null
-      ? error.message
-      : '${error.message} (HTTP ${error.statusCode})';
-}
+const _medicineLoadFailureMessage = '지금은 등록한 약을 불러오지 못했어요.\n잠시 후 다시 시도해 주세요.';
+
+const _chatFailureMessage =
+    '지금은 답변을 불러오지 못했어요.\n'
+    '잠시 후 다시 시도해 주세요.\n'
+    '약의 사용 방법을 임의로 바꾸지는 마세요.';
 
 String _plainAiReply(String value) {
   var text = value.replaceAll('\r\n', '\n').replaceAll('\r', '\n');
@@ -1039,8 +1100,17 @@ String _plainAiReply(String value) {
     '',
   );
   text = text.replaceAll(
+    RegExp(r'^[ \t]*(?:-{3,}|\*{3,}|_{3,})[ \t]*$', multiLine: true),
+    '',
+  );
+  text = text.replaceAll(
     RegExp(r'^[ \t]{0,3}#{1,6}[ \t]+', multiLine: true),
     '',
+  );
+  text = text.replaceAll(RegExp(r'^[ \t]{0,3}>+[ \t]?', multiLine: true), '');
+  text = text.replaceAll(
+    RegExp(r'^[ \t]{0,3}\d+[.)][ \t]+', multiLine: true),
+    '• ',
   );
   text = text.replaceAll(
     RegExp(r'^[ \t]{0,3}[-*+][ \t]+', multiLine: true),
@@ -1062,5 +1132,14 @@ String _plainAiReply(String value) {
     RegExp(r'(?<![A-Za-z0-9가-힣_])_([^_\s\n](?:[^_\n]*?[^_\s\n])?)_(?!_)'),
     (match) => match.group(1)!,
   );
-  return text.replaceAll('`', '').replaceAll(RegExp(r'\n{3,}'), '\n\n').trim();
+  text = text.replaceAllMapped(
+    RegExp(r'\[([^\]\n]+)\]\([^\s)]+(?:\s+"[^"]*")?\)'),
+    (match) => match.group(1)!,
+  );
+  text = text.replaceAll('`', '');
+  text = text
+      .split('\n')
+      .map((line) => line.replaceAll(RegExp(r'[ \t]{3,}'), ' ').trimRight())
+      .join('\n');
+  return text.replaceAll(RegExp(r'\n{3,}'), '\n\n').trim();
 }

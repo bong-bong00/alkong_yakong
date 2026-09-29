@@ -57,9 +57,9 @@ class BiosignalPolicyTest(unittest.TestCase):
                     "notifications",
                 )
             }
-            source = conn.execute(
-                "SELECT source FROM heart_rate_logs"
-            ).fetchone()[0]
+            source, measurement_context = conn.execute(
+                "SELECT source, measurement_context FROM heart_rate_logs"
+            ).fetchone()
             conn.close()
 
             self.assertEqual(counts["heart_rate_logs"], 1)
@@ -67,10 +67,50 @@ class BiosignalPolicyTest(unittest.TestCase):
             self.assertEqual(counts["abnormal_events"], 0)
             self.assertEqual(counts["notifications"], 0)
             self.assertEqual(source, "POLAR_30S_AVERAGE")
+            self.assertEqual(measurement_context, "general")
             self.assertIsNone(result["baseline"])
             self.assertIsNone(result["abnormal_event"])
             response = HeartRateResponse.model_validate(result)
             self.assertIsNone(response.baseline)
+        finally:
+            try:
+                conn.close()
+            except Exception:
+                pass
+            os.remove(path)
+
+    def test_measurement_context_migration_is_additive_and_idempotent(self):
+        handle, path = tempfile.mkstemp(suffix=".db")
+        os.close(handle)
+        try:
+            conn = sqlite3.connect(path)
+            conn.execute(
+                """
+                CREATE TABLE heart_rate_logs (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id TEXT NOT NULL,
+                    bpm INTEGER NOT NULL,
+                    measured_at TEXT NOT NULL,
+                    device_id TEXT,
+                    source TEXT NOT NULL DEFAULT 'POLAR'
+                )
+                """
+            )
+            conn.execute(
+                "INSERT INTO heart_rate_logs (user_id, bpm, measured_at, source) VALUES ('U1', 77, '2026-09-01T00:00:00', 'POLAR_30S_AVERAGE')"
+            )
+            init_db.ensure_additive_columns(conn.cursor())
+            init_db.ensure_additive_columns(conn.cursor())
+            row = conn.execute(
+                "SELECT bpm, source, measurement_context FROM heart_rate_logs"
+            ).fetchone()
+            columns = {
+                column[1]
+                for column in conn.execute("PRAGMA table_info(heart_rate_logs)")
+            }
+            conn.close()
+            self.assertIn("measurement_context", columns)
+            self.assertEqual(row, (77, "POLAR_30S_AVERAGE", "general"))
         finally:
             try:
                 conn.close()

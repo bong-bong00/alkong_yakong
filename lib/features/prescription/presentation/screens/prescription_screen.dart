@@ -1,4 +1,5 @@
 import 'dart:async';
+
 import 'dart:convert';
 import 'dart:io';
 
@@ -22,8 +23,8 @@ import '../../../../core/widgets/senior_sheet.dart';
 import '../../../../core/widgets/senior_timeline.dart';
 import '../../../dashboard/application/medication_history_provider.dart';
 import '../../../medication/application/medication_controller.dart';
-import '../../../medicines/application/user_medicines_controller.dart';
 import '../../../medicines/application/family_medicine_inbox.dart';
+import '../../../medicines/application/user_medicines_controller.dart';
 import '../../../medicines/domain/display_policy.dart';
 import '../../../onboarding/presentation/screens/first_run_screen.dart';
 import 'add_medicine_screen.dart';
@@ -784,78 +785,6 @@ class _ConfirmScreenState extends State<_ConfirmScreen> {
     for (final item in widget.items) Map<String, dynamic>.from(item),
   ];
 
-  @override
-  void initState() {
-    super.initState();
-    // 못 읽은 이름이 있으면 화면을 읽기 전에 먼저 알린다.
-    if (widget.unrecognizedNames.isEmpty) return;
-    WidgetsBinding.instance.addPostFrameCallback((_) => _tellUnreadNames());
-  }
-
-  Future<void> _tellUnreadNames() async {
-    final names = widget.unrecognizedNames;
-    final again = await SeniorSheet.show<bool>(
-      context: context,
-      builder: (sheetContext) => SeniorSheet(
-        title: '못 읽은 이름이 있어요',
-        body: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              '고장이 아니에요. 사진이 흐려서 '
-              '${names.length == 1 ? '이름 하나를' : '이름 ${names.length}개를'} 못 읽었어요. '
-              '아래 약은 등록에서 빼 두었습니다.',
-              style: AppText.body(size: 19),
-            ),
-            const SizedBox(height: 14),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
-              decoration: BoxDecoration(
-                color: AppColors.dangerBgSoft,
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: AppColors.dangerBorder, width: 2),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  for (final name in names)
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 2),
-                      child: Text(
-                        '· $name  (못 읽음)',
-                        style: AppText.cardTitle(
-                          size: 19,
-                          color: AppColors.danger,
-                        ),
-                      ),
-                    ),
-                ],
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          SeniorButton(
-            label: '밝은 곳에서 다시 찍기',
-            icon: TablerIcons.camera,
-            minHeight: 70,
-            fontSize: 22,
-            onPressed: () => Navigator.of(sheetContext).pop(true),
-          ),
-          SeniorButton(
-            label: '이대로 계속하기',
-            kind: SeniorButtonKind.neutral,
-            minHeight: 64,
-            fontSize: 20,
-            onPressed: () => Navigator.of(sheetContext).pop(false),
-          ),
-        ],
-      ),
-    );
-    if (again == true && mounted) widget.onRetake();
-  }
-
   bool _registering = false;
 
   /// 복용 정보 고치기 창에서 돋보기로 고른 공식 약. 저장할 때 함께 넣는다.
@@ -1039,19 +968,6 @@ class _ConfirmScreenState extends State<_ConfirmScreen> {
       text: item['drug_name']?.toString() ?? '',
     );
 
-    // 이 이름이 어디서 왔는지 — 사진에서 읽은 글자인지, 공식 목록에서 맞춘
-    // 품목인지. 뭉뚱그리면 잘못 읽은 이름을 공식 약으로 믿고 그대로 등록한다.
-    final ocrRawName = item['ocr_drug_name_raw']?.toString().trim() ?? '';
-    final officialName =
-        item['official_product_name']?.toString().trim() ??
-        item['product_name']?.toString().trim() ??
-        '';
-    final medicineCode = item['medicine_code']?.toString().trim() ?? '';
-    final hasProvenance =
-        ocrRawName.isNotEmpty ||
-        officialName.isNotEmpty ||
-        medicineCode.isNotEmpty;
-
     // 돋보기 — 적어 넣은 이름을 공식 의약품 목록에서 찾는다.
     Future<void> searchName(BuildContext sheetContext) async {
       final query = nameController.text.trim();
@@ -1079,34 +995,6 @@ class _ConfirmScreenState extends State<_ConfirmScreen> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             mainAxisSize: MainAxisSize.min,
             children: [
-              if (hasProvenance) ...[
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.fromLTRB(18, 14, 18, 14),
-                  decoration: BoxDecoration(
-                    color: AppColors.sunken,
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: AppColors.border, width: 2),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      if (ocrRawName.isNotEmpty) ...[
-                        _DetailLine(label: '사진에서 읽은 이름', value: ocrRawName),
-                        const SizedBox(height: 10),
-                      ],
-                      if (officialName.isNotEmpty) ...[
-                        _DetailLine(label: '공식 제품명', value: officialName),
-                        const SizedBox(height: 10),
-                      ],
-                      if (medicineCode.isNotEmpty)
-                        _DetailLine(label: '공식 의약품 코드', value: medicineCode),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 18),
-              ],
               Text('약 이름', style: AppText.label(size: 18)),
               const SizedBox(height: 8),
               Row(
@@ -1586,6 +1474,37 @@ class _ConfirmScreenState extends State<_ConfirmScreen> {
                     ),
                     const SizedBox(height: 12),
                   ],
+                  if (widget.unrecognizedNames.isNotEmpty) ...[
+                    SeniorCard(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 22,
+                        vertical: 18,
+                      ),
+                      borderColor: AppColors.attentionBorder,
+                      borderWidth: 2,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            '읽지 못한 약 이름이 있어요',
+                            style: AppText.cardTitle(
+                              size: 20,
+                              color: AppColors.attentionBorder,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            '아래 이름은 등록에서 빼 두었어요. 처방전과 비교하고, 밝은 곳에서 다시 찍어 주세요.',
+                            style: AppText.body(size: 18),
+                          ),
+                          const SizedBox(height: 8),
+                          for (final name in widget.unrecognizedNames)
+                            Text('· $name (못 읽음)', style: AppText.body()),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                  ],
                   if (_editedItems.isNotEmpty) ..._tomorrowPreview(),
                 ],
               ),
@@ -1672,7 +1591,7 @@ class _DrugCard extends StatelessWidget {
     required this.onEditDosing,
   });
 
-  /// 확인할 것이 하나라도 있으면 박스만 빨갛게 띄운다.
+  /// 인식·복용 정보 확인은 주황, 실제 약 충돌은 빨강으로 구분한다.
   bool get _needsCheck =>
       uncertain ||
       conflicts.isNotEmpty ||
@@ -1686,8 +1605,10 @@ class _DrugCard extends StatelessWidget {
     return SeniorCard(
       onTap: onToggle,
       padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 20),
-      borderColor: _needsCheck ? AppColors.dangerBorder : null,
-      borderWidth: 2,
+      borderColor: conflicts.isNotEmpty
+          ? AppColors.danger
+          : (_needsCheck ? AppColors.attentionBorder : null),
+      borderWidth: conflicts.isNotEmpty ? 3 : 2,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -1955,29 +1876,6 @@ class _FailedScreen extends StatelessWidget {
           ),
         ],
       ),
-    );
-  }
-}
-
-/// 이름 한 줄에 그 출처를 붙여 보여준다.
-class _DetailLine extends StatelessWidget {
-  final String label;
-  final String value;
-
-  const _DetailLine({required this.label, required this.value});
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          label,
-          style: AppText.label(size: 17, color: AppColors.textSecondary),
-        ),
-        const SizedBox(height: 4),
-        Text(value, style: AppText.body(size: 19)),
-      ],
     );
   }
 }

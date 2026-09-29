@@ -390,7 +390,7 @@ class _ScheduleDaysScreenState extends ConsumerState<ScheduleDaysScreen> {
                         SeniorCard(
                           padding: const EdgeInsets.symmetric(
                             horizontal: 16,
-                            vertical: 14,
+                            vertical: 18,
                           ),
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.stretch,

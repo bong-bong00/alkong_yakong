@@ -427,7 +427,7 @@ class _GuardianAlertsTabState extends State<GuardianAlertsTab> {
     if (!mounted) return;
     // 못 읽으면 못 읽었다고 말한다. 예시 알림으로 갈아끼우지 않는다.
     setState(() {
-      _loaded = loaded == null ? null : loaded.where(_worthTelling).toList();
+      _loaded = loaded?.where(_worthTelling).toList();
       _failed = loaded == null;
     });
   }

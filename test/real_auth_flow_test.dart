@@ -5,8 +5,6 @@ import 'package:alkong_yakong/core/providers/user_role.dart';
 import 'package:alkong_yakong/core/session/auth_session.dart';
 import 'package:alkong_yakong/core/session/mvp_session.dart';
 import 'package:alkong_yakong/features/auth/presentation/screens/login_screen.dart';
-import 'package:alkong_yakong/features/auth/presentation/screens/signup_screen.dart';
-import 'package:alkong_yakong/features/onboarding/presentation/screens/first_run_screen.dart';
 import 'package:alkong_yakong/features/prescription/presentation/screens/prescription_screen.dart';
 import 'package:alkong_yakong/features/profile/application/session_actions.dart';
 import 'package:alkong_yakong/features/profile/data/user_repository.dart';

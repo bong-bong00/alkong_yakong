@@ -219,7 +219,11 @@ class AdherenceWeekCard extends StatelessWidget {
   /// 한 주에서 한 달로 넓혀 보기.
   final VoidCallback onOpenCalendar;
 
-  const AdherenceWeekCard({required this.days, required this.onOpenCalendar});
+  const AdherenceWeekCard({
+    super.key,
+    required this.days,
+    required this.onOpenCalendar,
+  });
 
   static const List<String> _labels = ['월', '화', '수', '목', '금', '토', '일'];
 

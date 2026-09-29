@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import '../../../medication/application/medication_controller.dart';
 import 'package:flutter_tabler_icons/flutter_tabler_icons.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
@@ -40,12 +41,18 @@ class HeartScreen extends StatefulWidget {
   /// 없으면 이 화면은 센서를 붙잡지 않는다 — 목록만 보는 화면이기 때문이다.
   final HeartSensor? sensor;
 
+  /// 앱의 /biosignal route에서 열렸을 때 측정 화면도 GoRouter 경로로 연다.
+  /// EasyFlow 등 화면을 직접 포함하는 기존 진입점은 false로 두어 기존
+  /// Navigator 동작을 유지한다.
+  final bool routeBasedMeasurement;
+
   const HeartScreen({
     super.key,
     this.guardianTitle = '',
     this.userId,
     this.repository,
     this.sensor,
+    this.routeBasedMeasurement = false,
   });
 
   @override
@@ -69,6 +76,7 @@ class _HeartScreenState extends State<HeartScreen> {
 
   /// 보호자 알림 스위치. 기록이 아니라 설정이라 기록과 따로 든다.
   bool _notifyGuardian = true;
+  HeartMeasurementContext _measurementContext = HeartMeasurementContext.general;
 
   /// 다른 사람(어르신)의 기록을 보는 중인지. 그러면 이 전화기로 재지 않는다.
   bool get _viewingOther => widget.userId != null;
@@ -152,16 +160,33 @@ class _HeartScreenState extends State<HeartScreen> {
   }
 
   Future<void> _openMeasure() async {
-    await Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => MeasureScreen(
-          guardianTitle: resolveGuardianTitle(context, widget.guardianTitle),
-          sensor: widget.sensor,
-        ),
-      ),
-    );
-    // 방금 잰 값이 서버에 올라갔을 수 있으니 조용히 다시 읽는다.
-    if (mounted) unawaited(_load(quiet: true));
+    final measurementContext = _measurementContext;
+    setState(() => _measurementContext = HeartMeasurementContext.general);
+    final guardianTitle = resolveGuardianTitle(context, widget.guardianTitle);
+    final saved =
+        widget.routeBasedMeasurement && GoRouter.maybeOf(context) != null
+        ? await context.push<bool>(
+            '/biosignal/measure',
+            extra: HeartMeasureRouteArgs(
+              guardianTitle: guardianTitle,
+              sensor: widget.sensor,
+              measurementContext: measurementContext,
+              onSaved: () => _load(quiet: true),
+            ),
+          )
+        : await Navigator.of(context).push<bool>(
+            MaterialPageRoute<bool>(
+              builder: (_) => MeasureScreen(
+                guardianTitle: guardianTitle,
+                sensor: widget.sensor,
+                measurementContext: measurementContext,
+                returnToPreviousScreen: true,
+              ),
+            ),
+          );
+    // 저장 완료 화면이 성공을 확인해 준 경우에만 최신 서버 기록을 읽는다.
+    // 취소·연결 실패·저장 실패는 성공 기록처럼 갱신하지 않는다.
+    if (saved == true && mounted) unawaited(_load(quiet: true));
   }
 
   @override
@@ -177,7 +202,11 @@ class _HeartScreenState extends State<HeartScreen> {
               children: [
                 Row(
                   children: [
-                    const SeniorBackButton(),
+                    SeniorBackButton(
+                      onTap: widget.routeBasedMeasurement
+                          ? () => context.go('/')
+                          : null,
+                    ),
                     const SizedBox(width: 14),
                     Expanded(
                       child: Text(
@@ -236,6 +265,32 @@ class _HeartScreenState extends State<HeartScreen> {
                   ],
                   if (!_viewingOther) ...[
                     const SizedBox(height: 16),
+                    SeniorCard(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 16,
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Text('측정 목적', style: AppText.cardTitle(size: 20)),
+                          const SizedBox(height: 12),
+                          SeniorSegmented(
+                            labels: HeartMeasurementContext.values
+                                .map((context) => context.label)
+                                .toList(growable: false),
+                            index: HeartMeasurementContext.values.indexOf(
+                              _measurementContext,
+                            ),
+                            onChanged: (index) => setState(
+                              () => _measurementContext =
+                                  HeartMeasurementContext.values[index],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 12),
                     SeniorButton(
                       label: '지금 측정',
                       minHeight: 66,
@@ -243,20 +298,6 @@ class _HeartScreenState extends State<HeartScreen> {
                       onPressed: () => unawaited(_openMeasure()),
                     ),
                   ],
-                  const SizedBox(height: 12),
-                  // 지난 기록은 한 달 화면이 맡는다. 위 세그먼트와 같은 곳으로
-                  // 가지만, 아래까지 내려온 자리에서도 길이 보여야 한다.
-                  SeniorCard(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 20,
-                      vertical: 4,
-                    ),
-                    child: SeniorListRow(
-                      label: '지난 기록 보기',
-                      trailing: const SeniorChevron(),
-                      onTap: () => unawaited(_openMonthly()),
-                    ),
-                  ),
                   if (!_viewingOther) ...[
                     const SizedBox(height: 12),
                     _SensorRow(
@@ -325,7 +366,7 @@ class _FailedCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SeniorCard(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -378,7 +419,7 @@ class _EmptyCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SeniorCard(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
       child: Column(
         children: [
           Container(
@@ -434,12 +475,19 @@ class _TodayCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final today = data.today;
-    final measuredToday = today.before != null || today.after != null;
+    final generalReadings = data.todayReadings
+        .where(
+          (reading) =>
+              reading.measurementContext == HeartMeasurementContext.general,
+        )
+        .toList(growable: false);
+    final hasMedicationReading = today.before != null || today.after != null;
+    final measuredToday = hasMedicationReading || generalReadings.isNotEmpty;
     final drop = today.drop;
     final measuredLine = _measuredLine();
 
     return SeniorCard(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -447,7 +495,7 @@ class _TodayCard extends StatelessWidget {
             children: [
               Expanded(child: Text('오늘 측정', style: AppText.cardTitle())),
               // 오늘 잰 것이 없으면 "저녁 약"이라고 붙일 근거도 없다.
-              if (measuredToday && data.todaySlotLabel.isNotEmpty)
+              if (hasMedicationReading && data.todaySlotLabel.isNotEmpty)
                 // Flexible로 두면 남은 폭을 제목과 반씩 나눠 가져
                 // 때 이름이 화면 한가운데로 밀려난다. 폭 상한만 건다.
                 ConstrainedBox(
@@ -478,7 +526,7 @@ class _TodayCard extends StatelessWidget {
                 style: AppText.label(size: 18.5, color: AppColors.textPrimary),
               ),
             )
-          else
+          else if (hasMedicationReading)
             Row(
               children: [
                 Expanded(
@@ -511,6 +559,44 @@ class _TodayCard extends StatelessWidget {
                 ),
               ],
             ),
+          for (final reading in generalReadings) ...[
+            if (hasMedicationReading || reading != generalReadings.first)
+              const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+              decoration: BoxDecoration(
+                color: AppColors.sunken,
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          reading.measurementContext.label,
+                          style: AppText.label(
+                            size: 17,
+                            color: AppColors.textSecondary,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          '${reading.bpm}회/분',
+                          style: AppText.emphasis(size: 24),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Text(
+                    DoseSlot.absoluteTime(reading.measuredAt.toLocal()),
+                    style: AppText.caption(size: 16),
+                  ),
+                ],
+              ),
+            ),
+          ],
           if (drop != null) ...[
             const SizedBox(height: 14),
             Container(
@@ -641,7 +727,7 @@ class _SensorRow extends StatelessWidget {
     }
 
     return SeniorCard(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 17),
       onTap: onTap,
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -694,7 +780,7 @@ class _NotifyRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SeniorCard(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 17),
       child: Row(
         children: [
           Expanded(

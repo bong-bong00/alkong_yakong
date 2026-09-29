@@ -7,7 +7,7 @@ from fastapi.testclient import TestClient
 import app.database as database
 from app.routes import users
 from app.services.today_medication_service import _course_fields
-from init_db import TABLE_DEFINITIONS
+from init_db import TABLE_DEFINITIONS, ensure_additive_columns
 
 
 @pytest.fixture
@@ -35,7 +35,10 @@ def _signup(client, **overrides):
         "height_cm": 158,
         "allergies": ["페니실린"],
         "diseases": ["고혈압", "당뇨"],
-        "past_history": False,
+        "past_history": True,
+        "past_illnesses": [" 암 ", "뇌졸중"],
+        "family_history": True,
+        "family_illnesses": ["심장병"],
     }
     body.update(overrides)
     return client.post("/api/v1/users", json=body)
@@ -49,12 +52,77 @@ def test_signup_saves_profile_without_exposing_password(client):
     assert user["allergies"] == ["페니실린"]
     assert user["diseases"] == ["고혈압", "당뇨"]
     assert user["height_cm"] == 158
-    assert user["past_history"] is False
-    assert user["family_history"] is None
+    assert user["past_history"] is True
+    assert user["family_history"] is True
+    assert user["past_illnesses"] == ["암", "뇌졸중"]
+    assert user["family_illnesses"] == ["심장병"]
 
     fetched = client.get(f"/api/v1/users/{user['id']}").json()
     assert fetched["name"] == "김복자"
     assert "password_hash" not in fetched
+
+
+def test_signup_without_history_arrays_remains_compatible(client):
+    body = {
+        "name": "이전앱사용자",
+        "phone": "010-9999-8888",
+        "password": "abc123",
+        "role": "patient",
+        "past_history": True,
+        "family_history": False,
+    }
+    response = client.post("/api/v1/users", json=body)
+    assert response.status_code == 200
+    user = response.json()
+    assert user["past_illnesses"] == []
+    assert user["family_illnesses"] == []
+    assert user["past_history"] is True
+    assert user["family_history"] is False
+
+
+def test_null_history_arrays_are_normalized_to_empty_lists(client):
+    response = _signup(client, past_illnesses=None, family_illnesses=None)
+    assert response.status_code == 200
+    assert response.json()["past_illnesses"] == []
+    assert response.json()["family_illnesses"] == []
+
+
+def test_none_choice_is_not_saved_as_an_illness(client):
+    response = _signup(
+        client,
+        past_illnesses=["없어요"],
+        family_illnesses=["없어요"],
+        past_history=False,
+        family_history=False,
+    )
+    assert response.status_code == 200
+    assert response.json()["past_illnesses"] == []
+    assert response.json()["family_illnesses"] == []
+
+
+def test_none_choice_cannot_be_mixed_with_an_illness(client):
+    response = _signup(client, past_illnesses=["없어요", "암"])
+    assert response.status_code == 400
+
+
+def test_history_column_migration_is_idempotent_and_preserves_rows():
+    conn = sqlite3.connect(":memory:")
+    conn.execute(
+        "CREATE TABLE users (id TEXT PRIMARY KEY, past_history INTEGER, family_history INTEGER)"
+    )
+    conn.execute("INSERT INTO users VALUES ('old-user', 1, 0)")
+
+    ensure_additive_columns(conn.cursor())
+    ensure_additive_columns(conn.cursor())
+
+    columns = {row[1] for row in conn.execute("PRAGMA table_info(users)")}
+    row = conn.execute(
+        "SELECT id, past_history, family_history, past_illnesses, family_illnesses "
+        "FROM users"
+    ).fetchone()
+    assert {"past_illnesses", "family_illnesses"}.issubset(columns)
+    assert row == ("old-user", 1, 0, "[]", "[]")
+    conn.close()
 
 
 def test_login_matches_phone_without_hyphens(client):
@@ -82,13 +150,19 @@ def test_update_changes_only_sent_fields(client):
 
     response = client.patch(
         f"/api/v1/users/{user['id']}",
-        json={"name": "김순자", "allergies": [], "pregnancy_status": "임신 중"},
+        json={
+            "name": "김순자",
+            "allergies": [],
+            "pregnancy_status": "임신 중",
+            "past_illnesses": ["뇌졸중"],
+        },
     )
     assert response.status_code == 200
     updated = response.json()
     assert updated["name"] == "김순자"
     assert updated["allergies"] == []
     assert updated["is_pregnant"] is True
+    assert updated["past_illnesses"] == ["뇌졸중"]
     # 보내지 않은 칸은 그대로다.
     assert updated["diseases"] == ["고혈압", "당뇨"]
     assert updated["birth_date"] == "1958-04-10"

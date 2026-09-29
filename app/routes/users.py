@@ -38,8 +38,11 @@ _PROFILE_COLUMNS = (
     "diseases",
     "past_history",
     "family_history",
+    "past_illnesses",
+    "family_illnesses",
 )
-_LIST_COLUMNS = ("allergies", "diseases")
+_HISTORY_LIST_COLUMNS = ("past_illnesses", "family_illnesses")
+_LIST_COLUMNS = ("allergies", "diseases", *_HISTORY_LIST_COLUMNS)
 _FLAG_COLUMNS = ("past_history", "family_history")
 
 
@@ -83,6 +86,8 @@ def _pregnancy_flag(
 def _db_value(column: str, value):
     if column in _LIST_COLUMNS:
         items = [str(item).strip() for item in (value or [])]
+        if column in _HISTORY_LIST_COLUMNS:
+            items = [item for item in items if item != "없어요"]
         return json.dumps([item for item in items if item], ensure_ascii=False)
     if column in _FLAG_COLUMNS:
         return None if value is None else int(bool(value))
@@ -121,6 +126,16 @@ def _load_user(conn: sqlite3.Connection, user_id: str):
     return row
 
 
+def _validate_history_lists(values: dict) -> None:
+    for column in _HISTORY_LIST_COLUMNS:
+        items = [str(item).strip() for item in (values.get(column) or [])]
+        if "없어요" in items and any(item and item != "없어요" for item in items):
+            raise HTTPException(
+                status_code=400,
+                detail='병명과 "없어요"를 함께 선택할 수 없어요.',
+            )
+
+
 @router.post("", response_model=UserCreateResponse)
 def create_user(user: UserCreate):
     if not user.name.strip():
@@ -128,6 +143,7 @@ def create_user(user: UserCreate):
     password = user.password or ""
     if password and len(password) < _MIN_PASSWORD_LENGTH:
         raise HTTPException(status_code=400, detail="비밀번호는 6자 이상이어야 해요.")
+    _validate_history_lists(user.model_dump())
     conn = get_connection()
     try:
         if password and find_account_by_phone(conn, user.phone):
@@ -270,6 +286,7 @@ def get_user(user_id: str):
 @router.patch("/{user_id}", response_model=UserResponse)
 def update_user(user_id: str, changes: UserUpdate):
     fields = changes.model_dump(exclude_unset=True)
+    _validate_history_lists(fields)
     conn = get_connection()
     try:
         row = _load_user(conn, user_id)
