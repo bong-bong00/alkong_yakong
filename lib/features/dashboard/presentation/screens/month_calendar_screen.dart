@@ -267,12 +267,13 @@ class _MonthCalendarScreenState extends ConsumerState<MonthCalendarScreen> {
       ..._days,
     ];
     final rowCount = (cells.length / 7).ceil();
+    // 셈은 짧게 적고, 무엇을 센 것인지는 아래 범례가 맡는다.
     final summary = !_hasSchedules && _scheduledPastCount == 0
         ? '이달 복용 칸이 아직 없어요'
-        : '$_scheduledPastCount일 중 $_doneCount일 다 드셨어요';
+        : '$_scheduledPastCount일 중 $_doneCount일';
 
     return Scaffold(
-      backgroundColor: AppColors.surface,
+      backgroundColor: AppColors.bgTinted,
       body: Column(
         children: [
           SeniorBackHeader(title: '$_month월 달력'),
@@ -303,7 +304,7 @@ class _MonthCalendarScreenState extends ConsumerState<MonthCalendarScreen> {
                             children: [
                               LabelValueRow(
                                 label: Text(
-                                  '$_month월',
+                                  '$_year년 $_month월',
                                   style: AppText.cardTitle(size: 21),
                                 ),
                                 value: Text(

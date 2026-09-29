@@ -44,92 +44,77 @@ class _AddMedicineScreenState extends State<AddMedicineScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.surface,
+      backgroundColor: AppColors.bgTinted,
       body: Column(
         children: [
           const SeniorBackHeader(title: '처방전 넣기'),
           Expanded(
             child: SingleChildScrollView(
-              padding: const EdgeInsets.fromLTRB(20, 16, 20, 28),
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 28),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 22,
-                      vertical: 18,
-                    ),
-                    // 파랑은 실제로 누르는 버튼에만 남긴다. 안내 박스까지
-                    // 파랗게 두면 어느 것이 눌리는 것인지 흐려진다.
-                    decoration: BoxDecoration(
-                      color: AppColors.surface,
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(color: AppColors.border, width: 2),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          '어떻게 넣을까요?',
-                          style: AppText.cardTitle(
-                            size: 22,
-                            color: AppColors.textPrimary,
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(6, 6, 6, 0),
+                    child: Text.rich(
+                      TextSpan(
+                        children: [
+                          TextSpan(
+                            text: '어떻게 ',
+                            style: AppText.screenTitle(
+                              size: 26,
+                            ).copyWith(fontWeight: FontWeight.w500),
                           ),
-                        ),
-                        const SizedBox(height: 6),
-                        Text(
-                          '하나만 고르시면 됩니다. 나머지는 나중에도 할 수 있어요.',
-                          style: AppText.body(
-                            size: 17.5,
-                            color: AppColors.textBody,
+                          TextSpan(
+                            text: '넣을까요?',
+                            style: AppText.screenTitle(size: 26),
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
                   ),
-                  const SizedBox(height: 14),
-                  // 가장 쉬운 길 하나만 파란 버튼으로 크게 둔다.
-                  SeniorButton(
-                    label: '처방전 사진 찍기',
+                  const SizedBox(height: 16),
+                  // 가장 쉬운 길 하나만 파란 면으로 크게 둔다.
+                  _PrimaryWay(
                     icon: TablerIcons.camera,
-                    minHeight: 68,
-                    fontSize: 22,
-                    elevated: true,
-                    onPressed: () => widget.onPick(AddMedicineMethod.camera),
+                    label: '사진 찍기',
+                    sub: '가장 쉽고 빨라요',
+                    onTap: () => widget.onPick(AddMedicineMethod.camera),
                   ),
-                  const SizedBox(height: 24),
-                  // 나머지 길은 한 카드에 줄로 모은다. 넷이 같은 크기로
-                  // 펼쳐져 있으면 무엇을 먼저 눌러야 할지 고르게 된다.
-                  SeniorCard(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 22,
-                      vertical: 4,
-                    ),
-                    child: Column(
+                  const SizedBox(height: 12),
+                  // 나머지 길은 작은 칸 셋으로 나란히 둔다.
+                  IntrinsicHeight(
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        SeniorListRow(
-                          label: '앨범에서 고르기',
-                          icon: TablerIcons.photo,
-                          trailing: const SeniorChevron(),
-                          onTap: () => widget.onPick(AddMedicineMethod.gallery),
+                        Expanded(
+                          child: _SmallWay(
+                            icon: TablerIcons.photo,
+                            label: '앨범',
+                            onTap: () =>
+                                widget.onPick(AddMedicineMethod.gallery),
+                          ),
                         ),
-                        const SeniorDivider(),
-                        SeniorListRow(
-                          label: '손으로 적기',
-                          icon: TablerIcons.edit,
-                          trailing: const SeniorChevron(),
-                          onTap: () => widget.onPick(AddMedicineMethod.manual),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: _SmallWay(
+                            icon: TablerIcons.pencil,
+                            label: '손으로 적기',
+                            onTap: () =>
+                                widget.onPick(AddMedicineMethod.manual),
+                          ),
                         ),
                         if (!_asked) ...[
-                          const SeniorDivider(),
-                          SeniorListRow(
-                            label: '가족에게 부탁하기',
-                            icon: TablerIcons.users,
-                            trailing: const SeniorChevron(),
-                            onTap: () {
-                              setState(() => _asked = true);
-                              widget.onPick(AddMedicineMethod.family);
-                            },
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: _SmallWay(
+                              icon: TablerIcons.users,
+                              label: '가족에게',
+                              onTap: () {
+                                setState(() => _asked = true);
+                                widget.onPick(AddMedicineMethod.family);
+                              },
+                            ),
                           ),
                         ],
                       ],
@@ -150,6 +135,125 @@ class _AddMedicineScreenState extends State<AddMedicineScreen> {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// 가장 쉬운 길 하나. 이 화면에서 파란 면은 여기뿐이다.
+class _PrimaryWay extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final String sub;
+  final VoidCallback onTap;
+
+  const _PrimaryWay({
+    required this.icon,
+    required this.label,
+    required this.sub,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      button: true,
+      label: '$label, $sub',
+      child: GestureDetector(
+        onTap: onTap,
+        child: ExcludeSemantics(
+          child: Container(
+            constraints: const BoxConstraints(minHeight: 128),
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
+            decoration: BoxDecoration(
+              color: AppColors.pointFill,
+              borderRadius: BorderRadius.circular(26),
+            ),
+            child: Row(
+              children: [
+                Container(
+                  width: 64,
+                  height: 64,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: AppColors.pointPressed,
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Icon(icon, size: 34, color: Colors.white),
+                ),
+                const SizedBox(width: 18),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        label,
+                        style: AppText.cardTitle(size: 24, color: Colors.white),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        sub,
+                        style: AppText.body(
+                          size: 18,
+                          color: AppColors.pointRing,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// 나머지 길. 작은 칸 셋이 나란히 선다.
+class _SmallWay extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+
+  const _SmallWay({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      button: true,
+      label: label,
+      child: GestureDetector(
+        onTap: onTap,
+        child: ExcludeSemantics(
+          child: Container(
+            constraints: const BoxConstraints(minHeight: 104),
+            alignment: Alignment.center,
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 14),
+            decoration: BoxDecoration(
+              color: AppColors.surface,
+              borderRadius: BorderRadius.circular(22),
+              boxShadow: kCardShadow,
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(icon, size: 30, color: AppColors.textPrimary),
+                const SizedBox(height: 10),
+                Text(
+                  label,
+                  textAlign: TextAlign.center,
+                  style: AppText.cardTitle(size: 18),
+                ),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }
