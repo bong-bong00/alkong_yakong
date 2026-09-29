@@ -810,6 +810,7 @@ def _explicit_duration_match(text: str):
     # '7일분'뿐 아니라 '1정2회7일'도 인정하되, '1일 3회'와 열 머리글은 제외.
     return re.search(
         r"(?<!\d)(\d{1,3})\s*일(?:\s*분)?"
+        + _DURATION_END_RE +
         r"(?!\s*(?:\d+\s*회|투여\s*횟수|복용\s*횟수|횟수))",
         _numeric_dosing_text(text),
     )
@@ -952,12 +953,16 @@ _INFER_FORM_ALT = (
     "필름코팅정|이알서방정|서방정|연질캡슐|경질캡슐|캡슐|"
     "현탁액|점안액|주사액|시럽|연고|크림|겔|패취|패치|플라스타|과립|액|정"
 )
+_DURATION_END_RE = (
+    rf"(?=$|[\s|/),\]}}]|[가-힣A-Za-z][가-힣A-Za-z0-9]*?"
+    rf"(?:{_INFER_FORM_ALT})(?=$|[\d\s(\[%]))"
+)
 _GLUED_TOKEN_RE = re.compile(
     rf"(?P<name>[가-힣A-Za-z][가-힣A-Za-z0-9]*?(?:{_INFER_FORM_ALT}))"
     rf"(?P<strength>\d+(?:\.\d+)?(?:mg|ml|g|%|밀리그램|밀리그람))?"
     rf"(?:(?P<take>\d+)(?:정|캡슐|T|C))?"
     rf"(?:(?P<freq>\d+)(?:회|번))?"
-    rf"(?:(?P<days>\d+)일(?:분)?)?",
+    rf"(?:(?P<days>\d+)일(?:분)?{_DURATION_END_RE})?",
     re.IGNORECASE,
 )
 
@@ -1305,6 +1310,7 @@ def _number_in_source(key: str, value: Any, raw_text: str) -> bool:
     if key == "duration_days":
         if re.search(
             rf"(?<!\d){re.escape(number)}\s*일(?:\s*분)?"
+            + _DURATION_END_RE +
             r"(?!\s*(?:\d+\s*회|투여\s*횟수|복용\s*횟수|횟수))",
             evidence,
         ):

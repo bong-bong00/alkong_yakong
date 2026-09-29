@@ -163,3 +163,36 @@ def test_structured_clova_duration_conflict_is_not_silently_accepted():
     assert "duration_days" not in item
     assert "확인" in item["warning_note"]
     assert "_duration_from_table" not in item
+
+
+def test_real_clova_strength_misread_is_never_one_hundred_days():
+    from app.services.ocr.parser import iter_glued_drug_tokens, _number_in_source
+    raw = """1일 3 회 나 일분
+약품명 복약안내 주의사항 약품사진
+옴니세프캡슐100일리그
+램[0.1g/1캡슐]
+해라신정250밀리그램
+[0.25g/1정]
+베포련비정[10mg/1정]
+맥스노펜세미정[1정]
+펠루비에스정
+[36.73mg/1정]
+"""
+    assert not _number_in_source("duration_days", 100, raw)
+    assert all(token.get("duration_days") != 100 for token in iter_glued_drug_tokens(raw))
+    result = parse_prescription_text(raw)
+    assert result is not None
+    assert len(result["items"]) == 5
+    assert all(item.get("duration_days") is None for item in result["items"])
+    assert all(item.get("frequency_per_day") == 3 for item in result["items"])
+
+
+def test_day_suffix_requires_real_boundary_not_misread_strength_word():
+    from app.services.ocr.parser import _number_in_source
+    for suffix in ("일리그", "일리그램", "일리그람", "일리\n그램"):
+        raw = "테스트정100" + suffix
+        assert "duration_days" not in _dosing_from_window(raw)
+        assert not _number_in_source("duration_days", 100, raw)
+        result = parse_prescription_text(raw)
+        assert result is not None
+        assert result["items"][0].get("duration_days") is None

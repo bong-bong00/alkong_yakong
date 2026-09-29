@@ -452,6 +452,10 @@ class _PrescriptionScreenState extends ConsumerState<PrescriptionScreen> {
           onBehalfOf: widget.onBehalfOf,
           items: _items,
           unrecognizedNames: _unrecognizedNames,
+          unrecognizedDetails: (_result?['unrecognized_details'] as List? ?? [])
+              .whereType<Map>()
+              .map((value) => Map<String, dynamic>.from(value))
+              .toList(),
           onRegister: _register,
           onRetake: () => setState(() {
             _image = null;
@@ -764,6 +768,7 @@ class _ConfirmScreen extends StatefulWidget {
 
   final List<Map<String, dynamic>> items;
   final List<String> unrecognizedNames;
+  final List<Map<String, dynamic>> unrecognizedDetails;
   final Future<void> Function(List<Map<String, dynamic>> items) onRegister;
   final VoidCallback onRetake;
 
@@ -771,6 +776,7 @@ class _ConfirmScreen extends StatefulWidget {
     this.onBehalfOf,
     required this.items,
     required this.unrecognizedNames,
+    this.unrecognizedDetails = const [],
     required this.onRegister,
     required this.onRetake,
   });
@@ -780,6 +786,66 @@ class _ConfirmScreen extends StatefulWidget {
 }
 
 class _ConfirmScreenState extends State<_ConfirmScreen> {
+  final Set<String> _resolvedNames = {};
+  List<String> get _pendingNames => widget.unrecognizedNames
+      .where((name) => !_resolvedNames.contains(name))
+      .toList();
+
+  Map<String, dynamic>? _unmatchedDetail(String name) {
+    for (final detail in widget.unrecognizedDetails) {
+      if (detail['ocr_name'] == name) return detail;
+    }
+    return null;
+  }
+
+  String _unmatchedReason(String name) {
+    switch (_unmatchedDetail(name)?['reason']) {
+      case 'CANDIDATES_REQUIRE_CONFIRMATION':
+        return '비슷한 이름의 공식 약이 있어요. 처방전과 비교해 주세요.';
+      case 'OFFICIAL_SEARCH_UNAVAILABLE':
+        return '공식 약 정보를 불러오지 못했어요. 잠시 후 다시 확인해 주세요.';
+      default:
+        return '읽힌 이름으로 공식 약을 찾지 못했어요.';
+    }
+  }
+
+  Future<void> _confirmUnmatchedName(String name) async {
+    final detail = _unmatchedDetail(name);
+    final hits = (detail?['candidates'] as List? ?? [])
+        .whereType<Map>()
+        .map((value) => Map<String, dynamic>.from(value))
+        .toList();
+    Map<String, dynamic>? picked;
+    if (hits.isNotEmpty) {
+      picked = await _pickOfficialMedicine(hits);
+    } else {
+      final query = await showFixNameSheet(context, current: name);
+      if (!mounted || query == null) return;
+      picked = await _lookupOfficialMedicine(query);
+    }
+    if (!mounted || picked == null) return;
+    final selected = picked;
+    final code = selected['medicine_code']?.toString() ?? '';
+    if (_editedItems.any((item) => item['medicine_code']?.toString() == code)) {
+      showSeniorSnackbar(context, '이미 확인한 약이에요. 처방전과 다시 비교해 주세요.');
+      return;
+    }
+    setState(() {
+      _editedItems.add({
+        ...?detail,
+        ...selected,
+        'drug_name':
+            selected['official_product_name'] ?? selected['product_name'],
+        'ocr_drug_name_raw': name,
+        'match_status': 'MATCHED',
+        'uncertain': false,
+        'requires_confirmation': false,
+        'ingredient_name': selected['ingredient_name'] ?? '',
+      });
+      _resolvedNames.add(name);
+    });
+  }
+
   late final List<Map<String, dynamic>> _editedItems = [
     for (final item in widget.items) Map<String, dynamic>.from(item),
   ];
@@ -1328,7 +1394,7 @@ class _ConfirmScreenState extends State<_ConfirmScreen> {
   }
 
   Future<bool> _confirmPartialRegistration() async {
-    if (widget.unrecognizedNames.isEmpty) return true;
+    if (_pendingNames.isEmpty) return true;
     return showSeniorYesNoDialog(
       context: context,
       title: '확인하지 못한 약이 있어요',
@@ -1514,7 +1580,7 @@ class _ConfirmScreenState extends State<_ConfirmScreen> {
                     ),
                     const SizedBox(height: 12),
                   ],
-                  if (widget.unrecognizedNames.isNotEmpty) ...[
+                  if (_pendingNames.isNotEmpty) ...[
                     SeniorCard(
                       padding: const EdgeInsets.symmetric(
                         horizontal: 22,
@@ -1538,8 +1604,17 @@ class _ConfirmScreenState extends State<_ConfirmScreen> {
                             style: AppText.body(size: 18),
                           ),
                           const SizedBox(height: 8),
-                          for (final name in widget.unrecognizedNames)
+                          for (final name in _pendingNames) ...[
                             Text('· $name (확인 필요)', style: AppText.body()),
+                            Text(
+                              _unmatchedReason(name),
+                              style: AppText.caption(size: 17),
+                            ),
+                            TextButton(
+                              onPressed: () => _confirmUnmatchedName(name),
+                              child: const Text('약 이름 확인하기'),
+                            ),
+                          ],
                         ],
                       ),
                     ),
