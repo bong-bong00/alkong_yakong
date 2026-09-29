@@ -24,7 +24,7 @@ class PolicyScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.bg,
+      backgroundColor: AppColors.surface,
       body: Column(
         children: [
           SeniorBackHeader(title: document.title),

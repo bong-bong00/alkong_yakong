@@ -219,7 +219,7 @@ class _ManualMedicineScreenState extends ConsumerState<ManualMedicineScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.bg,
+      backgroundColor: AppColors.surface,
       body: Column(
         children: [
           SeniorBackHeader(

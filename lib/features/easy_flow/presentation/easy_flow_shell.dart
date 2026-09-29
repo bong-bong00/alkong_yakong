@@ -203,7 +203,7 @@ class _EasyFlowShellState extends ConsumerState<EasyFlowShell> {
   Widget build(BuildContext context) {
     final showBar = showsEasyBar(_screen);
     return Scaffold(
-      backgroundColor: AppColors.bg,
+      backgroundColor: AppColors.surface,
       body: KeyedSubtree(
         // 화면마다 새로 만든다. 보이지도 않는 화면이 센서를 잡고 있지 않도록.
         key: ValueKey(_screen),

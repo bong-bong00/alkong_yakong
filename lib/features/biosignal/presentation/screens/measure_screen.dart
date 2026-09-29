@@ -130,7 +130,7 @@ class _MeasureScreenState extends State<MeasureScreen> {
         !_saveFailed &&
         _sensor.saveStatus != HeartSaveStatus.saving) {
       return Scaffold(
-        backgroundColor: AppColors.bg,
+        backgroundColor: AppColors.surface,
         body: Column(
           children: [
             const SeniorBackHeader(title: '심박수 관리'),
@@ -141,7 +141,7 @@ class _MeasureScreenState extends State<MeasureScreen> {
     }
 
     return Scaffold(
-      backgroundColor: AppColors.bg,
+      backgroundColor: AppColors.surface,
       body: Column(
         children: [
           SeniorBackHeader(title: _done ? '측정이 끝났어요' : '심박수 측정 중'),

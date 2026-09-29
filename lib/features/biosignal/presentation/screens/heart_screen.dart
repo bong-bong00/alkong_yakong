@@ -168,7 +168,7 @@ class _HeartScreenState extends State<HeartScreen> {
   Widget build(BuildContext context) {
     final data = _data;
     return Scaffold(
-      backgroundColor: AppColors.bg,
+      backgroundColor: AppColors.surface,
       body: Column(
         children: [
           SeniorHeader(

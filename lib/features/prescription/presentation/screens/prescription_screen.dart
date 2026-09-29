@@ -713,7 +713,7 @@ class _ReadingScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.bg,
+      backgroundColor: AppColors.surface,
       body: Column(
         children: [
           const SeniorBackHeader(title: '처방전 읽는 중'),
@@ -1340,7 +1340,7 @@ class _ConfirmScreenState extends State<_ConfirmScreen> {
     return showModalBottomSheet<Map<String, dynamic>>(
       context: context,
       isScrollControlled: true,
-      backgroundColor: AppColors.bg,
+      backgroundColor: AppColors.surface,
       builder: (sheetContext) => SafeArea(
         child: Padding(
           padding: const EdgeInsets.fromLTRB(20, 22, 20, 24),
@@ -1494,7 +1494,7 @@ class _ConfirmScreenState extends State<_ConfirmScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.bg,
+      backgroundColor: AppColors.surface,
       body: Column(
         children: [
           const SeniorBackHeader(title: '이렇게 읽었어요'),
@@ -1926,7 +1926,7 @@ class _FailedScreen extends StatelessWidget {
         failureReason.contains('Timeout') ||
         failureReason.contains('timeout');
     return Scaffold(
-      backgroundColor: AppColors.bg,
+      backgroundColor: AppColors.surface,
       body: Column(
         children: [
           const SeniorBackHeader(title: '처방전 찍기'),

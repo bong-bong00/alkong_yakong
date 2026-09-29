@@ -57,7 +57,7 @@ class _PolarScreenState extends State<PolarScreen> {
   Widget build(BuildContext context) {
     final connected = _sensor.status == HeartSensorStatus.streaming;
     return Scaffold(
-      backgroundColor: AppColors.bg,
+      backgroundColor: AppColors.surface,
       body: Column(
         children: [
           const SeniorBackHeader(title: '폴라 센서'),

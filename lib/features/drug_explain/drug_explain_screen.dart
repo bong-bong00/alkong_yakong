@@ -503,7 +503,7 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
     final subject = _selectedMedicine?.trim();
 
     return Scaffold(
-      backgroundColor: AppColors.bg,
+      backgroundColor: AppColors.surface,
       body: SafeArea(
         child: Column(
           children: [

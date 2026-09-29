@@ -45,7 +45,7 @@ class SavedScreen extends StatelessWidget {
     final at = heartSavedTimeLabel(savedAt ?? DateTime.now());
     final doseSummary = this.doseSummary;
     return Scaffold(
-      backgroundColor: AppColors.bg,
+      backgroundColor: AppColors.surface,
       body: Column(
         children: [
           const SeniorBackHeader(title: '기록 저장'),

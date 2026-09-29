@@ -21,7 +21,7 @@ class MyMedicinesScreen extends ConsumerWidget {
     final medicines = ref.watch(userMedicinesProvider);
 
     return Scaffold(
-      backgroundColor: AppColors.bg,
+      backgroundColor: AppColors.surface,
       body: Column(
         children: [
           SeniorBackHeader(title: '내 약 목록', onBack: () => context.pop()),

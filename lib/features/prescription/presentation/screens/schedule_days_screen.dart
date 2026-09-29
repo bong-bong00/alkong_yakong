@@ -356,7 +356,7 @@ class _ScheduleDaysScreenState extends ConsumerState<ScheduleDaysScreen> {
     final rowCount = (cells.length / 7).ceil();
 
     return Scaffold(
-      backgroundColor: AppColors.bg,
+      backgroundColor: AppColors.surface,
       body: Column(
         children: [
           const SeniorBackHeader(title: '약 있는 날'),

@@ -59,7 +59,7 @@ class _HrAlertScreenState extends State<HrAlertScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.bg,
+      backgroundColor: AppColors.surface,
       body: Column(
         children: [
           SeniorHeader(

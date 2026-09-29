@@ -50,7 +50,7 @@ class _MonthlyHeartScreenState extends State<MonthlyHeartScreen> {
         ? resolveGuardianTitle(context, widget.guardianTitle)
         : '';
     return Scaffold(
-      backgroundColor: AppColors.bg,
+      backgroundColor: AppColors.surface,
       body: Column(
         children: [
           SeniorHeader(

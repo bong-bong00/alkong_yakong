@@ -4,8 +4,17 @@ import 'package:flutter_tabler_icons/flutter_tabler_icons.dart';
 import '../constants/app_colors.dart';
 import '../theme/app_typography.dart';
 
-/// 카드. **그림자를 쓰지 않는다** — 배경색([AppColors.bg]) 대비로 분리한다.
+/// 카드. 화면 배경이 흰색이라 색 대비로는 경계가 서지 않는다.
+/// 은은한 그림자 하나로 바닥에서 띄운다 — 테두리를 두르면 칸이
+/// 촘촘해 보이고, 주의를 뜻하는 색 테두리와 헷갈린다.
 /// 강조가 필요한 카드만 3px 포인트/위험색 테두리를 두른다.
+
+/// 흰 배경 위에서 카드를 바닥에서 띄우는 그림자.
+/// 한 겹만 쓴다 — 여러 겹을 쌓으면 카드가 떠 있는 게 아니라 흐려 보인다.
+const List<BoxShadow> kCardShadow = [
+  BoxShadow(color: AppColors.cardShadow, offset: Offset(0, 3), blurRadius: 12),
+];
+
 /// 색 카드가 뒤에 한 장 더 깔린 카드.
 ///
 /// 왼쪽으로 조금 삐져나온 둥근 네모가 "여기부터 보라"고 말한다.
@@ -36,6 +45,7 @@ class AccentCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: accent,
         borderRadius: BorderRadius.circular(radius),
+        boxShadow: kCardShadow,
       ),
       padding: EdgeInsets.only(left: peek),
       child: Container(
@@ -82,6 +92,7 @@ class SeniorCard extends StatelessWidget {
         border: borderColor == null
             ? null
             : Border.all(color: borderColor!, width: borderWidth),
+        boxShadow: kCardShadow,
       ),
       child: child,
     );
