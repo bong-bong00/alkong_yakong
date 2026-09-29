@@ -26,6 +26,9 @@ abstract final class AppColors {
   /// 큰 동그란 버튼을 두르는 연한 테. 그림자 대신 자리를 잡아 준다.
   static const Color pointRing = Color(0xFFE3E8F8);
 
+  /// 하단 탭 바를 본문에서 떼어 놓는 그림자. 경계선 대신 쓴다.
+  static const Color navShadow = Color(0x0F111114);
+
   /// 위험 경고 전용 (약 함께먹기 주의, 미복약 알림).
   static const Color danger = Color(0xFFC0392B);
 

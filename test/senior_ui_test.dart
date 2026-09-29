@@ -1305,7 +1305,8 @@ void _medicinesByTimeTests() {
     final source = File(
       'lib/features/medicines/presentation/screens/my_medicines_screen.dart',
     ).readAsStringSync();
-    expect(source.contains('약을 누르면 설명이 나와요'), isTrue);
+    // 시안 38은 "지금 드시는 약" 옆에 이 말을 붙여 둔다.
+    expect(source.contains('누르면 설명이 나와요'), isTrue);
     // 홈과 같은 사진 자리를 쓴다. 다른 모양이면 다른 약으로 읽힌다.
     expect(source.contains('PillPhoto(size: 56)'), isTrue);
     // 지금 안 드시는 약은 줄 하나로 접어 둔다.
