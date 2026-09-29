@@ -843,7 +843,7 @@ class _ConfirmScreenState extends State<_ConfirmScreen> {
       return '0.5$normalized';
     }
     final fraction = RegExp(
-      r'^(\d+)/(\d+)(알|정|캡슐|포|개|mL|ml|방울|T|TAB|C|CAP|PKG|EA)$',
+      r'^(\d+)/(\d+)(알|정|캡슐|포|개|회|mL|ml|방울|T|TAB|C|CAP|PKG|EA)$',
       caseSensitive: false,
     ).firstMatch(compact);
     if (fraction != null) {
@@ -857,7 +857,7 @@ class _ConfirmScreenState extends State<_ConfirmScreen> {
       }
     }
     final match = RegExp(
-      r'^(\d+(?:\.\d+)?)(알|정|캡슐|포|개|mL|ml|방울|T|TAB|C|CAP|PKG|EA)$',
+      r'^(\d+(?:\.\d+)?)(알|정|캡슐|포|개|회|mL|ml|방울|T|TAB|C|CAP|PKG|EA)$',
       caseSensitive: false,
     ).firstMatch(compact);
     final number =
@@ -880,6 +880,7 @@ class _ConfirmScreenState extends State<_ConfirmScreen> {
       'EA' || '개' => '개',
       'ML' || '밀리리터' => 'mL',
       '방울' => '방울',
+      '회' => '회',
       _ => '',
     };
     return normalizedUnit.isEmpty
@@ -948,7 +949,7 @@ class _ConfirmScreenState extends State<_ConfirmScreen> {
     final existingDosage = item['dosage']?.toString().trim() ?? '';
     final timesPerTake = item['times_per_take'];
     final amountMatch = RegExp(
-      r'^(\d+(?:\.\d+)?)\s*(알|정|캡슐|포|개|mL|ml|방울|T|TAB|C|CAP|PKG|EA)?$',
+      r'^(\d+(?:\.\d+)?)\s*(알|정|캡슐|포|개|회|mL|ml|방울|T|TAB|C|CAP|PKG|EA)?$',
       caseSensitive: false,
     ).firstMatch(existingDosage);
     final amountController = TextEditingController(
@@ -1187,6 +1188,7 @@ class _ConfirmScreenState extends State<_ConfirmScreen> {
       'PKG' || '포' => '포',
       'ML' || '밀리리터' => 'mL',
       '방울' => '방울',
+      '회' => '회',
       'EA' || '개' => '개',
       _ => null,
     };
