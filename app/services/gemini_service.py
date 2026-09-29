@@ -673,23 +673,14 @@ def _generate_complete_chat_reply(
     return retry_reply if is_complete else INCOMPLETE_CHAT_REPLY
 
 
-def _all_medicine_verification_summary(
+def _all_medicine_unverified_notice(
     *,
-    verified_names: list[str],
     unverified_names: list[str],
     identity_incomplete: bool,
 ) -> str:
-    lines = ["현재 복용약 확인 범위"]
-    lines.extend(f"{name}: 공식정보를 확인했어요." for name in verified_names)
-    lines.extend(
-        f"{name}: 공식정보를 끝까지 확인하지 못했어요."
-        for name in unverified_names
-    )
-    if identity_incomplete:
-        lines.append(
-            "제품명이나 코드를 확인하지 못한 등록 약이 있어 전체 목록을 끝까지 확인하지 못했어요."
-        )
-    return "\n".join(lines)
+    if not unverified_names and not identity_incomplete:
+        return ""
+    return "일부 약은 공식정보를 확인하지 못해 답변에서 제외했어요."
 
 
 def _dur_context_unavailable_reply(
@@ -1301,16 +1292,16 @@ def generate_chat_response(
                 )
             if not official_contexts and not dur_result["items"]:
                 if all_medicines_question:
-                    summary = _all_medicine_verification_summary(
-                        verified_names=verified_all_medicine_names,
+                    notice = _all_medicine_unverified_notice(
                         unverified_names=unverified_all_medicine_names,
                         identity_incomplete=(
                             (all_medicines_context or {}).get("status") == "incomplete"
                         ),
                     )
                     return (
-                        f"{summary}\n"
-                        "확인된 공식정보가 없어 약별 설명을 추측해서 만들지 않을게요. "
+                        f"{notice}\n" if notice else ""
+                    ) + (
+                        "확인하지 못한 내용은 추측해서 만들지 않을게요. "
                         "잠시 후 다시 확인해 주세요."
                     )
                 return unavailable_reply
@@ -1334,12 +1325,11 @@ def generate_chat_response(
                 verified_count = len(official_contexts)
                 total_count = len((all_medicines_context or {}).get("items") or [])
                 prompt += (
-                    "\n\n[현재 복용약 전체 확인 범위]\n"
+                    "\n\n[답변 작성 규칙 - 이 제목과 규칙은 사용자에게 출력하지 마세요]\n"
                     f"약 데이터 서버의 현재 복용약 {total_count}개 중 "
                     f"공식정보가 정확히 확인된 약은 {verified_count}개입니다.\n"
-                    "확인되지 않은 약이 있으면 그 약까지 확인한 것처럼 말하지 말고, "
-                    "확인된 범위와 확인하지 못한 범위를 쉬운 말로 구분하세요.\n"
-                    "약 전체 질문에서는 각 제품명을 한 번 이상 직접 쓰고, 한 제품의 정보를 "
+                    "공식정보를 확인하지 못한 약의 이름이나 상세정보는 답변에 쓰지 마세요.\n"
+                    "공식정보를 확인한 약은 각 제품명을 한 번 이상 직접 쓰고, 한 제품의 정보를 "
                     "다른 제품에 적용하거나 제품을 조용히 누락하지 마세요.\n"
                     '약 전체 질문을 "선택한 약"이나 단일 제품만 확인한 것처럼 표현하지 마세요.'
                 )
@@ -1350,8 +1340,7 @@ def generate_chat_response(
                     )
                 if unverified_all_medicine_names:
                     prompt += (
-                        "\n공식정보를 끝까지 확인하지 못한 제품명: "
-                        + ", ".join(unverified_all_medicine_names)
+                        "\n공식정보를 확인하지 못한 등록 약이 있으므로, 그 약의 상세정보를 추측하지 마세요."
                     )
                 if (all_medicines_context or {}).get("status") == "incomplete":
                     prompt += (
@@ -1360,15 +1349,25 @@ def generate_chat_response(
                     )
 
             required_names = (
-                tuple(
-                    str(item.get("product_name") or "").strip()
-                    for item in (all_medicines_context or {}).get("items") or []
-                    if str(item.get("product_name") or "").strip()
-                )
+                tuple(verified_all_medicine_names)
                 if all_medicines_question
                 and bool(intents & {"overview", "precautions"})
                 else ()
             )
+            forbidden_phrases: tuple[str, ...] = ()
+            if all_medicines_question:
+                forbidden_phrases = (
+                    "답변 작성 규칙",
+                    "현재 복용약 확인 범위",
+                    "현재 복용약 전체 확인 범위",
+                    *tuple(
+                        name
+                        for name in unverified_all_medicine_names
+                        if name and name != "이름을 확인하지 못한 약"
+                    ),
+                )
+                if bool(intents & {"combination", "duplicate"}):
+                    forbidden_phrases += ("선택한 약",)
             reply = _generate_complete_chat_reply(
                 client,
                 prompt=prompt,
@@ -1378,12 +1377,7 @@ def generate_chat_response(
                     else 512
                 ),
                 required_medicine_names=required_names,
-                forbidden_phrases=(
-                    ("선택한 약",)
-                    if all_medicines_question
-                    and bool(intents & {"combination", "duplicate"})
-                    else ()
-                ),
+                forbidden_phrases=forbidden_phrases,
             )
             reply = _prepend_confirmed_zero_messages(
                 reply,
@@ -1394,14 +1388,13 @@ def generate_chat_response(
                 and bool(intents & {"overview", "precautions"})
                 and reply != INCOMPLETE_CHAT_REPLY
             ):
-                summary = _all_medicine_verification_summary(
-                    verified_names=verified_all_medicine_names,
+                notice = _all_medicine_unverified_notice(
                     unverified_names=unverified_all_medicine_names,
                     identity_incomplete=(
                         (all_medicines_context or {}).get("status") == "incomplete"
                     ),
                 )
-                return f"{summary}\n{reply}"
+                return f"{notice}\n{reply}" if notice else reply
             return reply
     except HTTPException:
         raise

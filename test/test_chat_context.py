@@ -754,11 +754,14 @@ class ChatContextTest(unittest.TestCase):
                 side_effect=[
                     SimpleNamespace(parsed={"drug_names": []}),
                     _chat_response(
-                        "코다론정은 공식 효능을 확인했어요. "
-                        "유한메토트렉세이트정은 공식정보를 확인하지 못했어요."
+                        "현재 복용약 확인 범위: 코다론정은 확인했고 "
+                        "유한메토트렉세이트정은 확인하지 못했어요."
+                    ),
+                    _chat_response(
+                        "코다론정은 공식 효능을 확인했어요."
                     ),
                 ],
-            ),
+            ) as generate,
         ):
             reply = gemini_service.generate_chat_response(
                 "제가 현재 먹는 약 전체를 쉬운 말로 알려주세요.",
@@ -767,13 +770,11 @@ class ChatContextTest(unittest.TestCase):
                 intent="overview",
             )
 
-        self.assertIn("코다론정: 공식정보를 확인했어요.", reply)
-        self.assertIn(
-            "유한메토트렉세이트정: 공식정보를 끝까지 확인하지 못했어요.",
-            reply,
-        )
+        self.assertEqual(generate.call_count, 3)
+        self.assertIn("일부 약은 공식정보를 확인하지 못해 답변에서 제외했어요.", reply)
         self.assertIn("코다론정은 공식 효능", reply)
-        self.assertIn("유한메토트렉세이트정은 공식정보를 확인하지 못했어요", reply)
+        self.assertNotIn("현재 복용약 확인 범위", reply)
+        self.assertNotIn("유한메토트렉세이트정", reply)
 
     def test_all_medicine_precautions_retries_missing_product_with_larger_budget(self):
         medicines = {
