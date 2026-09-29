@@ -139,6 +139,8 @@ def parse_prescription_text(
         return None
     filtered["items"] = _normalize_table_dosing(filtered["items"])
     filtered["items"] = _merge_duplicate_drugs(filtered["items"])
+    for item in filtered["items"]:
+        item.pop("_duration_from_table", None)
     if not filtered.get("items"):
         return None
     filtered["field_coverage"] = measure_field_coverage(filtered)
@@ -268,6 +270,7 @@ def _items_from_clova_tables(
                 item["frequency_per_day"] = frequency
             if duration is not None:
                 item["duration_days"] = duration
+                item["_duration_from_table"] = True
             items.append(item)
     return items
 
@@ -420,6 +423,8 @@ def filter_to_source(parsed: dict[str, Any], raw_text: str) -> dict[str, Any]:
         cleaned = dict(item)
         cleaned["drug_name"] = name
         for key in ("frequency_per_day", "times_per_take", "duration_days"):
+            if key == "duration_days" and cleaned.get("_duration_from_table"):
+                continue
             if key in cleaned and not _number_in_source(key, cleaned.get(key), source):
                 cleaned.pop(key, None)
         items.append(cleaned)
@@ -502,6 +507,7 @@ def enrich_dosing_from_raw(structured: dict[str, Any], raw_text: str) -> dict[st
                     header += "\n" + lines[first_drug][:match.start()]
                     break
     common = _common_header_dosing(header)
+    has_dosing_columns = _has_dosing_table_headers(source)
 
     leftovers = [""] * len(raw_items)
     items: list[dict[str, Any]] = []
@@ -510,8 +516,11 @@ def enrich_dosing_from_raw(structured: dict[str, Any], raw_text: str) -> dict[st
         if start is None:
             items.append(
                 _apply_dosing(
-                    item,
-                    _dosing_near_name(str(item.get("drug_name") or ""), source),
+                    _apply_dosing(
+                        item,
+                        _dosing_near_name(str(item.get("drug_name") or ""), source),
+                    ),
+                    common,
                 )
             )
             continue
@@ -521,7 +530,9 @@ def enrich_dosing_from_raw(structured: dict[str, Any], raw_text: str) -> dict[st
         )
         window = "\n".join(lines[start:next_start])
         combined = f"{leftovers[index]}\n{window}".strip()
-        dosing = _dosing_from_window(combined)
+        dosing = _dosing_from_window(
+            combined, allow_unlabelled_duration=has_dosing_columns
+        )
         extra = _trailing_dosing_text(combined)
         next_item = next(
             (j for j in range(index + 1, len(spans)) if spans[j] is not None),
@@ -529,10 +540,27 @@ def enrich_dosing_from_raw(structured: dict[str, Any], raw_text: str) -> dict[st
         )
         if extra and next_item is not None:
             leftovers[next_item] = extra
-        items.append(_apply_dosing(item, dosing))
-
-    # 개별 약의 복용 정보가 우선. 공통 안내는 비어 있는 값만 채운다.
-    items = [_apply_dosing(item, common) for item in items]
+        item = dict(item)
+        explicit_days = _explicit_duration_match(combined)
+        if (
+            not explicit_days
+            and not has_dosing_columns
+            and not item.get("_duration_from_table")
+        ):
+            item.pop("duration_days", None)
+        item = _apply_dosing(item, dosing)
+        common_for_item = dict(common)
+        if (
+            not explicit_days
+            and item.get("duration_days") is not None
+            and common.get("duration_days") is not None
+            and item["duration_days"] != common["duration_days"]
+        ):
+            # 숫자 표 해석이 명시적 상단 지시와 충돌하면 어느 쪽도 확정하지 않는다.
+            item.pop("duration_days", None)
+            common_for_item.pop("duration_days", None)
+            item["warning_note"] = "투약일수가 상단 복용 안내와 달라 확인이 필요해요."
+        items.append(_apply_dosing(item, common_for_item))
 
     result = dict(structured)
     result["items"] = items
@@ -749,7 +777,10 @@ def _numeric_dosing_text(text: str) -> str:
         r"(?:\s*/\s*\d+(?:\.\d+)?\s*(?:정|캡슐|ml|mL))?",
         " <함량> ", text, flags=re.IGNORECASE,
     )
-    return re.sub(r"\b\d{4}[-./]\d{1,2}[-./]\d{1,2}\b", " <날짜> ", text)
+    text = re.sub(r"\b\d{4}[-./]\d{1,2}[-./]\d{1,2}\b", " <날짜> ", text)
+    return re.sub(
+        r"\d{4}\s*년\s*\d{1,2}\s*월\s*\d{1,2}\s*일", " <날짜> ", text
+    )
 
 
 def _common_header_dosing(header: str) -> dict[str, Any]:
@@ -765,6 +796,23 @@ def _common_header_dosing(header: str) -> dict[str, Any]:
         if len(values) == 1 and 1 <= next(iter(values)) <= limit:
             result[key] = next(iter(values))
     return result
+
+
+def _has_dosing_table_headers(text: str) -> bool:
+    compact = _compact(text)
+    return bool(
+        re.search(r"투약량|복용량|사용량", compact)
+        and re.search(r"투약일수|복용일수|처방일수|일수", compact)
+    )
+
+
+def _explicit_duration_match(text: str):
+    # '7일분'뿐 아니라 '1정2회7일'도 인정하되, '1일 3회'와 열 머리글은 제외.
+    return re.search(
+        r"(?<!\d)(\d{1,3})\s*일(?:\s*분)?"
+        r"(?!\s*(?:\d+\s*회|투여\s*횟수|복용\s*횟수|횟수))",
+        _numeric_dosing_text(text),
+    )
 
 
 def _name_core(drug_name: str) -> str:
@@ -791,7 +839,9 @@ def _is_other_drug_line(line: str, core: str) -> bool:
     return match is not None and _compact(match.group(0)) != _compact(core)
 
 
-def _dosing_from_window(window: str) -> dict[str, Any]:
+def _dosing_from_window(
+    window: str, *, allow_unlabelled_duration: bool = False
+) -> dict[str, Any]:
     window = _numeric_dosing_text(window)
     triple = _DOSE_TRIPLE_RE.search(window)
     if triple:
@@ -800,11 +850,11 @@ def _dosing_from_window(window: str) -> dict[str, Any]:
             "dosage": triple.group("dose"),
             "frequency_per_day": int(triple.group("freq")),
         }
-        if 1 <= days <= 365:
+        if allow_unlabelled_duration and 1 <= days <= 365:
             result["duration_days"] = days
-        return result
+    else:
+        result = {}
     pair = _DOSE_PAIR_RE.search(window)
-    result: dict[str, Any] = {}
     if pair:
         result["dosage"] = pair.group("dose")
         result["frequency_per_day"] = int(pair.group("freq"))
@@ -816,14 +866,14 @@ def _dosing_from_window(window: str) -> dict[str, Any]:
                 r"(?m)^\s*(\d{1,3})\s*$", window[pair.end() :]
             )
         }
-        if len(separate_days) == 1:
+        if allow_unlabelled_duration and len(separate_days) == 1:
             value = next(iter(separate_days))
             if 1 <= value <= 365:
                 result["duration_days"] = value
     frequency = re.search(r"(?:1\s*일|하루)\s*(\d{1,2})\s*회", window)
     if frequency and 1 <= int(frequency.group(1)) <= 9:
         result["frequency_per_day"] = int(frequency.group(1))
-    days = re.search(r"(?<!\d)(\d{1,3})\s*일\s*분", window)
+    days = _explicit_duration_match(window)
     if days:
         value = int(days.group(1))
         if 1 <= value <= 365:
@@ -858,7 +908,9 @@ def _dosing_near_name(drug_name: str, raw_text: str) -> dict[str, Any]:
         if end - name_index > 40:
             break
     window = "\n".join(lines[name_index:end])
-    return _dosing_from_window(window)
+    return _dosing_from_window(
+        window, allow_unlabelled_duration=_has_dosing_table_headers(raw_text)
+    )
 
 
 _PERCENT_STRENGTH_RE = re.compile(r"\s*\d+(?:\.\d+)?\s*%")
@@ -1249,9 +1301,13 @@ def _number_in_source(key: str, value: Any, raw_text: str) -> bool:
         number = str(value).strip()
     if not number:
         return False
-    evidence = _source_without_column_headers(raw_text)
+    evidence = _numeric_dosing_text(_source_without_column_headers(raw_text))
     if key == "duration_days":
-        if f"{number}일" in evidence:
+        if re.search(
+            rf"(?<!\d){re.escape(number)}\s*일(?:\s*분)?"
+            r"(?!\s*(?:\d+\s*회|투여\s*횟수|복용\s*횟수|횟수))",
+            evidence,
+        ):
             return True
         # 복약안내 표: "... | 0.50 | 3 | 7"
         return _table_int_present(number, raw_text, role="duration")
@@ -1277,6 +1333,8 @@ def _table_int_present(number: str, raw_text: str, *, role: str) -> bool:
         r"(?P<dose>\d+(?:\.\d+)?)\s*[|/\s]+\s*(?P<freq>\d+)\s*[|/\s]+\s*(?P<days>\d+)"
     )
     raw_text = _numeric_dosing_text(raw_text)
+    if role == "duration" and not _has_dosing_table_headers(raw_text):
+        return False
     for match in row_pattern.finditer(raw_text):
         if role == "frequency" and match.group("freq") == number:
             return True

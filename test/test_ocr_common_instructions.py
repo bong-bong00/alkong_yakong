@@ -3,6 +3,7 @@
 from app.services.ocr.parser import (
     _dosing_from_window,
     _normalize_table_dosing,
+    enrich_dosing_from_raw,
     parse_prescription_text,
 )
 
@@ -101,3 +102,64 @@ def test_name_only_clova_table_keeps_names_without_dosing_columns():
     assert result is not None
     assert {item["drug_name"] for item in result["items"]} == {"테스트정", "다른캡슐"}
     assert all(item.get("duration_days") == 4 for item in result["items"])
+
+
+def test_unlabelled_hundred_is_not_duration_even_when_unit_is_missing():
+    for window in (
+        "테스트정\n0.50 3 100\n",
+        "테스트정\n0.50 3\n설명\n100\n",
+    ):
+        assert "duration_days" not in _dosing_from_window(window)
+        result = parse_prescription_text(window)
+        assert result is not None
+        assert "duration_days" not in result["items"][0]
+
+
+def test_unlabelled_number_does_not_block_explicit_common_four_days():
+    result = parse_prescription_text("1일 3회 4일분\n테스트정\n0.50 3 100\n")
+    assert result is not None
+    assert result["items"][0]["duration_days"] == 4
+    result = enrich_dosing_from_raw(
+        {"items": [{"drug_name": "테스트정", "duration_days": 100}]},
+        "1일 3회 4일분\n테스트정100밀리그램",
+    )
+    assert result["items"][0]["duration_days"] == 4
+
+
+def test_table_and_common_duration_conflict_requires_confirmation():
+    result = parse_prescription_text(
+        "1일 3회 4일분\n약품명 투약량 횟수 일수\n테스트정\n0.50 3 100\n"
+    )
+    assert result is not None
+    item = result["items"][0]
+    assert "duration_days" not in item
+    assert "확인" in item["warning_note"]
+
+
+def test_labelled_table_keeps_genuine_long_duration():
+    result = parse_prescription_text("약품명 투약량 횟수 일수\n테스트정\n0.50 3 100\n")
+    assert result is not None
+    assert result["items"][0]["duration_days"] == 100
+
+
+def test_explicit_local_days_override_numeric_guess():
+    assert _dosing_from_window("테스트정\n0.50 3 100\n7일분")["duration_days"] == 7
+
+
+def test_calendar_date_is_not_explicit_duration():
+    assert "duration_days" not in _dosing_from_window("테스트정\n2025년 08월 28일")
+
+
+def test_structured_clova_duration_conflict_is_not_silently_accepted():
+    table = {"cells": [
+        {"rowIndex": 0, "columnIndex": 0, "inferText": "약품명"},
+        {"rowIndex": 0, "columnIndex": 1, "inferText": "일수"},
+        {"rowIndex": 1, "columnIndex": 0, "inferText": "테스트정"},
+        {"rowIndex": 1, "columnIndex": 1, "inferText": "100"},
+    ]}
+    result = parse_prescription_text("1일 3회 4일분\n테스트정\n100", tables=[table])
+    assert result is not None
+    item = result["items"][0]
+    assert "duration_days" not in item
+    assert "확인" in item["warning_note"]
+    assert "_duration_from_table" not in item
