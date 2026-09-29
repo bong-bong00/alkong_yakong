@@ -126,15 +126,6 @@ class _PrescriptionScreenState extends ConsumerState<PrescriptionScreen> {
     return const [];
   }
 
-  List<String> get _unrecognizedNames {
-    final raw = _result?['unrecognized_names'];
-    if (raw is! List) return const [];
-    return raw
-        .map((item) => item.toString().trim())
-        .where((name) => name.isNotEmpty)
-        .toList();
-  }
-
   static bool _isOfficialMatchedItem(Map<String, dynamic> item) {
     final code = item['medicine_code']?.toString() ?? '';
     if (code.isEmpty || code.toUpperCase().startsWith('OCR-')) {
@@ -203,6 +194,11 @@ class _PrescriptionScreenState extends ConsumerState<PrescriptionScreen> {
           : false;
       final unreadRaw = mapped['unrecognized_names'];
       final hasUnread = unreadRaw is List && unreadRaw.isNotEmpty;
+      // 확인 실패 정보는 내부 응답에 보관하고 안내 카드/팝업에는 노출하지 않는다.
+      // 약 이름이나 사진 원문 대신 개수만 진단 로그로 남긴다.
+      debugPrint(
+        '[PRESCRIPTION_DIAG] unrecognized_count=${unreadRaw is List ? unreadRaw.length : 0}',
+      );
       if (!hasOfficial && !hasUnread) {
         setState(() {
           _failureCount++;
@@ -451,7 +447,6 @@ class _PrescriptionScreenState extends ConsumerState<PrescriptionScreen> {
         return _ConfirmScreen(
           onBehalfOf: widget.onBehalfOf,
           items: _items,
-          unrecognizedNames: _unrecognizedNames,
           onRegister: _register,
           onRetake: () => setState(() {
             _image = null;
@@ -763,14 +758,12 @@ class _ConfirmScreen extends StatefulWidget {
   final String? onBehalfOf;
 
   final List<Map<String, dynamic>> items;
-  final List<String> unrecognizedNames;
   final Future<void> Function(List<Map<String, dynamic>> items) onRegister;
   final VoidCallback onRetake;
 
   const _ConfirmScreen({
     this.onBehalfOf,
     required this.items,
-    required this.unrecognizedNames,
     required this.onRegister,
     required this.onRetake,
   });
@@ -1327,22 +1320,8 @@ class _ConfirmScreenState extends State<_ConfirmScreen> {
     );
   }
 
-  Future<bool> _confirmPartialRegistration() async {
-    if (widget.unrecognizedNames.isEmpty) return true;
-    return showSeniorYesNoDialog(
-      context: context,
-      title: '확인하지 못한 약이 있어요',
-      message:
-          '제외한 약은 함께 먹기 확인에서도 빠져요. '
-          '처방전과 비교한 뒤 제외하고 등록해 주세요.',
-      yesLabel: '제외하고 등록',
-      noLabel: '다시 확인하기',
-    );
-  }
-
   Future<void> _tryRegister() async {
     if (_registering) return;
-    if (!await _confirmPartialRegistration()) return;
     setState(() => _registering = true);
     try {
       await widget.onRegister(_editedItems);
@@ -1511,37 +1490,6 @@ class _ConfirmScreenState extends State<_ConfirmScreen> {
                           onEditDosing: () => _editItem(index),
                         );
                       },
-                    ),
-                    const SizedBox(height: 12),
-                  ],
-                  if (widget.unrecognizedNames.isNotEmpty) ...[
-                    SeniorCard(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 22,
-                        vertical: 18,
-                      ),
-                      borderColor: AppColors.attentionBorder,
-                      borderWidth: 2,
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            '확인하지 못한 약이 있어요',
-                            style: AppText.cardTitle(
-                              size: 20,
-                              color: AppColors.attentionBorder,
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          Text(
-                            '글자가 불분명하거나 공식 약 정보를 찾지 못했어요. 아래 이름은 등록에서 빼 두었어요. 처방전과 비교하고, 이름을 직접 입력하거나 다시 찍어 주세요.',
-                            style: AppText.body(size: 18),
-                          ),
-                          const SizedBox(height: 8),
-                          for (final name in widget.unrecognizedNames)
-                            Text('· $name (확인 필요)', style: AppText.body()),
-                        ],
-                      ),
                     ),
                     const SizedBox(height: 12),
                   ],
