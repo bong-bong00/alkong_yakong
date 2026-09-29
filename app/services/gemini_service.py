@@ -696,6 +696,8 @@ def _dur_context_unavailable_reply(
     intents: set[str],
     status: str,
     reason: str | None = None,
+    *,
+    all_medicines: bool = False,
 ) -> str:
     if "combination" in intents:
         if reason == "official_medicine_unavailable":
@@ -717,6 +719,26 @@ def _dur_context_unavailable_reply(
             return (
                 "복용 중인 약이 바뀌어 이전 결과를 그대로 사용하기 어려워요. "
                 "함께 사용할 때 주의할 점과 겹치는 약을 다시 확인해야 해요."
+            )
+        if status == "incomplete":
+            if all_medicines:
+                return (
+                    "현재 복용약 전체의 함께 사용 주의와 겹치는 약 검사를 끝까지 완료하지 못했어요. "
+                    "이 결과만으로 안전하다고 판단할 수 없어요."
+                )
+            return (
+                "현재 복용 중인 약과 선택한 약의 함께 사용 주의 및 겹치는 약 정보를 "
+                "모두 확인하지 못했어요. 이 결과만으로 안전하다고 판단할 수 없어요."
+            )
+        if status == "malformed":
+            return (
+                "함께 사용할 때 주의할 점과 겹치는 약의 검사 결과를 모두 확인하지 못했어요. "
+                "이 결과만으로 안전하다고 판단할 수 없어요."
+            )
+        if all_medicines:
+            return (
+                "현재 복용약 전체의 함께 사용 주의와 겹치는 약 정보를 모두 확인하지 못했어요. "
+                "현재 복용약으로 다시 확인이 필요해요."
             )
         return (
             "현재 복용 중인 약과 선택한 약의 함께 사용 주의 및 겹치는 약 정보를 "
@@ -768,9 +790,24 @@ def _dur_context_unavailable_reply(
                 "현재 복용 중인 약에서 비슷한 효과가 겹치는지 확인한 결과를 찾지 못했어요. "
                 "현재 복용약으로 다시 확인이 필요해요."
             )
+        if status == "incomplete":
+            return (
+                "현재 복용약의 성분이나 비슷한 효과가 겹치는지 검사를 끝까지 완료하지 못했어요. "
+                "이 결과만으로 겹치는 약이 없다고 판단할 수 없어요."
+            )
+        if status == "malformed":
+            return (
+                "현재 복용약의 성분이나 비슷한 효과가 겹치는지 검사한 결과를 확인하지 못했어요. "
+                "현재 복용약으로 다시 확인이 필요해요."
+            )
+        if status == "stale":
+            return (
+                "복용 중인 약이 바뀌어 이전 결과를 그대로 사용하기 어려워요. "
+                "비슷한 효과가 겹치는지 다시 확인이 필요해요."
+            )
         return (
-            "복용 중인 약이 바뀌어 이전 결과를 그대로 사용하기 어려워요. "
-            "비슷한 효과가 겹치는지 다시 확인이 필요해요."
+            "현재 복용약의 성분이나 비슷한 효과가 겹치는지 확인하지 못했어요. "
+            "현재 복용약으로 다시 확인이 필요해요."
         )
     return (
         "현재 약 사용 시 주의할 내용을 확인한 결과를 찾지 못했어요. "
@@ -1250,6 +1287,7 @@ def generate_chat_response(
                     intents,
                     dur_result.get("status") or "missing",
                     dur_result.get("reason"),
+                    all_medicines=all_medicines_question,
                 )
             if (
                 safety_question

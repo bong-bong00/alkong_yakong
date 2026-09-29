@@ -1880,6 +1880,36 @@ class ChatContextTest(unittest.TestCase):
                     self.assertNotIn("안전합니다", reply)
                     self.assertNotIn("복용해도 됩니다", reply)
 
+    def test_duplicate_incomplete_and_malformed_are_not_described_as_changed(self):
+        incomplete = gemini_service._dur_context_unavailable_reply(
+            {"duplicate"}, "incomplete"
+        )
+        malformed = gemini_service._dur_context_unavailable_reply(
+            {"duplicate"}, "malformed"
+        )
+
+        self.assertIn("끝까지 완료하지 못했어요", incomplete)
+        self.assertIn("결과를 확인하지 못했어요", malformed)
+        self.assertNotIn("복용 중인 약이 바뀌어", incomplete)
+        self.assertNotIn("복용 중인 약이 바뀌어", malformed)
+        self.assertNotIn("겹치는 약이 없다고", malformed)
+
+    def test_all_medicine_combination_failure_avoids_single_medicine_wording(self):
+        all_medicines = gemini_service._dur_context_unavailable_reply(
+            {"combination"},
+            "incomplete",
+            all_medicines=True,
+        )
+        selected_medicine = gemini_service._dur_context_unavailable_reply(
+            {"combination"},
+            "incomplete",
+        )
+
+        self.assertIn("현재 복용약 전체", all_medicines)
+        self.assertIn("안전하다고 판단할 수 없어요", all_medicines)
+        self.assertNotIn("선택한 약", all_medicines)
+        self.assertIn("선택한 약", selected_medicine)
+
     def test_completed_zero_messages_are_specific_to_checked_type_and_scope(self):
         all_combination = gemini_service._dur_no_match_reply(
             {"combination"},

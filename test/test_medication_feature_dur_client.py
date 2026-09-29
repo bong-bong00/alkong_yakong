@@ -137,6 +137,36 @@ class MedicationFeatureDurClientTest(unittest.TestCase):
         self.assertEqual(result["status"], "incomplete")
         self.assertIsNone(result["has_risk"])
 
+    def test_found_risk_with_incomplete_assessment_is_not_reported_as_complete(self):
+        match = {
+            "type": "병용금기",
+            "medicine_codes_a": ["100"],
+            "medicine_codes_b": ["200"],
+            "reason": "확인된 주의 조합",
+        }
+        with (
+            patch.object(remote_dur, "MEDICATION_FEATURE_BASE_URL", "https://med.example"),
+            patch.object(remote_dur.requests, "get", return_value=self.response(self.medicines())),
+            patch.object(
+                remote_dur.requests,
+                "post",
+                return_value=self.response(
+                    {
+                        "assessment_status": "RISK_FOUND",
+                        "analysis_complete": False,
+                        "incomplete": True,
+                        "has_risk": True,
+                        "matches": [match],
+                    }
+                ),
+            ),
+        ):
+            result = self.call()
+
+        self.assertEqual(result["status"], "incomplete")
+        self.assertEqual(result["items"], [])
+        self.assertIsNone(result["has_risk"])
+
     def test_timeout_http_and_malformed_are_not_safe(self):
         failures = [
             requests.Timeout("timeout"),

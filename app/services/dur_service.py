@@ -224,9 +224,15 @@ def analyze_dur(
             )
             incomplete_types.update(ALL_CHECK_TYPES)
         if checkable_n > 0:
-            if dur_sync_status == "skipped":
+            if dur_sync_status == "skipped" and taboo_n > 0:
+                # refresh=False means this request intentionally avoided a live
+                # network sync.  Existing stored DUR reference rows are still
+                # usable, so the absence of an in-request sync is not itself an
+                # incomplete analysis.
+                dur_sync_status = "stored"
+            elif dur_sync_status == "skipped":
                 incomplete_reasons.append(
-                    "현재 저장된 기준으로 먼저 살펴봤어요. 최신 식약처 자료는 추가로 확인 중이에요."
+                    "저장된 식약처 함께먹기 기준이 없어 검사를 끝내지 못했어요."
                 )
                 incomplete_types.update(OFFICIAL_DUR_TYPES)
             elif dur_sync_status == "skipped_missing_key":

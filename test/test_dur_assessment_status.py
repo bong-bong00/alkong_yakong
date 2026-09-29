@@ -71,6 +71,56 @@ def test_completed_live_dur_check_can_report_safe(tmp_path, monkeypatch):
     assert result["incomplete_types"] == []
 
 
+def test_skipped_request_sync_uses_existing_stored_dur_reference(tmp_path, monkeypatch):
+    db_path = tmp_path / "dur.sqlite3"
+    _prepare_db(db_path)
+    conn = _open_db(db_path)
+    conn.execute(
+        """
+        INSERT INTO dur_taboo (
+            ingredient_a, taboo_type, description, source
+        ) VALUES ('저장기준성분', '병용금기', '저장된 식약처 기준', 'MFDS')
+        """
+    )
+    conn.commit()
+    conn.close()
+    monkeypatch.setattr(dur_service, "get_connection", lambda: _open_db(db_path))
+
+    result = dur_service.analyze_dur(
+        DurAnalyzeRequest(user_id="patient-1"),
+        persist=False,
+        refresh=False,
+    )
+
+    assert result["dur_sync_status"] == "stored"
+    assert result["assessment_status"] == "SAFE"
+    assert result["analysis_complete"] is True
+    assert result["incomplete"] is False
+
+
+def test_skipped_request_sync_without_stored_dur_reference_is_incomplete(
+    tmp_path, monkeypatch
+):
+    db_path = tmp_path / "dur.sqlite3"
+    _prepare_db(db_path)
+    monkeypatch.setattr(dur_service, "get_connection", lambda: _open_db(db_path))
+
+    result = dur_service.analyze_dur(
+        DurAnalyzeRequest(user_id="patient-1"),
+        persist=False,
+        refresh=False,
+    )
+
+    assert result["dur_sync_status"] == "skipped"
+    assert result["assessment_status"] == "INCOMPLETE"
+    assert result["analysis_complete"] is False
+    assert result["incomplete"] is True
+    assert any(
+        "저장된 식약처 함께먹기 기준이 없어" in reason
+        for reason in result["incomplete_reasons"]
+    )
+
+
 def test_no_registered_medicine_is_a_valid_incomplete_api_response(tmp_path, monkeypatch):
     db_path = tmp_path / "dur.sqlite3"
     _prepare_db(db_path)
