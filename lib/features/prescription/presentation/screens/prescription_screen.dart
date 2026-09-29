@@ -185,6 +185,19 @@ class _PrescriptionScreenState extends ConsumerState<PrescriptionScreen> {
       if (!mounted) return;
       final mapped = Map<String, dynamic>.from(response as Map);
       final items = mapped['items'];
+      // 서버의 동일 OCR 요청과 앱에서 받은 충돌 표시 데이터를 대조한다.
+      if (items is List) {
+        for (final item in items.whereType<Map>()) {
+          final conflicts = item['interaction_conflicts'];
+          debugPrint(
+            '[OCR_DUR_DIAG] trace_id=${mapped['diagnostic_id'] ?? 'unavailable'} '
+            'stage=received code=${item['medicine_code']} '
+            'match_status=${item['match_status']} '
+            'official_matched=${_isOfficialMatchedItem(Map<String, dynamic>.from(item))} '
+            'display_conflict_count=${conflicts is List ? conflicts.length : 0}',
+          );
+        }
+      }
       final hasOfficial = items is List && items.isNotEmpty
           ? items
                 .whereType<Map>()
@@ -363,7 +376,16 @@ class _PrescriptionScreenState extends ConsumerState<PrescriptionScreen> {
       context.push('/schedule-days', extra: MvpSession.latestPrescriptionId);
     }
 
-    if (!_hasPairConflict(durResult)) {
+    final hasPairConflict = _hasPairConflict(durResult);
+    debugPrint(
+      '[OCR_DUR_DIAG] trace_id=${_result?['diagnostic_id'] ?? 'unavailable'} '
+      'stage=registration_navigation analysis_id=${durResult?['analysis_id']} '
+      'assessment_status=${durResult?['assessment_status']} '
+      'analysis_complete=${durResult?['analysis_complete']} '
+      'pair_conflict=$hasPairConflict '
+      'destination=${hasPairConflict ? 'dur_analysis' : 'schedule_days'}',
+    );
+    if (!hasPairConflict) {
       openScheduleDays();
       return;
     }
@@ -447,6 +469,7 @@ class _PrescriptionScreenState extends ConsumerState<PrescriptionScreen> {
         return _ConfirmScreen(
           onBehalfOf: widget.onBehalfOf,
           items: _items,
+          diagnosticId: _result?['diagnostic_id']?.toString() ?? 'unavailable',
           onRegister: _register,
           onRetake: () => setState(() {
             _image = null;
@@ -758,12 +781,14 @@ class _ConfirmScreen extends StatefulWidget {
   final String? onBehalfOf;
 
   final List<Map<String, dynamic>> items;
+  final String diagnosticId;
   final Future<void> Function(List<Map<String, dynamic>> items) onRegister;
   final VoidCallback onRetake;
 
   const _ConfirmScreen({
     this.onBehalfOf,
     required this.items,
+    required this.diagnosticId,
     required this.onRegister,
     required this.onRetake,
   });
@@ -1451,6 +1476,13 @@ class _ConfirmScreenState extends State<_ConfirmScreen> {
                     Builder(
                       builder: (context) {
                         final item = _editedItems[index];
+                        final conflicts = _interactionConflicts(item);
+                        debugPrint(
+                          '[OCR_DUR_DIAG] trace_id=${widget.diagnosticId} '
+                          'stage=card_build code=${item['medicine_code']} '
+                          'display_conflict_count=${conflicts.length} '
+                          'conflict_border=${conflicts.isNotEmpty}',
+                        );
                         return _DrugCard(
                           name: _shortDrugName(
                             item['drug_name']?.toString() ?? '이름을 못 읽었어요',
@@ -1479,7 +1511,7 @@ class _ConfirmScreenState extends State<_ConfirmScreen> {
                           fieldConfidences: _fieldConfidences(item),
                           matchStatusLabel: _matchStatusLabel(item),
                           uncertain: _uncertain(item),
-                          conflicts: _interactionConflicts(item),
+                          conflicts: conflicts,
                           expanded: _expandedItems.contains(index),
                           onToggle: () => setState(() {
                             if (!_expandedItems.remove(index)) {

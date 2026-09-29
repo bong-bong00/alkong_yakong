@@ -839,6 +839,7 @@ def _user_readiness(items: list[dict], ocr_trace: dict | None = None) -> dict:
 
 def create_prescription_from_ocr(request: PrescriptionOCRRequest) -> dict:
     """OCR 미리보기만. user_medicines/스케줄은 넣지 않는다 (확정 API에서 등록)."""
+    diagnostic_id = uuid.uuid4().hex
     conn = get_connection()
     try:
         cursor = conn.cursor()
@@ -1024,14 +1025,33 @@ def create_prescription_from_ocr(request: PrescriptionOCRRequest) -> dict:
             conflict_map = preview_conflicts_for_codes(
                 request.user_id,
                 [str(row.get("medicine_code") or "") for row in preview_items],
+                diagnostic_id,
             )
-        except Exception:
+        except Exception as error:
+            logger.warning(
+                "[OCR_DUR_DIAG] trace_id=%s stage=preview_error error_type=%s",
+                diagnostic_id, type(error).__name__,
+            )
             conflict_map = {}
         for row in preview_items:
             row["interaction_conflicts"] = conflict_map.get(
                 str(row.get("medicine_code") or ""),
                 [],
             )
+        logger.info(
+            "[OCR_DUR_DIAG] %s",
+            json.dumps({
+                "trace_id": diagnostic_id, "stage": "response",
+                "extracted_count": len(items), "matched_count": len(preview_items),
+                "unrecognized_count": len(unrecognized_names),
+                "items": [
+                    {"code": row.get("medicine_code"),
+                     "match_status": row.get("match_status"),
+                     "display_conflict_count": len(row["interaction_conflicts"])}
+                    for row in preview_items
+                ],
+            }, ensure_ascii=False),
+        )
         readiness = _user_readiness(score_seed, ocr_trace)
         raw_engine_confidence = (ocr_trace or {}).get("engine_confidence")
         try:
@@ -1046,6 +1066,7 @@ def create_prescription_from_ocr(request: PrescriptionOCRRequest) -> dict:
         )
         return {
             "prescription_id": None,
+            "diagnostic_id": diagnostic_id,
             "preview": True,
             "registered": False,
             "user_id": request.user_id,

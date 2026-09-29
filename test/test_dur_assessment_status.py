@@ -1,4 +1,6 @@
 import sqlite3
+import json
+import logging
 
 from app.models.schemas import DurAnalyzeRequest
 from app.models.response_schemas import DurAnalyzeResponse
@@ -30,6 +32,48 @@ def _prepare_db(path):
     )
     conn.commit()
     conn.close()
+
+
+def test_diagnostic_records_generic_targets_without_personal_text(tmp_path, monkeypatch, caplog):
+    db_path = tmp_path / "diagnostic.sqlite3"
+    _prepare_db(db_path)
+    monkeypatch.setattr(dur_service, "get_connection", lambda: _open_db(db_path))
+    with caplog.at_level(logging.INFO, logger="uvicorn.error"):
+        result = dur_service.analyze_dur(
+            DurAnalyzeRequest(user_id="patient-1", medicine_codes=["MED-1"]),
+            persist=False, refresh=False, diagnostic_id="test-trace",
+        )
+    events = [json.loads(record.getMessage().split(" ", 1)[1])
+              for record in caplog.records if record.getMessage().startswith("[DUR_DIAG] {")]
+    assert events[0]["trace_id"] == events[1]["trace_id"] == "test-trace"
+    assert events[0]["medicines"] == [{"code": "MED-1", "ingredient_usable": True}]
+    assert events[1]["taboo_row_count"] == 0
+    assert events[1]["relevant_rule_count"] == 0
+    assert events[1]["assessment_status"] == result["assessment_status"] == "INCOMPLETE"
+    assert events[1]["pair_match_count"] == 0
+    assert "patient-1" not in caplog.text
+    assert "테스트정" not in caplog.text
+    assert "테스트성분" not in caplog.text
+    conn = _open_db(db_path)
+    assert conn.execute("SELECT COUNT(*) FROM risk_results").fetchone()[0] == 0
+    conn.close()
+
+
+def test_diagnostic_records_failure_without_changing_exception(tmp_path, monkeypatch, caplog):
+    import pytest
+    from fastapi import HTTPException
+    db_path = tmp_path / "failed-diagnostic.sqlite3"
+    _prepare_db(db_path)
+    monkeypatch.setattr(dur_service, "get_connection", lambda: _open_db(db_path))
+    with caplog.at_level(logging.INFO, logger="uvicorn.error"):
+        with pytest.raises(HTTPException) as caught:
+            dur_service.analyze_dur(
+                DurAnalyzeRequest(user_id="missing-private-user"),
+                persist=False, refresh=False, diagnostic_id="failed-trace",
+            )
+    assert caught.value.status_code == 404
+    assert "trace_id=failed-trace stage=error error_type=HTTPException" in caplog.text
+    assert "missing-private-user" not in caplog.text
 
 
 def test_missing_live_dur_source_is_incomplete_not_safe(tmp_path, monkeypatch):

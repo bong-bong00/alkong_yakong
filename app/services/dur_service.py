@@ -4,6 +4,7 @@ import sqlite3
 import uuid
 from collections import defaultdict
 from datetime import date
+from time import perf_counter
 
 from fastapi import HTTPException
 
@@ -98,7 +99,11 @@ def analyze_dur(
     *,
     persist: bool = True,
     refresh: bool | None = None,
+    diagnostic_id: str | None = None,
 ) -> dict:
+    trace_id = diagnostic_id or uuid.uuid4().hex
+    started = perf_counter()
+    diagnostic_logger = logging.getLogger("uvicorn.error")
     conn = get_connection()
     try:
         cursor = conn.cursor()
@@ -110,7 +115,24 @@ def analyze_dur(
             raise HTTPException(status_code=404, detail="사용자가 없습니다.")
 
         medicines = _load_medicines_with_metadata(cursor, request)
+        diagnostic_logger.info(
+            "[DUR_DIAG] %s",
+            json.dumps({
+                "trace_id": trace_id, "stage": "targets",
+                "persist": persist, "refresh": persist if refresh is None else refresh,
+                "requested_codes": sorted(set(request.medicine_codes or [])),
+                "medicines": [
+                    {"code": row["medicine_code"],
+                     "ingredient_usable": _is_usable_ingredient(row)}
+                    for row in medicines
+                ],
+            }, ensure_ascii=False),
+        )
         if not medicines:
+            diagnostic_logger.info(
+                "[DUR_DIAG] trace_id=%s stage=result status=no_medicines matches=0",
+                trace_id,
+            )
             empty_by_type = _group_by_type([])
             return {
                 "risk_result_id": None,
@@ -292,6 +314,32 @@ def analyze_dur(
             )
             risk_result_id = cursor.lastrowid
             conn.commit()
+        # 기준 건수는 자료 존재 여부일 뿐 전체 성분에 대한 조회 완료를 뜻하지 않는다.
+        diagnostic_logger.info(
+            "[DUR_DIAG] %s",
+            json.dumps({
+                "trace_id": trace_id, "stage": "result", "analysis_id": analysis_id,
+                "elapsed_ms": round((perf_counter() - started) * 1000),
+                "checkable_count": checkable_n, "skipped_count": len(skipped_ingredient),
+                "taboo_row_count": taboo_n,
+                "relevant_rule_count": sum(
+                    bool(_grouped_hit(lookup_grouped, row["ingredient_a"]) or
+                         _grouped_hit(lookup_grouped, row["ingredient_b"]))
+                    for row in taboo_rows
+                ),
+                "dur_sync_status": dur_sync_status,
+                "dur_sync_fetched": dur_sync_fetched,
+                "dur_sync_upserted": dur_sync_upserted,
+                "assessment_status": assessment_status, "analysis_complete": not incomplete,
+                "match_count": len(matches),
+                "pair_match_count": sum(m.get("type") in HIGH_TYPES for m in matches),
+                "pair_codes": [
+                    {"type": m.get("type"), "a": m.get("medicine_codes_a", []),
+                     "b": m.get("medicine_codes_b", [])}
+                    for m in matches if m.get("type") in HIGH_TYPES
+                ],
+            }, ensure_ascii=False),
+        )
         return {
             "risk_result_id": risk_result_id,
             "analysis_id": analysis_id,
@@ -317,7 +365,11 @@ def analyze_dur(
             "dur_sync_fetched": dur_sync_fetched,
             "dur_sync_upserted": dur_sync_upserted,
         }
-    except Exception:
+    except Exception as error:
+        diagnostic_logger.warning(
+            "[DUR_DIAG] trace_id=%s stage=error error_type=%s",
+            trace_id, type(error).__name__,
+        )
         conn.rollback()
         raise
     finally:
@@ -1463,7 +1515,9 @@ def interaction_priority_cards(matches: list, conn=None) -> list[dict]:
             conn.close()
 
 
-def preview_conflicts_for_codes(user_id: str, new_codes: list[str]) -> dict[str, list[dict]]:
+def preview_conflicts_for_codes(
+    user_id: str, new_codes: list[str], diagnostic_id: str | None = None,
+) -> dict[str, list[dict]]:
     """아직 등록 전인 OCR 약과, 이미 먹는 약의 병용 주의를 약 코드별로 붙인다."""
     focus = {str(code).strip() for code in new_codes if str(code).strip()}
     if not user_id or not focus:
@@ -1485,10 +1539,17 @@ def preview_conflicts_for_codes(user_id: str, new_codes: list[str]) -> dict[str,
     finally:
         conn.close()
     codes = list(dict.fromkeys([*existing, *focus]))
+    logging.getLogger("uvicorn.error").info(
+        "[DUR_PREVIEW_DIAG] %s",
+        json.dumps({"trace_id": diagnostic_id, "stage": "targets",
+                    "new_codes": sorted(focus), "existing_codes": sorted(set(existing)),
+                    "combined_codes": sorted(codes)}, ensure_ascii=False),
+    )
     result = analyze_dur(
         DurAnalyzeRequest(user_id=user_id, medicine_codes=codes),
         persist=False,
         refresh=False,
+        diagnostic_id=diagnostic_id,
     )
     by_code: dict[str, list[dict]] = {code: [] for code in focus}
     conn = get_connection()
