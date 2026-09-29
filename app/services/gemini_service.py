@@ -903,11 +903,56 @@ def _prepend_confirmed_zero_messages(reply: str, messages: list[str]) -> str:
     return "\n".join([*missing, reply]) if missing else reply
 
 
+def _merge_temporary_medicines(
+    context: dict[str, Any],
+    temporary_medicines: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """Merge AI-screen-only medicines without changing the medication source of truth."""
+
+    status = str(context.get("status") or "missing")
+    if status not in {"current", "empty", "incomplete"}:
+        return context
+
+    items = [dict(item) for item in context.get("items") or [] if isinstance(item, dict)]
+    by_code = {
+        str(item.get("medicine_code") or "").strip(): item
+        for item in items
+        if str(item.get("medicine_code") or "").strip()
+    }
+    incomplete = status == "incomplete"
+    for medicine in temporary_medicines:
+        if not isinstance(medicine, dict):
+            incomplete = True
+            continue
+        code = str(medicine.get("medicine_code") or "").strip()
+        name = str(medicine.get("product_name") or "").strip()
+        if not code or not name:
+            incomplete = True
+            continue
+        existing = by_code.get(code)
+        if existing is not None:
+            if _compact_product_name(existing.get("product_name")) != _compact_product_name(name):
+                incomplete = True
+            continue
+        row = {"medicine_code": code, "product_name": name}
+        by_code[code] = row
+        items.append(row)
+
+    if not items:
+        return {"status": "empty", "items": [], "reason": "no_current_medicines"}
+    return {
+        "status": "incomplete" if incomplete else "current",
+        "items": items,
+        "reason": "medicine_identity_incomplete" if incomplete else None,
+    }
+
+
 def generate_chat_response(
     message: str,
     *,
     user_id: str = "",
     selected_medicine: dict[str, Any] | None = None,
+    temporary_medicines: list[dict[str, Any]] | None = None,
     intent: str | None = None,
 ) -> str:
     from app.services.chat_context_service import (
@@ -961,6 +1006,10 @@ def generate_chat_response(
             )
 
             all_medicines_context = load_remote_current_medicines(user_id=user_id)
+            all_medicines_context = _merge_temporary_medicines(
+                all_medicines_context,
+                temporary_medicines or [],
+            )
             all_status = all_medicines_context.get("status")
             all_items = all_medicines_context.get("items") or []
             if all_status == "empty":
@@ -1229,6 +1278,9 @@ def generate_chat_response(
                 dur_result = load_remote_combination_context(
                     user_id=user_id,
                     selected_medicine=selected_official,
+                    additional_medicines=(
+                        temporary_medicines or [] if all_medicines_question else []
+                    ),
                 )
                 if all_medicines_question and "duplicate" in intents:
                     duplicate_items = [

@@ -98,6 +98,8 @@ def analyze_dur(
     persist: bool = True,
     refresh: bool | None = None,
 ) -> dict:
+    if request.medicine_codes:
+        _cache_missing_official_medicines(request.medicine_codes)
     conn = get_connection()
     try:
         cursor = conn.cursor()
@@ -325,6 +327,152 @@ def analyze_dur(
     except Exception:
         conn.rollback()
         raise
+    finally:
+        conn.close()
+
+
+def _cache_missing_official_medicines(medicine_codes: list[str]) -> None:
+    """Cache verified catalog rows without registering them to a user."""
+
+    codes = list(
+        dict.fromkeys(
+            str(code or "").strip()
+            for code in medicine_codes
+            if str(code or "").strip()
+        )
+    )
+    if not codes:
+        return
+
+    conn = get_connection()
+    try:
+        placeholders = ",".join("?" for _ in codes)
+        existing_codes = {
+            str(row["medicine_code"])
+            for row in conn.execute(
+                f"SELECT medicine_code, product_name, ingredient FROM medicines "
+                f"WHERE medicine_code IN ({placeholders})",
+                codes,
+            ).fetchall()
+            if is_usable_ingredient(row["ingredient"], row["product_name"])
+        }
+    finally:
+        conn.close()
+
+    from app.services.external_api_service import fetch_e_drug_info
+    from app.services.mfds_drug_permission.client import fetch_permission_detail
+    from app.services.mfds_drug_permission.db import (
+        find_permission_product_by_item_seq,
+        product_to_medicine,
+    )
+
+    for code in codes:
+        if code in existing_codes:
+            continue
+        try:
+            def verified(candidate) -> bool:
+                if not isinstance(candidate, dict):
+                    return False
+                official_code = str(candidate.get("medicine_code") or "").strip()
+                official_name = str(
+                    candidate.get("product_name")
+                    or candidate.get("medicine_name")
+                    or ""
+                ).strip()
+                return bool(
+                    official_code == code
+                    and official_name
+                    and is_usable_ingredient(
+                        candidate.get("ingredient"),
+                        official_name,
+                    )
+                )
+
+            permission_row = find_permission_product_by_item_seq(code)
+            medicine = product_to_medicine(permission_row) if permission_row else None
+            if not verified(medicine):
+                try:
+                    detail = fetch_permission_detail(item_seq=code)
+                except Exception:
+                    detail = None
+                if isinstance(detail, dict):
+                    medicine = product_to_medicine(
+                        {
+                            "item_seq": detail.get("ITEM_SEQ"),
+                            "item_name": detail.get("ITEM_NAME"),
+                            "entp_name": detail.get("ENTP_NAME"),
+                            "main_item_ingr": detail.get("MAIN_ITEM_INGR"),
+                            "item_ingr_name": detail.get("ITEM_INGR_NAME"),
+                            "ingr_name": detail.get("INGR_NAME"),
+                            "material_name": detail.get("MATERIAL_NAME"),
+                            "ee_doc_data": detail.get("EE_DOC_DATA"),
+                            "ud_doc_data": detail.get("UD_DOC_DATA"),
+                            "nb_doc_data": detail.get("NB_DOC_DATA"),
+                            "storage_method": detail.get("STORAGE_METHOD"),
+                            "big_prdt_img_url": detail.get("BIG_PRDT_IMG_URL"),
+                        }
+                    )
+            if not verified(medicine):
+                medicine = fetch_e_drug_info(medicine_code=code)
+            if not verified(medicine):
+                continue
+            _upsert_dur_catalog_medicine(medicine)
+        except Exception as error:
+            logger.warning(
+                "DUR official medicine cache failed error_type=%s",
+                type(error).__name__,
+            )
+
+
+def _upsert_dur_catalog_medicine(medicine: dict) -> None:
+    """Persist verified reference data only; never create a user-medicine row."""
+
+    code = str(medicine.get("medicine_code") or "").strip()
+    name = str(
+        medicine.get("product_name") or medicine.get("medicine_name") or ""
+    ).strip()
+    ingredient = str(medicine.get("ingredient") or "").strip()
+    if not code or not name or not is_usable_ingredient(ingredient, name):
+        return
+    precautions = medicine.get("precautions") or medicine.get("cautions") or ""
+    conn = get_connection()
+    try:
+        conn.execute(
+            """
+            INSERT INTO medicines (
+                medicine_code, product_name, ingredient, manufacturer,
+                efficacy, usage, precautions, image_url
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(medicine_code) DO UPDATE SET
+                product_name = excluded.product_name,
+                ingredient = excluded.ingredient,
+                manufacturer = COALESCE(
+                    NULLIF(trim(excluded.manufacturer), ''), medicines.manufacturer
+                ),
+                efficacy = COALESCE(
+                    NULLIF(trim(excluded.efficacy), ''), medicines.efficacy
+                ),
+                usage = COALESCE(NULLIF(trim(excluded.usage), ''), medicines.usage),
+                precautions = COALESCE(
+                    NULLIF(trim(excluded.precautions), ''), medicines.precautions
+                ),
+                image_url = COALESCE(
+                    NULLIF(trim(excluded.image_url), ''), medicines.image_url
+                ),
+                updated_at = CURRENT_TIMESTAMP
+            """,
+            (
+                code,
+                name,
+                ingredient,
+                medicine.get("manufacturer"),
+                medicine.get("efficacy"),
+                medicine.get("usage"),
+                precautions if isinstance(precautions, str) else str(precautions),
+                medicine.get("image_url"),
+            ),
+        )
+        conn.commit()
     finally:
         conn.close()
 

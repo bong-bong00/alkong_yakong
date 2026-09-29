@@ -21,6 +21,10 @@ from app.core.config import (
 _COMBINATION_TYPES = {"병용금기", "중복성분", "효능군중복"}
 
 
+def _compact_name(value: Any) -> str:
+    return "".join(str(value or "").split()).casefold()
+
+
 def load_remote_current_medicines(*, user_id: str) -> dict[str, Any]:
     """Load the signed-in user's active medicines from the source-of-truth service."""
 
@@ -89,6 +93,7 @@ def load_remote_combination_context(
     *,
     user_id: str,
     selected_medicine: dict[str, Any] | None,
+    additional_medicines: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Return prompt-ready DUR context without consulting the team DB."""
 
@@ -98,12 +103,35 @@ def load_remote_combination_context(
     if not MEDICATION_FEATURE_BASE_URL:
         return _unavailable("medication_service_not_configured")
     medicines_context = load_remote_current_medicines(user_id=uid)
-    if medicines_context["status"] != "current":
+    if medicines_context["status"] not in {"current", "empty"}:
         return {
             **medicines_context,
             "has_risk": None,
         }
-    medicines = medicines_context["items"]
+    medicines = [dict(item) for item in medicines_context["items"]]
+    names_by_code = {
+        str(item.get("medicine_code") or "").strip(): str(
+            item.get("product_name") or ""
+        ).strip()
+        for item in medicines
+    }
+    for medicine in additional_medicines or []:
+        if not isinstance(medicine, dict):
+            return _unavailable("temporary_medicine_unavailable")
+        code = str(medicine.get("medicine_code") or "").strip()
+        name = str(medicine.get("product_name") or "").strip()
+        if not code or not name:
+            return _unavailable("temporary_medicine_unavailable")
+        stored_name = names_by_code.get(code)
+        if stored_name is not None:
+            if _compact_name(stored_name) != _compact_name(name):
+                return _unavailable("temporary_medicine_identity_mismatch")
+            continue
+        names_by_code[code] = name
+        medicines.append({"medicine_code": code, "product_name": name})
+
+    if not medicines:
+        return {**medicines_context, "has_risk": None}
 
     if selected_medicine is not None and not isinstance(selected_medicine, dict):
         return _unavailable("selected_medicine_unavailable")
@@ -133,9 +161,14 @@ def load_remote_combination_context(
         return _unavailable("selected_medicine_identity_mismatch")
 
     try:
+        requested_codes = (
+            list(names_by_code)
+            if additional_medicines
+            else []
+        )
         dur_response = requests.post(
             f"{MEDICATION_FEATURE_BASE_URL}/api/v1/dur/analyze",
-            json={"user_id": uid, "medicine_codes": []},
+            json={"user_id": uid, "medicine_codes": requested_codes},
             timeout=MEDICATION_FEATURE_TIMEOUT_SECONDS,
         )
         dur_response.raise_for_status()
@@ -145,6 +178,17 @@ def load_remote_combination_context(
 
     if not isinstance(payload, dict):
         return _malformed()
+    if additional_medicines:
+        analyzed_names = payload.get("medicine_names")
+        if not isinstance(analyzed_names, list) or not {
+            _compact_name(name) for name in names_by_code.values()
+        }.issubset({_compact_name(name) for name in analyzed_names}):
+            return {
+                "status": "incomplete",
+                "items": [],
+                "has_risk": None,
+                "reason": "temporary_medicine_analysis_incomplete",
+            }
     assessment = payload.get("assessment_status")
     analysis_complete = payload.get("analysis_complete")
     incomplete = payload.get("incomplete")

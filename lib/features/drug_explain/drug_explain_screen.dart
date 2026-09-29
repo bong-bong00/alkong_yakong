@@ -43,6 +43,7 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
   String? _selectedMedicine;
   _DrugSearchCandidate? _selectedOfficialMedicine;
   final Map<String, _DrugSearchCandidate> _officialMedicinesByName = {};
+  final Map<String, _DrugSearchCandidate> _temporaryMedicinesByCode = {};
   String? _medicineLoadError;
   final List<String> _medicines = [];
   final List<Map<String, dynamic>> _messages = [];
@@ -309,6 +310,9 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
           );
         }
       }
+      for (final medicine in _temporaryMedicinesByCode.values) {
+        addMedicine(medicine.itemName, medicine.itemSeq);
+      }
       if (!mounted) return;
       setState(() {
         _medicines
@@ -414,6 +418,10 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
       if (!_medicines.contains(medicine.itemName)) {
         _medicines.add(medicine.itemName);
       }
+      final code = medicine.itemSeq?.trim();
+      if (code != null && code.isNotEmpty) {
+        _temporaryMedicinesByCode[code] = medicine;
+      }
       _officialMedicinesByName[medicine.itemName] = medicine;
       _selectedMedicine = medicine.itemName;
       _selectedOfficialMedicine = medicine;
@@ -465,6 +473,16 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
           'medicine_code': selectedOfficial!.itemSeq,
           'product_name': selectedOfficial.itemName,
         };
+      }
+      if (_selectedMedicine == null && _temporaryMedicinesByCode.isNotEmpty) {
+        body['temporary_medicines'] = _temporaryMedicinesByCode.values
+            .map(
+              (medicine) => {
+                'medicine_code': medicine.itemSeq,
+                'product_name': medicine.itemName,
+              },
+            )
+            .toList(growable: false);
       }
       final response = await _apiClient.post(
         '/api/v1/drug-explain/chat', // 가상의 챗봇 엔드포인트

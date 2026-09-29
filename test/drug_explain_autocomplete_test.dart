@@ -833,6 +833,16 @@ void main() {
       'product_name': '검색약D',
     });
 
+    await pickSubject(tester, '약 전체');
+    await tester.tap(find.text('제가 먹는 약 알려주세요'));
+    await tester.pumpAndSettle();
+    expect(chatBodies.last.containsKey('selected_medicine'), isFalse);
+    expect(chatBodies.last['temporary_medicines'], [
+      {'medicine_code': '3', 'product_name': '검색약C'},
+      {'medicine_code': '4', 'product_name': '검색약D'},
+    ]);
+
+    await pickSubject(tester, '검색약D');
     await openOtherMedicineSearch(tester);
     await tester.tap(find.text('취소'));
     await tester.pumpAndSettle();
@@ -870,7 +880,7 @@ void main() {
     expect(chatCalls, 0);
   });
 
-  testWidgets('약 전체 질문은 기존 필드만으로 전체용 intent와 쉬운 질문을 전송한다', (tester) async {
+  testWidgets('약 전체 질문은 current_medicines 없이 전체용 intent와 쉬운 질문을 전송한다', (tester) async {
     final originalUserId = MvpSession.userId;
     MvpSession.userId = 'all-medicines-user';
     addTearDown(() => MvpSession.userId = originalUserId);

@@ -3,6 +3,9 @@ import sqlite3
 from app.models.schemas import DurAnalyzeRequest
 from app.models.response_schemas import DurAnalyzeResponse
 from app.services import dur_service, dur_sync_service
+from app.services import external_api_service
+from app.services.mfds_drug_permission import client as permission_client
+from app.services.mfds_drug_permission import db as permission_db
 from init_db import TABLE_DEFINITIONS
 
 
@@ -136,3 +139,95 @@ def test_no_registered_medicine_is_a_valid_incomplete_api_response(tmp_path, mon
     assert payload["risk_result_id"] is None
     assert payload["analysis_id"] is None
     assert payload["assessment_status"] == "INCOMPLETE"
+
+
+def test_explicit_official_code_is_cached_without_user_registration(
+    tmp_path, monkeypatch
+):
+    db_path = tmp_path / "dur.sqlite3"
+    _prepare_db(db_path)
+    monkeypatch.setattr(dur_service, "get_connection", lambda: _open_db(db_path))
+    monkeypatch.setattr(
+        permission_db,
+        "find_permission_product_by_item_seq",
+        lambda code: {"item_seq": code} if code == "MED-2" else None,
+    )
+    monkeypatch.setattr(
+        permission_db,
+        "product_to_medicine",
+        lambda _row: {
+            "medicine_code": "MED-2",
+            "product_name": "검색약정",
+            "ingredient": "검색약성분",
+        },
+    )
+    monkeypatch.setattr(
+        external_api_service,
+        "fetch_e_drug_info",
+        lambda **_kwargs: None,
+    )
+
+    result = dur_service.analyze_dur(
+        DurAnalyzeRequest(
+            user_id="patient-1",
+            medicine_codes=["MED-1", "MED-2"],
+        ),
+        persist=False,
+        refresh=False,
+    )
+
+    assert result["medicine_names"] == ["테스트정", "검색약정"]
+    conn = _open_db(db_path)
+    try:
+        assert conn.execute(
+            "SELECT COUNT(*) FROM medicines WHERE medicine_code = 'MED-2'"
+        ).fetchone()[0] == 1
+        assert conn.execute(
+            "SELECT COUNT(*) FROM user_medicines WHERE medicine_code = 'MED-2'"
+        ).fetchone()[0] == 0
+    finally:
+        conn.close()
+
+
+def test_unverified_explicit_code_is_not_cached(tmp_path, monkeypatch):
+    db_path = tmp_path / "dur.sqlite3"
+    _prepare_db(db_path)
+    monkeypatch.setattr(dur_service, "get_connection", lambda: _open_db(db_path))
+    monkeypatch.setattr(
+        permission_db,
+        "find_permission_product_by_item_seq",
+        lambda _code: {"item_seq": "OTHER"},
+    )
+    monkeypatch.setattr(
+        permission_db,
+        "product_to_medicine",
+        lambda _row: {
+            "medicine_code": "OTHER",
+            "product_name": "다른약정",
+            "ingredient": "다른성분",
+        },
+    )
+    monkeypatch.setattr(
+        permission_client,
+        "fetch_permission_detail",
+        lambda **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        external_api_service,
+        "fetch_e_drug_info",
+        lambda **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        dur_service,
+        "_upsert_dur_catalog_medicine",
+        lambda _medicine: (_ for _ in ()).throw(AssertionError("must not cache")),
+    )
+
+    result = dur_service.analyze_dur(
+        DurAnalyzeRequest(user_id="patient-1", medicine_codes=["UNKNOWN"]),
+        persist=False,
+        refresh=False,
+    )
+
+    assert result["assessment_status"] == "INCOMPLETE"
+    assert result["medicine_names"] == []

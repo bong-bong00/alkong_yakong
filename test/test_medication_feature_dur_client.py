@@ -242,7 +242,82 @@ class MedicationFeatureDurClientTest(unittest.TestCase):
         self.assertEqual(result["status"], "current")
         self.assertFalse(result["has_risk"])
         post.assert_called_once()
-        self.assertEqual(post.call_args.kwargs["json"], {"user_id": "user-1", "medicine_codes": []})
+        self.assertEqual(
+            post.call_args.kwargs["json"],
+            {"user_id": "user-1", "medicine_codes": []},
+        )
+
+    def test_temporary_medicine_is_combined_with_registered_scope(self):
+        with (
+            patch.object(remote_dur, "MEDICATION_FEATURE_BASE_URL", "https://med.example"),
+            patch.object(
+                remote_dur.requests,
+                "get",
+                return_value=self.response(self.medicines()),
+            ),
+            patch.object(
+                remote_dur.requests,
+                "post",
+                return_value=self.response(
+                    {
+                        "assessment_status": "SAFE",
+                        "analysis_complete": True,
+                        "incomplete": False,
+                        "has_risk": False,
+                        "matches": [],
+                        "medicine_names": ["등록약정", "화면임시약정"],
+                    }
+                ),
+            ) as post,
+        ):
+            result = remote_dur.load_remote_combination_context(
+                user_id="user-1",
+                selected_medicine=None,
+                additional_medicines=[
+                    {"medicine_code": "200", "product_name": "화면임시약정"}
+                ],
+            )
+
+        self.assertEqual(result["status"], "current")
+        self.assertEqual(
+            post.call_args.kwargs["json"],
+            {"user_id": "user-1", "medicine_codes": ["100", "200"]},
+        )
+
+    def test_missing_temporary_medicine_from_dur_scope_is_incomplete(self):
+        with (
+            patch.object(remote_dur, "MEDICATION_FEATURE_BASE_URL", "https://med.example"),
+            patch.object(
+                remote_dur.requests,
+                "get",
+                return_value=self.response(self.medicines()),
+            ),
+            patch.object(
+                remote_dur.requests,
+                "post",
+                return_value=self.response(
+                    {
+                        "assessment_status": "SAFE",
+                        "analysis_complete": True,
+                        "incomplete": False,
+                        "has_risk": False,
+                        "matches": [],
+                        "medicine_names": ["등록약정"],
+                    }
+                ),
+            ),
+        ):
+            result = remote_dur.load_remote_combination_context(
+                user_id="user-1",
+                selected_medicine=None,
+                additional_medicines=[
+                    {"medicine_code": "200", "product_name": "화면임시약정"}
+                ],
+            )
+
+        self.assertEqual(result["status"], "incomplete")
+        self.assertIsNone(result["has_risk"])
+        self.assertEqual(result["reason"], "temporary_medicine_analysis_incomplete")
 
     def test_all_medicines_distinguishes_empty_failure_and_incomplete_identity(self):
         cases = (
