@@ -80,7 +80,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
               const SizedBox(height: 8),
               Text(
                 '약 드실 시간을 알려드리고,\n가족이 함께 챙겨드려요.',
-                style: AppText.body(size: 21, color: AppColors.textSecondary),
+                style: AppText.body(size: 21, color: AppColors.point),
               ),
               const SizedBox(height: 34),
 
@@ -206,10 +206,11 @@ class _SeniorField extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       constraints: const BoxConstraints(minHeight: 66),
+      // 시안은 테두리 없이 회색으로 채운 칸을 쓴다. 바탕이 연한 파랑이라
+      // 채우는 것만으로 적는 자리가 드러난다.
       decoration: BoxDecoration(
         color: AppColors.bg,
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: AppColors.border, width: 2),
       ),
       // "보기" 같은 우측 버튼이 붙으면 오른쪽 여백을 줄여 버튼을 테두리 쪽으로
       // 붙인다. 버튼 자체의 탭 영역은 그대로 48px를 넘긴다.
