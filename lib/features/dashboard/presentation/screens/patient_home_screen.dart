@@ -520,6 +520,20 @@ class _MedicineRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // 글씨를 크게 키운 기기에서는 "하루 3회"를 약 이름 아래로 내린다.
+    // 한 줄에 붙여 두면 약 이름이 아무리 줄어도 이 말이 안 줄어 넘친다.
+    final stacked = MediaQuery.textScalerOf(context).scale(20) > 28;
+    final frequencyText = Text(
+      '하루 $frequencyPerDay회',
+      style: AppText.cardTitle(size: 20, color: AppColors.point),
+    );
+    final nameText = Text(
+      medicine.displayName,
+      style: AppText.cardTitle(size: 21),
+      maxLines: 2,
+      overflow: TextOverflow.ellipsis,
+    );
+
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(14),
@@ -536,21 +550,21 @@ class _MedicineRow extends StatelessWidget {
                   Row(
                     children: [
                       Expanded(
-                        child: Text(
-                          medicine.displayName,
-                          style: AppText.cardTitle(size: 21),
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                        ),
+                        child: stacked
+                            ? Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  nameText,
+                                  const SizedBox(height: 2),
+                                  frequencyText,
+                                ],
+                              )
+                            : nameText,
                       ),
-                      const SizedBox(width: 10),
-                      Text(
-                        '하루 $frequencyPerDay회',
-                        style: AppText.cardTitle(
-                          size: 20,
-                          color: AppColors.point,
-                        ),
-                      ),
+                      if (!stacked) ...[
+                        const SizedBox(width: 10),
+                        frequencyText,
+                      ],
                       if (onTap != null) ...[
                         const SizedBox(width: 4),
                         const SeniorChevron(),
