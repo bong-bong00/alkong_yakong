@@ -1479,6 +1479,11 @@ class _ConfirmScreenState extends State<_ConfirmScreen> {
                       builder: (context) {
                         final item = _editedItems[index];
                         final conflicts = _interactionConflicts(item);
+                        final ingredientName =
+                            item['ingredient_name']?.toString().trim() ?? '';
+                        final ingredient = ingredientName.isNotEmpty
+                            ? ingredientName
+                            : item['ingredient']?.toString() ?? '';
                         debugPrint(
                           '[OCR_DUR_DIAG] trace_id=${widget.diagnosticId} '
                           'stage=card_build code=${item['medicine_code']} '
@@ -1486,13 +1491,11 @@ class _ConfirmScreenState extends State<_ConfirmScreen> {
                           'conflict_border=${conflicts.isNotEmpty}',
                         );
                         return _DrugCard(
-                          name: _shortDrugName(
+                          name: compactProductName(
                             item['drug_name']?.toString() ?? '이름을 못 읽었어요',
+                            ingredient: ingredient,
                           ),
-                          ingredient:
-                              item['ingredient_name']?.toString() ??
-                              item['ingredient']?.toString() ??
-                              '',
+                          ingredient: ingredient,
                           ingredientStrength:
                               item['ingredient_strength']?.toString() ?? '',
                           rawOcrName:

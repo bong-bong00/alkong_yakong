@@ -47,6 +47,17 @@ def test_mvp_user_today_medicines_from_server():
     )
 
 
+def test_new_user_receives_codarone_for_each_today_slot():
+    data = get_today_medicines("new-demo-user")
+    assert [dose["slot"] for dose in data["doses"]] == [
+        "morning", "lunch", "dinner"
+    ]
+    assert all(
+        any(med["medicine_code"] == "200701021" for med in dose["medicines"])
+        for dose in data["doses"]
+    )
+
+
 def test_home_amount_uses_take_dose_not_name_milligrams():
     milligrams = _medicine_item(
         {

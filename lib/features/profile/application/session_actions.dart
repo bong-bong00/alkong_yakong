@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/mode/app_mode.dart';
@@ -15,8 +16,11 @@ import 'current_user_controller.dart';
 /// Restore only after the backend confirms both the saved UUID and role.
 /// A cached preference alone cannot unlock protected screens.
 Future<UserProfile?> restorePersistedSession(UserRepository repository) async {
+  final timer = Stopwatch()..start();
   try {
     await AuthSession.load();
+    debugPrint('[STARTUP_DIAG] saved_session_ms=${timer.elapsedMilliseconds}');
+    timer.reset();
     final savedId = MvpSession.userId.trim();
     final canRestore =
         AuthSession.isLoggedIn && savedId.isNotEmpty && savedId != 'mvp-user';
@@ -27,12 +31,19 @@ Future<UserProfile?> restorePersistedSession(UserRepository repository) async {
     if (!canRestore) return null;
 
     final user = await repository.fetch(savedId);
+    debugPrint(
+      '[STARTUP_DIAG] team_user_fetch_ms=${timer.elapsedMilliseconds}',
+    );
     if (user.id != savedId) return null;
     MvpSession.userId = user.id;
     MvpSession.isPregnant = user.isPregnant;
     await AuthSession.setLoggedIn(user.isGuardian ? 'guardian' : 'patient');
     return user;
-  } catch (_) {
+  } catch (error) {
+    debugPrint(
+      '[STARTUP_DIAG] session_restore_failed_ms=${timer.elapsedMilliseconds} '
+      'error_type=${error.runtimeType}',
+    );
     AuthSession.isLoggedIn = false;
     AuthSession.role = 'patient';
     MvpSession.userId = '';

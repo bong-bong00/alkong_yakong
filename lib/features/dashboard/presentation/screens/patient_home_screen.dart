@@ -313,18 +313,40 @@ class _PatientHomeScreenState extends ConsumerState<PatientHomeScreen> {
                     padding: const EdgeInsets.all(22),
                     child: Column(
                       children: [
-                        Text('등록된 약이 없어요', style: AppText.cardTitle(size: 22)),
+                        Text(switch (today.fetchStatus) {
+                          MedicationFetchStatus.loading => '오늘 약을 불러오는 중이에요',
+                          MedicationFetchStatus.failed => '오늘 약을 불러오지 못했어요',
+                          MedicationFetchStatus.ready => '등록된 약이 없어요',
+                        }, style: AppText.cardTitle(size: 22)),
                         const SizedBox(height: 8),
                         Text(
-                          '처방전 사진을 찍으면 오늘 먹을 약을 알려드려요.',
+                          today.fetchStatus == MedicationFetchStatus.ready
+                              ? '처방전 사진을 찍으면 오늘 먹을 약을 알려드려요.'
+                              : today.fetchStatus ==
+                                    MedicationFetchStatus.failed
+                              ? '인터넷 연결을 확인하고 다시 시도해 주세요.'
+                              : '잠시만 기다려 주세요.',
                           textAlign: TextAlign.center,
                           style: AppText.body(color: AppColors.textSecondary),
                         ),
-                        const SizedBox(height: 14),
-                        SeniorButton(
-                          label: '처방전 등록하기',
-                          onPressed: widget.onOpenPrescription,
-                        ),
+                        if (today.fetchStatus !=
+                            MedicationFetchStatus.loading) ...[
+                          const SizedBox(height: 14),
+                          SeniorButton(
+                            label:
+                                today.fetchStatus ==
+                                    MedicationFetchStatus.failed
+                                ? '다시 시도'
+                                : '처방전 등록하기',
+                            onPressed:
+                                today.fetchStatus ==
+                                    MedicationFetchStatus.failed
+                                ? () => ref
+                                      .read(medicationProvider.notifier)
+                                      .refreshFromServer()
+                                : widget.onOpenPrescription,
+                          ),
+                        ],
                       ],
                     ),
                   )
