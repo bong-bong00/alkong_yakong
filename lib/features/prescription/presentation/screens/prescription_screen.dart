@@ -1526,7 +1526,7 @@ class _ConfirmScreenState extends State<_ConfirmScreen> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            '읽지 못한 약 이름이 있어요',
+                            '확인하지 못한 약이 있어요',
                             style: AppText.cardTitle(
                               size: 20,
                               color: AppColors.attentionBorder,
@@ -1534,12 +1534,12 @@ class _ConfirmScreenState extends State<_ConfirmScreen> {
                           ),
                           const SizedBox(height: 8),
                           Text(
-                            '아래 이름은 등록에서 빼 두었어요. 처방전과 비교하고, 밝은 곳에서 다시 찍어 주세요.',
+                            '글자가 불분명하거나 공식 약 정보를 찾지 못했어요. 아래 이름은 등록에서 빼 두었어요. 처방전과 비교하고, 이름을 직접 입력하거나 다시 찍어 주세요.',
                             style: AppText.body(size: 18),
                           ),
                           const SizedBox(height: 8),
                           for (final name in widget.unrecognizedNames)
-                            Text('· $name (못 읽음)', style: AppText.body()),
+                            Text('· $name (확인 필요)', style: AppText.body()),
                         ],
                       ),
                     ),
