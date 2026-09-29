@@ -468,14 +468,16 @@ void _signupTests() {
     expect(find.text('어떤 분이신가요?'), findsOneWidget);
   });
 
-  testWidgets('역할을 고르지 않으면 스낵바로 이유를 알린다 (02)', (tester) async {
+  testWidgets('고르지 않고는 역할 화면을 지나갈 수 없다 (02)', (tester) async {
     await tester.pumpWidget(wrap(const SignupScreen()));
-    await tester.tap(find.text('다음'));
-    await tester.pump();
-    expect(find.byType(SnackBar), findsOneWidget);
-    expect(find.text('어떤 분인지 골라주세요'), findsOneWidget);
-    // 오류가 떠도 화면은 그대로다 — 다음으로 넘어가지 않는다.
+    // 누르면 바로 넘어가므로 "다음"을 두지 않는다. 고르지 않고 넘어갈
+    // 길이 아예 없으니 "골라주세요" 스낵바로 막을 일도 없다.
+    expect(find.text('다음'), findsNothing);
     expect(find.text('어떤 분이신가요?'), findsOneWidget);
+
+    await tester.tap(find.text('약을 드시는 분'));
+    await tester.pumpAndSettle();
+    expect(find.text('어떤 분이신가요?'), findsNothing);
   });
 
   test('"잘 모르겠어요"를 누르면 고른 약 이름이 비워진다 (05)', () {
@@ -501,8 +503,6 @@ void _signupTests() {
     await tester.pumpWidget(wrap(const SignupScreen()));
 
     await tester.tap(find.text('약을 드시는 분'));
-    await tester.pump();
-    await tester.tap(find.text('다음'));
     await tester.pumpAndSettle();
 
     await tester.enterText(find.byType(TextField).at(0), '김복자');
@@ -517,9 +517,10 @@ void _signupTests() {
   testWidgets('보호자는 건강 질문을 받지 않는다', (tester) async {
     await tester.pumpWidget(wrap(const SignupScreen()));
     // 보호자는 남의 복약을 지켜볼 뿐이라 자기 지병을 물을 이유가 없다.
-    await tester.tap(find.text('돌보는 가족(보호자)'));
-    await tester.pump();
-    expect(find.text('1 / 3'), findsOneWidget);
+    await tester.tap(find.text('돌보는 가족'));
+    await tester.pumpAndSettle();
+    // 역할 · 기본 정보 · 약관, 세 걸음이 전부다.
+    expect(find.text('2 / 3'), findsOneWidget);
   });
 
   testWidgets('되살린 건강 질문들이 글자 2배에서도 버틴다 (5h)', (tester) async {
@@ -535,20 +536,18 @@ void _signupTests() {
       ),
     );
 
-    // 0단계 · 역할
+    // 1걸음 · 역할 — 누르면 바로 넘어간다
     await tester.tap(find.text('약을 드시는 분'));
-    await tester.pump();
-    await tester.tap(find.text('다음'));
     await tester.pumpAndSettle();
 
-    // 1단계 · 기본 정보
+    // 2걸음 · 기본 정보
     await tester.enterText(find.byType(TextField).at(0), '김복자');
     await tester.enterText(find.byType(TextField).at(1), '01012345678');
     await tester.enterText(find.byType(TextField).at(2), 'abc123');
     await tester.tap(find.text('다음'));
     await tester.pumpAndSettle();
 
-    // 2단계 · 생년월일과 성별
+    // 3걸음 · 생년월일과 성별
     await tester.tap(find.text('생년월일'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('확인'));
@@ -558,15 +557,17 @@ void _signupTests() {
     await tester.tap(find.text('다음'));
     await tester.pumpAndSettle();
 
-    // 3단계 · 키·몸무게·혈액형.
+    // 4걸음 · 키·몸무게·혈액형.
     expect(find.text('혈액형'), findsOneWidget);
     expect(tester.takeException(), isNull);
 
     await tester.tap(find.text('다음'));
     await tester.pumpAndSettle();
 
-    // 4단계 · 임신 (여성일 때만 나온다)
-    expect(find.text('젖을 먹이고 있어요'), findsOneWidget);
+    // 5걸음 · 임신 (여성일 때만 나온다). 네/아니요로 먼저 묻는다.
+    expect(find.text('지금 임신 중이거나\n젖을 먹이고 계신가요?'), findsOneWidget);
+    expect(find.text('네'), findsOneWidget);
+    expect(find.text('아니요'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
@@ -578,12 +579,13 @@ void _signupTests() {
     for (final question in [
       "title: '키와 몸무게,",
       "title: '지금 임신 중이거나",
-      "title: '담배와 술은",
-      "title: '약물 알레르기가",
-      "title: '지금 앓고 있는",
-      "title: '과거에 앓았던 병이",
-      "title: '가족이 앓은 병이",
-      "title: '보호자 연락처를",
+      "title: '담배를",
+      "title: '술은 얼마나",
+      "title: '약을 먹고 두드러기가 나거나",
+      "title: '지금 치료받고 있는",
+      "title: '예전에 크게",
+      "title: '부모님이나 형제가",
+      "title: '약을 놓치시면",
     ]) {
       expect(source.contains(question), isTrue, reason: '$question 단계가 없다');
     }

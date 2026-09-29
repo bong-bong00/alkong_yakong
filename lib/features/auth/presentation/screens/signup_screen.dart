@@ -10,6 +10,7 @@ import '../../../../core/session/auth_session.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../core/widgets/senior_button.dart';
 import '../../../../core/widgets/senior_feedback.dart';
+import '../../../../core/widgets/senior_card.dart';
 import '../../../../core/widgets/senior_wheel.dart';
 import '../../../../core/widgets/senior_header.dart';
 import '../../../guardian/application/guardians_provider.dart';
@@ -21,6 +22,8 @@ import '../../../profile/domain/user_profile.dart';
 Map<String, dynamic> buildIllnessHistoryPayload({
   required Iterable<String> pastIllnesses,
   required Iterable<String> familyIllnesses,
+  bool? pastHistory,
+  bool? familyHistory,
 }) {
   List<String> selected(Iterable<String> values) => [
     for (final value in values)
@@ -32,8 +35,8 @@ Map<String, dynamic> buildIllnessHistoryPayload({
   return {
     'past_illnesses': past,
     'family_illnesses': family,
-    'past_history': past.isNotEmpty,
-    'family_history': family.isNotEmpty,
+    'past_history': pastHistory ?? past.isNotEmpty,
+    'family_history': familyHistory ?? family.isNotEmpty,
   };
 }
 
@@ -69,11 +72,18 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
   final _weight = TextEditingController();
   String? _blood;
 
-  String? _pregnancy;
+  bool? _pregnant;
   String? _smoking;
   String? _drinking;
 
-  bool? _allergyYes;
+  /// 건강 질문의 답 — 'y' 있어요 · 'n' 없어요 · 'u' 잘 모르겠어요.
+  /// "네"라고 하신 질문에만 자세히 고르는 화면이 한 장 더 붙는다.
+  String? _allergyAnswer;
+  String? _diseaseAnswer;
+  String? _pastAnswer;
+  String? _familyAnswer;
+  String? _guardianAnswer;
+
   final Set<String> _allergens = {};
   final _allergyOther = TextEditingController();
 
@@ -84,9 +94,10 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
   final Set<String> _pastIllnesses = {};
   final Set<String> _familyIllnesses = {};
 
-  static const _pastOptions = ['암', '뇌졸중', '심근경색', '간·콩팥병', '없어요'];
+  // "없어요"는 보기에서 뺀다 — 앞 화면에서 이미 네/아니요로 여쭤봤다.
+  static const _pastOptions = ['암', '뇌졸중', '심근경색', '간·콩팥병'];
 
-  static const _familyOptions = ['고혈압', '당뇨', '암', '심장병', '치매', '없어요'];
+  static const _familyOptions = ['고혈압', '당뇨', '심장병', '암', '치매', '뇌졸중'];
 
   final Set<String> _diseases = {};
 
@@ -94,7 +105,6 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
   final _guardianName = TextEditingController();
   final _guardianPhone = TextEditingController();
   String? _guardianRelation;
-  bool _guardianLater = false;
 
   bool _agreeTerms = false;
   bool _agreePrivacy = false;
@@ -103,8 +113,21 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
   bool get _allRequired => _agreeAge && _agreeTerms && _agreePrivacy;
   bool get _allChecked => _allRequired && _agreeMarketing;
 
-  static const _allergyOptions = ['페니실린', '아스피린', '소염진통제', '조영제', '잘 모르겠어요'];
-  static const _diseaseOptions = ['고혈압', '당뇨', '고지혈증', '심장병', '콩팥병', '없어요'];
+  static const _allergyOptions = [
+    '페니실린 (항생제)',
+    '아스피린',
+    '소염진통제 (이부프로펜 등)',
+    '이름을 몰라요',
+  ];
+  static const _diseaseOptions = ['고혈압', '당뇨', '고지혈증', '심장병', '콩팥병', '간 질환'];
+
+  /// 화면에 적는 말과 저장하는 값이 다르다. 저장값은 "내 정보 고치기"가
+  /// 쓰는 이름에 맞춘다 — 두 화면이 다른 말을 쓰면 고칠 때 값이 튄다.
+  static const _smokingValues = {
+    '네, 피워요': '폈어요',
+    '아니요, 안 피워요': '안 폈어요',
+    '예전에 끊었어요': '끊었어요',
+  };
 
   @override
   void dispose() {
@@ -150,6 +173,65 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
     }
   }
 
+  /// 누르면 바로 다음 걸음으로 넘어가는 답.
+  ///
+  /// "네"라고 하시면 자세히 고르는 화면이 목록에 끼어들므로, 번호를 하나
+  /// 올리는 것만으로 그 화면이 다음에 온다.
+  void _answerAndGo(VoidCallback apply) {
+    ScaffoldMessenger.of(context).hideCurrentSnackBar();
+    setState(() {
+      apply();
+      _step++;
+    });
+  }
+
+  /// "네 / 아니요"를 먼저 묻는 건강 질문 한 걸음.
+  /// "네"일 때만 자세히 고르는 화면을 뒤에 붙인다.
+  _StepDef _yesNoStep({
+    required String title,
+    required String subtitle,
+    required String? answer,
+    required ValueChanged<String> onAnswer,
+    String yesLabel = '네, 있어요',
+    String noLabel = '아니요, 없어요',
+    String? unsureLabel,
+  }) {
+    return _StepDef(
+      auto: true,
+      title: title,
+      subtitle: subtitle,
+      validate: () => answer == null ? '있는지 없는지 골라주세요' : null,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _choice(
+            yesLabel,
+            icon: TablerIcons.check,
+            selected: answer == 'y',
+            onTap: () => _answerAndGo(() => onAnswer('y')),
+          ),
+          const SizedBox(height: 12),
+          _choice(
+            noLabel,
+            icon: TablerIcons.x,
+            selected: answer == 'n',
+            onTap: () => _answerAndGo(() => onAnswer('n')),
+          ),
+          if (unsureLabel != null) ...[
+            const SizedBox(height: 12),
+            // 모르는 것을 "없어요"로 적어 두면 위험한 약을 못 거른다.
+            // 따로 받아 두고, 자세히는 여쭤보지 않는다.
+            _choice(
+              unsureLabel,
+              selected: answer == 'u',
+              onTap: () => _answerAndGo(() => onAnswer('u')),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
   void _prev() {
     ScaffoldMessenger.of(context).hideCurrentSnackBar();
     if (_step == 0) {
@@ -186,16 +268,25 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
       'height_cm': double.tryParse(_height.text.trim()),
       'weight_kg': double.tryParse(_weight.text.trim()),
       'blood_type': _blood,
-      'pregnancy_status': _gender == 'F' ? _pregnancy : null,
+      // 네/아니요를 그대로 싣는다. 서버가 "임신 중"으로 풀어 적는다.
+      'is_pregnant': _gender == 'F' ? _pregnant : null,
       'smoking': _smoking,
       'drinking': _drinking,
-      'allergies': _allergyYes == true
-          ? _picked(_allergens, _allergyOther, skip: '잘 모르겠어요')
+      // "네"라고 하신 질문의 답만 보낸다. 자세히 화면을 안 거친 질문은
+      // 골라 둔 것이 남아 있어도 보내지 않는다.
+      'allergies': _allergyAnswer == 'y'
+          ? _picked(_allergens, _allergyOther, skip: '이름을 몰라요')
           : <String>[],
-      'diseases': _picked(_diseases, _diseaseOther, skip: '없어요'),
+      'diseases': _diseaseAnswer == 'y'
+          ? _picked(_diseases, _diseaseOther)
+          : <String>[],
       ...buildIllnessHistoryPayload(
-        pastIllnesses: _pastIllnesses,
-        familyIllnesses: _familyIllnesses,
+        pastIllnesses: _pastAnswer == 'y' ? _pastIllnesses : const <String>[],
+        familyIllnesses: _familyAnswer == 'y'
+            ? _familyIllnesses
+            : const <String>[],
+        pastHistory: _pastAnswer == 'y',
+        familyHistory: _familyAnswer == 'y',
       ),
     });
   }
@@ -204,7 +295,7 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
   List<String> _picked(
     Set<String> chosen,
     TextEditingController other, {
-    required String skip,
+    String skip = '',
   }) => [
     for (final item in chosen)
       if (item == '기타') other.text.trim() else if (item != skip) item,
@@ -214,7 +305,7 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
   /// 실패해도 막지 않고, 내 정보에서 다시 초대하면 된다고만 알린다.
   Future<void> _saveGuardianContact() async {
     final name = _guardianName.text.trim();
-    if (_role != 'patient' || _guardianLater || name.isEmpty) return;
+    if (_role != 'patient' || _guardianAnswer != 'y' || name.isEmpty) return;
     final result = await GuardianRepository().invite(
       name: name,
       relation: _guardianRelation ?? '그 외',
@@ -280,26 +371,39 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
     );
   }
 
+  /// 시안 1c — 건강 질문은 "네 / 아니요"를 먼저 크게 묻고, "네"라고 하신
+  /// 질문에만 자세히 고르는 화면이 한 장 더 붙는다. 큰 단계는 13개이고
+  /// 임신·수유를 여쭤보지 않는 남성은 12개다.
   List<_StepDef> _buildSteps() {
-    final steps = <_StepDef>[
+    final steps = <_StepDef>[];
+    var no = 0;
+    void big(_StepDef step) => steps.add(step..stepNo = ++no);
+    // 자세히 화면은 앞 단계의 번호를 그대로 쓴다. 한 가지를 여쭤보는
+    // 중이므로 걸음이 늘어난 것처럼 보이면 안 된다.
+    void detail(_StepDef step) => steps.add(step..stepNo = no);
+
+    big(
       _StepDef(
+        auto: true,
         title: '어떤 분이신가요?',
-        subtitle: '고르시면 물어보는 것이 달라집니다.',
+        subtitle: '고르시면 여쭤보는 것이 달라져요.',
         validate: () => _rolePicked ? null : '어떤 분인지 골라주세요',
         // 둘을 나란히 두면 칸이 좁아 설명이 두세 줄로 접힌다.
         // 위아래로 쌓아 한 줄씩 읽게 둔다.
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            _roleCard('patient', '약을 드시는 분', '내가 먹는 약을 등록하고 알림을 받습니다'),
+            _roleCard('patient', '약을 드시는 분', '내 약을 넣고 알림을 받아요'),
             const SizedBox(height: 12),
-            _roleCard('guardian', '돌보는 가족(보호자)', '부모님 복약과 심박수를 함께 봅니다'),
+            _roleCard('guardian', '돌보는 가족', '부모님 복약을 함께 봐요'),
           ],
         ),
       ),
+    );
+    big(
       _StepDef(
         title: '기본 정보를\n알려주세요',
-        subtitle: '번호는 로그인과 약 알림에 씁니다.',
+        subtitle: '번호는 로그인과 약 알림에 써요.',
         validate: () {
           if (_name.text.trim().isEmpty) return '이름을 입력해주세요';
           if (_phone.text.trim().isEmpty) return '휴대폰 번호를 입력해주세요';
@@ -336,14 +440,14 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
           ],
         ),
       ),
-    ];
+    );
 
     // 환자만 건강정보 단계를 받는다 (보호자는 환자 모니터링 전용이라 불필요)
     if (_role == 'patient') {
-      steps.addAll([
+      big(
         _StepDef(
           title: '생년월일과 성별을\n알려주세요',
-          subtitle: '나이에 따라 주의할 약이 달라요.',
+          subtitle: '나이에 따라 조심할 약이 달라요.',
           validate: () {
             if (_birth == null) return '생년월일을 골라주세요';
             if (_gender == null) return '성별을 골라주세요';
@@ -426,9 +530,11 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
             ],
           ),
         ),
+      );
+      big(
         _StepDef(
           title: '키와 몸무게,\n혈액형을 알려주세요',
-          subtitle: '약 용량을 볼 때 씁니다.',
+          subtitle: '약 양을 정할 때 써요.',
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
@@ -469,216 +575,271 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
             ],
           ),
         ),
-      ]);
+      );
 
       // 임신·수유 여부는 병용금기 판정을 통째로 바꾼다. 건너뛰지 않는다.
       if (_gender == 'F') {
-        steps.add(
+        big(
           _StepDef(
+            auto: true,
             title: '지금 임신 중이거나\n젖을 먹이고 계신가요?',
             subtitle: '이때는 피해야 하는 약이 있어요.',
-            validate: () => _pregnancy == null ? '해당하는 것을 골라주세요' : null,
-            child: _grid(
-              const ['임신 중이에요', '젖을 먹이고 있어요', '둘 다 아니에요'],
-              _pregnancy,
-              (v) => setState(() => _pregnancy = v),
+            validate: () => _pregnant == null ? '해당하는 것을 골라주세요' : null,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                _choice(
+                  '네',
+                  icon: TablerIcons.check,
+                  selected: _pregnant == true,
+                  onTap: () => _answerAndGo(() => _pregnant = true),
+                ),
+                const SizedBox(height: 12),
+                _choice(
+                  '아니요',
+                  icon: TablerIcons.x,
+                  selected: _pregnant == false,
+                  onTap: () => _answerAndGo(() => _pregnant = false),
+                ),
+              ],
             ),
           ),
         );
       }
 
-      steps.addAll([
+      big(
         _StepDef(
-          title: '담배와 술은\n어떠신가요?',
-          subtitle: '약과 함께 있으면 조심할 것이 있어요.',
-          validate: () {
-            if (_smoking == null) return '담배를 피우시는지 골라주세요';
-            if (_drinking == null) return '술을 얼마나 드시는지 골라주세요';
-            return null;
-          },
+          auto: true,
+          title: '담배를\n피우시나요?',
+          subtitle: '함께 먹으면 안 좋은 약이 있어요.',
+          validate: () => _smoking == null ? '담배를 피우시는지 골라주세요' : null,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              _sectionLabel('담배'),
-              _grid(
-                const ['안 펴요', '펴요', '끊었어요'],
-                _smoking,
-                (v) => setState(() => _smoking = v),
-              ),
-              const SizedBox(height: 18),
-              _sectionLabel('술'),
-              _grid(
-                const ['안 마셔요', '가끔 마셔요', '자주 마셔요'],
-                _drinking,
-                (v) => setState(() => _drinking = v),
-              ),
-            ],
-          ),
-        ),
-        _StepDef(
-          title: '약물 알레르기가\n있으신가요?',
-          subtitle: '위험한 약을 걸러내는 데 꼭 필요합니다.',
-          validate: () {
-            if (_allergyYes == null) return '있는지 없는지 골라주세요';
-            if (_allergyYes == true && _allergens.isEmpty) {
-              return '어떤 약인지 하나 이상 골라주세요';
-            }
-            if (_allergens.length > 1 && _allergens.contains('잘 모르겠어요')) {
-              return '"잘 모르겠어요"는 약 이름과 함께 고를 수 없어요';
-            }
-            return null;
-          },
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              _yesNo(_allergyYes, (v) => setState(() => _allergyYes = v)),
-              if (_allergyYes == true) ...[
-                const SizedBox(height: 16),
-                Text(
-                  '어떤 약인지 눌러주세요 (여러 개 가능)',
-                  style: AppText.caption(size: 17.5),
+              for (final entry in _smokingValues.entries) ...[
+                _choice(
+                  entry.key,
+                  selected: _smoking == entry.value,
+                  onTap: () => _answerAndGo(() => _smoking = entry.value),
                 ),
-                const SizedBox(height: 10),
-                _multiChips(
-                  _allergyOptions,
-                  _allergens,
-                  (o) => _toggle(_allergens, o),
-                ),
+                const SizedBox(height: 12),
               ],
             ],
           ),
         ),
+      );
+      big(
         _StepDef(
-          // "있으신가요?"를 먼저 묻고 다시 고르게 하면 두 번 묻는 셈이 된다.
-          // "없어요"를 칩 안에 넣어 한 번에 끝낸다.
-          title: '지금 앓고 있는\n병이 있으신가요?',
-          subtitle: '약을 함께 먹어도 되는지 판단할 때 씁니다.',
-          validate: () {
-            if (_diseases.isEmpty) {
-              return '해당하는 것을 고르거나 "없어요"를 눌러주세요';
-            }
-            if (_diseases.length > 1 && _diseases.contains('없어요')) {
-              return '지병과 "없어요"는 함께 고를 수 없어요';
-            }
-            return null;
-          },
+          auto: true,
+          title: '술은 얼마나\n드시나요?',
+          subtitle: '술과 같이 먹으면 위험한 약이 있어요.',
+          validate: () => _drinking == null ? '술을 얼마나 드시는지 골라주세요' : null,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              _multiChips(
-                _diseaseOptions,
-                _diseases,
-                (o) => _toggle(_diseases, o),
-              ),
-            ],
-          ),
-        ),
-      ]);
-      steps.add(
-        _StepDef(
-          title: '과거에 앓았던 병이\n있나요?',
-          subtitle: '지금은 다 나으셨더라도 골라주세요. 없으면 "없어요"를 눌러주세요.',
-          validate: () {
-            if (_pastIllnesses.isEmpty) {
-              return '과거에 앓았던 병을 고르거나 "없어요"를 눌러주세요';
-            }
-            return null;
-          },
-          child: _multiChips(
-            _pastOptions,
-            _pastIllnesses,
-            (o) => _toggle(_pastIllnesses, o),
-          ),
-        ),
-      );
-
-      steps.add(
-        _StepDef(
-          title: '가족이 앓은 병이\n있나요?',
-          subtitle: '부모·형제 이야기입니다. 해당이 없으면 "없어요"를 눌러주세요.',
-          validate: () {
-            if (_familyIllnesses.isEmpty) {
-              return '가족이 앓은 병을 고르거나 "없어요"를 눌러주세요';
-            }
-            return null;
-          },
-          child: _multiChips(
-            _familyOptions,
-            _familyIllnesses,
-            (o) => _toggle(_familyIllnesses, o),
-          ),
-        ),
-      );
-
-      steps.add(
-        _StepDef(
-          title: '보호자 연락처를\n알려주세요',
-          subtitle:
-              '약을 놓치거나 심박수가 빠를 때 이 분에게 알려드립니다. '
-              '나중에 등록해도 됩니다.',
-          validate: () {
-            if (_guardianLater) return null;
-            if (_guardianName.text.trim().isEmpty &&
-                _guardianRelation == null &&
-                _guardianPhone.text.trim().isEmpty) {
-              return '보호자를 등록하거나 "나중에 등록할게요"를 눌러주세요';
-            }
-            if (_guardianName.text.trim().isEmpty) {
-              return '보호자 성함을 입력해주세요';
-            }
-            if (_guardianRelation == null) return '나와의 관계를 골라주세요';
-            if (_guardianPhone.text.trim().isEmpty) {
-              return '보호자 휴대폰 번호를 입력해주세요';
-            }
-            return null;
-          },
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              _field(_guardianName, label: '성함', hint: '보호자 성함'),
-              const SizedBox(height: 12),
-              _sectionLabel('나와의 관계'),
-              _multiChips(
-                const ['딸', '아들', '배우자', '그 외'],
-                {?_guardianRelation},
-                (o) => setState(() {
-                  _guardianRelation = _guardianRelation == o ? null : o;
-                  _guardianLater = false;
-                }),
+              _choice(
+                '자주 마셔요',
+                sub: '일주일에 세 번 넘게',
+                selected: _drinking == '자주 마셔요',
+                onTap: () => _answerAndGo(() => _drinking = '자주 마셔요'),
               ),
               const SizedBox(height: 12),
-              _field(
-                _guardianPhone,
-                label: '휴대폰 번호',
-                hint: '010-0000-0000',
-                keyboard: TextInputType.phone,
+              _choice(
+                '가끔 마셔요',
+                selected: _drinking == '가끔 마셔요',
+                onTap: () => _answerAndGo(() => _drinking = '가끔 마셔요'),
               ),
-              const SizedBox(height: 16),
-              SeniorButton(
-                label: _guardianLater ? '나중에 등록할게요 ✓' : '나중에 등록할게요',
-                kind: SeniorButtonKind.secondary,
-                minHeight: 62,
-                fontSize: 20,
-                onPressed: () => setState(() {
-                  _guardianLater = !_guardianLater;
-                  if (_guardianLater) {
-                    _guardianName.clear();
-                    _guardianPhone.clear();
-                    _guardianRelation = null;
-                  }
-                }),
+              const SizedBox(height: 12),
+              _choice(
+                '안 마셔요',
+                selected: _drinking == '안 마셔요',
+                onTap: () => _answerAndGo(() => _drinking = '안 마셔요'),
               ),
             ],
           ),
         ),
       );
+
+      big(
+        _yesNoStep(
+          title: '약을 먹고 두드러기가 나거나\n숨이 찬 적이 있나요?',
+          subtitle: '약 알레르기를 여쭤보는 거예요.',
+          answer: _allergyAnswer,
+          onAnswer: (v) => _allergyAnswer = v,
+          yesLabel: '네, 있어요',
+          noLabel: '아니요, 없어요',
+          unsureLabel: '잘 모르겠어요',
+        ),
+      );
+      if (_allergyAnswer == 'y') {
+        detail(
+          _StepDef(
+            confirm: '알레르기가 있다고 하셨어요',
+            title: '어떤 약이었나요?',
+            subtitle: '여러 개 골라도 돼요.',
+            validate: () =>
+                _allergens.isEmpty ? '어떤 약인지 하나 이상 골라주세요' : null,
+            child: _multiChips(
+              _allergyOptions,
+              _allergens,
+              (o) => _toggle(_allergens, o),
+            ),
+          ),
+        );
+      }
+
+      big(
+        _yesNoStep(
+          title: '지금 치료받고 있는\n병이 있나요?',
+          subtitle: '약을 함께 먹어도 되는지 볼 때 써요.',
+          answer: _diseaseAnswer,
+          onAnswer: (v) => _diseaseAnswer = v,
+        ),
+      );
+      if (_diseaseAnswer == 'y') {
+        detail(
+          _StepDef(
+            confirm: '치료받는 병이 있다고 하셨어요',
+            title: '어떤 병인가요?',
+            subtitle: '여러 개 골라도 돼요.',
+            validate: () => _diseases.isEmpty ? '어떤 병인지 하나 이상 골라주세요' : null,
+            child: _multiChips(
+              _diseaseOptions,
+              _diseases,
+              (o) => _toggle(_diseases, o),
+            ),
+          ),
+        );
+      }
+
+      big(
+        _yesNoStep(
+          title: '예전에 크게\n아팠던 적이 있나요?',
+          subtitle: '암, 뇌졸중, 심근경색 같은 병이요.',
+          answer: _pastAnswer,
+          onAnswer: (v) => _pastAnswer = v,
+        ),
+      );
+      if (_pastAnswer == 'y') {
+        detail(
+          _StepDef(
+            confirm: '크게 아팠던 적이 있다고 하셨어요',
+            title: '어떤 병이었나요?',
+            subtitle: '여러 개 골라도 돼요.',
+            validate: () =>
+                _pastIllnesses.isEmpty ? '어떤 병인지 하나 이상 골라주세요' : null,
+            child: _multiChips(
+              _pastOptions,
+              _pastIllnesses,
+              (o) => _toggle(_pastIllnesses, o),
+            ),
+          ),
+        );
+      }
+
+      big(
+        _yesNoStep(
+          title: '부모님이나 형제가\n앓은 병이 있나요?',
+          subtitle: '나에게도 생기기 쉬운 병을 미리 살펴요.',
+          answer: _familyAnswer,
+          onAnswer: (v) => _familyAnswer = v,
+          unsureLabel: '잘 모르겠어요',
+        ),
+      );
+      if (_familyAnswer == 'y') {
+        detail(
+          _StepDef(
+            confirm: '가족이 앓은 병이 있다고 하셨어요',
+            title: '어떤 병이었나요?',
+            subtitle: '여러 개 골라도 돼요.',
+            validate: () =>
+                _familyIllnesses.isEmpty ? '어떤 병인지 하나 이상 골라주세요' : null,
+            child: _multiChips(
+              _familyOptions,
+              _familyIllnesses,
+              (o) => _toggle(_familyIllnesses, o),
+            ),
+          ),
+        );
+      }
+
+      big(
+        _StepDef(
+          auto: true,
+          title: '약을 놓치시면\n가족에게 알려드릴까요?',
+          subtitle: '심박수가 빠를 때도 함께 알려드려요.',
+          validate: () => _guardianAnswer == null ? '알려드릴지 골라주세요' : null,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _choice(
+                '네, 알려주세요',
+                sub: '다음 화면에서 번호를 적어요',
+                icon: TablerIcons.users,
+                selected: _guardianAnswer == 'y',
+                onTap: () => _answerAndGo(() => _guardianAnswer = 'y'),
+              ),
+              const SizedBox(height: 12),
+              _choice(
+                '나중에 할게요',
+                sub: '내 정보에서 언제든 넣어요',
+                icon: TablerIcons.clock,
+                selected: _guardianAnswer == 'n',
+                onTap: () => _answerAndGo(() {
+                  _guardianAnswer = 'n';
+                  _guardianName.clear();
+                  _guardianPhone.clear();
+                  _guardianRelation = null;
+                }),
+              ),
+            ],
+          ),
+        ),
+      );
+      if (_guardianAnswer == 'y') {
+        detail(
+          _StepDef(
+            title: '누구에게\n알려드릴까요?',
+            validate: () {
+              if (_guardianRelation == null) return '나와의 관계를 골라주세요';
+              if (_guardianName.text.trim().isEmpty) {
+                return '보호자 성함을 입력해주세요';
+              }
+              if (_guardianPhone.text.trim().isEmpty) {
+                return '보호자 휴대폰 번호를 입력해주세요';
+              }
+              return null;
+            },
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                _sectionLabel('나와의 관계'),
+                _grid(
+                  const ['딸', '아들', '배우자', '다른 분'],
+                  _guardianRelation,
+                  (v) => setState(() => _guardianRelation = v),
+                ),
+                const SizedBox(height: 18),
+                _field(_guardianName, label: '성함', hint: '보호자 성함'),
+                const SizedBox(height: 12),
+                _field(
+                  _guardianPhone,
+                  label: '휴대폰 번호',
+                  hint: '010-0000-0000',
+                  keyboard: TextInputType.phone,
+                ),
+              ],
+            ),
+          ),
+        );
+      }
     } // 환자 전용 건강정보 단계 끝
 
     // 동의는 환자·보호자 공통
-    steps.addAll([
+    big(
       _StepDef(
         title: '약관에\n동의해주세요',
-        subtitle: '필수 3개에 동의하면 가입이 끝납니다.',
+        subtitle: '필수 3개에 동의하면 가입이 끝나요.',
         validate: () => _allRequired ? null : '필수 3개에 동의해주세요',
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -768,7 +929,7 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
           ],
         ),
       ),
-    ]);
+    );
 
     return steps;
   }
@@ -779,6 +940,8 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
     if (_step > steps.length - 1) _step = steps.length - 1;
     final cur = steps[_step];
     final isLast = _step == steps.length - 1;
+    // 자세히 화면은 앞 단계와 같은 번호를 쓰므로 큰 단계만 센다.
+    final bigTotal = steps.last.stepNo;
 
     return Scaffold(
       backgroundColor: AppColors.surface,
@@ -805,7 +968,7 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
                   ),
                   const SizedBox(height: 10),
                   Text(
-                    '${_step + 1} / ${steps.length}',
+                    '${cur.stepNo} / $bigTotal',
                     style: AppText.cardTitle(
                       size: 18,
                       color: AppColors.textTertiary,
@@ -815,7 +978,7 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
                   ClipRRect(
                     borderRadius: BorderRadius.circular(4),
                     child: LinearProgressIndicator(
-                      value: (_step + 1) / steps.length,
+                      value: cur.stepNo / bigTotal,
                       minHeight: 8,
                       backgroundColor: AppColors.secondaryFill,
                       valueColor: const AlwaysStoppedAnimation<Color>(
@@ -833,6 +996,18 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     // 한 화면에 하나만 묻는다.
+                    if (cur.confirm != null) ...[
+                      // 방금 "네"라고 하신 것을 되짚어 준다 — 다른 질문에
+                      // 답하고 있다고 헷갈리지 않게.
+                      Text(
+                        cur.confirm!,
+                        style: AppText.cardTitle(
+                          size: 19,
+                          color: AppColors.point,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                    ],
                     Text(cur.title, style: AppText.screenTitle(size: 27)),
                     if (cur.subtitle != null) ...[
                       const SizedBox(height: 8),
@@ -850,26 +1025,29 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
                 ),
               ),
             ),
-            Padding(
-              key: _actionsKey,
-              padding: const EdgeInsets.fromLTRB(20, 0, 20, 30),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  SeniorButton(
-                    label: isLast && _isSubmitting
-                        ? '가입 중...'
-                        : isLast
-                        ? '가입하기'
-                        : '다음',
-                    minHeight: 74,
-                    fontSize: 24,
-                    onPressed: _isSubmitting ? null : () => _next(steps),
-                  ),
-                ],
+            // 누르면 바로 넘어가는 화면에는 "다음"을 두지 않는다.
+            // 버튼이 있으면 답을 고르고도 한 번 더 눌러야 하는 줄 안다.
+            if (!cur.auto)
+              Padding(
+                key: _actionsKey,
+                padding: const EdgeInsets.fromLTRB(20, 0, 20, 30),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    SeniorButton(
+                      label: isLast && _isSubmitting
+                          ? '가입 중...'
+                          : isLast
+                          ? '가입하기'
+                          : '다음',
+                      minHeight: 74,
+                      fontSize: 24,
+                      onPressed: _isSubmitting ? null : () => _next(steps),
+                    ),
+                  ],
+                ),
               ),
-            ),
           ],
         ),
       ),
@@ -915,7 +1093,7 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
       selected: selected,
       label: '$title, $sub',
       child: GestureDetector(
-        onTap: () => setState(() {
+        onTap: () => _answerAndGo(() {
           _role = role;
           _rolePicked = true;
         }),
@@ -956,6 +1134,73 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
                       ),
                       const SizedBox(height: 2),
                       Text(sub, style: AppText.caption(size: 17)),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// 누르면 바로 넘어가는 큰 답 하나. 한 줄에 하나씩 쌓는다.
+  Widget _choice(
+    String label, {
+    String? sub,
+    IconData? icon,
+    required bool selected,
+    required VoidCallback onTap,
+  }) {
+    return Semantics(
+      button: true,
+      selected: selected,
+      label: sub == null ? label : '$label, $sub',
+      child: GestureDetector(
+        onTap: onTap,
+        child: ExcludeSemantics(
+          child: Container(
+            constraints: const BoxConstraints(minHeight: 84),
+            alignment: Alignment.center,
+            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
+            decoration: BoxDecoration(
+              color: selected ? AppColors.pointTint : AppColors.surface,
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(
+                color: selected ? AppColors.point : AppColors.strongBorder,
+                width: 2,
+              ),
+              boxShadow: selected ? null : kCardShadow,
+            ),
+            child: Row(
+              children: [
+                if (icon != null) ...[
+                  Icon(
+                    icon,
+                    size: 30,
+                    color: selected ? AppColors.point : AppColors.textTertiary,
+                  ),
+                  const SizedBox(width: 14),
+                ],
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        label,
+                        style: AppText.cardTitle(
+                          size: 22,
+                          color: selected
+                              ? AppColors.point
+                              : AppColors.textPrimary,
+                        ),
+                      ),
+                      if (sub != null) ...[
+                        const SizedBox(height: 3),
+                        Text(sub, style: AppText.caption(size: 17)),
+                      ],
                     ],
                   ),
                 ),
@@ -1080,18 +1325,6 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
     );
   }
 
-  Widget _yesNo(bool? value, ValueChanged<bool> onSelect) {
-    return IntrinsicHeight(
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Expanded(child: _pill('있어요', value == true, () => onSelect(true))),
-          const SizedBox(width: 10),
-          Expanded(child: _pill('없어요', value == false, () => onSelect(false))),
-        ],
-      ),
-    );
-  }
 
   /// 약관 한 줄. 필수·선택 태그를 오른쪽에 둔다.
   Widget _consent(
@@ -1148,17 +1381,27 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
 }
 
 class _StepDef {
+  /// 큰 단계 번호. 자세히 화면은 앞 단계와 같은 번호를 쓴다.
+  int stepNo = 0;
+
+  /// "네"라고 하신 것을 자세히 여쭤보는 화면의 머리말.
+  final String? confirm;
   final String title;
   final String? subtitle;
-  final Widget child;
+
+  /// 누르면 바로 넘어가는 답. 아래 "다음" 버튼을 두지 않는다.
+  final bool auto;
   final String? Function() validate;
+  final Widget child;
 
   _StepDef({
+    this.confirm,
     required this.title,
     this.subtitle,
-    required this.child,
+    this.auto = false,
     String? Function()? validate,
-  }) : validate = (validate ?? (() => null));
+    required this.child,
+  }) : validate = validate ?? (() => null);
 }
 
 /// 회원가입 완료.
@@ -1207,7 +1450,7 @@ class SignupDoneScreen extends StatelessWidget {
                     ),
                     const SizedBox(height: 10),
                     Text(
-                      '$name 님, 반갑습니다.\n이제 드시는 약만 넣으면 됩니다.',
+                      '$name 님, 반갑습니다.\n이제 드시는 약만 넣으면 돼요.',
                       textAlign: TextAlign.center,
                       style: AppText.body(
                         size: 19,
