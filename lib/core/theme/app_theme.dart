@@ -24,9 +24,9 @@ abstract final class AppTheme {
     return ThemeData(
       useMaterial3: true,
       colorScheme: scheme,
-      // 화면 배경은 흰색 하나로 통일한다. 카드는 색 대비가 아니라
-      // 그림자로 떠 보이게 한다 ([AppColors.cardShadow]).
-      scaffoldBackgroundColor: AppColors.surface,
+      // 화면 배경은 아주 옅은 파랑 하나로 통일한다. 흰 카드가 그 위에
+      // 떠 보이고, 그림자([AppColors.cardShadow])가 경계를 마무리한다.
+      scaffoldBackgroundColor: AppColors.bgTinted,
       fontFamily: AppText.fontFamily,
       fontFamilyFallback: AppText.fontFallback,
       splashFactory: InkRipple.splashFactory,

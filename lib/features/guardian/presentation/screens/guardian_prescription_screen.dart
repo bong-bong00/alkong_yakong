@@ -38,7 +38,7 @@ class GuardianPickPatientScreen extends ConsumerWidget {
         const <CarePatient>[];
 
     return Scaffold(
-      backgroundColor: AppColors.surface,
+      backgroundColor: AppColors.bgTinted,
       body: Column(
         children: [
           SeniorHeader(

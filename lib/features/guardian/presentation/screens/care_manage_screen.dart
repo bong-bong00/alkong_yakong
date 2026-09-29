@@ -49,7 +49,7 @@ class CareManageScreen extends ConsumerWidget {
     final pending = data?.pending ?? const <PendingInvite>[];
 
     return Scaffold(
-      backgroundColor: AppColors.surface,
+      backgroundColor: AppColors.bgTinted,
       body: Column(
         children: [
           const SeniorBackHeader(title: '돌보는 분 관리', alignStart: true),

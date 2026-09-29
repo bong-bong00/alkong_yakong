@@ -929,7 +929,7 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
     final bigTotal = steps.last.stepNo;
 
     return Scaffold(
-      backgroundColor: AppColors.surface,
+      backgroundColor: AppColors.bgTinted,
       body: SafeArea(
         child: Column(
           children: [
@@ -1395,7 +1395,7 @@ class SignupDoneScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.surface,
+      backgroundColor: AppColors.bgTinted,
       body: SafeArea(
         child: Column(
           children: [

@@ -26,7 +26,7 @@ class MedicineArrivedScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.surface,
+      backgroundColor: AppColors.bgTinted,
       body: Column(
         children: [
           const SeniorTitleHeader(title: '약이 들어왔어요'),

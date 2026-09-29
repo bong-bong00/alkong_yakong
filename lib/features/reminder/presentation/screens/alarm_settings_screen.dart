@@ -115,7 +115,7 @@ class _AlarmSettingsScreenState extends ConsumerState<AlarmSettingsScreen> {
     final notifications = ref.read(reminderNotificationsProvider);
 
     return Scaffold(
-      backgroundColor: AppColors.surface,
+      backgroundColor: AppColors.bgTinted,
       body: Column(
         children: [
           const SeniorBackHeader(title: '복약 알림'),

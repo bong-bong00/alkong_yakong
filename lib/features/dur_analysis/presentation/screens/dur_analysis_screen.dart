@@ -208,7 +208,7 @@ class _DurAnalysisScreenState extends ConsumerState<DurAnalysisScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.surface,
+      backgroundColor: AppColors.bgTinted,
       body: Column(
         children: [
           const SeniorBackHeader(title: '약 함께먹기 주의'),

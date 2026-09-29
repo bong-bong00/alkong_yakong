@@ -193,10 +193,11 @@ class _HeartScreenState extends State<HeartScreen> {
   Widget build(BuildContext context) {
     final data = _data;
     return Scaffold(
-      backgroundColor: AppColors.surface,
+      backgroundColor: AppColors.bgTinted,
       body: Column(
         children: [
           SeniorHeader(
+            background: AppColors.bgTinted,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
@@ -209,9 +210,21 @@ class _HeartScreenState extends State<HeartScreen> {
                     ),
                     const SizedBox(width: 14),
                     Expanded(
-                      child: Text(
-                        '심박수 관리',
-                        style: AppText.screenTitle(size: 24),
+                      child: Text.rich(
+                        TextSpan(
+                          children: [
+                            TextSpan(
+                              text: '오늘 ',
+                              style: AppText.screenTitle(
+                                size: 24,
+                              ).copyWith(fontWeight: FontWeight.w500),
+                            ),
+                            TextSpan(
+                              text: '심박수',
+                              style: AppText.screenTitle(size: 24),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
                   ],
