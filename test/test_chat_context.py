@@ -896,8 +896,14 @@ class ChatContextTest(unittest.TestCase):
             )
 
         self.assertEqual(generate.call_count, 3)
-        for call in generate.call_args_list[1:]:
-            self.assertEqual(call.kwargs["config"]["max_output_tokens"], 1024)
+        self.assertEqual(
+            generate.call_args_list[1].kwargs["config"]["max_output_tokens"],
+            1024,
+        )
+        self.assertEqual(
+            generate.call_args_list[2].kwargs["config"]["max_output_tokens"],
+            1024,
+        )
         for expected in ("코다론정", "유한메토트렉세이트정", "1일 2회", "만 12세 미만", "사용하면 안"):
             self.assertIn(expected, reply)
 
@@ -1750,6 +1756,43 @@ class ChatContextTest(unittest.TestCase):
         self.assertIn("처음부터 다시 작성", retry_prompt)
         self.assertIn("숫자, 용량, 단위, 횟수, 기간, 연령", retry_prompt)
         self.assertNotIn("1~2 mg을 사용하지만", retry_prompt)
+        self.assertEqual(
+            generate.call_args_list[0].kwargs["config"]["max_output_tokens"],
+            512,
+        )
+        self.assertEqual(
+            generate.call_args_list[1].kwargs["config"]["max_output_tokens"],
+            1024,
+        )
+
+    def test_max_tokens_retry_can_expand_from_1024_to_2048(self):
+        first = _chat_response(
+            "공식 주의사항을 설명하지만",
+            finish_reason="MAX_TOKENS",
+        )
+        second = _chat_response(
+            "공식 주의사항을 확인했으며, 처방받은 사용 방법을 따라야 해요."
+        )
+        with patch.object(
+            gemini_service,
+            "_generate_content_with_retry",
+            side_effect=[first, second],
+        ) as generate:
+            reply = gemini_service._generate_complete_chat_reply(
+                MagicMock(),
+                prompt="공식 주의사항을 설명하세요.",
+                max_output_tokens=1024,
+            )
+
+        self.assertEqual(reply, second.text)
+        self.assertEqual(
+            generate.call_args_list[0].kwargs["config"]["max_output_tokens"],
+            1024,
+        )
+        self.assertEqual(
+            generate.call_args_list[1].kwargs["config"]["max_output_tokens"],
+            2048,
+        )
 
     def test_second_incomplete_reply_returns_fallback_without_joining(self):
         first = _chat_response("첫 번째 잘린 답변은", finish_reason="MAX_TOKENS")

@@ -659,11 +659,17 @@ def _generate_complete_chat_reply(
         return first_reply
 
     logger.warning("Gemini chat quality retry issues=%s", ",".join(issues))
+    retry_config = dict(config)
+    if "token_limit" in issues:
+        retry_config["max_output_tokens"] = min(
+            max(max_output_tokens * 2, 1024),
+            2048,
+        )
     retry_response = _generate_content_with_retry(
         client,
         model=GEMINI_MODEL,
         contents=f"{prompt}\n\n{CHAT_RETRY_INSTRUCTION}",
-        config=config,
+        config=retry_config,
     )
     retry_reply, is_complete, retry_issues = _chat_response_quality(
         retry_response,
@@ -1432,7 +1438,7 @@ def generate_chat_response(
                 prompt=prompt,
                 max_output_tokens=(
                     1024
-                    if all_medicines_question and "precautions" in intents
+                    if bool(intents & {"dosage", "usage", "precautions"})
                     else 512
                 ),
                 required_medicine_names=required_names,
