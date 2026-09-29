@@ -1854,7 +1854,7 @@ class ChatContextTest(unittest.TestCase):
         self.assertEqual(generate.call_count, 2)
         self.assertEqual(reply, second.text)
 
-    def test_still_unexplained_retry_uses_safe_fallback(self):
+    def test_still_unexplained_retry_returns_complete_answer(self):
         with patch.object(
             gemini_service,
             "_generate_content_with_retry",
@@ -1868,6 +1868,42 @@ class ChatContextTest(unittest.TestCase):
                 prompt="주의사항을 설명하세요.",
             )
         self.assertEqual(generate.call_count, 2)
+        self.assertEqual(reply, "QT 연장을 확인해야 해요.")
+
+    def test_methotrexate_villus_term_does_not_discard_complete_retry(self):
+        first = _chat_response(
+            "유한메토트렉세이트정은 융모성 질환 치료에 사용하는 약입니다."
+        )
+        second = _chat_response(
+            "유한메토트렉세이트정은 융모성 질환 치료에 사용하는 약이에요. "
+            "치료 중에는 의료진의 검사를 따라야 해요."
+        )
+        with patch.object(
+            gemini_service,
+            "_generate_content_with_retry",
+            side_effect=[first, second],
+        ) as generate:
+            reply = gemini_service._generate_complete_chat_reply(
+                MagicMock(),
+                prompt="공식 효능을 설명하세요.",
+                required_medicine_names=("유한메토트렉세이트정",),
+            )
+        self.assertEqual(generate.call_count, 2)
+        self.assertEqual(reply, second.text)
+
+    def test_jargon_does_not_override_other_retry_safety_failures(self):
+        with patch.object(
+            gemini_service,
+            "_generate_content_with_retry",
+            side_effect=[
+                _chat_response("QT 연장이 나타날 수 있어요."),
+                _chat_response("QT 연장은", finish_reason="MAX_TOKENS"),
+            ],
+        ):
+            reply = gemini_service._generate_complete_chat_reply(
+                MagicMock(),
+                prompt="주의사항을 설명하세요.",
+            )
         self.assertEqual(reply, gemini_service.INCOMPLETE_CHAT_REPLY)
 
     def test_official_names_are_not_rejected_as_unexplained_jargon(self):

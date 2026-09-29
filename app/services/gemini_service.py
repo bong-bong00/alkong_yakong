@@ -665,12 +665,19 @@ def _generate_complete_chat_reply(
         contents=f"{prompt}\n\n{CHAT_RETRY_INSTRUCTION}",
         config=config,
     )
-    retry_reply, is_complete, _ = _chat_response_quality(
+    retry_reply, is_complete, retry_issues = _chat_response_quality(
         retry_response,
         required_medicine_names=required_medicine_names,
         forbidden_phrases=forbidden_phrases,
     )
-    return retry_reply if is_complete else INCOMPLETE_CHAT_REPLY
+    if is_complete:
+        return retry_reply
+    if retry_reply and set(retry_issues) == {"unexplained_jargon"}:
+        logger.warning(
+            "Gemini reply accepted after jargon-only retry rejection"
+        )
+        return retry_reply
+    return INCOMPLETE_CHAT_REPLY
 
 
 def _all_medicine_unverified_notice(
