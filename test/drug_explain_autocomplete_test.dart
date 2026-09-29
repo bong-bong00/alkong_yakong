@@ -978,6 +978,76 @@ void main() {
     });
   }
 
+  for (final width in [320.0, 360.0]) {
+    testWidgets('긴 약 전체 답변의 처음과 끝은 ${width.toInt()}px 큰 글꼴에서도 스크롤로 접근한다', (
+      tester,
+    ) async {
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = Size(width, 800);
+      addTearDown(tester.view.reset);
+      final longReply = [
+        '긴 답변 시작이에요.',
+        ...List.generate(
+          18,
+          (index) => '등록 약 ${index + 1}의 공식 주의 조건과 확인 범위를 쉬운 말로 안내해요.',
+        ),
+        '긴 답변 끝이에요.',
+      ].join('\n');
+      final teamClient = MockClient(
+        (_) async => jsonResponse({'reply': longReply}),
+      );
+      final medicationClient = MockClient(
+        (_) async => jsonResponse({
+          'medicines': [
+            {'medicine_code': '100', 'product_name': '첫째약정'},
+            {'medicine_code': '200', 'product_name': '둘째약정'},
+          ],
+        }),
+      );
+      await tester.pumpWidget(
+        MediaQuery(
+          data: MediaQueryData.fromView(
+            tester.view,
+          ).copyWith(textScaler: const TextScaler.linear(1.3)),
+          child: appWith(teamClient, medicationClient: medicationClient),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final chip = find.widgetWithText(ChoiceChip, '약마다 주의할 점은요?');
+      await tester.ensureVisible(chip);
+      await tester.tap(chip);
+      await tester.pumpAndSettle();
+
+      final listFinder = find.byType(ListView).first;
+      final list = tester.widget<ListView>(listFinder);
+      final controller = list.controller!;
+      final listRect = tester.getRect(listFinder);
+      final answer = find.text(longReply);
+      expect(controller.position.maxScrollExtent, greaterThan(0));
+
+      controller.jumpTo(controller.position.maxScrollExtent);
+      await tester.pump();
+      var answerRect = tester.getRect(answer);
+      expect(answerRect.bottom, lessThanOrEqualTo(listRect.bottom + 1));
+      expect(answerRect.bottom, greaterThan(listRect.top));
+
+      final answerTopOffset =
+          (controller.offset + answerRect.top - listRect.top)
+              .clamp(0.0, controller.position.maxScrollExtent)
+              .toDouble();
+      controller.jumpTo(answerTopOffset);
+      await tester.pump();
+      answerRect = tester.getRect(answer);
+      expect(answerRect.top, greaterThanOrEqualTo(listRect.top - 1));
+      expect(answerRect.top, lessThan(listRect.bottom));
+
+      final inputRect = tester.getRect(find.byType(TextField));
+      expect(listRect.bottom, lessThanOrEqualTo(inputRect.top));
+      expect(tester.takeException(), isNull);
+    });
+  }
+
   testWidgets('약 개요 추천 질문은 overview이고 효능 질문은 efficacy를 유지한다', (tester) async {
     final bodies = <Map<String, dynamic>>[];
     final client = MockClient((request) async {
