@@ -904,6 +904,9 @@ class ChatContextTest(unittest.TestCase):
             generate.call_args_list[2].kwargs["config"]["max_output_tokens"],
             1024,
         )
+        all_medicine_prompt = generate.call_args_list[1].kwargs["contents"]
+        self.assertIn("제품마다 핵심 2~3문장", all_medicine_prompt)
+        self.assertIn("공통 안내는 한 번만", all_medicine_prompt)
         for expected in ("코다론정", "유한메토트렉세이트정", "1일 2회", "만 12세 미만", "사용하면 안"):
             self.assertIn(expected, reply)
 
@@ -1664,6 +1667,10 @@ class ChatContextTest(unittest.TestCase):
         for rule in (
             "핵심 답을 첫 문장에",
             "한 문장에는 한 가지 내용",
+            "약 60% 수준",
+            "overview·efficacy는 3~5문장",
+            "dosage·usage는 4~6문장",
+            "precautions·side_effects는 5~8문장",
             "일반 텍스트로만",
             "Markdown 제목(#)",
             "HTML 태그를 쓰지 마세요",
@@ -1675,6 +1682,19 @@ class ChatContextTest(unittest.TestCase):
         ):
             self.assertIn(rule, prompt)
         self.assertNotIn("DUR 안내, 다음 안내", prompt)
+
+    def test_prompt_sets_target_length_without_dropping_safety(self):
+        prompt = build_grounded_chat_prompt(
+            message="현재 약마다 주의할 점을 알려주세요.",
+            intents={"precautions"},
+            official_contexts=[
+                {"product_name": "약가정", "cautions": "만 12세 미만은 사용하면 안 됨"},
+                {"product_name": "약나정", "cautions": "1일 2회 조건을 확인해야 함"},
+            ],
+            dur_result={"status": "not_required", "items": []},
+        )
+        self.assertIn("약 60% 수준", prompt)
+        self.assertIn("중요한 숫자·금지·연령·예외 조건", prompt)
 
     def test_plain_chat_reply_removes_only_markup_and_is_idempotent(self):
         raw = (
@@ -1754,6 +1774,7 @@ class ChatContextTest(unittest.TestCase):
         self.assertEqual(generate.call_count, 2)
         retry_prompt = generate.call_args_list[1].kwargs["contents"]
         self.assertIn("처음부터 다시 작성", retry_prompt)
+        self.assertIn("약 60% 분량", retry_prompt)
         self.assertIn("숫자, 용량, 단위, 횟수, 기간, 연령", retry_prompt)
         self.assertNotIn("1~2 mg을 사용하지만", retry_prompt)
         self.assertEqual(
