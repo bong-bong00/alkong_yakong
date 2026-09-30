@@ -905,8 +905,9 @@ class ChatContextTest(unittest.TestCase):
             1024,
         )
         all_medicine_prompt = generate.call_args_list[1].kwargs["contents"]
-        self.assertIn("제품마다 핵심 2~3문장", all_medicine_prompt)
+        self.assertIn("약마다 핵심 1~2문장", all_medicine_prompt)
         self.assertIn("공통 안내는 한 번만", all_medicine_prompt)
+        self.assertIn("특정 약을 누락하지 마세요", all_medicine_prompt)
         for expected in ("코다론정", "유한메토트렉세이트정", "1일 2회", "만 12세 미만", "사용하면 안"):
             self.assertIn(expected, reply)
 
@@ -1667,14 +1668,14 @@ class ChatContextTest(unittest.TestCase):
         for rule in (
             "핵심 답을 첫 문장에",
             "한 문장에는 한 가지 내용",
-            "약 60% 수준",
-            "overview·efficacy는 3~5문장",
-            "dosage·usage는 4~6문장",
-            "precautions·side_effects는 5~8문장",
+            "overview·efficacy는 보통 2~3문장(약 200~350자)",
+            "dosage·usage는 보통 3~4문장(약 300~450자)",
+            "precautions·side_effects는 가장 중요한 내용부터 보통 3~5문장(약 400~600자)",
+            "글자 수에 맞춰 문장을 기계적으로 자르지 마세요",
+            "일반적인 인사, 질문과 관련 없는 공식정보, 긴 맺음말",
             "일반 텍스트로만",
             "Markdown 제목(#)",
             "HTML 태그를 쓰지 마세요",
-            "긴 공식 문장을 첫 답변에 그대로 나열하지 마세요",
             "공식 조건·금지·심각한 위험",
             "공식 효능 자료에 확인된 의미 안에서",
             "개인 처방 정보 없이 개인 복용량을 새로 정하지 말고",
@@ -1693,8 +1694,9 @@ class ChatContextTest(unittest.TestCase):
             ],
             dur_result={"status": "not_required", "items": []},
         )
-        self.assertIn("약 60% 수준", prompt)
-        self.assertIn("중요한 숫자·금지·연령·예외 조건", prompt)
+        self.assertIn("숫자·용량·단위·횟수·기간·연령·금지·예외 조건", prompt)
+        self.assertIn("확인하지 못한 약·검사 범위는 분량 목표보다 우선", prompt)
+        self.assertIn("이를 빼거나 의미를 약하게 만들어", prompt)
 
     def test_plain_chat_reply_removes_only_markup_and_is_idempotent(self):
         raw = (
@@ -1774,8 +1776,10 @@ class ChatContextTest(unittest.TestCase):
         self.assertEqual(generate.call_count, 2)
         retry_prompt = generate.call_args_list[1].kwargs["contents"]
         self.assertIn("처음부터 다시 작성", retry_prompt)
-        self.assertIn("약 60% 분량", retry_prompt)
+        self.assertIn("질문 종류별 문장 수와 글자 수 목표", retry_prompt)
+        self.assertIn("기계적으로 자르지 마세요", retry_prompt)
         self.assertIn("숫자, 용량, 단위, 횟수, 기간, 연령", retry_prompt)
+        self.assertIn("확인하지 못한 약과 실제 검사 범위", retry_prompt)
         self.assertNotIn("1~2 mg을 사용하지만", retry_prompt)
         self.assertEqual(
             generate.call_args_list[0].kwargs["config"]["max_output_tokens"],
