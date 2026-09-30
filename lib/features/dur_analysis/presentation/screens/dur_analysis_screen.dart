@@ -591,7 +591,7 @@ class _PlusMark extends StatelessWidget {
   }
 }
 
-/// 약 한 장. 이름 아래에 무슨 약인지 한 줄.
+/// 약 이름을 상자 정가운데 표시한다.
 class _MedicineTile extends StatelessWidget {
   final _NamedMedicine medicine;
 
@@ -607,9 +607,15 @@ class _MedicineTile extends StatelessWidget {
         border: Border.all(color: AppColors.border, width: 2),
       ),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.center,
         mainAxisAlignment: MainAxisAlignment.center,
-        children: [Text(medicine.name, style: AppText.cardTitle(size: 19))],
+        children: [
+          Text(
+            medicine.name,
+            textAlign: TextAlign.center,
+            style: AppText.cardTitle(size: 19),
+          ),
+        ],
       ),
     );
   }
