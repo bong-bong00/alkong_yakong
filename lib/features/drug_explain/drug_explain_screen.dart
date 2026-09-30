@@ -40,16 +40,29 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
   bool _isLoading = false;
   bool _isLoadingMedicines = false;
   String? _selectedKeyword;
-  String? _selectedMedicine;
+  final List<String> _selectedMedicines = [];
   String? _pendingGeneralQuestion;
   bool _isAllMedicinesSelected = false;
-  _DrugSearchCandidate? _selectedOfficialMedicine;
   final Map<String, _DrugSearchCandidate> _officialMedicinesByName = {};
   final Set<String> _confirmedOfficialProductNames = {};
   final Map<String, _DrugSearchCandidate> _temporaryMedicinesByCode = {};
   String? _medicineLoadError;
   final List<String> _medicines = [];
   final List<Map<String, dynamic>> _messages = [];
+
+  String? get _selectedMedicine =>
+      _selectedMedicines.length == 1 ? _selectedMedicines.single : null;
+
+  bool get _hasMultipleMedicines => _selectedMedicines.length >= 2;
+
+  List<String> get _selectedRequestMedicineNames => _selectedMedicines
+      .map((name) => _officialMedicinesByName[name]?.itemName ?? name)
+      .toList(growable: false);
+
+  _DrugSearchCandidate? get _selectedOfficialMedicine {
+    final medicine = _selectedMedicine;
+    return medicine == null ? null : _officialMedicinesByName[medicine];
+  }
 
   static const List<Map<String, String>> _suggestions = [
     {
@@ -64,7 +77,7 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
     },
   ];
 
-  /// 약을 선택한 뒤 일곱 가지 질문 중 필요한 것을 고른다.
+  /// 약을 선택한 뒤 여섯 가지 질문 중 필요한 것을 고른다.
   static const List<Map<String, String>> _keywordPrompts = [
     {
       'label': '어디에 쓰는 약인가요?',
@@ -86,13 +99,6 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
       'label': '사용 뒤 증상이 생기면?',
       'prompt': '이 약을 사용한 뒤 평소와 다른 증상이 생기면 어떻게 해야 하나요?',
       'intent': 'side_effects',
-    },
-    {
-      'label': '다른 약과 함께 먹어도 되나요?',
-      'prompt':
-          '이 약을 제가 먹고 있는 약들과 같이 먹어도 되는지 확인해 주세요. 같은 성분이나 비슷한 역할의 약이 겹치는지도 알려주세요.',
-      'display': '다른 약과 함께 먹어도 되나요?',
-      'intent': 'combination',
     },
     {
       'label': '나이에 따라 조심할 점',
@@ -128,6 +134,33 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
     {
       'label': '약마다 주의할 점은요?',
       'prompt': '제가 현재 먹는 약마다 공식 자료에서 확인되는 주의할 점을 알려주세요.',
+      'display': '약마다 주의할 점은요?',
+      'intent': 'precautions',
+    },
+  ];
+
+  static const List<Map<String, String>> _selectedMedicinePrompts = [
+    {
+      'label': '선택한 약 알려주세요',
+      'prompt': '{medicines} 각각이 무슨 약인지 쉬운 말로 알려주세요.',
+      'display': '선택한 약 알려주세요',
+      'intent': 'overview',
+    },
+    {
+      'label': '같이 먹어도 괜찮나요?',
+      'prompt': '{medicines}을 함께 사용할 때 주의할 점이 있는지 확인해 주세요.',
+      'display': '같이 먹어도 괜찮나요?',
+      'intent': 'combination',
+    },
+    {
+      'label': '같은 성분의 약이 있나요?',
+      'prompt': '{medicines} 사이에 같은 성분이나 비슷한 역할이 겹치는지 확인해 주세요.',
+      'display': '같은 성분의 약이 있나요?',
+      'intent': 'duplicate',
+    },
+    {
+      'label': '약마다 주의할 점은요?',
+      'prompt': '{medicines} 각각의 공식 자료에서 확인되는 주의할 점을 알려주세요.',
       'display': '약마다 주의할 점은요?',
       'intent': 'precautions',
     },
@@ -174,12 +207,22 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
     if (_isAllMedicinesSelected && !_allMedicinePrompts.contains(keyword)) {
       return;
     }
-    if (!_isAllMedicinesSelected && _selectedMedicine == null) return;
+    if (_hasMultipleMedicines && !_selectedMedicinePrompts.contains(keyword)) {
+      return;
+    }
+    if (!_isAllMedicinesSelected && _selectedMedicines.isEmpty) return;
+
+    final requestPrompt = _hasMultipleMedicines
+        ? prompt.replaceAll(
+            '{medicines}',
+            _selectedRequestMedicineNames.join(', '),
+          )
+        : prompt;
 
     setState(() => _selectedKeyword = label);
     await _sendMessage(
-      message: prompt,
-      displayMessage: keyword['display'] ?? prompt,
+      message: requestPrompt,
+      displayMessage: keyword['display'] ?? requestPrompt,
       intent: intent,
     );
   }
@@ -334,7 +377,6 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
         _confirmedOfficialProductNames
           ..clear()
           ..addAll(officialNamesByCode.values);
-        _selectedOfficialMedicine = _officialMedicinesByName[_selectedMedicine];
         _medicineLoadError = names.isEmpty ? '등록된 처방/복용약이 없습니다.' : null;
       });
     } on ApiException {
@@ -372,42 +414,55 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
 
   Future<void> _pickSubject() async {
     if (_isLoading) return;
-    final options = <String>['일반 질문', '약 전체', ..._medicines];
-    final current = _selectedMedicine != null
-        ? options.indexOf(_selectedMedicine!)
+    const options = <String>['일반 질문', '약 전체', '약 이름 선택'];
+    final current = _selectedMedicines.isNotEmpty
+        ? 2
         : (_isAllMedicinesSelected ? 1 : 0);
     final picked = await showSeniorWheel(
       context: context,
       title: '어떤 약을 물어볼까요?',
       options: options,
-      selectedIndex: current < 0 ? 0 : current,
+      selectedIndex: current,
       confirmLabel: '선택',
-      extraButtons: [
-        Builder(
-          builder: (dialogContext) => SeniorButton(
-            label: '다른 약 검색하기',
-            kind: SeniorButtonKind.secondary,
-            minHeight: 60,
-            fontSize: 19,
-            // -1은 "목록에 없는 약을 찾아보겠다"는 뜻이다.
-            onPressed: () => Navigator.of(dialogContext).pop(-1),
-          ),
-        ),
-      ],
     );
     if (!mounted || picked == null) return;
-    if (picked < 0) {
-      await _enterOtherMedicine();
+    if (picked == 2) {
+      await _pickMedicines();
       return;
     }
     final isAllMedicines = picked == 1;
-    final name = picked >= 2 ? options[picked] : null;
     setState(() {
-      _selectedMedicine = name;
+      _selectedMedicines.clear();
       _isAllMedicinesSelected = isAllMedicines;
-      _selectedOfficialMedicine = name == null
-          ? null
-          : _officialMedicinesByName[name];
+      _pendingGeneralQuestion = null;
+      _selectedKeyword = null;
+    });
+  }
+
+  Future<void> _pickMedicines() async {
+    final result = await SeniorSheet.show<_MedicineSelectionResult>(
+      context: context,
+      builder: (_) => _MedicineSelectionSheet(
+        medicines: _medicines,
+        selectedMedicines: _selectedMedicines,
+      ),
+    );
+    if (!mounted || result == null) return;
+    if (result.searchOther) {
+      setState(() {
+        _selectedMedicines
+          ..clear()
+          ..addAll(result.medicines);
+      });
+      await _enterOtherMedicine(addToSelection: true);
+      return;
+    }
+    if (result.medicines.isEmpty) return;
+    setState(() {
+      _selectedMedicines
+        ..clear()
+        ..addAll(result.medicines);
+      _isAllMedicinesSelected = false;
       _pendingGeneralQuestion = null;
       _selectedKeyword = null;
     });
@@ -426,7 +481,7 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
     );
   }
 
-  Future<void> _enterOtherMedicine() async {
+  Future<void> _enterOtherMedicine({bool addToSelection = false}) async {
     final medicine = await SeniorSheet.show<_DrugSearchCandidate>(
       context: context,
       builder: (_) => _OtherMedicineDialog(apiClient: _apiClient),
@@ -441,9 +496,11 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
         _temporaryMedicinesByCode[code] = medicine;
       }
       _officialMedicinesByName[medicine.itemName] = medicine;
-      _selectedMedicine = medicine.itemName;
+      if (!addToSelection) _selectedMedicines.clear();
+      if (!_selectedMedicines.contains(medicine.itemName)) {
+        _selectedMedicines.add(medicine.itemName);
+      }
       _isAllMedicinesSelected = false;
-      _selectedOfficialMedicine = medicine;
       _pendingGeneralQuestion = null;
       _selectedKeyword = null;
     });
@@ -473,12 +530,13 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
     final pendingQuestion = _pendingGeneralQuestion;
     final isGeneralFreeInput =
         message == null &&
-        _selectedMedicine == null &&
+        _selectedMedicines.isEmpty &&
         !_isAllMedicinesSelected;
-    final requestText =
-        isGeneralFreeInput &&
-            pendingQuestion != null &&
-            _looksLikeMedicineIdentity(text)
+    final requestText = _hasMultipleMedicines && message == null
+        ? '${_selectedRequestMedicineNames.join(', ')}에 대해 다음 질문에 답해 주세요: $text'
+        : isGeneralFreeInput &&
+              pendingQuestion != null &&
+              _looksLikeMedicineIdentity(text)
         ? '$text에 대해 다음 질문에 답해 주세요: $pendingQuestion'
         : text;
 
@@ -491,8 +549,11 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
     _scrollToBottom();
 
     try {
-      final officialProductNames = _selectedOfficialMedicine != null
-          ? <String>[_selectedOfficialMedicine!.itemName]
+      final officialProductNames = _selectedMedicines.isNotEmpty
+          ? _selectedMedicines
+                .map((name) => _officialMedicinesByName[name]?.itemName)
+                .whereType<String>()
+                .toList(growable: false)
           : <String>{
               ..._confirmedOfficialProductNames,
               ..._temporaryMedicinesByCode.values.map(
@@ -513,8 +574,14 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
           'product_name': selectedOfficial.itemName,
         };
       }
-      if (_isAllMedicinesSelected && _temporaryMedicinesByCode.isNotEmpty) {
-        body['temporary_medicines'] = _temporaryMedicinesByCode.values
+      final temporaryMedicines = _isAllMedicinesSelected
+          ? _temporaryMedicinesByCode.values
+          : _temporaryMedicinesByCode.values.where(
+              (medicine) => _selectedMedicines.contains(medicine.itemName),
+            );
+      if ((_isAllMedicinesSelected || _hasMultipleMedicines) &&
+          temporaryMedicines.isNotEmpty) {
+        body['temporary_medicines'] = temporaryMedicines
             .map(
               (medicine) => {
                 'medicine_code': medicine.itemSeq,
@@ -646,11 +713,11 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
   Widget build(BuildContext context) {
     // 아직 아무것도 안 물어봤을 때만 예시 질문을 보여준다.
     final showSuggestions =
-        _messages.length <= 1 &&
-        _selectedMedicine != null &&
-        _selectedMedicine!.isNotEmpty;
+        _messages.length <= 1 && _selectedMedicines.length == 1;
     final subject = _selectedMedicine?.trim();
-    final subjectLabel = subject?.isNotEmpty == true
+    final subjectLabel = _hasMultipleMedicines
+        ? '${_selectedMedicines.first} 외 ${_selectedMedicines.length - 1}개'
+        : subject?.isNotEmpty == true
         ? subject!
         : (_isAllMedicinesSelected ? '약 전체' : '일반 질문');
 
@@ -798,9 +865,13 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
               ),
             ),
             if (!_isLoadingMedicines &&
-                (_isAllMedicinesSelected || subject?.isNotEmpty == true))
+                (_isAllMedicinesSelected || _selectedMedicines.isNotEmpty))
               _buildKeywordBar(
-                _isAllMedicinesSelected ? _allMedicinePrompts : _keywordPrompts,
+                _isAllMedicinesSelected
+                    ? _allMedicinePrompts
+                    : _hasMultipleMedicines
+                    ? _selectedMedicinePrompts
+                    : _keywordPrompts,
               ),
             Padding(
               padding: const EdgeInsets.fromLTRB(20, 10, 20, 14),
@@ -867,6 +938,100 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
           ],
         ),
       ),
+    );
+  }
+}
+
+class _MedicineSelectionResult {
+  final List<String> medicines;
+  final bool searchOther;
+
+  const _MedicineSelectionResult({
+    this.medicines = const [],
+    this.searchOther = false,
+  });
+}
+
+class _MedicineSelectionSheet extends StatefulWidget {
+  final List<String> medicines;
+  final List<String> selectedMedicines;
+
+  const _MedicineSelectionSheet({
+    required this.medicines,
+    required this.selectedMedicines,
+  });
+
+  @override
+  State<_MedicineSelectionSheet> createState() =>
+      _MedicineSelectionSheetState();
+}
+
+class _MedicineSelectionSheetState extends State<_MedicineSelectionSheet> {
+  late final Set<String> _selected = widget.selectedMedicines.toSet();
+
+  @override
+  Widget build(BuildContext context) {
+    return SeniorSheet(
+      title: '약 이름을 선택해 주세요',
+      body: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            '여러 약을 함께 확인하려면 두 개 이상 선택하세요.',
+            style: AppText.body(size: 18, color: AppColors.textBody),
+          ),
+          const SizedBox(height: 10),
+          for (final medicine in widget.medicines)
+            Material(
+              color: Colors.transparent,
+              child: CheckboxListTile(
+                key: ValueKey('medicine-selection-$medicine'),
+                value: _selected.contains(medicine),
+                onChanged: (checked) {
+                  setState(() {
+                    if (checked == true) {
+                      _selected.add(medicine);
+                    } else {
+                      _selected.remove(medicine);
+                    }
+                  });
+                },
+                title: Text(medicine, style: AppText.label(size: 19)),
+                activeColor: AppColors.point,
+                checkColor: Colors.white,
+                controlAffinity: ListTileControlAffinity.leading,
+                contentPadding: EdgeInsets.zero,
+              ),
+            ),
+          if (widget.medicines.isEmpty)
+            Text(
+              '목록에 약이 없습니다. 다른 약을 검색해 주세요.',
+              style: AppText.caption(size: 17),
+            ),
+        ],
+      ),
+      actions: [
+        SeniorButton(
+          label: _selected.isEmpty ? '약을 선택해 주세요' : '${_selected.length}개 선택',
+          onPressed: _selected.isEmpty
+              ? null
+              : () => Navigator.of(
+                  context,
+                ).pop(_MedicineSelectionResult(medicines: _selected.toList())),
+        ),
+        SeniorButton(
+          label: '다른 약 검색하기',
+          kind: SeniorButtonKind.secondary,
+          minHeight: 60,
+          fontSize: 19,
+          onPressed: () => Navigator.of(context).pop(
+            _MedicineSelectionResult(
+              medicines: _selected.toList(),
+              searchOther: true,
+            ),
+          ),
+        ),
+      ],
     );
   }
 }
