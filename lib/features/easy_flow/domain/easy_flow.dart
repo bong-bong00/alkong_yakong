@@ -34,7 +34,8 @@ class EasyStep {
 /// 하루에 실제로 일어나는 차례를 따른다.
 /// 흐름 밖 화면에서는 라벨이 "오늘 화면으로 가기"가 된다.
 const List<EasyStep> kEasyFlow = [
-  EasyStep(screen: EasyScreen.today, nextLabel: '복약 완료 보기'),
+  // 시안 70 — 약을 들기 전에 심박부터 잰다.
+  EasyStep(screen: EasyScreen.today, nextLabel: '복약 전 심박 측정'),
   EasyStep(screen: EasyScreen.done, nextLabel: '복약 기록 보기'),
   EasyStep(screen: EasyScreen.record, nextLabel: '심박수 보기'),
   EasyStep(screen: EasyScreen.heart, nextLabel: '내 약 목록 보기'),

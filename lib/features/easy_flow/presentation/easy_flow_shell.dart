@@ -354,24 +354,35 @@ class _EasyFlowBar extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              if (onBack != null) ...[
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: SeniorTextButton(
-                    label: '이전으로',
-                    expand: false,
-                    fontSize: 17,
-                    onPressed: onBack,
+              // 시안 — 뒤로와 다음을 한 줄에 나란히. 뒤로는 검은 면으로
+              // 두어 파란 "다음"과 헷갈리지 않게 한다.
+              Row(
+                children: [
+                  if (onBack != null) ...[
+                    SizedBox(
+                      width: 128,
+                      child: SeniorButton(
+                        label: '뒤로',
+                        icon: TablerIcons.arrow_left,
+                        kind: SeniorButtonKind.dark,
+                        minHeight: 76,
+                        fontSize: 22,
+                        radius: 20,
+                        onPressed: onBack,
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                  ],
+                  Expanded(
+                    child: SeniorButton(
+                      label: label,
+                      minHeight: 76,
+                      fontSize: 24,
+                      radius: 20,
+                      onPressed: onNext,
+                    ),
                   ),
-                ),
-                const SizedBox(height: 4),
-              ],
-              SeniorButton(
-                label: label,
-                minHeight: 76,
-                fontSize: 24,
-                radius: 20,
-                onPressed: onNext,
+                ],
               ),
             ],
           ),
