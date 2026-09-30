@@ -76,6 +76,13 @@ def classify_question_scope(message: str) -> str:
     if not normalized:
         return "ambiguous"
 
+    product_identity = bool(
+        re.search(
+            r"[0-9a-z가-힣]{2,}(?:정|캡슐|연질|시럽|주사|액|패치|크림|산)"
+            r"(?=과|와|은|는|이|가|을|를|에|의|도|만|,|\s|$)",
+            normalized,
+        )
+    )
     medicine_terms = (
         "약",
         "복용",
@@ -95,7 +102,9 @@ def classify_question_scope(message: str) -> str:
         "주사",
         "보관",
     )
-    has_medicine_topic = any(term in normalized for term in medicine_terms)
+    has_medicine_topic = product_identity or any(
+        term in normalized for term in medicine_terms
+    )
     if not has_medicine_topic:
         unrelated_terms = (
             "날씨",
@@ -117,12 +126,6 @@ def classify_question_scope(message: str) -> str:
     if any(term in normalized for term in ("깜빡", "잊었", "놓쳐", "보관", "저장")):
         return "general_medication"
 
-    product_identity = bool(
-        re.search(
-            r"[0-9a-z가-힣]{2,}(?:정|캡슐|연질|시럽|주사|액|패치|크림|산)\b",
-            normalized,
-        )
-    )
     medicine_specific_terms = (
         "부작용",
         "이상반응",
@@ -136,6 +139,14 @@ def classify_question_scope(message: str) -> str:
         "먹어도돼",
         "무슨약",
         "어디에쓰",
+        "커피",
+        "카페인",
+        "음료",
+        "음식",
+        "우유",
+        "자몽",
+        "술",
+        "음주",
     )
     matched_specific_terms = [
         term for term in medicine_specific_terms if term in normalized
@@ -143,16 +154,15 @@ def classify_question_scope(message: str) -> str:
     if matched_specific_terms and not product_identity:
         first_term_index = min(normalized.find(term) for term in matched_specific_terms)
         prefix = normalized[:first_term_index]
-        product_identity = len(prefix) >= 2 and prefix not in {
-            "약",
-            "약의",
-            "이약",
-            "이약의",
-            "일반약",
-            "보통약",
-        }
+        generic_prefixes = ("약", "이약", "일반약", "보통약", "먹는약", "복용중인약")
+        product_identity = len(prefix) >= 2 and not prefix.startswith(
+            generic_prefixes
+        )
     if matched_specific_terms:
         return "medicine_specific" if product_identity else "needs_medicine"
+
+    if product_identity:
+        return "medicine_specific"
 
     return "general_medication"
 
@@ -207,6 +217,11 @@ def classify_question(message: str) -> set[str]:
     if any(term in normalized for term in ("부작용", "이상반응")):
         intents.add("side_effects")
     if any(term in normalized for term in ("주의", "경고", "조심")):
+        intents.add("precautions")
+    if any(
+        term in normalized
+        for term in ("커피", "카페인", "음료", "음식", "우유", "자몽", "술", "음주")
+    ):
         intents.add("precautions")
     if any(term in normalized for term in ("어떻게먹", "복용법", "사용법", "용법", "몇번")):
         intents.add("usage")

@@ -1057,6 +1057,7 @@ def generate_chat_response(
 
         selected_official = None
         official_data_list = []
+        question_official_medicines: list[dict[str, str]] = []
         all_medicines_context = None
         verified_all_medicine_names: list[str] = []
         unverified_all_medicine_names: list[str] = []
@@ -1320,6 +1321,43 @@ def generate_chat_response(
                     for item in official_data_list
                 ):
                     official_data_list.append(found_data)
+                if found_data and found_data.get("match_type") == "exact":
+                    exact_info = found_data.get("식약처_공식정보") or {}
+                    exact_code = str(exact_info.get("medicine_code") or "").strip()
+                    exact_name = str(exact_info.get("product_name") or "").strip()
+                    if (
+                        exact_code.isdigit()
+                        and exact_name
+                        and not any(
+                            item["medicine_code"] == exact_code
+                            for item in question_official_medicines
+                        )
+                    ):
+                        question_official_medicines.append(
+                            {
+                                "medicine_code": exact_code,
+                                "product_name": exact_name,
+                            }
+                        )
+
+            if (
+                selected_medicine is None
+                and not all_medicines_question
+                and len(question_official_medicines) == 1
+            ):
+                exact_code = question_official_medicines[0]["medicine_code"]
+                selected_official = next(
+                    (
+                        item["식약처_공식정보"]
+                        for item in official_data_list
+                        if str(
+                            item.get("식약처_공식정보", {}).get("medicine_code")
+                            or ""
+                        ).strip()
+                        == exact_code
+                    ),
+                    None,
+                )
 
             official_contexts = [
                 select_official_context(item["식약처_공식정보"], intents)
@@ -1335,17 +1373,31 @@ def generate_chat_response(
                     load_remote_combination_context,
                 )
 
-                dur_result = load_remote_combination_context(
-                    user_id=user_id,
-                    selected_medicine=selected_official,
-                    additional_medicines=(
-                        temporary_medicines or [] if all_medicines_question else []
+                explicit_question_scope = (
+                    selected_medicine is None
+                    and not all_medicines_question
+                    and len(question_official_medicines) >= 2
+                )
+                dur_request = {
+                    "user_id": user_id,
+                    "selected_medicine": (
+                        None if explicit_question_scope else selected_official
                     ),
-                    requested_types=(
+                    "additional_medicines": (
+                        temporary_medicines or []
+                        if all_medicines_question
+                        else question_official_medicines
+                    ),
+                    "requested_types": (
                         {"중복성분"}
                         if all_medicines_question and "duplicate" in intents
                         else {"병용금기", "중복성분", "효능군중복"}
                     ),
+                }
+                if explicit_question_scope:
+                    dur_request["include_current_medicines"] = False
+                dur_result = load_remote_combination_context(
+                    **dur_request,
                 )
                 if all_medicines_question and "duplicate" in intents:
                     duplicate_items = [

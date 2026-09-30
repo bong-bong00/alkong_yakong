@@ -97,6 +97,7 @@ def load_remote_combination_context(
     selected_medicine: dict[str, Any] | None,
     additional_medicines: list[dict[str, Any]] | None = None,
     requested_types: set[str] | None = None,
+    include_current_medicines: bool = True,
 ) -> dict[str, Any]:
     """Return prompt-ready DUR context without consulting the team DB."""
 
@@ -108,12 +109,13 @@ def load_remote_combination_context(
         return _unavailable("missing_user_id")
     if not MEDICATION_FEATURE_BASE_URL:
         return _unavailable("medication_service_not_configured")
-    medicines_context = load_remote_current_medicines(user_id=uid)
+    medicines_context = (
+        load_remote_current_medicines(user_id=uid)
+        if include_current_medicines
+        else {"status": "empty", "items": [], "reason": None}
+    )
     if medicines_context["status"] not in {"current", "empty"}:
-        return {
-            **medicines_context,
-            "has_risk": None,
-        }
+        return {**medicines_context, "has_risk": None}
     medicines = [dict(item) for item in medicines_context["items"]]
     names_by_code = {
         str(item.get("medicine_code") or "").strip(): str(

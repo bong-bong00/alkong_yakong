@@ -1454,4 +1454,40 @@ void main() {
     expect(searchCalls, 2);
     expect(find.text('게보린정'), findsOneWidget);
   });
+
+  testWidgets('일반 질문의 약 이름 후속 입력은 앞 질문과 연결해 전송한다', (tester) async {
+    final bodies = <Map<String, dynamic>>[];
+    final client = MockClient((request) async {
+      if (request.url.path.endsWith('/dashboard')) {
+        return jsonResponse({
+          'latest_prescription': null,
+          'today_medications': [],
+        });
+      }
+      bodies.add(jsonDecode(request.body) as Map<String, dynamic>);
+      return jsonResponse({
+        'reply': bodies.length == 1
+            ? '약마다 답이 달라요. 물어볼 약을 선택하거나 제품명·성분명을 알려주세요.'
+            : '확인한 공식정보로 답했어요.',
+      });
+    });
+
+    await tester.pumpWidget(appWith(client));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField), '약 먹고 커피랑 마셔도 괜찮아?');
+    await tester.tap(find.byIcon(Icons.send_rounded));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField), '환인아캄프로세이트정');
+    await tester.tap(find.byIcon(Icons.send_rounded));
+    await tester.pumpAndSettle();
+
+    expect(bodies.first['message'], '약 먹고 커피랑 마셔도 괜찮아?');
+    expect(
+      bodies.last['message'],
+      '환인아캄프로세이트정에 대해 다음 질문에 답해 주세요: 약 먹고 커피랑 마셔도 괜찮아?',
+    );
+    expect(find.text('환인아캄프로세이트정'), findsOneWidget);
+    expect(find.textContaining('다음 질문에 답해 주세요'), findsNothing);
+    expect(bodies.last.containsKey('selected_medicine'), isFalse);
+  });
 }

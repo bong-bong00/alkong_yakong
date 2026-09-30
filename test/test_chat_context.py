@@ -90,6 +90,83 @@ class ChatContextTest(unittest.TestCase):
         )
         self.assertEqual(classify_question_scope("오늘 날씨 어때?"), "unrelated")
         self.assertEqual(classify_question_scope("오늘 뭐하지?"), "ambiguous")
+        self.assertEqual(
+            classify_question_scope("환인아캄프로세이트정"),
+            "medicine_specific",
+        )
+        self.assertEqual(
+            classify_question_scope("환인아캄프로세이트정과 커피를 같이 마셔도 괜찮아?"),
+            "medicine_specific",
+        )
+        self.assertEqual(
+            classify_question_scope("약 먹고 커피랑 마셔도 괜찮아?"),
+            "needs_medicine",
+        )
+        self.assertIn(
+            "precautions",
+            classify_question("환인아캄프로세이트정과 커피를 같이 마셔도 괜찮아?"),
+        )
+
+    def test_two_exact_free_text_medicines_are_the_explicit_dur_scope(self):
+        fake_client = MagicMock()
+        fake_client.__enter__.return_value = fake_client
+        fake_client.__exit__.return_value = False
+        extracted = _chat_response(
+            '{"drug_names":["환인아캄프로세이트정","유한메토트렉세이트정"]}'
+        )
+
+        def official_result(name):
+            code = "101" if name.startswith("환인") else "202"
+            return {
+                "match_type": "exact",
+                "items": [
+                    {
+                        "medicine_code": code,
+                        "product_name": name,
+                        "ingredient": f"성분-{code}",
+                    }
+                ],
+            }
+
+        with (
+            patch.object(gemini_service, "GEMINI_API_KEY", "configured"),
+            patch("google.genai.Client", return_value=fake_client),
+            patch.object(
+                gemini_service,
+                "_generate_content_with_retry",
+                return_value=extracted,
+            ),
+            patch(
+                "app.services.external_api_service.search_drug_info_by_name",
+                side_effect=official_result,
+            ),
+            patch(
+                "app.services.medication_feature_dur_client.load_remote_combination_context",
+                return_value={
+                    "status": "current",
+                    "items": [],
+                    "has_risk": False,
+                    "reason": None,
+                    "checked_types": ["병용금기", "중복성분", "효능군중복"],
+                    "zero_result_types": ["병용금기", "중복성분", "효능군중복"],
+                },
+            ) as remote_dur,
+        ):
+            reply = gemini_service.generate_chat_response(
+                "환인아캄프로세이트정과 유한메토트렉세이트정을 같이 먹어도 괜찮아?",
+                user_id="synthetic-user",
+            )
+
+        self.assertIn("함께 먹으면 안 되는 조합은 확인되지 않았어요", reply)
+        self.assertIsNone(remote_dur.call_args.kwargs["selected_medicine"])
+        self.assertFalse(remote_dur.call_args.kwargs["include_current_medicines"])
+        self.assertEqual(
+            remote_dur.call_args.kwargs["additional_medicines"],
+            [
+                {"medicine_code": "101", "product_name": "환인아캄프로세이트정"},
+                {"medicine_code": "202", "product_name": "유한메토트렉세이트정"},
+            ],
+        )
 
     def test_unselected_non_medicine_and_missing_medicine_return_before_lookup(self):
         with (

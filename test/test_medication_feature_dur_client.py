@@ -328,6 +328,44 @@ class MedicationFeatureDurClientTest(unittest.TestCase):
             {"user_id": "user-1", "medicine_codes": ["100", "200"]},
         )
 
+    def test_explicit_only_scope_skips_registered_medicine_lookup(self):
+        explicit = [
+            {"medicine_code": "101", "product_name": "첫째약정"},
+            {"medicine_code": "202", "product_name": "둘째약정"},
+        ]
+        with (
+            patch.object(remote_dur, "MEDICATION_FEATURE_BASE_URL", "https://med.example"),
+            patch.object(remote_dur.requests, "get") as get,
+            patch.object(
+                remote_dur.requests,
+                "post",
+                return_value=self.response(
+                    {
+                        "assessment_status": "SAFE",
+                        "analysis_complete": True,
+                        "incomplete": False,
+                        "has_risk": False,
+                        "matches": [],
+                        "medicine_names": ["첫째약정", "둘째약정"],
+                    }
+                ),
+            ) as post,
+        ):
+            result = remote_dur.load_remote_combination_context(
+                user_id="user-1",
+                selected_medicine=None,
+                additional_medicines=explicit,
+                include_current_medicines=False,
+            )
+
+        get.assert_not_called()
+        self.assertEqual(result["status"], "current")
+        self.assertFalse(result["has_risk"])
+        self.assertEqual(
+            post.call_args.kwargs["json"],
+            {"user_id": "user-1", "medicine_codes": ["101", "202"]},
+        )
+
     def test_explicit_ai_scope_runs_live_reference_lookup(self):
         request = DurAnalyzeRequest(
             user_id="user-1",

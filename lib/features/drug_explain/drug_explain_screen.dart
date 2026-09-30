@@ -41,6 +41,7 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
   bool _isLoadingMedicines = false;
   String? _selectedKeyword;
   String? _selectedMedicine;
+  String? _pendingGeneralQuestion;
   bool _isAllMedicinesSelected = false;
   _DrugSearchCandidate? _selectedOfficialMedicine;
   final Map<String, _DrugSearchCandidate> _officialMedicinesByName = {};
@@ -407,6 +408,7 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
       _selectedOfficialMedicine = name == null
           ? null
           : _officialMedicinesByName[name];
+      _pendingGeneralQuestion = null;
       _selectedKeyword = null;
     });
   }
@@ -442,6 +444,7 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
       _selectedMedicine = medicine.itemName;
       _isAllMedicinesSelected = false;
       _selectedOfficialMedicine = medicine;
+      _pendingGeneralQuestion = null;
       _selectedKeyword = null;
     });
   }
@@ -467,6 +470,17 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
 
     final text = (message ?? _chatController.text).trim();
     if (text.isEmpty) return;
+    final pendingQuestion = _pendingGeneralQuestion;
+    final isGeneralFreeInput =
+        message == null &&
+        _selectedMedicine == null &&
+        !_isAllMedicinesSelected;
+    final requestText =
+        isGeneralFreeInput &&
+            pendingQuestion != null &&
+            _looksLikeMedicineIdentity(text)
+        ? '$text에 대해 다음 질문에 답해 주세요: $pendingQuestion'
+        : text;
 
     setState(() {
       _messages.add({'isMe': true, 'text': displayMessage ?? text});
@@ -489,7 +503,7 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
       // 현재는 기존 약물 설명 API 구조를 임시로 챗봇 응답처럼 활용하도록 구성
       final body = <String, dynamic>{
         'user_id': MvpSession.userId,
-        'message': text,
+        'message': requestText,
       };
       if (intent != null) body['intent'] = intent;
       final selectedOfficial = _selectedOfficialMedicine;
@@ -516,9 +530,15 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
 
       final data = Map<String, dynamic>.from(response as Map);
       final reply = data['reply']?.toString() ?? '응답을 받아오지 못했습니다.';
+      final asksForMedicine = reply.contains('물어볼 약을 선택하거나 제품명·성분명을 알려주세요');
 
       if (!mounted) return;
       setState(() {
+        if (isGeneralFreeInput) {
+          _pendingGeneralQuestion = asksForMedicine
+              ? (pendingQuestion ?? text)
+              : null;
+        }
         _messages.add({
           'isMe': false,
           'text': _plainAiReply(reply),
@@ -541,6 +561,12 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
         _scrollToBottom();
       }
     }
+  }
+
+  bool _looksLikeMedicineIdentity(String text) {
+    return RegExp(
+      r'[0-9A-Za-z가-힣]{2,}(?:정|캡슐|연질|시럽|주사|액|패치|크림|산)(?=과|와|은|는|이|가|을|를|에|의|도|만|,|\s|$)',
+    ).hasMatch(text.trim());
   }
 
   Widget _buildKeywordBar(List<Map<String, String>> prompts) {
