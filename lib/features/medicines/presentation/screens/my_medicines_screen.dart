@@ -84,7 +84,9 @@ class _MedicineList extends StatelessWidget {
           const SizedBox(width: 14),
           Expanded(
             child: _ActionTile(
-              icon: TablerIcons.messages,
+              // 시안은 동그라미 안에 물음표를 둔다. 말풍선은 "대화"를
+              // 말하지만 여기서 하는 일은 "묻는" 것이다.
+              icon: TablerIcons.help_circle,
               label: 'AI 약사에게 묻기',
               onTap: () => context.push('/drug-explain'),
             ),
