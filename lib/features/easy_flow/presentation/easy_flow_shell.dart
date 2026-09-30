@@ -8,17 +8,15 @@ import '../../../core/mode/app_mode.dart';
 import '../../../core/theme/app_typography.dart';
 import '../../../core/widgets/senior_button.dart';
 import '../../../core/widgets/senior_card.dart';
-import '../../../core/widgets/senior_feedback.dart';
 import '../../biosignal/presentation/screens/heart_screen.dart';
 import '../../biosignal/presentation/screens/measure_screen.dart';
 import '../../dashboard/presentation/screens/medication_record_screen.dart';
-import '../../dashboard/presentation/screens/patient_home_screen.dart';
 import '../../dur_analysis/presentation/screens/dur_analysis_screen.dart';
+import 'easy_dose_screen.dart';
 import '../../medication/application/medication_controller.dart';
 import '../../medication/domain/medication_models.dart';
 import '../../medication/presentation/screens/dose_done_screen.dart';
 import '../../medicines/presentation/screens/my_medicines_screen.dart';
-import '../../medicines/presentation/screens/drug_detail_screen.dart';
 import '../../medicines/presentation/screens/pharmacist_chat_screen.dart';
 import '../../prescription/presentation/screens/prescription_screen.dart';
 import '../../prescription/presentation/screens/schedule_days_screen.dart';
@@ -132,32 +130,9 @@ class _EasyFlowShellState extends ConsumerState<EasyFlowShell> {
   Widget _buildScreen() {
     switch (_screen) {
       case EasyScreen.today:
-        return PatientHomeScreen(
-          easyMode: true,
-          onOpenMenu: _openMenu,
-          onOpenRecord: () => _goTo(EasyScreen.record),
-          onOpenHeartbeat: () => _goTo(EasyScreen.heart),
-          onOpenMedicines: () => _goTo(EasyScreen.medicines),
-          onOpenChat: () => context.push('/drug-explain'),
-          onOpenPrescription: () => _goTo(EasyScreen.prescription),
-          onOpenDrug: (medicine) {
-            final code = medicine.medicineCode?.trim() ?? '';
-            if (code.isEmpty) {
-              showSeniorSnackbar(context, '이 약의 상세 정보를 찾지 못했어요.', error: true);
-              return;
-            }
-            Navigator.of(context).push(
-              MaterialPageRoute<void>(
-                builder: (_) => DrugDetailScreen(medicineCode: code),
-              ),
-            );
-          },
-          // 기록해도 오늘 화면에 남는다. 파란 띠가 대신 알린다.
-          onMeasure: (slot) {
-            _recordedSlot = slot;
-            _goTo(EasyScreen.measure);
-          },
-        );
+        // 시안의 쉬운 화면은 일반 화면과 다른 장이다. 고를 것을 없애고
+        // 이번에 드실 약만 늘어놓는다.
+        return const EasyDoseScreen();
       case EasyScreen.done:
         return DoseDoneScreen(
           slot: _recordedSlot ?? DoseSlot.dinner,
