@@ -1649,23 +1649,38 @@ class _DrugCard extends StatelessWidget {
             ),
           ],
           const SizedBox(height: 12),
-          _DoseInfoRow(
-            label: '1회 투약량',
-            value: doseAmount.isEmpty ? '확인 필요' : doseAmount,
-            needsConfirmation:
-                doseAmount.isEmpty || doseAmount.contains('확인 필요'),
-          ),
-          const SizedBox(height: 7),
-          _DoseInfoRow(
-            label: '1일 투여횟수',
-            value: frequencyPerDay,
-            needsConfirmation: frequencyPerDay == '확인 필요',
-          ),
-          const SizedBox(height: 7),
-          _DoseInfoRow(
-            label: '투약일수',
-            value: durationDays,
-            needsConfirmation: durationDays == '확인 필요',
+          // 시안 19 — 세 가지를 나란히 놓고 쉬운 말로 적는다.
+          // "1회 투약량"은 처방전의 말이지 어르신의 말이 아니다.
+          IntrinsicHeight(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Expanded(
+                  child: _DoseBox(
+                    label: '한 번에',
+                    value: doseAmount.isEmpty ? '확인 필요' : doseAmount,
+                    needsConfirmation:
+                        doseAmount.isEmpty || doseAmount.contains('확인 필요'),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: _DoseBox(
+                    label: '하루',
+                    value: frequencyPerDay,
+                    needsConfirmation: frequencyPerDay == '확인 필요',
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: _DoseBox(
+                    label: '며칠',
+                    value: durationDays,
+                    needsConfirmation: durationDays == '확인 필요',
+                  ),
+                ),
+              ],
+            ),
           ),
           if (uncertain) ...[
             const SizedBox(height: 10),
@@ -1801,13 +1816,16 @@ class _StepperButton extends StatelessWidget {
     );
   }
 }
-
-class _DoseInfoRow extends StatelessWidget {
+/// 시안 19 — "한 번에 / 하루 / 며칠"을 한 칸씩 담는 네모.
+///
+/// 못 읽은 값은 빨갛게 적어 눈에 걸리게 둔다. 그대로 등록하면
+/// 알림이 엉뚱한 때에 울린다.
+class _DoseBox extends StatelessWidget {
   final String label;
   final String value;
   final bool needsConfirmation;
 
-  const _DoseInfoRow({
+  const _DoseBox({
     required this.label,
     required this.value,
     this.needsConfirmation = false,
@@ -1815,29 +1833,29 @@ class _DoseInfoRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        SizedBox(
-          width: 128,
-          child: Text(
+    final ink = needsConfirmation ? AppColors.danger : AppColors.textPrimary;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        color: AppColors.bg,
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
             label,
-            style: AppText.label(size: 17, color: AppColors.textSecondary),
+            style: AppText.label(size: 16, color: AppColors.textSecondary),
           ),
-        ),
-        const SizedBox(width: 8),
-        Expanded(
-          child: Text(
+          const SizedBox(height: 4),
+          Text(
             value,
-            style: AppText.label(
-              size: 18,
-              color: needsConfirmation
-                  ? AppColors.danger
-                  : AppColors.textPrimary,
-            ),
+            textAlign: TextAlign.center,
+            style: AppText.cardTitle(size: 20, color: ink),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 }
