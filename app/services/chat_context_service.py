@@ -151,6 +151,8 @@ def classify_question_scope(message: str) -> str:
     matched_specific_terms = [
         term for term in medicine_specific_terms if term in normalized
     ]
+    beverage_terms = ("커피", "카페인", "음료", "우유", "자몽", "술", "음주")
+    has_beverage_term = any(term in normalized for term in beverage_terms)
     if matched_specific_terms and not product_identity:
         first_term_index = min(normalized.find(term) for term in matched_specific_terms)
         prefix = normalized[:first_term_index]
@@ -159,6 +161,8 @@ def classify_question_scope(message: str) -> str:
             generic_prefixes
         )
     if matched_specific_terms:
+        if has_beverage_term and not product_identity:
+            return "general_medication"
         return "medicine_specific" if product_identity else "needs_medicine"
 
     if product_identity:
@@ -173,6 +177,9 @@ def build_general_medication_prompt(message: str) -> str:
 질문의 답을 첫 문장에 쓰고 보통 2~3문장으로 마치세요.
 특정 약의 제품명·성분·처방 정보가 없으므로 개인 복용량, 복용 시점, 안전 여부를 추정하지 마세요.
 특정 제품에 따라 답이 달라지면 약을 선택하거나 이름을 알려 달라고 짧게 물으세요.
+음식이나 커피·카페인·음료와 약을 함께 사용하는 일반 질문은, 약마다 다를 수 있다는
+짧은 일반 안내를 먼저 제공한 뒤 구체적인 확인을 위해 약 이름을 알려 달라고 요청하세요.
+이 경우 답변 전체를 약 이름 요청 한 문장만으로 대체하지 마세요.
 복용량을 두 배로 늘리거나 임의로 중단하라는 지시를 하지 마세요.
 반복되는 서론·인사·맺음말은 쓰지 마세요.
 

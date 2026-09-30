@@ -1467,7 +1467,7 @@ void main() {
       bodies.add(jsonDecode(request.body) as Map<String, dynamic>);
       return jsonResponse({
         'reply': bodies.length == 1
-            ? '약마다 답이 달라요. 물어볼 약을 선택하거나 제품명·성분명을 알려주세요.'
+            ? '커피는 약에 따라 효과나 부작용에 영향을 줄 수 있어요. 정확한 확인을 위해 드시는 약 이름을 알려주세요.'
             : '확인한 공식정보로 답했어요.',
       });
     });
@@ -1482,6 +1482,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(bodies.first['message'], '약 먹고 커피랑 마셔도 괜찮아?');
+    expect(find.textContaining('커피는 약에 따라'), findsOneWidget);
     expect(
       bodies.last['message'],
       '환인아캄프로세이트정에 대해 다음 질문에 답해 주세요: 약 먹고 커피랑 마셔도 괜찮아?',

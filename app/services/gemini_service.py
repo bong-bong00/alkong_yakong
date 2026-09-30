@@ -1058,6 +1058,8 @@ def generate_chat_response(
         selected_official = None
         official_data_list = []
         question_official_medicines: list[dict[str, str]] = []
+        official_search_failure_count = 0
+        official_search_empty_count = 0
         all_medicines_context = None
         verified_all_medicine_names: list[str] = []
         unverified_all_medicine_names: list[str] = []
@@ -1305,7 +1307,10 @@ def generate_chat_response(
                             "match_type": search_result.get("match_type"),
                             "식약처_공식정보": search_result["items"][0],
                         }
+                    else:
+                        official_search_empty_count += 1
                 except Exception as e:
+                    official_search_failure_count += 1
                     logger.warning(
                         "Gemini official_search_failed drug_index=%d error_type=%s "
                         "status_code=%s detail_type=%s",
@@ -1472,6 +1477,21 @@ def generate_chat_response(
                     ) + (
                         "확인하지 못한 내용은 추측해서 만들지 않을게요. "
                         "잠시 후 다시 확인해 주세요."
+                    )
+                if drug_names and official_search_failure_count > 0:
+                    return (
+                        "약 공식정보를 조회하는 중 문제가 생겼어요. "
+                        "잠시 후 제품명을 그대로 입력해 다시 확인해 주세요."
+                    )
+                if (
+                    drug_names
+                    and official_search_empty_count > 0
+                    and official_search_failure_count + official_search_empty_count
+                    == len(drug_names)
+                ):
+                    return (
+                        "입력한 제품명을 식약처 공식정보에서 확인하지 못했어요. "
+                        "약 포장에 적힌 제품명을 확인해 주세요."
                     )
                 return unavailable_reply
 

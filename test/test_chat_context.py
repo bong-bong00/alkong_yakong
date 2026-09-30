@@ -100,12 +100,163 @@ class ChatContextTest(unittest.TestCase):
         )
         self.assertEqual(
             classify_question_scope("약 먹고 커피랑 마셔도 괜찮아?"),
-            "needs_medicine",
+            "general_medication",
         )
         self.assertIn(
             "precautions",
             classify_question("환인아캄프로세이트정과 커피를 같이 마셔도 괜찮아?"),
         )
+
+    def test_unselected_coffee_questions_give_general_guidance_before_requesting_name(self):
+        fake_client = MagicMock()
+        fake_client.__enter__.return_value = fake_client
+        fake_client.__exit__.return_value = False
+        reply = (
+            "커피는 약에 따라 효과나 부작용에 영향을 줄 수 있어요. "
+            "정확한 확인을 위해 드시는 약 이름을 알려주세요."
+        )
+        with (
+            patch.object(gemini_service, "GEMINI_API_KEY", "configured"),
+            patch("google.genai.Client", return_value=fake_client),
+            patch.object(
+                gemini_service,
+                "_generate_complete_chat_reply",
+                return_value=reply,
+            ) as generate,
+            patch(
+                "app.services.external_api_service.search_drug_info_by_name"
+            ) as official_search,
+        ):
+            for question in (
+                "커피랑 약이랑 같이 먹어도 괜찮아?",
+                "약 먹고 커피랑 마셔도 괜찮아?",
+            ):
+                with self.subTest(question=question):
+                    self.assertEqual(
+                        gemini_service.generate_chat_response(
+                            question,
+                            user_id="synthetic-user",
+                        ),
+                        reply,
+                    )
+
+        self.assertEqual(generate.call_count, 2)
+        for call in generate.call_args_list:
+            prompt = call.kwargs["prompt"]
+            self.assertIn("짧은 일반 안내를 먼저 제공", prompt)
+            self.assertIn("답변 전체를 약 이름 요청 한 문장만으로 대체하지 마세요", prompt)
+        official_search.assert_not_called()
+
+    def test_named_coffee_question_uses_exact_official_product_context(self):
+        fake_client = MagicMock()
+        fake_client.__enter__.return_value = fake_client
+        fake_client.__exit__.return_value = False
+        with (
+            patch.object(gemini_service, "GEMINI_API_KEY", "configured"),
+            patch("google.genai.Client", return_value=fake_client),
+            patch.object(
+                gemini_service,
+                "_generate_content_with_retry",
+                return_value=SimpleNamespace(
+                    parsed={"drug_names": ["환인아캄프로세이트정"]}
+                ),
+            ),
+            patch(
+                "app.services.external_api_service.search_drug_info_by_name",
+                return_value={
+                    "match_type": "exact",
+                    "items": [
+                        {
+                            "medicine_code": "101",
+                            "product_name": "환인아캄프로세이트정",
+                            "cautions": "공식 주의사항",
+                            "source": "식약처",
+                        }
+                    ],
+                },
+            ) as official_search,
+            patch.object(
+                gemini_service,
+                "_generate_complete_chat_reply",
+                return_value="공식 주의사항을 기준으로 확인한 답변이에요.",
+            ) as generate,
+        ):
+            reply = gemini_service.generate_chat_response(
+                "환인아캄프로세이트정과 커피를 마셔도 돼?",
+                user_id="synthetic-user",
+            )
+
+        self.assertIn("공식 주의사항", reply)
+        official_search.assert_called_once_with("환인아캄프로세이트정")
+        grounded_prompt = generate.call_args.kwargs["prompt"]
+        self.assertIn("환인아캄프로세이트정", grounded_prompt)
+        self.assertIn("공식 주의사항", grounded_prompt)
+
+    def test_named_coffee_question_distinguishes_not_found_from_lookup_failure(self):
+        extracted = SimpleNamespace(parsed={"drug_names": ["없는제품정"]})
+        for search_result, expected in (
+            ({"match_type": "none", "items": []}, "제품명을 식약처 공식정보에서 확인하지 못했어요"),
+            (RuntimeError("lookup failed"), "공식정보를 조회하는 중 문제가 생겼어요"),
+        ):
+            with (
+                self.subTest(expected=expected),
+                patch.object(gemini_service, "GEMINI_API_KEY", "configured"),
+                patch("google.genai.Client"),
+                patch.object(
+                    gemini_service,
+                    "_generate_content_with_retry",
+                    return_value=extracted,
+                ),
+                patch(
+                    "app.services.external_api_service.search_drug_info_by_name",
+                    side_effect=(
+                        search_result
+                        if isinstance(search_result, Exception)
+                        else None
+                    ),
+                    return_value=(
+                        None if isinstance(search_result, Exception) else search_result
+                    ),
+                ),
+            ):
+                reply = gemini_service.generate_chat_response(
+                    "없는제품정과 커피를 마셔도 돼?",
+                    user_id="synthetic-user",
+                )
+            self.assertIn(expected, reply)
+            self.assertNotIn("안전", reply)
+
+    def test_named_coffee_question_does_not_hide_partial_lookup_failure_as_not_found(self):
+        extracted = SimpleNamespace(
+            parsed={"drug_names": ["없는제품정", "조회오류정"]}
+        )
+
+        def search(name):
+            if name == "조회오류정":
+                raise RuntimeError("lookup failed")
+            return {"match_type": "none", "items": []}
+
+        with (
+            patch.object(gemini_service, "GEMINI_API_KEY", "configured"),
+            patch("google.genai.Client"),
+            patch.object(
+                gemini_service,
+                "_generate_content_with_retry",
+                return_value=extracted,
+            ),
+            patch(
+                "app.services.external_api_service.search_drug_info_by_name",
+                side_effect=search,
+            ),
+        ):
+            reply = gemini_service.generate_chat_response(
+                "없는제품정과 조회오류정을 커피와 마셔도 돼?",
+                user_id="synthetic-user",
+            )
+
+        self.assertIn("공식정보를 조회하는 중 문제가 생겼어요", reply)
+        self.assertNotIn("제품명을 식약처 공식정보에서 확인하지 못했어요", reply)
+        self.assertNotIn("안전", reply)
 
     def test_two_exact_free_text_medicines_are_the_explicit_dur_scope(self):
         fake_client = MagicMock()

@@ -531,12 +531,15 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
       final data = Map<String, dynamic>.from(response as Map);
       final reply = data['reply']?.toString() ?? '응답을 받아오지 못했습니다.';
       final asksForMedicine = reply.contains('물어볼 약을 선택하거나 제품명·성분명을 알려주세요');
+      final generalCoffeeQuestion = _isGeneralCoffeeMedicineQuestion(text);
 
       if (!mounted) return;
       setState(() {
         if (isGeneralFreeInput) {
           _pendingGeneralQuestion = asksForMedicine
               ? (pendingQuestion ?? text)
+              : generalCoffeeQuestion
+              ? text
               : null;
         }
         _messages.add({
@@ -567,6 +570,19 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
     return RegExp(
       r'[0-9A-Za-z가-힣]{2,}(?:정|캡슐|연질|시럽|주사|액|패치|크림|산)(?=과|와|은|는|이|가|을|를|에|의|도|만|,|\s|$)',
     ).hasMatch(text.trim());
+  }
+
+  bool _isGeneralCoffeeMedicineQuestion(String text) {
+    final normalized = text.toLowerCase().replaceAll(RegExp(r'\s+'), '');
+    final mentionsCoffee =
+        normalized.contains('커피') || normalized.contains('카페인');
+    final mentionsMedicine =
+        normalized.contains('약') ||
+        normalized.contains('복용') ||
+        normalized.contains('먹');
+    return mentionsCoffee &&
+        mentionsMedicine &&
+        !_looksLikeMedicineIdentity(text);
   }
 
   Widget _buildKeywordBar(List<Map<String, String>> prompts) {
