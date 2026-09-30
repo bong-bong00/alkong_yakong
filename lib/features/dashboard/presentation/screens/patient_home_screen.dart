@@ -249,12 +249,15 @@ class _PatientHomeScreenState extends ConsumerState<PatientHomeScreen> {
       color: AppColors.bgTinted,
       child: Column(
         children: [
-          HomeTopBar(
-            userName: ref.watch(currentUserNameProvider),
-            date: now,
-            easyMode: widget.easyMode,
-            onOpenMenu: widget.onOpenMenu,
-          ),
+          // 쉬운 화면에서는 쉘이 위에 걸음 표시와 "일반 화면으로"를 둔다.
+          // 여기서 또 머리를 그리면 두 줄이 겹친다.
+          if (!widget.easyMode)
+            HomeTopBar(
+              userName: ref.watch(currentUserNameProvider),
+              date: now,
+              easyMode: widget.easyMode,
+              onOpenMenu: widget.onOpenMenu,
+            ),
           Expanded(
             child: LayoutBuilder(
               builder: (context, box) {

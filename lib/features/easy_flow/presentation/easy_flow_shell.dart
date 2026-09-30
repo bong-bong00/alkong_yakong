@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_tabler_icons/flutter_tabler_icons.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/constants/app_colors.dart';
 import '../../../core/mode/app_mode.dart';
 import '../../../core/theme/app_typography.dart';
 import '../../../core/widgets/senior_button.dart';
+import '../../../core/widgets/senior_card.dart';
 import '../../../core/widgets/senior_feedback.dart';
 import '../../biosignal/presentation/screens/heart_screen.dart';
 import '../../biosignal/presentation/screens/measure_screen.dart';
@@ -202,15 +204,33 @@ class _EasyFlowShellState extends ConsumerState<EasyFlowShell> {
   @override
   Widget build(BuildContext context) {
     final showBar = showsEasyBar(_screen);
+    final stepIndex = kEasyFlow.indexWhere((step) => step.screen == _screen);
     return Scaffold(
       backgroundColor: AppColors.bgTinted,
-      body: KeyedSubtree(
-        // 화면마다 새로 만든다. 보이지도 않는 화면이 센서를 잡고 있지 않도록.
-        key: ValueKey(_screen),
-        child: MediaQuery.removePadding(
-          context: context,
-          removeBottom: true,
-          child: _buildScreen(),
+      body: SafeArea(
+        bottom: false,
+        child: Column(
+          children: [
+            _EasyFlowTop(
+              stepIndex: stepIndex,
+              total: kEasyFlow.length,
+              onMenu: _openMenu,
+              onLeave: () =>
+                  ref.read(appModeProvider.notifier).set(AppMode.normal),
+            ),
+            Expanded(
+              child: KeyedSubtree(
+                // 화면마다 새로 만든다. 보이지도 않는 화면이 센서를 잡고
+                // 있지 않도록.
+                key: ValueKey(_screen),
+                child: MediaQuery.removePadding(
+                  context: context,
+                  removeBottom: true,
+                  child: _buildScreen(),
+                ),
+              ),
+            ),
+          ],
         ),
       ),
       bottomNavigationBar: showBar
@@ -220,6 +240,107 @@ class _EasyFlowShellState extends ConsumerState<EasyFlowShell> {
               onBack: _history.isEmpty ? null : _back,
             )
           : null,
+    );
+  }
+}
+
+/// 쉬운 화면 맨 위 — 지금 몇 걸음째인지와 일반 화면으로 나가는 길.
+///
+/// 시안은 걸음을 짧은 막대로 늘어놓고 오른쪽에 "1 / 8"을 적는다.
+/// 막대만으로는 몇 걸음 남았는지 세기 어렵고, 숫자만으로는 얼마나 왔는지
+/// 한눈에 안 보인다 — 둘을 함께 둔다.
+class _EasyFlowTop extends StatelessWidget {
+  final int stepIndex;
+  final int total;
+  final VoidCallback onMenu;
+  final VoidCallback onLeave;
+
+  const _EasyFlowTop({
+    required this.stepIndex,
+    required this.total,
+    required this.onMenu,
+    required this.onLeave,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    // 흐름에 없는 화면(약 설명 같은 곁가지)에서는 걸음을 세지 않는다.
+    final counted = stepIndex >= 0;
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(18, 10, 18, 6),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              EasyMenuButton(onTap: onMenu),
+              const Spacer(),
+              _pill(onTap: onLeave, label: '일반 화면으로'),
+            ],
+          ),
+          if (counted) ...[
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                for (int i = 0; i < total; i++) ...[
+                  Expanded(
+                    child: Container(
+                      height: 6,
+                      decoration: BoxDecoration(
+                        color: i <= stepIndex
+                            ? AppColors.pointFill
+                            : AppColors.secondaryFill,
+                        borderRadius: BorderRadius.circular(3),
+                      ),
+                    ),
+                  ),
+                  if (i != total - 1) const SizedBox(width: 6),
+                ],
+                const SizedBox(width: 12),
+                Text(
+                  '${stepIndex + 1} / $total',
+                  style: AppText.cardTitle(size: 18, color: AppColors.point),
+                ),
+              ],
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _pill({required VoidCallback onTap, required String label}) {
+    return Semantics(
+      button: true,
+      label: label,
+      child: GestureDetector(
+        onTap: onTap,
+        child: ExcludeSemantics(
+          child: Container(
+            constraints: const BoxConstraints(minHeight: 50),
+            padding: const EdgeInsets.symmetric(horizontal: 14),
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: AppColors.surface,
+              borderRadius: BorderRadius.circular(14),
+              boxShadow: kCardShadow,
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(
+                  TablerIcons.arrows_exchange,
+                  size: 22,
+                  color: AppColors.textPrimary,
+                ),
+                const SizedBox(width: 6),
+                Text(label, style: AppText.cardTitle(size: 18)),
+              ],
+            ),
+          ),
+        ),
+      ),
     );
   }
 }

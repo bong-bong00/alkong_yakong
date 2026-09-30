@@ -317,8 +317,10 @@ void _easyModeTests() {
     expect(find.text(kEasyFlow.first.nextLabel), findsOneWidget);
     // 아바타 자리가 메뉴 버튼으로 바뀐다.
     expect(find.text('메뉴'), findsOneWidget);
-    // 모드 배지는 파랑으로 차 있다.
-    expect(find.text('쉬운 화면'), findsOneWidget);
+    // 시안대로 나가는 길을 이름으로 적는다. 지금이 쉬운 화면이라는 것은
+    // 걸음 표시와 이 단추가 함께 말한다.
+    expect(find.text('일반 화면으로'), findsOneWidget);
+    expect(find.textContaining(RegExp(r'^1 / \d+$')), findsOneWidget);
   });
 
   testWidgets('약을 안 눌렀는데 넘어가려 하면 한 번 묻는다 (42)', (tester) async {
