@@ -186,24 +186,108 @@ class _MonthSummaryCard extends StatelessWidget {
           ),
           const SizedBox(height: 6),
           Text(
-            comparison.pairCount == 1
-                ? '복약 전 ${comparison.beforeAverage}회/분 · '
-                      '복약 후 ${comparison.afterAverage}회/분'
-                : '복약 전·후 평균을 비교했어요.',
-            style: AppText.emphasis(size: 22, color: Colors.white),
+            '복약 후 평균 심박수가',
+            style: AppText.cardTitle(size: 20, color: Colors.white),
           ),
-          if (comparison.pairCount > 1) ...[
-            const SizedBox(height: 8),
-            Text(
-              '복약 전 ${comparison.beforeAverage}회/분 · '
-              '복약 후 ${comparison.afterAverage}회/분',
-              style: AppText.body(size: 18, color: Colors.white),
-            ),
-          ],
-          const SizedBox(height: 6),
+          const SizedBox(height: 2),
           Text(
-            '비교 가능한 주는 ${comparison.weeks.length}주예요.',
-            style: AppText.body(size: 17, color: AppColors.onPointMuted),
+            comparison.changeSummary,
+            style: AppText.hero(size: 34, color: Colors.white),
+          ),
+          const SizedBox(height: 14),
+          _AverageRangeRow(label: '복약 전', value: comparison.beforeAverage),
+          const SizedBox(height: 8),
+          _AverageRangeRow(
+            label: '복약 후',
+            value: comparison.afterAverage,
+            emphasize: true,
+          ),
+          const SizedBox(height: 14),
+          Container(height: 1, color: Colors.white.withValues(alpha: 0.22)),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 10,
+            runSpacing: 6,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 5,
+                ),
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.16),
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: Text(
+                  '비교 기록 ${comparison.weeks.length}주',
+                  style: AppText.label(size: 16, color: Colors.white),
+                ),
+              ),
+              Text(
+                comparison.weeks.length == 1
+                    ? '아직 경향을 판단하기 어려워요'
+                    : '여러 주의 변화를 함께 확인해 보세요',
+                style: AppText.body(size: 16, color: Colors.white),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            '성인 안정 시 기준을 참고한 안내예요.\n약의 영향으로 단정할 수 없어요.',
+            style: AppText.body(size: 16, color: AppColors.onPointMuted),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _AverageRangeRow extends StatelessWidget {
+  final String label;
+  final int value;
+  final bool emphasize;
+
+  const _AverageRangeRow({
+    required this.label,
+    required this.value,
+    this.emphasize = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Wrap(
+        spacing: 8,
+        runSpacing: 6,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: [
+          Text(
+            '$label  $value회/분',
+            style: AppText.label(
+              size: 18,
+              color: emphasize ? AppColors.point : AppColors.textPrimary,
+            ),
+          ),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+            decoration: BoxDecoration(
+              color: emphasize ? AppColors.pointTint : AppColors.sunken,
+              borderRadius: BorderRadius.circular(999),
+            ),
+            child: Text(
+              _heartRateRange(value),
+              style: AppText.caption(
+                size: 16,
+                color: emphasize ? AppColors.point : AppColors.textSecondary,
+              ),
+            ),
           ),
         ],
       ),
@@ -302,17 +386,35 @@ class _WeekPair extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       children: [
         SizedBox(
-          height: 112,
+          height: 160,
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
-              _Bar(
-                height: _height(week.before),
-                color: AppColors.secondaryFill,
+              Column(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  Text('${week.before}', style: AppText.label(size: 16)),
+                  const SizedBox(height: 3),
+                  _Bar(
+                    height: _height(week.before),
+                    color: AppColors.secondaryFill,
+                  ),
+                ],
               ),
               const SizedBox(width: 5),
-              _Bar(height: _height(week.after), color: AppColors.point),
+              Column(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  Text(
+                    '${week.after}',
+                    key: const Key('weekly-after-value'),
+                    style: AppText.label(size: 16, color: AppColors.point),
+                  ),
+                  const SizedBox(height: 3),
+                  _Bar(height: _height(week.after), color: AppColors.point),
+                ],
+              ),
             ],
           ),
         ),
@@ -323,8 +425,17 @@ class _WeekPair extends StatelessWidget {
           style: AppText.caption(size: 15),
         ),
         const SizedBox(height: 3),
-        Text(
-          '전 ${week.before} · 후 ${week.after}',
+        Text.rich(
+          key: const Key('weekly-values-label'),
+          TextSpan(
+            children: [
+              TextSpan(text: '전 ${week.before} · '),
+              TextSpan(
+                text: '후 ${week.after}',
+                style: const TextStyle(color: AppColors.point),
+              ),
+            ],
+          ),
           textAlign: TextAlign.center,
           style: AppText.caption(size: 15, color: AppColors.textSecondary),
         ),
@@ -379,6 +490,13 @@ class _MonthlyComparison {
 
   int get beforeAverage => _average(pairs.map((pair) => pair.before));
   int get afterAverage => _average(pairs.map((pair) => pair.after));
+
+  String get changeSummary {
+    final difference = afterAverage - beforeAverage;
+    if (difference > 0) return '$difference회/분 높았어요';
+    if (difference < 0) return '${difference.abs()}회/분 낮았어요';
+    return '복약 전과 같았어요';
+  }
 
   static _MonthlyComparison fromReadings(List<HeartReading> readings) {
     final days = <int, _DayMeasurements>{};
@@ -453,6 +571,12 @@ int _average(Iterable<int> values) {
     throw StateError('Cannot average an empty heart-rate set.');
   }
   return (list.reduce((a, b) => a + b) / list.length).round();
+}
+
+String _heartRateRange(int bpm) {
+  if (bpm < 60) return '느린 범위';
+  if (bpm <= 100) return '일반 범위';
+  return '빠른 범위';
 }
 
 class _LegendDot extends StatelessWidget {

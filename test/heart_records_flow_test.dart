@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:alkong_yakong/core/constants/app_colors.dart';
 import 'package:alkong_yakong/core/network/api_client.dart';
 import 'package:alkong_yakong/core/theme/app_theme.dart';
 import 'package:alkong_yakong/core/widgets/senior_button.dart';
@@ -335,8 +336,16 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(find.text('복약 전 90회/분 · 복약 후 91회/분'), findsOneWidget);
-      expect(find.text('비교 가능한 주는 1주예요.'), findsOneWidget);
+      expect(find.text('1회/분 높았어요', skipOffstage: false), findsOneWidget);
+      expect(find.text('복약 전  90회/분', skipOffstage: false), findsOneWidget);
+      expect(find.text('복약 후  91회/분', skipOffstage: false), findsOneWidget);
+      expect(find.text('일반 범위', skipOffstage: false), findsNWidgets(2));
+      expect(find.text('비교 기록 1주', skipOffstage: false), findsOneWidget);
+      expect(
+        find.text('아직 경향을 판단하기 어려워요', skipOffstage: false),
+        findsOneWidget,
+      );
+      expect(find.textContaining('약의 영향으로 단정할 수 없어요.'), findsOneWidget);
       expect(find.text('주별 평균'), findsOneWidget);
       expect(find.text('단위: 회/분 · 비교 가능한 주 1주'), findsOneWidget);
       expect(find.text('복약 전 평균'), findsOneWidget);
@@ -345,6 +354,51 @@ void main() {
       expect(find.textContaining('비슷했어요'), findsNothing);
       expect(find.textContaining('효과'), findsNothing);
       expect(find.textContaining('약 때문에'), findsNothing);
+    },
+  );
+
+  testWidgets(
+    'monthly summary classifies averages and emphasizes after value',
+    (tester) async {
+      final data = monthlyData([
+        HeartReading(
+          id: 1,
+          bpm: 54,
+          measuredAt: DateTime(2026, 9, 28, 16),
+          measurementContext: HeartMeasurementContext.beforeMedication,
+        ),
+        HeartReading(
+          id: 2,
+          bpm: 64,
+          measuredAt: DateTime(2026, 9, 28, 16, 1),
+          measurementContext: HeartMeasurementContext.afterMedication,
+        ),
+      ]);
+
+      await tester.pumpWidget(
+        wrap(MonthlyHeartScreen(data: data, now: DateTime(2026, 9, 30))),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('복약 후 평균 심박수가', skipOffstage: false), findsOneWidget);
+      expect(find.text('10회/분 높았어요', skipOffstage: false), findsOneWidget);
+      expect(find.text('복약 전  54회/분', skipOffstage: false), findsOneWidget);
+      expect(find.text('복약 후  64회/분', skipOffstage: false), findsOneWidget);
+      expect(find.text('느린 범위', skipOffstage: false), findsOneWidget);
+      expect(find.text('일반 범위', skipOffstage: false), findsOneWidget);
+
+      final afterValue = tester.widget<Text>(
+        find.byKey(const Key('weekly-after-value'), skipOffstage: false),
+      );
+      expect(afterValue.data, '64');
+      expect(afterValue.style?.color, AppColors.point);
+
+      final valuesLabel = tester.widget<Text>(
+        find.byKey(const Key('weekly-values-label'), skipOffstage: false),
+      );
+      final spans = (valuesLabel.textSpan as TextSpan).children!;
+      expect((spans.last as TextSpan).text, '후 64');
+      expect((spans.last as TextSpan).style?.color, AppColors.point);
     },
   );
 
