@@ -43,6 +43,7 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
   String? _selectedMedicine;
   _DrugSearchCandidate? _selectedOfficialMedicine;
   final Map<String, _DrugSearchCandidate> _officialMedicinesByName = {};
+  final Set<String> _confirmedOfficialProductNames = {};
   final Map<String, _DrugSearchCandidate> _temporaryMedicinesByCode = {};
   String? _medicineLoadError;
   final List<String> _medicines = [];
@@ -185,6 +186,7 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
     final officialMedicines = <String, _DrugSearchCandidate>{};
     final ambiguousNames = <String>{};
     final namesByCode = <String, String>{};
+    final officialNamesByCode = <String, String>{};
     final namesByNormalizedName = <String, String>{};
 
     String firstText(Iterable<dynamic> values) {
@@ -205,6 +207,7 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
       final name = (label ?? officialName).trim();
       final code = codeValue?.toString().trim() ?? '';
       if (code.isNotEmpty) {
+        if (officialName.isNotEmpty) officialNamesByCode[code] = officialName;
         final oldName = namesByCode[code];
         if (oldName != null && oldName != name) {
           names.remove(oldName);
@@ -267,6 +270,9 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
         _officialMedicinesByName
           ..clear()
           ..addAll(officialMedicines);
+        _confirmedOfficialProductNames
+          ..clear()
+          ..addAll(officialNamesByCode.values);
         _medicineLoadError = names.isEmpty ? '로그인 후 내 약을 불러올 수 있어요.' : null;
       });
       return;
@@ -290,6 +296,7 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
       officialMedicines.clear();
       ambiguousNames.clear();
       namesByCode.clear();
+      officialNamesByCode.clear();
       namesByNormalizedName.clear();
       for (final medicine in medicines) {
         if (medicine is Map &&
@@ -321,6 +328,9 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
         _officialMedicinesByName
           ..clear()
           ..addAll(officialMedicines);
+        _confirmedOfficialProductNames
+          ..clear()
+          ..addAll(officialNamesByCode.values);
         if (_selectedMedicine == null && names.length == 1) {
           _selectedMedicine = names.first;
         }
@@ -336,6 +346,9 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
         _officialMedicinesByName
           ..clear()
           ..addAll(officialMedicines);
+        _confirmedOfficialProductNames
+          ..clear()
+          ..addAll(officialNamesByCode.values);
         _medicineLoadError = _medicineLoadFailureMessage;
       });
     } catch (_) {
@@ -347,6 +360,9 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
         _officialMedicinesByName
           ..clear()
           ..addAll(officialMedicines);
+        _confirmedOfficialProductNames
+          ..clear()
+          ..addAll(officialNamesByCode.values);
         _medicineLoadError = '내 약을 불러오지 못했습니다.';
       });
     } finally {
@@ -460,6 +476,14 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
     _scrollToBottom();
 
     try {
+      final officialProductNames = _selectedOfficialMedicine != null
+          ? <String>[_selectedOfficialMedicine!.itemName]
+          : <String>{
+              ..._confirmedOfficialProductNames,
+              ..._temporaryMedicinesByCode.values.map(
+                (medicine) => medicine.itemName,
+              ),
+            }.toList(growable: false);
       // TODO: 실제 AI 챗봇 API 엔드포인트로 변경 필요
       // 현재는 기존 약물 설명 API 구조를 임시로 챗봇 응답처럼 활용하도록 구성
       final body = <String, dynamic>{
@@ -494,7 +518,11 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
 
       if (!mounted) return;
       setState(() {
-        _messages.add({'isMe': false, 'text': _plainAiReply(reply)});
+        _messages.add({
+          'isMe': false,
+          'text': _plainAiReply(reply),
+          'officialProductNames': officialProductNames,
+        });
       });
     } on ApiException {
       if (!mounted) return;
@@ -672,6 +700,11 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
                     _ChatBubble(
                       text: message['text'] as String,
                       isMe: message['isMe'] as bool,
+                      officialProductNames:
+                          (message['officialProductNames'] as List?)
+                              ?.whereType<String>()
+                              .toList(growable: false) ??
+                          const [],
                     ),
                     const SizedBox(height: 12),
                   ],
@@ -1056,8 +1089,13 @@ class _DrugSearchCandidate {
 class _ChatBubble extends StatelessWidget {
   final bool isMe;
   final String text;
+  final List<String> officialProductNames;
 
-  const _ChatBubble({required this.isMe, required this.text});
+  const _ChatBubble({
+    required this.isMe,
+    required this.text,
+    this.officialProductNames = const [],
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -1088,11 +1126,16 @@ class _ChatBubble extends StatelessWidget {
                   ),
                 ],
               ),
-              child: Text(
-                text,
-                style: AppText.body(
-                  size: 20,
-                  color: isMe ? Colors.white : AppColors.textPrimary,
+              child: Text.rich(
+                TextSpan(
+                  children: _officialProductNameSpans(
+                    text,
+                    isMe ? const [] : officialProductNames,
+                    AppText.body(
+                      size: 20,
+                      color: isMe ? Colors.white : AppColors.textPrimary,
+                    ),
+                  ),
                 ),
               ),
             ),
@@ -1102,6 +1145,106 @@ class _ChatBubble extends StatelessWidget {
       ),
     );
   }
+}
+
+List<TextSpan> _officialProductNameSpans(
+  String text,
+  List<String> officialProductNames,
+  TextStyle baseStyle,
+) {
+  final names =
+      officialProductNames
+          .map((name) => name.trim())
+          .where((name) => name.isNotEmpty)
+          .toSet()
+          .toList()
+        ..sort((left, right) => right.length.compareTo(left.length));
+  if (names.isEmpty) return [TextSpan(text: text, style: baseStyle)];
+
+  final matches = <({int start, int end})>[];
+  var cursor = 0;
+  while (cursor < text.length) {
+    ({int start, int end})? next;
+    for (final name in names) {
+      var start = text.indexOf(name, cursor);
+      while (start >= 0 &&
+          !_hasOfficialProductNameBoundary(text, start, name)) {
+        start = text.indexOf(name, start + 1);
+      }
+      if (start < 0) continue;
+      final candidate = (start: start, end: start + name.length);
+      if (next == null ||
+          candidate.start < next.start ||
+          (candidate.start == next.start && candidate.end > next.end)) {
+        next = candidate;
+      }
+    }
+    if (next == null) break;
+    matches.add(next);
+    cursor = next.end;
+  }
+  if (matches.isEmpty) return [TextSpan(text: text, style: baseStyle)];
+
+  final spans = <TextSpan>[];
+  cursor = 0;
+  for (final match in matches) {
+    if (match.start > cursor) {
+      spans.add(
+        TextSpan(text: text.substring(cursor, match.start), style: baseStyle),
+      );
+    }
+    spans.add(
+      TextSpan(
+        text: text.substring(match.start, match.end),
+        style: baseStyle.copyWith(
+          color: AppColors.detailEmphasis,
+          fontWeight: FontWeight.w700,
+        ),
+      ),
+    );
+    cursor = match.end;
+  }
+  if (cursor < text.length) {
+    spans.add(TextSpan(text: text.substring(cursor), style: baseStyle));
+  }
+  return spans;
+}
+
+bool _hasOfficialProductNameBoundary(String text, int start, String name) {
+  final word = RegExp(r'[A-Za-z0-9가-힣_]');
+  if (start > 0 && word.hasMatch(text[start - 1])) return false;
+  final end = start + name.length;
+  if (end >= text.length || !word.hasMatch(text[end])) return true;
+
+  const particles = [
+    '에게',
+    '께서',
+    '처럼',
+    '보다',
+    '에서',
+    '으로',
+    '은',
+    '는',
+    '이',
+    '가',
+    '을',
+    '를',
+    '과',
+    '와',
+    '의',
+    '에',
+    '로',
+    '도',
+    '만',
+  ];
+  for (final particle in particles) {
+    if (!text.startsWith(particle, end)) continue;
+    final afterParticle = end + particle.length;
+    if (afterParticle >= text.length || !word.hasMatch(text[afterParticle])) {
+      return true;
+    }
+  }
+  return false;
 }
 
 const _medicineLoadFailureMessage = '지금은 등록한 약을 불러오지 못했어요.\n잠시 후 다시 시도해 주세요.';

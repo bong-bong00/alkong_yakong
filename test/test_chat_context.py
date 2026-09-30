@@ -574,7 +574,8 @@ class ChatContextTest(unittest.TestCase):
             e_drug_result=None,
         )
         self.assertIn("성분이나 비슷한 효과가 겹친다는 정보를 확인한 공식 자료에서는 찾지 못했어요", reply)
-        self.assertIn("모든 위험이 없다는 뜻은 아니에요", reply)
+        self.assertIn("더 궁금하시면 의사나 약사와 상담해 주세요.", reply)
+        self.assertNotIn("모든 위험이 없다는 뜻은 아니에요", reply)
         self.assertEqual(
             analyze.call_args.kwargs["risk_types"],
             {"중복성분", "효능군중복"},
@@ -725,7 +726,8 @@ class ChatContextTest(unittest.TestCase):
             "지금 드시는 약 중에 함께 먹으면 안 되는 조합은 확인되지 않았어요.",
             reply,
         )
-        self.assertIn("안전하다고 단정할 수는 없어요", reply)
+        self.assertIn("더 궁금하시면 의사나 약사와 상담해 주세요.", reply)
+        self.assertNotIn("안전하다고 단정", reply)
         load_medicines.assert_called_once_with(user_id="U1")
         remote_dur.assert_called_once_with(
             user_id="U1", selected_medicine=None, additional_medicines=[]
@@ -1668,9 +1670,9 @@ class ChatContextTest(unittest.TestCase):
         for rule in (
             "핵심 답을 첫 문장에",
             "한 문장에는 한 가지 내용",
-            "overview·efficacy는 보통 2~3문장(약 200~350자)",
-            "dosage·usage는 보통 3~4문장(약 300~450자)",
-            "precautions·side_effects는 가장 중요한 내용부터 보통 3~5문장(약 400~600자)",
+            "일반 질문은 보통 2~3문장",
+            "precautions·side_effects는 가장 중요한 내용부터 핵심 3~4문장",
+            "약 전체 질문은 확인된 약마다 핵심 1문장",
             "글자 수에 맞춰 문장을 기계적으로 자르지 마세요",
             "일반적인 인사, 질문과 관련 없는 공식정보, 긴 맺음말",
             "일반 텍스트로만",
@@ -1680,6 +1682,8 @@ class ChatContextTest(unittest.TestCase):
             "공식 효능 자료에 확인된 의미 안에서",
             "개인 처방 정보 없이 개인 복용량을 새로 정하지 말고",
             "정상적으로 확인한 0건과 자료 부족·조회 실패·미완료를 혼동하지 마세요",
+            "더 궁금하시면 의사나 약사와 상담해 주세요.",
+            "복용 전 의사나 약사와 상담해 주세요.",
         ):
             self.assertIn(rule, prompt)
         self.assertNotIn("DUR 안내, 다음 안내", prompt)
@@ -1776,7 +1780,9 @@ class ChatContextTest(unittest.TestCase):
         self.assertEqual(generate.call_count, 2)
         retry_prompt = generate.call_args_list[1].kwargs["contents"]
         self.assertIn("처음부터 다시 작성", retry_prompt)
-        self.assertIn("질문 종류별 문장 수와 글자 수 목표", retry_prompt)
+        self.assertIn("일반 질문은 보통 2~3문장", retry_prompt)
+        self.assertIn("주의사항·부작용은 핵심 3~4문장", retry_prompt)
+        self.assertIn("약 전체는 확인된 약마다 핵심 1문장", retry_prompt)
         self.assertIn("기계적으로 자르지 마세요", retry_prompt)
         self.assertIn("숫자, 용량, 단위, 횟수, 기간, 연령", retry_prompt)
         self.assertIn("확인하지 못한 약과 실제 검사 범위", retry_prompt)
@@ -2053,6 +2059,8 @@ class ChatContextTest(unittest.TestCase):
                     "확인되지 않았어요" in zero or "찾지 못했어요" in zero
                 )
                 self.assertNotIn("다시 시도", zero)
+                self.assertNotIn("안전하다고", zero)
+                self.assertIn("더 궁금하시면 의사나 약사와 상담해 주세요.", zero)
                 for reply in (missing, stale, zero):
                     for jargon in ("DUR", "병용금기", "연령금기", "임부금기", "효능군중복"):
                         self.assertNotIn(jargon, reply)
@@ -2085,7 +2093,8 @@ class ChatContextTest(unittest.TestCase):
         )
 
         self.assertIn("현재 복용약 전체", all_medicines)
-        self.assertIn("안전하다고 판단할 수 없어요", all_medicines)
+        self.assertIn("복용 전 의사나 약사와 상담해 주세요.", all_medicines)
+        self.assertNotIn("안전하다고 판단할 수 없어요", all_medicines)
         self.assertNotIn("선택한 약", all_medicines)
         self.assertIn("선택한 약", selected_medicine)
 
@@ -2162,6 +2171,8 @@ class ChatContextTest(unittest.TestCase):
         self.assertNotIn("확인된 나이를 기준으로", age)
         self.assertIn("임신 여부를 확인할 수 없어", pregnancy)
         self.assertNotIn("임신 중 사용하면 안 되는 약은 확인되지 않았어요", pregnancy)
+        self.assertIn("복용 전 의사나 약사와 상담해 주세요.", age)
+        self.assertIn("복용 전 의사나 약사와 상담해 주세요.", pregnancy)
 
     def test_not_pregnant_user_does_not_receive_personal_pregnancy_zero_result(self):
         result = {

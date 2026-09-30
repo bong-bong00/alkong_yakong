@@ -3,6 +3,7 @@ import 'dart:convert';
 
 import 'package:alkong_yakong/core/network/api_client.dart';
 import 'package:alkong_yakong/core/session/mvp_session.dart';
+import 'package:alkong_yakong/core/constants/app_colors.dart';
 import 'package:alkong_yakong/features/drug_explain/drug_explain_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -753,6 +754,89 @@ void main() {
     await tester.pumpAndSettle();
   });
 
+  testWidgets('약 전체 답변은 확인된 공식 제품명만 굵은 녹색으로 강조한다', (tester) async {
+    final originalUserId = MvpSession.userId;
+    MvpSession.userId = 'highlight-user';
+    addTearDown(() => MvpSession.userId = originalUserId);
+    const reply =
+        '코다론정은 심장 박동 치료에 쓰며, 유한메토트렉세이트정은 다른 목적으로 사용해요. '
+        '코다론정서방정은 확인된 제품명이 아니에요.';
+    final teamClient = MockClient((_) async => jsonResponse({'reply': reply}));
+    final medicationClient = MockClient(
+      (_) async => jsonResponse({
+        'medicines': [
+          {'medicine_code': '100', 'product_name': '코다론정', 'status': 'active'},
+          {
+            'medicine_code': '200',
+            'official_product_name': '유한메토트렉세이트정',
+            'status': 'active',
+          },
+        ],
+      }),
+    );
+
+    await tester.pumpWidget(
+      appWith(teamClient, medicationClient: medicationClient),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(ChoiceChip, '제가 먹는 약 알려주세요'));
+    await tester.pumpAndSettle();
+
+    final answer = tester.widget<Text>(
+      find.byWidgetPredicate(
+        (widget) => widget is Text && widget.textSpan?.toPlainText() == reply,
+      ),
+    );
+    final highlighted = (answer.textSpan! as TextSpan).children!
+        .whereType<TextSpan>()
+        .where(
+          (span) =>
+              span.style?.color == AppColors.detailEmphasis &&
+              span.style?.fontWeight == FontWeight.w700,
+        )
+        .map((span) => span.text)
+        .toList();
+    expect(highlighted, ['코다론정', '유한메토트렉세이트정']);
+    expect(highlighted, isNot(contains('코다론정서방정')));
+  });
+
+  testWidgets('약 한 가지 답변은 선택한 공식 제품명 한 개만 강조한다', (tester) async {
+    const reply = '코다론정은 확인된 약이에요. 유한메토트렉세이트정은 이 질문의 선택 약이 아니에요.';
+    final teamClient = MockClient((_) async => jsonResponse({'reply': reply}));
+    final medicationClient = MockClient(
+      (_) async => jsonResponse({
+        'medicines': [
+          {'medicine_code': '100', 'product_name': '코다론정', 'status': 'active'},
+          {
+            'medicine_code': '200',
+            'product_name': '유한메토트렉세이트정',
+            'status': 'active',
+          },
+        ],
+      }),
+    );
+
+    await tester.pumpWidget(
+      appWith(teamClient, medicationClient: medicationClient),
+    );
+    await tester.pumpAndSettle();
+    await pickSubject(tester, '코다론정');
+    await tester.tap(find.text('이 약은 무슨 약이에요?'));
+    await tester.pumpAndSettle();
+
+    final answer = tester.widget<Text>(
+      find.byWidgetPredicate(
+        (widget) => widget is Text && widget.textSpan?.toPlainText() == reply,
+      ),
+    );
+    final highlighted = (answer.textSpan! as TextSpan).children!
+        .whereType<TextSpan>()
+        .where((span) => span.style?.color == AppColors.detailEmphasis)
+        .map((span) => span.text)
+        .toList();
+    expect(highlighted, ['코다론정']);
+  });
+
   testWidgets('서버 fallback 응답을 다른 약의 데모 답변으로 바꾸지 않는다', (tester) async {
     const serverReply = '현재 AI 약사가 설정되지 않아 공식 답변을 생성할 수 없습니다.';
     final client = MockClient((request) async {
@@ -880,7 +964,9 @@ void main() {
     expect(chatCalls, 0);
   });
 
-  testWidgets('약 전체 질문은 current_medicines 없이 전체용 intent와 쉬운 질문을 전송한다', (tester) async {
+  testWidgets('약 전체 질문은 current_medicines 없이 전체용 intent와 쉬운 질문을 전송한다', (
+    tester,
+  ) async {
     final originalUserId = MvpSession.userId;
     MvpSession.userId = 'all-medicines-user';
     addTearDown(() => MvpSession.userId = originalUserId);

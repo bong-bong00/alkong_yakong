@@ -28,7 +28,7 @@ CHAT_RETRY_INSTRUCTION = """
 앞 답변을 이어 붙이거나 일부를 재사용하지 말고 처음부터 다시 작성하세요.
 더 짧게 작성하되 핵심 안전 조건은 빼지 마세요.
 첫 답변이 길었다면 같은 뜻의 반복, 일반적인 인사, 질문과 관련 없는 공식정보, 긴 맺음말을 빼고 처음부터 간결하게 다시 작성하세요.
-앞 프롬프트의 질문 종류별 문장 수와 글자 수 목표를 그대로 따르세요. 글자 수를 기준으로 답변을 기계적으로 자르지 마세요.
+앞 프롬프트의 분량 정책을 그대로 따라 일반 질문은 보통 2~3문장, 주의사항·부작용은 핵심 3~4문장으로 쓰고, 약 전체는 확인된 약마다 핵심 1문장을 우선하세요. 글자 수를 기준으로 답변을 기계적으로 자르지 마세요.
 모든 문장을 끝까지 완성하고 결론을 첫 문장에 쓰세요.
 공식정보의 숫자, 용량, 단위, 횟수, 기간, 연령, 금지·주의·예외 조건을 그대로 보존하세요.
 확인하지 못한 약과 실제 검사 범위도 분량 목표보다 우선하여 보존하세요.
@@ -706,6 +706,22 @@ def _dur_context_unavailable_reply(
     *,
     all_medicines: bool = False,
 ) -> str:
+    message = _dur_context_unavailable_message(
+        intents,
+        status,
+        reason,
+        all_medicines=all_medicines,
+    )
+    return f"{message} 복용 전 의사나 약사와 상담해 주세요."
+
+
+def _dur_context_unavailable_message(
+    intents: set[str],
+    status: str,
+    reason: str | None = None,
+    *,
+    all_medicines: bool = False,
+) -> str:
     if "combination" in intents:
         if reason == "official_medicine_unavailable":
             return (
@@ -729,19 +745,13 @@ def _dur_context_unavailable_reply(
             )
         if status == "incomplete":
             if all_medicines:
-                return (
-                    "현재 복용약 전체의 함께 사용 주의와 겹치는 약 검사를 끝까지 완료하지 못했어요. "
-                    "이 결과만으로 안전하다고 판단할 수 없어요."
-                )
+                return "현재 복용약 전체의 함께 사용 주의와 겹치는 약 검사를 끝까지 완료하지 못했어요."
             return (
                 "현재 복용 중인 약과 선택한 약의 함께 사용 주의 및 겹치는 약 정보를 "
-                "모두 확인하지 못했어요. 이 결과만으로 안전하다고 판단할 수 없어요."
+                "모두 확인하지 못했어요."
             )
         if status == "malformed":
-            return (
-                "함께 사용할 때 주의할 점과 겹치는 약의 검사 결과를 모두 확인하지 못했어요. "
-                "이 결과만으로 안전하다고 판단할 수 없어요."
-            )
+            return "함께 사용할 때 주의할 점과 겹치는 약의 검사 결과를 모두 확인하지 못했어요."
         if all_medicines:
             return (
                 "현재 복용약 전체의 함께 사용 주의와 겹치는 약 정보를 모두 확인하지 못했어요. "
@@ -798,10 +808,7 @@ def _dur_context_unavailable_reply(
                 "현재 복용약으로 다시 확인이 필요해요."
             )
         if status == "incomplete":
-            return (
-                "현재 복용약의 성분이나 비슷한 효과가 겹치는지 검사를 끝까지 완료하지 못했어요. "
-                "이 결과만으로 겹치는 약이 없다고 판단할 수 없어요."
-            )
+            return "현재 복용약의 성분이나 비슷한 효과가 겹치는지 검사를 끝까지 완료하지 못했어요."
         if status == "malformed":
             return (
                 "현재 복용약의 성분이나 비슷한 효과가 겹치는지 검사한 결과를 확인하지 못했어요. "
@@ -874,7 +881,7 @@ def _dur_no_match_reply(
     if "age" in intents and not zero_messages:
         return (
             "생년월일을 확인할 수 없어 나이를 기준으로 사용하면 안 되는 약이 있는지 "
-            "끝까지 확인하지 못했어요."
+            "끝까지 확인하지 못했어요. 복용 전 의사나 약사와 상담해 주세요."
         )
     if (
         "pregnancy" in intents
@@ -889,11 +896,11 @@ def _dur_no_match_reply(
     if "pregnancy" in intents and not zero_messages:
         return (
             "임신 여부를 확인할 수 없어 임신 중 사용하면 안 되는 약이 있는지 "
-            "끝까지 확인하지 못했어요."
+            "끝까지 확인하지 못했어요. 복용 전 의사나 약사와 상담해 주세요."
         )
     if zero_messages:
         return " ".join(
-            [*zero_messages, "이 결과만으로 모든 약 사용이 안전하다고 단정할 수는 없어요."]
+            [*zero_messages, "더 궁금하시면 의사나 약사와 상담해 주세요."]
         )
     if "duplicate" in intents:
         scope = (
@@ -902,13 +909,12 @@ def _dur_no_match_reply(
             else "현재 복용 중인 약과 선택한 약 사이에서 성분이나 비슷한 효과가 겹친다는 정보를 "
         )
         return scope + (
-            "확인한 공식 자료에서는 찾지 못했어요. 이것이 모든 위험이 없다는 뜻은 아니에요. "
-            "함께 사용할 때 생기는 다른 영향이나 개인 상태에 따른 주의사항은 "
-            "따로 확인해야 해요."
+            "확인한 공식 자료에서는 찾지 못했어요. "
+            "더 궁금하시면 의사나 약사와 상담해 주세요."
         )
     return (
         "현재 약 사용 시 주의할 내용을 끝까지 확인하지 못했어요. "
-        "이 결과만으로 안전하다고 판단할 수 없어요."
+        "복용 전 의사나 약사와 상담해 주세요."
     )
 
 
@@ -1033,7 +1039,7 @@ def generate_chat_response(
             if all_status in {"missing", "malformed"}:
                 return (
                     "현재 복용약 목록을 불러오지 못했어요. 잠시 후 다시 시도해 주세요. "
-                    "이 상태에서는 약이 없거나 안전하다고 판단할 수 없어요."
+                    "복용 전 의사나 약사와 상담해 주세요."
                 )
             if not all_items:
                 return (
