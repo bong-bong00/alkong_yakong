@@ -80,7 +80,6 @@ class _AlarmSettingsScreenState extends ConsumerState<AlarmSettingsScreen> {
     notifier.update(prefs.replaceHour(hour, picked));
   }
 
-
   /// 빼기 단추로 그 자리 시간을 바로 지운다.
   void _removeHour(
     BuildContext context,
@@ -247,11 +246,7 @@ class _TimeCard extends StatelessWidget {
     // 글씨를 키우면 시각만으로 한 줄이 찬다. 스위치와 지우기를 아래로 내린다.
     final stacked = MediaQuery.textScalerOf(context).scale(30) > 44;
     final controls = [
-      SeniorToggle(
-        value: on,
-        semanticLabel: '$time 알림',
-        onChanged: onChanged,
-      ),
+      SeniorToggle(value: on, semanticLabel: '$time 알림', onChanged: onChanged),
       if (onRemove != null) ...[
         const SizedBox(width: 4),
         _IconBox(
@@ -271,47 +266,47 @@ class _TimeCard extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           Row(
-        children: [
-          Expanded(
-            child: Semantics(
-              button: true,
-              label: '$time, 누르면 시각을 바꿔요',
-              child: GestureDetector(
-                onTap: onEdit,
-                onLongPress: onRemove,
-                child: ExcludeSemantics(
-                  child: Container(
-                    color: Colors.transparent,
-                    constraints: const BoxConstraints(minHeight: 64),
-                    alignment: Alignment.centerLeft,
-                    child: Row(
-                      children: [
-                        Flexible(
-                          child: Text(
-                            time,
-                            style: AppText.screenTitle(
-                              size: 27,
-                              color: on
-                                  ? AppColors.textPrimary
-                                  : AppColors.textTertiary,
+            children: [
+              Expanded(
+                child: Semantics(
+                  button: true,
+                  label: '$time, 누르면 시각을 바꿔요',
+                  child: GestureDetector(
+                    onTap: onEdit,
+                    onLongPress: onRemove,
+                    child: ExcludeSemantics(
+                      child: Container(
+                        color: Colors.transparent,
+                        constraints: const BoxConstraints(minHeight: 64),
+                        alignment: Alignment.centerLeft,
+                        child: Row(
+                          children: [
+                            Flexible(
+                              child: Text(
+                                time,
+                                style: AppText.screenTitle(
+                                  size: 27,
+                                  color: on
+                                      ? AppColors.textPrimary
+                                      : AppColors.textTertiary,
+                                ),
+                              ),
                             ),
-                          ),
+                            const SizedBox(width: 10),
+                            const Icon(
+                              TablerIcons.pencil,
+                              size: 22,
+                              color: AppColors.textTertiary,
+                            ),
+                          ],
                         ),
-                        const SizedBox(width: 10),
-                        const Icon(
-                          TablerIcons.pencil,
-                          size: 22,
-                          color: AppColors.textTertiary,
-                        ),
-                      ],
+                      ),
                     ),
                   ),
                 ),
               ),
-            ),
-          ),
-          if (!stacked) ...[const SizedBox(width: 10), ...controls],
-        ],
+              if (!stacked) ...[const SizedBox(width: 10), ...controls],
+            ],
           ),
           if (stacked) ...[
             const SizedBox(height: 6),

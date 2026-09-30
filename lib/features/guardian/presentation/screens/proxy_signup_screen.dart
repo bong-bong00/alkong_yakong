@@ -306,10 +306,7 @@ class _ProxySignupScreenState extends ConsumerState<ProxySignupScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                '어르신 전화기에 숫자 6자리를 보냈어요',
-                style: AppText.cardTitle(size: 22),
-              ),
+              Text('어르신 전화기에 숫자 6자리를 보냈어요', style: AppText.cardTitle(size: 22)),
               const SizedBox(height: 12),
               for (int i = 0; i < _codeSteps.length; i++)
                 Padding(

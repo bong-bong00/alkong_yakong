@@ -39,7 +39,10 @@ from app.services.pharmacist.easy_category import (
 )
 from app.services.pharmacist.efficacy_display import display_efficacy_text
 from app.services.pharmacist.ingredient import clean_ingredient_text
-from app.services.pharmacist.retrieve import retrieve_official
+from app.services.pharmacist.retrieve import (
+    retrieve_official,
+    search_live_official_candidates,
+)
 
 
 logger = logging.getLogger("uvicorn.error")
@@ -816,6 +819,7 @@ def _user_readiness(items: list[dict], ocr_trace: dict | None = None) -> dict:
 
 def create_prescription_from_ocr(request: PrescriptionOCRRequest) -> dict:
     """OCR 미리보기만. user_medicines/스케줄은 넣지 않는다 (확정 API에서 등록)."""
+    diagnostic_id = uuid.uuid4().hex
     conn = get_connection()
     try:
         cursor = conn.cursor()
@@ -832,6 +836,7 @@ def create_prescription_from_ocr(request: PrescriptionOCRRequest) -> dict:
 
         preview_items = []
         unrecognized_names: list[str] = []
+        unrecognized_details: list[dict] = []
         readiness_seed: list[dict] = []
         for item in items:
             resolved = _resolve_medicine(cursor, item)
@@ -839,6 +844,25 @@ def create_prescription_from_ocr(request: PrescriptionOCRRequest) -> dict:
                 if not _is_plausible_drug_candidate(item.drug_name):
                     continue
                 unrecognized_names.append(item.drug_name)
+                try:
+                    candidates = search_live_official_candidates(item.drug_name)
+                    reason = "CANDIDATES_REQUIRE_CONFIRMATION" if candidates else "NO_OFFICIAL_MATCH"
+                except Exception:
+                    candidates = []
+                    reason = "OFFICIAL_SEARCH_UNAVAILABLE"
+                unrecognized_details.append({
+                    "ocr_name": item.drug_name,
+                    "reason": reason,
+                    "candidates": candidates,
+                    "frequency_per_day": item.frequency_per_day,
+                    "duration_days": item.duration_days,
+                    "dosage": persistable_take_dosage(item.dosage),
+                    "times_per_take": item.times_per_take,
+                })
+                logger.info(
+                    "[OCR_MATCH] query=%s status=UNMATCHED reason=%s candidate_count=%s",
+                    item.drug_name, reason, len(candidates),
+                )
                 readiness_seed.append(
                     {
                         "drug_name": item.drug_name,
@@ -849,6 +873,10 @@ def create_prescription_from_ocr(request: PrescriptionOCRRequest) -> dict:
                 )
                 continue
             medicine_code, match_status, official_name = resolved
+            logger.info(
+                "[OCR_MATCH] query=%s status=%s code=%s duration_days=%s",
+                item.drug_name, match_status, medicine_code, item.duration_days,
+            )
             official_name = display_product_name(official_name) or official_name
             ocr_raw = (item.ocr_drug_name_raw or item.drug_name or "").strip()
             med_row = cursor.execute(
@@ -933,6 +961,15 @@ def create_prescription_from_ocr(request: PrescriptionOCRRequest) -> dict:
         )
         for miss in _druglike_misses(discarded_names, already):
             unrecognized_names.append(miss)
+            unrecognized_details.append({
+                "ocr_name": miss,
+                "reason": "NAME_EXTRACTION_UNCERTAIN",
+                "candidates": [],
+            })
+        logger.info(
+            "[OCR_SUMMARY] extracted_count=%s matched_count=%s unrecognized_count=%s",
+            len(items), len(preview_items), len(unrecognized_names),
+        )
 
         matched_seed = [
             row
@@ -957,14 +994,33 @@ def create_prescription_from_ocr(request: PrescriptionOCRRequest) -> dict:
             conflict_map = preview_conflicts_for_codes(
                 request.user_id,
                 [str(row.get("medicine_code") or "") for row in preview_items],
+                diagnostic_id,
             )
-        except Exception:
+        except Exception as error:
+            logger.warning(
+                "[OCR_DUR_DIAG] trace_id=%s stage=preview_error error_type=%s",
+                diagnostic_id, type(error).__name__,
+            )
             conflict_map = {}
         for row in preview_items:
             row["interaction_conflicts"] = conflict_map.get(
                 str(row.get("medicine_code") or ""),
                 [],
             )
+        logger.info(
+            "[OCR_DUR_DIAG] %s",
+            json.dumps({
+                "trace_id": diagnostic_id, "stage": "response",
+                "extracted_count": len(items), "matched_count": len(preview_items),
+                "unrecognized_count": len(unrecognized_names),
+                "items": [
+                    {"code": row.get("medicine_code"),
+                     "match_status": row.get("match_status"),
+                     "display_conflict_count": len(row["interaction_conflicts"])}
+                    for row in preview_items
+                ],
+            }, ensure_ascii=False),
+        )
         readiness = _user_readiness(score_seed, ocr_trace)
         raw_engine_confidence = (ocr_trace or {}).get("engine_confidence")
         try:
@@ -979,6 +1035,7 @@ def create_prescription_from_ocr(request: PrescriptionOCRRequest) -> dict:
         )
         return {
             "prescription_id": None,
+            "diagnostic_id": diagnostic_id,
             "preview": True,
             "registered": False,
             "user_id": request.user_id,
@@ -986,6 +1043,7 @@ def create_prescription_from_ocr(request: PrescriptionOCRRequest) -> dict:
             "ocr_text": raw_text,
             "ocr_trace": ocr_trace,
             "unrecognized_names": unrecognized_names,
+            "unrecognized_details": unrecognized_details,
             "discarded_names": discarded_names,
             "items": preview_items,
             "hospital_name": request.hospital_name or structured.get("hospital_name"),

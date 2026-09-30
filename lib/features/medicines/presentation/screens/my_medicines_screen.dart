@@ -33,27 +33,27 @@ class MyMedicinesScreen extends ConsumerWidget {
       body: SafeArea(
         bottom: false,
         child: Column(
-        children: [
-          if (!asTab)
-            SeniorBackHeader(title: '내 약 목록', onBack: () => context.pop()),
-          Expanded(
-            child: medicines.when(
-              loading: () => const Center(child: CircularProgressIndicator()),
-              error: (error, _) => RecoveryView(
-                title: '약 목록을\n불러오지 못했어요',
-                reassurance: '인터넷이나 서버가 잠깐 끊겼을 수 있어요. ',
-                reassuranceEmphasis: '고장이 아니니 걱정하지 마세요.',
-                steps: const ['잠시 후 다시 시도해 보세요', '와이파이나 데이터 연결을 확인해 보세요'],
-                actionLabel: '다시 불러오기',
-                onAction: () =>
-                    ref.read(userMedicinesProvider.notifier).refresh(),
-                stillWorksTitle: '지금도 할 수 있는 것',
-                stillWorksBody: '오늘 홈에서 복약 기록과 처방전 등록은 그대로 쓸 수 있어요.',
+          children: [
+            if (!asTab)
+              SeniorBackHeader(title: '내 약 목록', onBack: () => context.pop()),
+            Expanded(
+              child: medicines.when(
+                loading: () => const Center(child: CircularProgressIndicator()),
+                error: (error, _) => RecoveryView(
+                  title: '약 목록을\n불러오지 못했어요',
+                  reassurance: '인터넷이나 서버가 잠깐 끊겼을 수 있어요. ',
+                  reassuranceEmphasis: '고장이 아니니 걱정하지 마세요.',
+                  steps: const ['잠시 후 다시 시도해 보세요', '와이파이나 데이터 연결을 확인해 보세요'],
+                  actionLabel: '다시 불러오기',
+                  onAction: () =>
+                      ref.read(userMedicinesProvider.notifier).refresh(),
+                  stillWorksTitle: '지금도 할 수 있는 것',
+                  stillWorksBody: '오늘 홈에서 복약 기록과 처방전 등록은 그대로 쓸 수 있어요.',
+                ),
+                data: (items) => _MedicineList(items: items, asTab: asTab),
               ),
-              data: (items) => _MedicineList(items: items, asTab: asTab),
             ),
-          ),
-        ],
+          ],
         ),
       ),
     );

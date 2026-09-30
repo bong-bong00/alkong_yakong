@@ -288,34 +288,37 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
       if (item == '기타') other.text.trim() else if (item != skip) item,
   ].where((item) => item.isNotEmpty).toList();
 
-  /// 가입 단계에서 적어 준 보호자를 등록한다. 가입은 이미 끝났으니
-  /// 실패해도 막지 않고, 내 정보에서 다시 초대하면 된다고만 알린다.
-  Future<void> _saveGuardianContact() async {
+  /// 보호자 초대는 가입 완료 화면을 막지 않는다. 결과는 완료 화면에서 알린다.
+  Future<InviteResult>? _saveGuardianContact() {
     final name = _guardianName.text.trim();
-    if (_role != 'patient' || _guardianAnswer != 'y' || name.isEmpty) return;
-    final result = await GuardianRepository().invite(
-      name: name,
-      relation: _guardianRelation ?? '그 외',
-      phone: _guardianPhone.text.trim(),
-    );
-    ref.invalidate(guardiansProvider);
-    if (!result.isSent && mounted) {
-      showSeniorSnackbar(
-        context,
-        '보호자 연락처는 저장하지 못했어요. 내 정보에서 다시 초대해 주세요.',
-        error: true,
-      );
+    // 화면은 "알려드릴까요?"로 묻는다(이 브랜치). 초대를 보내고 결과를
+    // 기다리는 방식은 main 쪽을 쓴다.
+    if (_role != 'patient' || _guardianAnswer != 'y' || name.isEmpty) {
+      return null;
     }
+    return GuardianRepository()
+        .invite(
+          name: name,
+          relation: _guardianRelation ?? '그 외',
+          phone: _guardianPhone.text.trim(),
+        )
+        .then((result) {
+          if (mounted) ref.invalidate(guardiansProvider);
+          return result;
+        });
   }
 
   Future<void> _submit() async {
     if (_isSubmitting) return;
     setState(() => _isSubmitting = true);
+    final timer = Stopwatch()..start();
 
     try {
       final body = _signupBody();
 
       final response = await _apiClient.post('/api/v1/users', body: body);
+      debugPrint('[SIGNUP_DIAG] team_create_ms=${timer.elapsedMilliseconds}');
+      timer.reset();
       final userId = response is Map<String, dynamic>
           ? response['id']?.toString()
           : null;
@@ -326,6 +329,7 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
       await AuthSession.persistUserId(userId);
       // 가입한 역할대로 로그인 상태를 만든다. 보호자로 가입하면 보호자 화면이 열린다.
       await AuthSession.setLoggedIn(_role);
+      debugPrint('[SIGNUP_DIAG] save_session_ms=${timer.elapsedMilliseconds}');
       if (mounted) {
         ref.read(userRoleProvider.notifier).state = _role == 'guardian'
             ? UserRole.guardian
@@ -333,11 +337,11 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
         // 방금 만든 계정으로 바뀌었으니 앞사람의 약·가족·기록은 버린다.
         resetUserScopedData(ref);
       }
-      await _saveGuardianContact();
       if (!mounted) return;
+      final guardianInvite = _saveGuardianContact();
       // 가입 완료 화면이 다음 길(약 등록 / 나중에 하기)을 스스로 정한다.
       // 여기서 또 옮기면 방금 연 화면이 곧바로 로그인으로 덮인다.
-      await _showSignupComplete();
+      await _showSignupComplete(guardianInvite: guardianInvite);
     } catch (error) {
       if (!mounted) return;
       _showError('회원가입에 실패했습니다: $error');
@@ -350,10 +354,13 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
 
   /// 가입이 끝났다는 사실만 알리고, 다음 한 걸음을 바로 내민다.
   /// 확인만 누르고 사라지는 알림창은 아무것도 이어주지 않는다.
-  Future<void> _showSignupComplete() {
+  Future<void> _showSignupComplete({Future<InviteResult>? guardianInvite}) {
     return Navigator.of(context).push<void>(
       MaterialPageRoute<void>(
-        builder: (_) => SignupDoneScreen(name: _name.text.trim()),
+        builder: (_) => SignupDoneScreen(
+          name: _name.text.trim(),
+          guardianInvite: guardianInvite,
+        ),
       ),
     );
   }
@@ -663,8 +670,7 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
             confirm: '알레르기가 있다고 하셨어요',
             title: '어떤 약이었나요?',
             subtitle: '여러 개 골라도 돼요.',
-            validate: () =>
-                _allergens.isEmpty ? '어떤 약인지 하나 이상 골라주세요' : null,
+            validate: () => _allergens.isEmpty ? '어떤 약인지 하나 이상 골라주세요' : null,
             child: _multiChips(
               _allergyOptions,
               _allergens,
@@ -1307,7 +1313,6 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
     );
   }
 
-
   /// 약관 한 줄. 필수·선택 태그를 오른쪽에 둔다.
   Widget _consent(
     String label,
@@ -1389,8 +1394,9 @@ class _StepDef {
 /// 로그인 화면으로 되돌려 보내면 방금 만든 계정으로 다시 들어와야 한다.
 class SignupDoneScreen extends StatelessWidget {
   final String name;
+  final Future<InviteResult>? guardianInvite;
 
-  const SignupDoneScreen({super.key, required this.name});
+  const SignupDoneScreen({super.key, required this.name, this.guardianInvite});
 
   @override
   Widget build(BuildContext context) {
@@ -1436,6 +1442,24 @@ class SignupDoneScreen extends StatelessWidget {
                         color: AppColors.textSecondary,
                       ),
                     ),
+                    if (guardianInvite != null) ...[
+                      const SizedBox(height: 18),
+                      FutureBuilder<InviteResult>(
+                        future: guardianInvite,
+                        builder: (context, snapshot) => Text(
+                          snapshot.connectionState != ConnectionState.done
+                              ? '보호자 초대를 보내는 중이에요.'
+                              : snapshot.data?.isSent == true
+                              ? '보호자 초대를 보냈어요.'
+                              : '보호자 초대는 완료되지 않았어요. 내 정보에서 다시 시도해 주세요.',
+                          textAlign: TextAlign.center,
+                          style: AppText.body(
+                            size: 17,
+                            color: AppColors.textSecondary,
+                          ),
+                        ),
+                      ),
+                    ],
                   ],
                 ),
               ),

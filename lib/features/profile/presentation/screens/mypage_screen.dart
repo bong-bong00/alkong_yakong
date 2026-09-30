@@ -63,7 +63,6 @@ class _MyPageScreenState extends ConsumerState<MyPageScreen> {
     );
   }
 
-
   @override
   Widget build(BuildContext context) {
     final today = ref.watch(medicationProvider);
@@ -88,185 +87,184 @@ class _MyPageScreenState extends ConsumerState<MyPageScreen> {
       child: SafeArea(
         bottom: false,
         child: Column(
-      children: [
-        Expanded(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(16, 20, 16, 28),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                // ── 이름 ──
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(6, 6, 6, 0),
-                  child: Text.rich(
-                    TextSpan(
-                      children: [
+          children: [
+            Expanded(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.fromLTRB(16, 20, 16, 28),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    // ── 이름 ──
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(6, 6, 6, 0),
+                      child: Text.rich(
                         TextSpan(
-                          text:
-                              profile?.name ??
-                              (loadFailed ? '내 정보' : '불러오는 중이에요'),
-                          style: AppText.screenTitle(size: 28),
-                        ),
-                        if (profile?.name != null)
-                          TextSpan(
-                            text: ' 님',
-                            style: AppText.screenTitle(size: 28).copyWith(
-                              fontWeight: FontWeight.w500,
-                              color: AppColors.textSecondary,
+                          children: [
+                            TextSpan(
+                              text:
+                                  profile?.name ??
+                                  (loadFailed ? '내 정보' : '불러오는 중이에요'),
+                              style: AppText.screenTitle(size: 28),
                             ),
-                          ),
-                      ],
+                            if (profile?.name != null)
+                              TextSpan(
+                                text: ' 님',
+                                style: AppText.screenTitle(size: 28).copyWith(
+                                  fontWeight: FontWeight.w500,
+                                  color: AppColors.textSecondary,
+                                ),
+                              ),
+                          ],
+                        ),
+                      ),
                     ),
-                  ),
-                ),
-                const SizedBox(height: 14),
+                    const SizedBox(height: 14),
 
-                // ── 내 몸 정보 ──
-                _BodyInfoCard(
-                  ageLine: ageLine,
-                  bloodType: profile?.bloodType,
-                  allergies: profile?.allergies ?? const [],
-                  diseases: profile?.diseases ?? const [],
-                  loadFailed: loadFailed,
-                  onRetry: () => ref.invalidate(currentUserProvider),
-                  onEdit: () => Navigator.of(context).push(
-                    MaterialPageRoute<void>(
-                      builder: (_) =>
-                          ProfileEditScreen(isGuardian: widget.isGuardian),
+                    // ── 내 몸 정보 ──
+                    _BodyInfoCard(
+                      ageLine: ageLine,
+                      bloodType: profile?.bloodType,
+                      allergies: profile?.allergies ?? const [],
+                      diseases: profile?.diseases ?? const [],
+                      loadFailed: loadFailed,
+                      onRetry: () => ref.invalidate(currentUserProvider),
+                      onEdit: () => Navigator.of(context).push(
+                        MaterialPageRoute<void>(
+                          builder: (_) =>
+                              ProfileEditScreen(isGuardian: widget.isGuardian),
+                        ),
+                      ),
                     ),
-                  ),
-                ),
-                const SizedBox(height: 16),
+                    const SizedBox(height: 16),
 
-                // ── 알림 · 센서 · 가족 세 칸 ──
-                IntrinsicHeight(
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      Expanded(
-                        child: _SquareTile(
-                          icon: TablerIcons.bell,
-                          label: '알림',
-                          // 소리로 알려주기만 한다. 말로 기록하는 기능은 없다.
-                          value: alarm.summary,
-                          onTap: () => Navigator.of(context).push(
-                            MaterialPageRoute<void>(
-                              builder: (_) => const AlarmSettingsScreen(),
+                    // ── 알림 · 센서 · 가족 세 칸 ──
+                    IntrinsicHeight(
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Expanded(
+                            child: _SquareTile(
+                              icon: TablerIcons.bell,
+                              label: '알림',
+                              // 소리로 알려주기만 한다. 말로 기록하는 기능은 없다.
+                              value: alarm.summary,
+                              onTap: () => Navigator.of(context).push(
+                                MaterialPageRoute<void>(
+                                  builder: (_) => const AlarmSettingsScreen(),
+                                ),
+                              ),
                             ),
                           ),
-                        ),
-                      ),
-                      const SizedBox(width: 14),
-                      Expanded(
-                        child: _SquareTile(
-                          icon: TablerIcons.heart,
-                          label: '센서',
-                          // 연결 여부는 들어가야 안다. 여기서 "연결됨"이라고
-                          // 적어 두면 안 차고 계신 분께 거짓말이 된다.
-                          value: '차는 방법',
-                          onTap: () => Navigator.of(context).push(
-                            MaterialPageRoute<void>(
-                              builder: (_) => const PolarScreen(),
+                          const SizedBox(width: 14),
+                          Expanded(
+                            child: _SquareTile(
+                              icon: TablerIcons.heart,
+                              label: '센서',
+                              // 연결 여부는 들어가야 안다. 여기서 "연결됨"이라고
+                              // 적어 두면 안 차고 계신 분께 거짓말이 된다.
+                              value: '차는 방법',
+                              onTap: () => Navigator.of(context).push(
+                                MaterialPageRoute<void>(
+                                  builder: (_) => const PolarScreen(),
+                                ),
+                              ),
                             ),
                           ),
-                        ),
-                      ),
-                      const SizedBox(width: 14),
-                      Expanded(
-                        child: _SquareTile(
-                          icon: TablerIcons.users,
-                          label: '가족',
-                          value: guardians.maybeWhen(
-                            data: (list) => '${list.length}명',
-                            orElse: () => '보기',
-                          ),
-                          onTap: () => Navigator.of(context).push(
-                            MaterialPageRoute<void>(
-                              builder: (_) =>
-                                  FamilyScreen(onInvite: _inviteFamily),
+                          const SizedBox(width: 14),
+                          Expanded(
+                            child: _SquareTile(
+                              icon: TablerIcons.users,
+                              label: '가족',
+                              value: guardians.maybeWhen(
+                                data: (list) => '${list.length}명',
+                                orElse: () => '보기',
+                              ),
+                              onTap: () => Navigator.of(context).push(
+                                MaterialPageRoute<void>(
+                                  builder: (_) =>
+                                      FamilyScreen(onInvite: _inviteFamily),
+                                ),
+                              ),
                             ),
                           ),
-                        ),
+                        ],
                       ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 12),
+                    ),
+                    const SizedBox(height: 12),
 
-                // ── 설정 목록 ──
-                SeniorCard(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 22,
-                    vertical: 4,
-                  ),
-                  child: Column(
-                    children: [
-                      SeniorListRow(
-                        label: '내 약 목록',
-                        icon: TablerIcons.pill,
-                        value: '$medicineCount가지',
-                        trailing: const SeniorChevron(),
-                        onTap: () => context.push('/my-medicines'),
+                    // ── 설정 목록 ──
+                    SeniorCard(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 22,
+                        vertical: 4,
                       ),
-                      const SeniorDivider(),
-                      SeniorListRow(
-                        label: '폴라 센서',
-                        icon: TablerIcons.heart,
-                        // 여기서는 연결 여부를 모른다. 들어가야 센서를 찾는다.
-                        subtitle: '심박 센서 연결 · 차는 방법',
-                        trailing: const SeniorChevron(),
-                        onTap: () => Navigator.of(context).push(
-                          MaterialPageRoute<void>(
-                            builder: (_) => const PolarScreen(),
+                      child: Column(
+                        children: [
+                          SeniorListRow(
+                            label: '내 약 목록',
+                            icon: TablerIcons.pill,
+                            value: '$medicineCount가지',
+                            trailing: const SeniorChevron(),
+                            onTap: () => context.push('/my-medicines'),
                           ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 12),
-
-
-                // ── 도움말 · 계정, 넓은 두 칸 ──
-                // 위험한 동작(로그아웃·탈퇴)은 계정 화면 안에 둔다.
-                IntrinsicHeight(
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      Expanded(
-                        child: _WideTile(
-                          icon: TablerIcons.help_circle,
-                          label: '도움말·약관',
-                          onTap: () => Navigator.of(context).push(
-                            MaterialPageRoute<void>(
-                              builder: (_) => const SettingsMenuScreen(),
+                          const SeniorDivider(),
+                          SeniorListRow(
+                            label: '폴라 센서',
+                            icon: TablerIcons.heart,
+                            // 여기서는 연결 여부를 모른다. 들어가야 센서를 찾는다.
+                            subtitle: '심박 센서 연결 · 차는 방법',
+                            trailing: const SeniorChevron(),
+                            onTap: () => Navigator.of(context).push(
+                              MaterialPageRoute<void>(
+                                builder: (_) => const PolarScreen(),
+                              ),
                             ),
                           ),
-                        ),
+                        ],
                       ),
-                      const SizedBox(width: 14),
-                      Expanded(
-                        child: _WideTile(
-                          icon: TablerIcons.logout,
-                          label: '로그아웃·탈퇴',
-                          danger: true,
-                          onTap: () => Navigator.of(context).push(
-                            MaterialPageRoute<void>(
-                              builder: (_) => const AccountScreen(),
+                    ),
+                    const SizedBox(height: 12),
+
+                    // ── 도움말 · 계정, 넓은 두 칸 ──
+                    // 위험한 동작(로그아웃·탈퇴)은 계정 화면 안에 둔다.
+                    IntrinsicHeight(
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Expanded(
+                            child: _WideTile(
+                              icon: TablerIcons.help_circle,
+                              label: '도움말·약관',
+                              onTap: () => Navigator.of(context).push(
+                                MaterialPageRoute<void>(
+                                  builder: (_) => const SettingsMenuScreen(),
+                                ),
+                              ),
                             ),
                           ),
-                        ),
+                          const SizedBox(width: 14),
+                          Expanded(
+                            child: _WideTile(
+                              icon: TablerIcons.logout,
+                              label: '로그아웃·탈퇴',
+                              danger: true,
+                              onTap: () => Navigator.of(context).push(
+                                MaterialPageRoute<void>(
+                                  builder: (_) => const AccountScreen(),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
-                    ],
-                  ),
+                    ),
+                    // 어르신·보호자 화면은 가입한 계정의 역할로 정해진다.
+                    // 여기서 바꾸는 버튼은 두지 않는다.
+                  ],
                 ),
-                // 어르신·보호자 화면은 가입한 계정의 역할로 정해진다.
-                // 여기서 바꾸는 버튼은 두지 않는다.
-              ],
+              ),
             ),
-          ),
-        ),
-      ],
+          ],
         ),
       ),
     );

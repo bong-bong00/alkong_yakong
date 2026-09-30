@@ -386,9 +386,9 @@ void main() {
       await tester.pumpWidget(
         MediaQuery(
           data: const MediaQueryData(
-              textScaler: TextScaler.linear(1.3),
-              disableAnimations: true,
-            ),
+            textScaler: TextScaler.linear(1.3),
+            disableAnimations: true,
+          ),
           child: wrap(
             MonthlyHeartScreen(data: data, now: DateTime(2026, 9, 28)),
           ),
@@ -1008,9 +1008,9 @@ void main() {
             theme: AppTheme.build(),
             home: MediaQuery(
               data: const MediaQueryData(
-              textScaler: TextScaler.linear(1.3),
-              disableAnimations: true,
-            ),
+                textScaler: TextScaler.linear(1.3),
+                disableAnimations: true,
+              ),
               child: HeartScreen(repository: repository),
             ),
           ),

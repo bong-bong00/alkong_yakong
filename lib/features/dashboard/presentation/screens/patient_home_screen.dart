@@ -230,13 +230,8 @@ class _PatientHomeScreenState extends ConsumerState<PatientHomeScreen> {
   void _snooze(DoseSlot slot) {
     final until = ref.read(medicationProvider.notifier).snooze(slot);
     if (!mounted) return;
-    showSeniorSnackbar(
-      context,
-      '${DoseSlot.absoluteTime(until)}에 다시 알려드려요',
-    );
+    showSeniorSnackbar(context, '${DoseSlot.absoluteTime(until)}에 다시 알려드려요');
   }
-
-
 
   @override
   Widget build(BuildContext context) {
@@ -275,65 +270,92 @@ class _PatientHomeScreenState extends ConsumerState<PatientHomeScreen> {
                     MediaQuery.textScalerOf(context).scale(1) > 1.3 ||
                     box.maxHeight < 560;
                 final body = Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  if (today.doses.isEmpty)
-                    SeniorCard(
-                      padding: const EdgeInsets.all(22),
-                      child: Column(
-                        children: [
-                          Text('등록된 약이 없어요', style: AppText.cardTitle(size: 22)),
-                          const SizedBox(height: 8),
-                          Text(
-                            '처방전 사진을 찍으면 오늘 먹을 약을 알려드려요.',
-                            textAlign: TextAlign.center,
-                            style: AppText.body(color: AppColors.textSecondary),
-                          ),
-                          const SizedBox(height: 14),
-                          SeniorButton(
-                            label: '처방전 등록하기',
-                            onPressed: widget.onOpenPrescription,
-                          ),
-                        ],
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    if (today.doses.isEmpty)
+                      SeniorCard(
+                        padding: const EdgeInsets.all(22),
+                        child: Column(
+                          children: [
+                            // 못 불러온 것을 "약이 없어요"로 말하지 않는다.
+                            Text(switch (today.fetchStatus) {
+                              MedicationFetchStatus.loading =>
+                                '오늘 약을 불러오는 중이에요',
+                              MedicationFetchStatus.failed => '오늘 약을 불러오지 못했어요',
+                              MedicationFetchStatus.ready => '등록된 약이 없어요',
+                            }, style: AppText.cardTitle(size: 22)),
+                            const SizedBox(height: 8),
+                            Text(
+                              switch (today.fetchStatus) {
+                                MedicationFetchStatus.loading => '잠시만 기다려 주세요.',
+                                MedicationFetchStatus.failed =>
+                                  '인터넷 연결을 확인하고 다시 시도해 주세요.',
+                                MedicationFetchStatus.ready =>
+                                  '처방전 사진을 찍으면 오늘 먹을 약을 알려드려요.',
+                              },
+                              textAlign: TextAlign.center,
+                              style: AppText.body(
+                                color: AppColors.textSecondary,
+                              ),
+                            ),
+                            if (today.fetchStatus !=
+                                MedicationFetchStatus.loading) ...[
+                              const SizedBox(height: 14),
+                              SeniorButton(
+                                label:
+                                    today.fetchStatus ==
+                                        MedicationFetchStatus.failed
+                                    ? '다시 시도'
+                                    : '처방전 등록하기',
+                                onPressed:
+                                    today.fetchStatus ==
+                                        MedicationFetchStatus.failed
+                                    ? () => ref
+                                          .read(medicationProvider.notifier)
+                                          .refreshFromServer()
+                                    : widget.onOpenPrescription,
+                              ),
+                            ],
+                          ],
+                        ),
+                      )
+                    else ...[
+                      // 오늘 할 일을 한 줄로 먼저 말한다.
+                      _TodayHeadline(remaining: remaining),
+                      const SizedBox(height: 18),
+                      _SlotChips(today: today, next: next),
+                      const SizedBox(height: 24),
+                      // 남는 세로 자리를 그대로 받아 그 안에 맞춘다.
+                      _Fill(
+                        scrolls: scrolls,
+                        child: _BigDoseButton(
+                          done: next == null,
+                          onTake: next == null ? null : () => _take(next.slot),
+                          onUndo: next != null
+                              ? null
+                              : () => _undo(
+                                  _recordedSlot ?? today.doses.last.slot,
+                                ),
+                        ),
                       ),
-                    )
-                  else ...[
-                    // 오늘 할 일을 한 줄로 먼저 말한다.
-                    _TodayHeadline(remaining: remaining),
-                    const SizedBox(height: 18),
-                    _SlotChips(today: today, next: next),
-                    const SizedBox(height: 24),
-                    // 남는 세로 자리를 그대로 받아 그 안에 맞춘다.
-                    _Fill(
-                      scrolls: scrolls,
-                      child: _BigDoseButton(
-                      done: next == null,
-                      onTake: next == null
-                          ? null
-                          : () => _take(next.slot),
-                      onUndo: next != null
-                          ? null
-                          : () => _undo(_recordedSlot ?? today.doses.last.slot),
+                      const SizedBox(height: 24),
+                      _HomeTiles(
+                        takenAt: next == null ? _lastTakenAt(today) : null,
+                        onSnooze: next == null
+                            ? null
+                            : () => _snooze(next.slot),
+                        onOpenMedicines: widget.onOpenMedicines,
                       ),
-                    ),
-                    const SizedBox(height: 24),
-                    _HomeTiles(
-                      takenAt: next == null ? _lastTakenAt(today) : null,
-                      onSnooze: next == null ? null : () => _snooze(next.slot),
-                      onOpenMedicines: widget.onOpenMedicines,
-                    ),
-                    if (today.daysLeft != null) ...[
-                      const SizedBox(height: 16),
-                      _RefillRow(daysLeft: today.daysLeft!),
+                      if (today.daysLeft != null) ...[
+                        const SizedBox(height: 16),
+                        _RefillRow(daysLeft: today.daysLeft!),
+                      ],
                     ],
                   ],
-                ],
                 );
                 return Padding(
                   padding: EdgeInsets.fromLTRB(20, 10, 20, bottomPad),
-                  child: scrolls
-                      ? SingleChildScrollView(child: body)
-                      : body,
+                  child: scrolls ? SingleChildScrollView(child: body) : body,
                 );
               },
             ),
@@ -518,27 +540,31 @@ class _BigDoseButtonState extends State<_BigDoseButton>
   /// 쉬는 참이 없으면 화면이 계속 흔들려 글자를 읽기 어렵다.
   late final Animation<double> _pulse = TweenSequence<double>([
     TweenSequenceItem(
-      tween: Tween(begin: 1.0, end: 1.05).chain(
-        CurveTween(curve: Curves.easeOut),
-      ),
+      tween: Tween(
+        begin: 1.0,
+        end: 1.05,
+      ).chain(CurveTween(curve: Curves.easeOut)),
       weight: 10,
     ),
     TweenSequenceItem(
-      tween: Tween(begin: 1.05, end: 1.0).chain(
-        CurveTween(curve: Curves.easeIn),
-      ),
+      tween: Tween(
+        begin: 1.05,
+        end: 1.0,
+      ).chain(CurveTween(curve: Curves.easeIn)),
       weight: 10,
     ),
     TweenSequenceItem(
-      tween: Tween(begin: 1.0, end: 1.09).chain(
-        CurveTween(curve: Curves.easeOut),
-      ),
+      tween: Tween(
+        begin: 1.0,
+        end: 1.09,
+      ).chain(CurveTween(curve: Curves.easeOut)),
       weight: 12,
     ),
     TweenSequenceItem(
-      tween: Tween(begin: 1.09, end: 1.0).chain(
-        CurveTween(curve: Curves.easeIn),
-      ),
+      tween: Tween(
+        begin: 1.09,
+        end: 1.0,
+      ).chain(CurveTween(curve: Curves.easeIn)),
       weight: 16,
     ),
     TweenSequenceItem(tween: ConstantTween<double>(1.0), weight: 52),
@@ -557,8 +583,7 @@ class _BigDoseButtonState extends State<_BigDoseButton>
     final ink = widget.done ? AppColors.textPrimary : Colors.white;
     // 움직임을 꺼 둔 기기에서는 뛰지 않는다. 다 드신 뒤에도 멈춘다 —
     // 누를 것이 없는데 눈을 끌 이유가 없다.
-    final beating =
-        !widget.done && !MediaQuery.disableAnimationsOf(context);
+    final beating = !widget.done && !MediaQuery.disableAnimationsOf(context);
     if (beating) {
       if (!_beat.isAnimating) _beat.repeat();
     } else if (_beat.isAnimating) {
@@ -586,68 +611,71 @@ class _BigDoseButtonState extends State<_BigDoseButton>
         final labelStyle = AppText.cardTitle(size: labelSize, color: ink);
 
         return Center(
-      child: Semantics(
-        button: true,
-        label: label,
-        child: GestureDetector(
-          onTap: widget.done ? widget.onUndo : widget.onTake,
-          child: ExcludeSemantics(
-            child: SizedBox(
-              width: outer,
-              height: outer,
-              child: Stack(
-                alignment: Alignment.center,
-                children: [
-                  AnimatedBuilder(
-                    animation: _pulse,
-                    builder: (context, child) => Transform.scale(
-                      scale: beating ? _pulse.value : 1.0,
-                      child: child,
-                    ),
-                    child: Container(
-                      width: outer,
-                      height: outer,
-                      decoration: const BoxDecoration(
-                        color: AppColors.pointRing,
-                        shape: BoxShape.circle,
-                      ),
-                    ),
-                  ),
-                  Container(
-                    width: size,
-                    height: size,
+          child: Semantics(
+            button: true,
+            label: label,
+            child: GestureDetector(
+              onTap: widget.done ? widget.onUndo : widget.onTake,
+              child: ExcludeSemantics(
+                child: SizedBox(
+                  width: outer,
+                  height: outer,
+                  child: Stack(
                     alignment: Alignment.center,
-                    decoration: BoxDecoration(color: fill, shape: BoxShape.circle),
-                    // 동그라미 안에 드는 네모는 지름의 0.7배다. 글씨를
-                    // 키운 기기에서도 그 안에서 줄여 담아 넘치지 않게 한다.
-                    child: SizedBox(
-                      width: size * 0.72,
-                      height: size * 0.72,
-                      child: FittedBox(
-                        fit: BoxFit.scaleDown,
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(
-                              widget.done
-                                  ? TablerIcons.arrow_back_up
-                                  : TablerIcons.check,
-                              size: iconSize,
-                              color: ink,
-                            ),
-                            const SizedBox(height: 2),
-                            Text(label, style: labelStyle),
-                          ],
+                    children: [
+                      AnimatedBuilder(
+                        animation: _pulse,
+                        builder: (context, child) => Transform.scale(
+                          scale: beating ? _pulse.value : 1.0,
+                          child: child,
+                        ),
+                        child: Container(
+                          width: outer,
+                          height: outer,
+                          decoration: const BoxDecoration(
+                            color: AppColors.pointRing,
+                            shape: BoxShape.circle,
+                          ),
                         ),
                       ),
-                    ),
+                      Container(
+                        width: size,
+                        height: size,
+                        alignment: Alignment.center,
+                        decoration: BoxDecoration(
+                          color: fill,
+                          shape: BoxShape.circle,
+                        ),
+                        // 동그라미 안에 드는 네모는 지름의 0.7배다. 글씨를
+                        // 키운 기기에서도 그 안에서 줄여 담아 넘치지 않게 한다.
+                        child: SizedBox(
+                          width: size * 0.72,
+                          height: size * 0.72,
+                          child: FittedBox(
+                            fit: BoxFit.scaleDown,
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  widget.done
+                                      ? TablerIcons.arrow_back_up
+                                      : TablerIcons.check,
+                                  size: iconSize,
+                                  color: ink,
+                                ),
+                                const SizedBox(height: 2),
+                                Text(label, style: labelStyle),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
-                ],
+                ),
               ),
             ),
           ),
-        ),
-      ),
         );
       },
     );
@@ -668,30 +696,31 @@ class _HomeTiles extends StatelessWidget {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-          Expanded(
-            child: takenAt == null
-                ? _tile(
-                    icon: TablerIcons.alarm_snooze,
-                    label: '30분 뒤',
-                    onTap: onSnooze,
-                  )
-                : _tile(
-                    icon: TablerIcons.circle_check,
-                    label: '${TimeOfDay.fromDateTime(takenAt!).hour}:'
-                        '${takenAt!.minute.toString().padLeft(2, '0')}에 드셨어요',
-                    background: AppColors.pointTint,
-                    foreground: AppColors.point,
-                    fontSize: 17,
-                  ),
+        Expanded(
+          child: takenAt == null
+              ? _tile(
+                  icon: TablerIcons.alarm_snooze,
+                  label: '30분 뒤',
+                  onTap: onSnooze,
+                )
+              : _tile(
+                  icon: TablerIcons.circle_check,
+                  label:
+                      '${TimeOfDay.fromDateTime(takenAt!).hour}:'
+                      '${takenAt!.minute.toString().padLeft(2, '0')}에 드셨어요',
+                  background: AppColors.pointTint,
+                  foreground: AppColors.point,
+                  fontSize: 17,
+                ),
+        ),
+        const SizedBox(width: 16),
+        Expanded(
+          child: _tile(
+            icon: TablerIcons.pill,
+            label: '약 보기',
+            onTap: onOpenMedicines,
           ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: _tile(
-              icon: TablerIcons.pill,
-              label: '약 보기',
-              onTap: onOpenMedicines,
-            ),
-          ),
+        ),
       ],
     );
   }

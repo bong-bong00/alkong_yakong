@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'demo_guardian.dart';
 import 'features/guardian/presentation/screens/guardian_prescription_screen.dart';
 import 'features/prescription/presentation/screens/medicine_arrived_screen.dart';
@@ -176,27 +178,67 @@ final _router = GoRouter(
   ],
 );
 
-void main() async {
+void main() {
   WidgetsFlutterBinding.ensureInitialized();
-  final restoredUser = await restorePersistedSession(UserRepository());
-  try {
-    await ReminderNotifications.instance.initialize();
-  } catch (_) {
-    // 알림을 못 켜도 앱은 떠야 한다.
-  }
   final container = ProviderContainer();
+  final sessionReady = _restoreSession(container);
+  // 알림 초기화는 화면·로그인 확인을 기다리게 하지 않는다.
+  final remindersReady = ReminderNotifications.instance.initialize().catchError(
+    (_) {},
+  );
+  unawaited(
+    _warmAlarmPreferences(container, sessionReady, remindersReady).catchError(
+      (Object error) => debugPrint(
+        '[STARTUP_DIAG] alarm_prepare_failed=${error.runtimeType}',
+      ),
+    ),
+  );
+  runApp(
+    UncontrolledProviderScope(
+      container: container,
+      child: _StartupGate(sessionReady: sessionReady),
+    ),
+  );
+}
+
+Future<void> _restoreSession(ProviderContainer container) async {
+  final timer = Stopwatch()..start();
+  final restoredUser = await restorePersistedSession(UserRepository());
   if (restoredUser != null) {
     container.read(userRoleProvider.notifier).state = restoredUser.isGuardian
         ? UserRole.guardian
         : UserRole.patient;
   }
-  // 알림 설정을 미리 읽어 두어야 내 정보 화면을 열지 않아도 약 시간 알림이 예약된다.
+  debugPrint('[STARTUP_DIAG] session_restore_ms=${timer.elapsedMilliseconds}');
+}
+
+Future<void> _warmAlarmPreferences(
+  ProviderContainer container,
+  Future<void> sessionReady,
+  Future<void> remindersReady,
+) async {
+  await Future.wait([sessionReady, remindersReady]);
+  // 사용자 확인과 플러그인 준비가 끝난 뒤에만 알림을 예약한다.
   container.read(alarmPreferencesProvider);
-  runApp(
-    UncontrolledProviderScope(
-      container: container,
-      child: const AlkongYakongApp(),
-    ),
+}
+
+class _StartupGate extends StatelessWidget {
+  final Future<void> sessionReady;
+
+  const _StartupGate({required this.sessionReady});
+
+  @override
+  Widget build(BuildContext context) => FutureBuilder<void>(
+    future: sessionReady,
+    builder: (context, snapshot) {
+      if (snapshot.connectionState == ConnectionState.done) {
+        return const AlkongYakongApp();
+      }
+      return const MaterialApp(
+        debugShowCheckedModeBanner: false,
+        home: Scaffold(body: Center(child: CircularProgressIndicator())),
+      );
+    },
   );
 }
 

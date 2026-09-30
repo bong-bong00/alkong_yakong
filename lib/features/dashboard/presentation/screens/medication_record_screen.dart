@@ -73,110 +73,112 @@ class MedicationRecordScreen extends ConsumerWidget {
       child: SafeArea(
         bottom: false,
         child: Column(
-      children: [
-        if (showBack)
-          SeniorBackHeader(title: title)
-        else
-          // 시안은 제목을 머리띠가 아니라 본문 맨 위에 큼직하게 적는다.
-          const SizedBox.shrink(),
-        Expanded(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(16, 20, 16, 28),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                if (!showBack) ...[
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(6, 6, 6, 0),
-                    child: Text.rich(
-                      TextSpan(
-                        children: [
+          children: [
+            if (showBack)
+              SeniorBackHeader(title: title)
+            else
+              // 시안은 제목을 머리띠가 아니라 본문 맨 위에 큼직하게 적는다.
+              const SizedBox.shrink(),
+            Expanded(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.fromLTRB(16, 20, 16, 28),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    if (!showBack) ...[
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(6, 6, 6, 0),
+                        child: Text.rich(
                           TextSpan(
-                            text: patientName == null ? '나의 ' : '$patientName님 ',
-                            style: AppText.screenTitle(
-                              size: 26,
-                            ).copyWith(fontWeight: FontWeight.w500),
+                            children: [
+                              TextSpan(
+                                text: patientName == null
+                                    ? '나의 '
+                                    : '$patientName님 ',
+                                style: AppText.screenTitle(
+                                  size: 26,
+                                ).copyWith(fontWeight: FontWeight.w500),
+                              ),
+                              TextSpan(
+                                text: '복약 기록',
+                                style: AppText.screenTitle(size: 28),
+                              ),
+                            ],
                           ),
-                          TextSpan(
-                            text: '복약 기록',
-                            style: AppText.screenTitle(size: 28),
-                          ),
-                        ],
+                        ),
                       ),
-                    ),
-                  ),
-                  const SizedBox(height: 14),
-                ],
-                // 쉬운 화면에는 탭이 없다. 거기서만 돌아가는 길을 낸다 —
-                // 탭이 있는 일반 화면에서는 시안대로 두지 않는다.
-                if (onBackToToday != null) ...[
-                  SeniorButton(
-                    label: '오늘 화면으로 돌아가기',
-                    icon: TablerIcons.calendar_event,
-                    minHeight: 72,
-                    fontSize: 23,
-                    elevated: true,
-                    onPressed: onBackToToday,
-                  ),
-                  const SizedBox(height: 12),
-                ],
-                AdherenceWeekCard(
-                  days: weekAdherenceStatuses(today, history),
-                  onOpenCalendar: () => Navigator.of(context).push(
-                    MaterialPageRoute<void>(
-                      builder: (_) =>
-                          MonthCalendarScreen(patientUserId: patientId),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                // 오늘 하루를 시간대별로 한 장에 둔다. 날짜별 카드를 쌓는 대신
-                // 달력이 날짜를 맡고, 여기서는 오늘 상태만 본다.
-                DayDoseDetail(
-                  dayLabel:
-                      '${DateTime.now().month}월 ${DateTime.now().day}일 오늘',
-                  doses: today.doses,
-                  footnote: '날짜를 누르면 그날 결과가 여기에 나와요.',
-                ),
-                // 먹기 전과 후를 나란히 놓는 자리는 여기 하나다.
-                // 오늘 홈은 "지금 할 일" 한 가지만 말한다.
-                if (heartCheck != null) ...[
-                  const SizedBox(height: 12),
-                  _TodayHeartCard(
-                    check: heartCheck,
-                    onTap: patientId == null
-                        ? () => context.go('/biosignal')
-                        : null,
-                  ),
-                ],
-                // 함께먹기 주의 화면은 로그인한 본인 약만 분석한다.
-                if (patientId == null) ...[
-                  const SizedBox(height: 12),
-                  SeniorCard(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 22,
-                      vertical: 4,
-                    ),
-                    child: SeniorListRow(
-                      label: '약 함께먹기 주의',
-                      // 건수보다 무엇을 해야 하는지가 먼저다.
-                      subtitle: interactionCount > 0
-                          ? '확인이 필요한 약이 있어요'
-                          : '부딪히는 약은 없어요',
-                      trailing: const SeniorChevron(),
-                      onTap: () => Navigator.of(context).push(
+                      const SizedBox(height: 14),
+                    ],
+                    // 쉬운 화면에는 탭이 없다. 거기서만 돌아가는 길을 낸다 —
+                    // 탭이 있는 일반 화면에서는 시안대로 두지 않는다.
+                    if (onBackToToday != null) ...[
+                      SeniorButton(
+                        label: '오늘 화면으로 돌아가기',
+                        icon: TablerIcons.calendar_event,
+                        minHeight: 72,
+                        fontSize: 23,
+                        elevated: true,
+                        onPressed: onBackToToday,
+                      ),
+                      const SizedBox(height: 12),
+                    ],
+                    AdherenceWeekCard(
+                      days: weekAdherenceStatuses(today, history),
+                      onOpenCalendar: () => Navigator.of(context).push(
                         MaterialPageRoute<void>(
-                          builder: (_) => const DurAnalysisScreen(),
+                          builder: (_) =>
+                              MonthCalendarScreen(patientUserId: patientId),
                         ),
                       ),
                     ),
-                  ),
-                ],
-              ],
+                    const SizedBox(height: 12),
+                    // 오늘 하루를 시간대별로 한 장에 둔다. 날짜별 카드를 쌓는 대신
+                    // 달력이 날짜를 맡고, 여기서는 오늘 상태만 본다.
+                    DayDoseDetail(
+                      dayLabel:
+                          '${DateTime.now().month}월 ${DateTime.now().day}일 오늘',
+                      doses: today.doses,
+                      footnote: '날짜를 누르면 그날 결과가 여기에 나와요.',
+                    ),
+                    // 먹기 전과 후를 나란히 놓는 자리는 여기 하나다.
+                    // 오늘 홈은 "지금 할 일" 한 가지만 말한다.
+                    if (heartCheck != null) ...[
+                      const SizedBox(height: 12),
+                      _TodayHeartCard(
+                        check: heartCheck,
+                        onTap: patientId == null
+                            ? () => context.go('/biosignal')
+                            : null,
+                      ),
+                    ],
+                    // 함께먹기 주의 화면은 로그인한 본인 약만 분석한다.
+                    if (patientId == null) ...[
+                      const SizedBox(height: 12),
+                      SeniorCard(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 22,
+                          vertical: 4,
+                        ),
+                        child: SeniorListRow(
+                          label: '약 함께먹기 주의',
+                          // 건수보다 무엇을 해야 하는지가 먼저다.
+                          subtitle: interactionCount > 0
+                              ? '확인이 필요한 약이 있어요'
+                              : '부딪히는 약은 없어요',
+                          trailing: const SeniorChevron(),
+                          onTap: () => Navigator.of(context).push(
+                            MaterialPageRoute<void>(
+                              builder: (_) => const DurAnalysisScreen(),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
             ),
-          ),
-        ),
-      ],
+          ],
         ),
       ),
     );

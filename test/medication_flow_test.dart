@@ -222,7 +222,6 @@ void main() {
   // 오늘 홈에서 약 이름을 눌러 상세로 가던 길은 시안에서 없어졌다.
   // 약 목록은 "약 보기"(내 약 목록)로 옮겼으므로, 스크롤 위치를 지키는지는
   // 그 화면을 시안대로 다시 짤 때 거기서 검사한다.
-
 }
 
 class _TestMedicationController extends MedicationController {

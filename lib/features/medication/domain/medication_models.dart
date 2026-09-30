@@ -240,9 +240,12 @@ enum DoseCheckOutcome {
   tooLate,
 }
 
+enum MedicationFetchStatus { loading, ready, failed }
+
 /// 오늘 하루 전체 상태.
 class TodayMedication {
   final List<DoseEntry> doses;
+  final MedicationFetchStatus fetchStatus;
 
   /// 함께 보는 가족. 이름만 쓰고 관계는 앞에 붙인다 — "딸 지안".
   /// 등록된 가족이 없으면 서버는 "보호자"·"가족"을 준다.
@@ -266,6 +269,7 @@ class TodayMedication {
     required this.doses,
     required this.guardianRelation,
     required this.guardianName,
+    this.fetchStatus = MedicationFetchStatus.ready,
     this.heartRate,
     this.heartRateNormal,
     this.daysLeft,
@@ -335,11 +339,13 @@ class TodayMedication {
 
   TodayMedication copyWith({
     List<DoseEntry>? doses,
+    MedicationFetchStatus? fetchStatus,
     int? daysLeft,
     String? interactionAlert,
     List<InteractionPriorityCard>? interactionCards,
   }) => TodayMedication(
     doses: doses ?? this.doses,
+    fetchStatus: fetchStatus ?? this.fetchStatus,
     guardianRelation: guardianRelation,
     guardianName: guardianName,
     heartRate: heartRate,

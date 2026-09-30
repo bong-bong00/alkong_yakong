@@ -127,15 +127,6 @@ class _PrescriptionScreenState extends ConsumerState<PrescriptionScreen> {
     return const [];
   }
 
-  List<String> get _unrecognizedNames {
-    final raw = _result?['unrecognized_names'];
-    if (raw is! List) return const [];
-    return raw
-        .map((item) => item.toString().trim())
-        .where((name) => name.isNotEmpty)
-        .toList();
-  }
-
   static bool _isOfficialMatchedItem(Map<String, dynamic> item) {
     final code = item['medicine_code']?.toString() ?? '';
     if (code.isEmpty || code.toUpperCase().startsWith('OCR-')) {
@@ -195,6 +186,19 @@ class _PrescriptionScreenState extends ConsumerState<PrescriptionScreen> {
       if (!mounted) return;
       final mapped = Map<String, dynamic>.from(response as Map);
       final items = mapped['items'];
+      // 서버의 동일 OCR 요청과 앱에서 받은 충돌 표시 데이터를 대조한다.
+      if (items is List) {
+        for (final item in items.whereType<Map>()) {
+          final conflicts = item['interaction_conflicts'];
+          debugPrint(
+            '[OCR_DUR_DIAG] trace_id=${mapped['diagnostic_id'] ?? 'unavailable'} '
+            'stage=received code=${item['medicine_code']} '
+            'match_status=${item['match_status']} '
+            'official_matched=${_isOfficialMatchedItem(Map<String, dynamic>.from(item))} '
+            'display_conflict_count=${conflicts is List ? conflicts.length : 0}',
+          );
+        }
+      }
       final hasOfficial = items is List && items.isNotEmpty
           ? items
                 .whereType<Map>()
@@ -204,6 +208,11 @@ class _PrescriptionScreenState extends ConsumerState<PrescriptionScreen> {
           : false;
       final unreadRaw = mapped['unrecognized_names'];
       final hasUnread = unreadRaw is List && unreadRaw.isNotEmpty;
+      // 확인 실패 정보는 내부 응답에 보관하고 안내 카드/팝업에는 노출하지 않는다.
+      // 약 이름이나 사진 원문 대신 개수만 진단 로그로 남긴다.
+      debugPrint(
+        '[PRESCRIPTION_DIAG] unrecognized_count=${unreadRaw is List ? unreadRaw.length : 0}',
+      );
       if (!hasOfficial && !hasUnread) {
         setState(() {
           _failureCount++;
@@ -368,7 +377,16 @@ class _PrescriptionScreenState extends ConsumerState<PrescriptionScreen> {
       context.push('/schedule-days', extra: MvpSession.latestPrescriptionId);
     }
 
-    if (!_hasPairConflict(durResult)) {
+    final hasPairConflict = _hasPairConflict(durResult);
+    debugPrint(
+      '[OCR_DUR_DIAG] trace_id=${_result?['diagnostic_id'] ?? 'unavailable'} '
+      'stage=registration_navigation analysis_id=${durResult?['analysis_id']} '
+      'assessment_status=${durResult?['assessment_status']} '
+      'analysis_complete=${durResult?['analysis_complete']} '
+      'pair_conflict=$hasPairConflict '
+      'destination=${hasPairConflict ? 'dur_analysis' : 'schedule_days'}',
+    );
+    if (!hasPairConflict) {
       openScheduleDays();
       return;
     }
@@ -452,7 +470,7 @@ class _PrescriptionScreenState extends ConsumerState<PrescriptionScreen> {
         return _ConfirmScreen(
           onBehalfOf: widget.onBehalfOf,
           items: _items,
-          unrecognizedNames: _unrecognizedNames,
+          diagnosticId: _result?['diagnostic_id']?.toString() ?? 'unavailable',
           onRegister: _register,
           onRetake: () => setState(() {
             _image = null;
@@ -553,20 +571,14 @@ class _CaptureScreen extends StatelessWidget {
                                   const SizedBox(height: 18),
                                   // 시안 17 — 한 줄짜리 짧은 말로 줄인다.
                                   // 사진 찍는 중에 읽을 글이라 길면 안 읽힌다.
-                                  _CaptureTip(
-                                    number: '1',
-                                    text: '밝은 곳에 펼쳐 놓기',
-                                  ),
+                                  _CaptureTip(number: '1', text: '밝은 곳에 펼쳐 놓기'),
                                   const _CaptureTipArrow(),
                                   _CaptureTip(
                                     number: '2',
                                     text: '네 모서리가 다 보이게',
                                   ),
                                   const _CaptureTipArrow(),
-                                  _CaptureTip(
-                                    number: '3',
-                                    text: '두 손으로 잡고 찍기',
-                                  ),
+                                  _CaptureTip(number: '3', text: '두 손으로 잡고 찍기'),
                                 ],
                               ),
                             ),
@@ -766,14 +778,14 @@ class _ConfirmScreen extends StatefulWidget {
   final String? onBehalfOf;
 
   final List<Map<String, dynamic>> items;
-  final List<String> unrecognizedNames;
+  final String diagnosticId;
   final Future<void> Function(List<Map<String, dynamic>> items) onRegister;
   final VoidCallback onRetake;
 
   const _ConfirmScreen({
     this.onBehalfOf,
     required this.items,
-    required this.unrecognizedNames,
+    required this.diagnosticId,
     required this.onRegister,
     required this.onRetake,
   });
@@ -828,7 +840,7 @@ class _ConfirmScreenState extends State<_ConfirmScreen> {
       return '0.5$normalized';
     }
     final fraction = RegExp(
-      r'^(\d+)/(\d+)(알|정|캡슐|포|개|mL|ml|방울|T|TAB|C|CAP|PKG|EA)$',
+      r'^(\d+)/(\d+)(알|정|캡슐|포|개|회|mL|ml|방울|T|TAB|C|CAP|PKG|EA)$',
       caseSensitive: false,
     ).firstMatch(compact);
     if (fraction != null) {
@@ -842,7 +854,7 @@ class _ConfirmScreenState extends State<_ConfirmScreen> {
       }
     }
     final match = RegExp(
-      r'^(\d+(?:\.\d+)?)(알|정|캡슐|포|개|mL|ml|방울|T|TAB|C|CAP|PKG|EA)$',
+      r'^(\d+(?:\.\d+)?)(알|정|캡슐|포|개|회|mL|ml|방울|T|TAB|C|CAP|PKG|EA)$',
       caseSensitive: false,
     ).firstMatch(compact);
     final number =
@@ -865,6 +877,7 @@ class _ConfirmScreenState extends State<_ConfirmScreen> {
       'EA' || '개' => '개',
       'ML' || '밀리리터' => 'mL',
       '방울' => '방울',
+      '회' => '회',
       _ => '',
     };
     return normalizedUnit.isEmpty
@@ -933,7 +946,7 @@ class _ConfirmScreenState extends State<_ConfirmScreen> {
     final existingDosage = item['dosage']?.toString().trim() ?? '';
     final timesPerTake = item['times_per_take'];
     final amountMatch = RegExp(
-      r'^(\d+(?:\.\d+)?)\s*(알|정|캡슐|포|개|mL|ml|방울|T|TAB|C|CAP|PKG|EA)?$',
+      r'^(\d+(?:\.\d+)?)\s*(알|정|캡슐|포|개|회|mL|ml|방울|T|TAB|C|CAP|PKG|EA)?$',
       caseSensitive: false,
     ).firstMatch(existingDosage);
     final amountController = TextEditingController(
@@ -1131,6 +1144,7 @@ class _ConfirmScreenState extends State<_ConfirmScreen> {
       'PKG' || '포' => '포',
       'ML' || '밀리리터' => 'mL',
       '방울' => '방울',
+      '회' => '회',
       'EA' || '개' => '개',
       _ => null,
     };
@@ -1289,22 +1303,8 @@ class _ConfirmScreenState extends State<_ConfirmScreen> {
     );
   }
 
-  Future<bool> _confirmPartialRegistration() async {
-    if (widget.unrecognizedNames.isEmpty) return true;
-    return showSeniorYesNoDialog(
-      context: context,
-      title: '확인하지 못한 약이 있어요',
-      message:
-          '제외한 약은 함께 먹기 확인에서도 빠져요. '
-          '처방전과 비교한 뒤 제외하고 등록해 주세요.',
-      yesLabel: '제외하고 등록',
-      noLabel: '다시 확인하기',
-    );
-  }
-
   Future<void> _tryRegister() async {
     if (_registering) return;
-    if (!await _confirmPartialRegistration()) return;
     setState(() => _registering = true);
     try {
       await widget.onRegister(_editedItems);
@@ -1449,14 +1449,24 @@ class _ConfirmScreenState extends State<_ConfirmScreen> {
                     Builder(
                       builder: (context) {
                         final item = _editedItems[index];
+                        final conflicts = _interactionConflicts(item);
+                        final ingredientName =
+                            item['ingredient_name']?.toString().trim() ?? '';
+                        final ingredient = ingredientName.isNotEmpty
+                            ? ingredientName
+                            : item['ingredient']?.toString() ?? '';
+                        debugPrint(
+                          '[OCR_DUR_DIAG] trace_id=${widget.diagnosticId} '
+                          'stage=card_build code=${item['medicine_code']} '
+                          'display_conflict_count=${conflicts.length} '
+                          'conflict_border=${conflicts.isNotEmpty}',
+                        );
                         return _DrugCard(
-                          name: _shortDrugName(
+                          name: compactProductName(
                             item['drug_name']?.toString() ?? '이름을 못 읽었어요',
+                            ingredient: ingredient,
                           ),
-                          ingredient:
-                              item['ingredient_name']?.toString() ??
-                              item['ingredient']?.toString() ??
-                              '',
+                          ingredient: ingredient,
                           ingredientStrength:
                               item['ingredient_strength']?.toString() ?? '',
                           rawOcrName:
@@ -1477,7 +1487,7 @@ class _ConfirmScreenState extends State<_ConfirmScreen> {
                           fieldConfidences: _fieldConfidences(item),
                           matchStatusLabel: _matchStatusLabel(item),
                           uncertain: _uncertain(item),
-                          conflicts: _interactionConflicts(item),
+                          conflicts: conflicts,
                           expanded: _expandedItems.contains(index),
                           onToggle: () => setState(() {
                             if (!_expandedItems.remove(index)) {
@@ -1488,37 +1498,6 @@ class _ConfirmScreenState extends State<_ConfirmScreen> {
                           onEditDosing: () => _editItem(index),
                         );
                       },
-                    ),
-                    const SizedBox(height: 12),
-                  ],
-                  if (widget.unrecognizedNames.isNotEmpty) ...[
-                    SeniorCard(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 22,
-                        vertical: 18,
-                      ),
-                      borderColor: AppColors.attentionBorder,
-                      borderWidth: 2,
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            '읽지 못한 약 이름이 있어요',
-                            style: AppText.cardTitle(
-                              size: 20,
-                              color: AppColors.attentionBorder,
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          Text(
-                            '아래 이름은 등록에서 빼 두었어요. 처방전과 비교하고, 밝은 곳에서 다시 찍어 주세요.',
-                            style: AppText.body(size: 18),
-                          ),
-                          const SizedBox(height: 8),
-                          for (final name in widget.unrecognizedNames)
-                            Text('· $name (못 읽음)', style: AppText.body()),
-                        ],
-                      ),
                     ),
                     const SizedBox(height: 12),
                   ],
@@ -1816,6 +1795,7 @@ class _StepperButton extends StatelessWidget {
     );
   }
 }
+
 /// 시안 19 — "한 번에 / 하루 / 며칠"을 한 칸씩 담는 네모.
 ///
 /// 못 읽은 값은 빨갛게 적어 눈에 걸리게 둔다. 그대로 등록하면

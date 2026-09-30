@@ -830,9 +830,9 @@ void _backButtonTests() {
       theme: AppTheme.build(),
       home: MediaQuery(
         data: MediaQueryData(
-            textScaler: TextScaler.linear(textScale),
-            disableAnimations: true,
-          ),
+          textScaler: TextScaler.linear(textScale),
+          disableAnimations: true,
+        ),
         child: child,
       ),
     ),
@@ -1322,6 +1322,23 @@ void _confirmPreviewTests() {
   final confirm = File(
     'lib/features/prescription/presentation/screens/prescription_screen.dart',
   ).readAsStringSync();
+
+  test('OCR 확인 및 수정 화면은 서버가 준 회 단위를 유지한다', () {
+    final display = confirm.substring(
+      confirm.indexOf('static String _takeAmountLabel('),
+      confirm.indexOf('static String? _seniorExplanation('),
+    );
+    expect(display.contains("'회' => '회'"), isTrue);
+    expect(display.contains('알|정|캡슐|포|개|회|mL'), isTrue);
+    final edit = confirm.substring(
+      confirm.indexOf('static String? _editableDoseUnit('),
+    );
+    expect(edit.contains("'회' => '회'"), isTrue);
+    expect(
+      confirm.contains('알|정|캡슐|포|개|회|mL|ml|방울|T|TAB|C|CAP|PKG|EA)?'),
+      isTrue,
+    );
+  });
 
   test('OCR 확인 화면은 원문 이름과 공식 품목 식별자를 구분한다', () {
     // 화면에는 구구절절 적지 않는다(프로토타입 78). 다만 사진에서 읽은
