@@ -494,7 +494,7 @@ void main() {
       expect(find.widgetWithText(SeniorSegmented, '한 달'), findsOneWidget);
       expect(find.text('지금 측정'), findsOneWidget);
       expect(find.text('폴라 센서'), findsOneWidget);
-      expect(find.textContaining('에게 바로 알려요'), findsOneWidget);
+      expect(find.textContaining('에게 바로 알려요'), findsNothing);
       expect(gets, 1);
       await tester.tap(find.text('한 달'));
       await tester.pumpAndSettle();

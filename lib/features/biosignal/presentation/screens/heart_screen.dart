@@ -74,8 +74,6 @@ class _HeartScreenState extends State<HeartScreen> {
   bool _reloadFailed = false;
   bool _failed = false;
 
-  /// 보호자 알림 스위치. 기록이 아니라 설정이라 기록과 따로 든다.
-  bool _notifyGuardian = true;
   HeartMeasurementContext _measurementContext = HeartMeasurementContext.general;
 
   /// 다른 사람(어르신)의 기록을 보는 중인지. 그러면 이 전화기로 재지 않는다.
@@ -309,15 +307,6 @@ class _HeartScreenState extends State<HeartScreen> {
                       ),
                     ),
                   ],
-                  const SizedBox(height: 12),
-                  _NotifyRow(
-                    guardianTitle: resolveGuardianTitle(
-                      context,
-                      widget.guardianTitle,
-                    ),
-                    value: _notifyGuardian,
-                    onChanged: (v) => setState(() => _notifyGuardian = v),
-                  ),
                 ],
               ),
             ),
@@ -758,42 +747,6 @@ class _SensorRow extends StatelessWidget {
           const Padding(
             padding: EdgeInsets.only(top: 2),
             child: SeniorChevron(),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-/// 심박수가 빠르면 보호자에게 자동으로 알리는 스위치.
-class _NotifyRow extends StatelessWidget {
-  final String guardianTitle;
-  final bool value;
-  final ValueChanged<bool> onChanged;
-
-  const _NotifyRow({
-    required this.guardianTitle,
-    required this.value,
-    required this.onChanged,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return SeniorCard(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 17),
-      child: Row(
-        children: [
-          Expanded(
-            child: Text(
-              '심박수가 너무 빠르면\n$guardianTitle에게 바로 알려요',
-              style: AppText.label(size: 19, color: AppColors.textPrimary),
-            ),
-          ),
-          const SizedBox(width: 12),
-          SeniorToggle(
-            value: value,
-            semanticLabel: '심박수가 빠를 때 $guardianTitle에게 알리기',
-            onChanged: onChanged,
           ),
         ],
       ),

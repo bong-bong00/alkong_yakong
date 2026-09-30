@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
-import '../../../medication/application/medication_controller.dart';
 import 'package:flutter_tabler_icons/flutter_tabler_icons.dart';
 
 import '../../../../core/constants/app_colors.dart';
@@ -138,36 +137,6 @@ class SavedScreen extends StatelessWidget {
                     title: '심박수 기록',
                     description:
                         '$bpm회 / 분 · ${measurementContext.label} · 서버에 저장된 심박수',
-                  ),
-                  const SizedBox(height: 12),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 20,
-                      vertical: 17,
-                    ),
-                    decoration: BoxDecoration(
-                      color: AppColors.sunken,
-                      borderRadius: BorderRadius.circular(22),
-                    ),
-                    child: Row(
-                      children: [
-                        InitialAvatar(
-                          name: resolveGuardianTitle(context, guardianTitle),
-                          size: 44,
-                          background: AppColors.surface,
-                        ),
-                        const SizedBox(width: 14),
-                        Expanded(
-                          child: Text(
-                            '보호자 자동 알림은 지원하지 않아요',
-                            style: AppText.label(
-                              size: 18,
-                              color: AppColors.textPrimary,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
                   ),
                   const SizedBox(height: 20),
                   SeniorButton(
