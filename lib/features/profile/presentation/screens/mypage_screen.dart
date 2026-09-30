@@ -11,6 +11,7 @@ import '../../../../core/widgets/senior_card.dart';
 import '../../../../core/widgets/senior_feedback.dart';
 import '../../../../core/widgets/senior_header.dart';
 import '../../../dashboard/presentation/screens/profile_edit_screen.dart';
+import '../../../dashboard/presentation/screens/settings_menu.dart';
 import '../../../guardian/application/guardians_provider.dart';
 import '../../../guardian/data/guardian_repository.dart';
 import '../../../guardian/presentation/widgets/add_care_sheet.dart';
@@ -21,7 +22,6 @@ import '../../../biosignal/presentation/screens/polar_screen.dart';
 import '../../../medicines/application/user_medicines_controller.dart';
 import '../../application/current_user_controller.dart';
 import 'account_screen.dart';
-import 'help_screen.dart';
 
 /// 4h — 내 정보 · 설정.
 ///
@@ -333,7 +333,7 @@ class _MyPageScreenState extends ConsumerState<MyPageScreen> {
                           label: '도움말·약관',
                           onTap: () => Navigator.of(context).push(
                             MaterialPageRoute<void>(
-                              builder: (_) => const HelpScreen(),
+                              builder: (_) => const SettingsMenuScreen(),
                             ),
                           ),
                         ),
