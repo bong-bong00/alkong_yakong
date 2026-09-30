@@ -488,7 +488,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.textContaining('98회/분'), findsWidgets);
       expect(find.text('평소 심박 측정'), findsWidgets);
-      expect(find.textContaining('비교할 자료는 부족'), findsOneWidget);
+      expect(find.textContaining('비교할 자료는 부족'), findsNothing);
       expect(find.text('지난 기록 보기'), findsNothing);
       expect(find.widgetWithText(SeniorSegmented, '이번 주'), findsOneWidget);
       expect(find.widgetWithText(SeniorSegmented, '한 달'), findsOneWidget);

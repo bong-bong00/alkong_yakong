@@ -33,13 +33,6 @@ class HeartReadingsCard extends StatelessWidget {
             style: AppText.caption(size: 16),
           ),
         ],
-        if (!hasComparison) ...[
-          const SizedBox(height: 12),
-          Text(
-            '기록은 저장되어 있지만 복약 전·후를 비교할 자료는 부족해요.',
-            style: AppText.body(size: 16),
-          ),
-        ],
       ],
     ),
   );
