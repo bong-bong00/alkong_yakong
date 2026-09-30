@@ -44,11 +44,11 @@ class _MonthlyHeartScreenState extends State<MonthlyHeartScreen> {
     final readings = data.readingsFor(monthly: true);
     final comparison = _MonthlyComparison.fromReadings(readings);
     return Scaffold(
-      backgroundColor: AppColors.bgTinted,
+      backgroundColor: AppColors.pageBg,
       body: Column(
         children: [
           SeniorHeader(
-            background: AppColors.bgTinted,
+            background: AppColors.pageBg,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [

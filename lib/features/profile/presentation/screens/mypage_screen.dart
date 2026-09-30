@@ -83,7 +83,7 @@ class _MyPageScreenState extends ConsumerState<MyPageScreen> {
     final ageLine = profile?.ageLine(DateTime.now()) ?? '';
 
     return Container(
-      color: AppColors.bgTinted,
+      color: AppColors.pageBg,
       // 탭으로 열려 머리띠가 없다. 이름이 상태바에 붙지 않게 피한다.
       child: SafeArea(
         bottom: false,

@@ -60,8 +60,9 @@ abstract final class AppColors {
   /// 화면 배경.
   static const Color bg = Color(0xFFF2F2F6);
 
-  /// 오늘 홈의 바탕. 흰 카드가 떠 보이도록 아주 옅은 파랑을 깐다.
-  static const Color bgTinted = Color(0xFFF4F6FD);
+  /// 화면 바탕. 흰색 하나로 통일한다 — 카드는 색 대비가 아니라
+  /// 그림자([cardShadow])로 떠 보이게 한다.
+  static const Color pageBg = Color(0xFFFFFFFF);
 
   /// 카드.
   static const Color surface = Color(0xFFFFFFFF);
@@ -173,7 +174,7 @@ abstract final class AppColors {
 
   /// 카드가 흰 배경 위에서 떠 보이게 하는 그림자.
   /// 화면 배경이 흰색이라 색 대비로는 카드 경계가 서지 않는다.
-  static const Color cardShadow = Color(0x14111114);
+  static const Color cardShadow = Color(0x24111114);
 
   /// 시트와 하단 바가 바닥에서 떠 보이게 하는 그림자.
   static const Color sheetShadow = Color(0x2E14161E);

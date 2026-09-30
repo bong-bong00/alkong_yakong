@@ -193,11 +193,11 @@ class _HeartScreenState extends State<HeartScreen> {
   Widget build(BuildContext context) {
     final data = _data;
     return Scaffold(
-      backgroundColor: AppColors.bgTinted,
+      backgroundColor: AppColors.pageBg,
       body: Column(
         children: [
           SeniorHeader(
-            background: AppColors.bgTinted,
+            background: AppColors.pageBg,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [

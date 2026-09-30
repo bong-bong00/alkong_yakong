@@ -56,7 +56,7 @@ class _GuardianAlertPrefsScreenState extends State<GuardianAlertPrefsScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.bgTinted,
+      backgroundColor: AppColors.pageBg,
       body: Column(
         children: [
           const SeniorBackHeader(title: '알림 받는 방법', alignStart: true),

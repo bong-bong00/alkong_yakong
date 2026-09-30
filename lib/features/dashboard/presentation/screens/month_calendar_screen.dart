@@ -273,7 +273,7 @@ class _MonthCalendarScreenState extends ConsumerState<MonthCalendarScreen> {
         : '$_scheduledPastCount일 중 $_doneCount일';
 
     return Scaffold(
-      backgroundColor: AppColors.bgTinted,
+      backgroundColor: AppColors.pageBg,
       body: Column(
         children: [
           SeniorBackHeader(title: '$_month월 달력'),

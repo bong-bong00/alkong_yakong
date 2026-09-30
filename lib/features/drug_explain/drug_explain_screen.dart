@@ -524,7 +524,7 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
                         size: 19,
                         color: selected ? Colors.white : AppColors.textBody,
                       ),
-                      backgroundColor: AppColors.bgTinted,
+                      backgroundColor: AppColors.pageBg,
                       selectedColor: AppColors.point,
                       side: BorderSide(
                         color: selected
@@ -560,7 +560,7 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
     final subject = _selectedMedicine?.trim();
 
     return Scaffold(
-      backgroundColor: AppColors.bgTinted,
+      backgroundColor: AppColors.pageBg,
       body: SafeArea(
         child: Column(
           children: [

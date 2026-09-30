@@ -83,7 +83,7 @@ class _GuardianHomeScreenState extends ConsumerState<GuardianHomeScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.bgTinted,
+      backgroundColor: AppColors.pageBg,
       body: IndexedStack(
         index: _index,
         children: [
@@ -176,7 +176,7 @@ class GuardianStatusScreen extends ConsumerWidget {
         const <DateTime, DayAdherence>{};
 
     return Scaffold(
-      backgroundColor: AppColors.bgTinted,
+      backgroundColor: AppColors.pageBg,
       body: Column(
         children: [
           SeniorHeader(
@@ -517,7 +517,7 @@ class GuardianAlertsScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.bgTinted,
+      backgroundColor: AppColors.pageBg,
       body: Column(
         children: [
           const SeniorBackHeader(title: '알림', alignStart: true),

@@ -64,7 +64,7 @@ class _DrugDetailScreenState extends ConsumerState<DrugDetailScreen> {
   Widget build(BuildContext context) {
     final easyMode = ref.watch(appModeProvider).isEasy;
     return Scaffold(
-      backgroundColor: AppColors.bgTinted,
+      backgroundColor: AppColors.pageBg,
       body: Column(
         children: [
           SeniorBackHeader(

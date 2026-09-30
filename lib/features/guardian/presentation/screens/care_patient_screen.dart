@@ -81,7 +81,7 @@ class CarePatientScreen extends ConsumerWidget {
     }
 
     return Scaffold(
-      backgroundColor: AppColors.bgTinted,
+      backgroundColor: AppColors.pageBg,
       body: Column(
         children: [
           SeniorBackHeader(title: patient.title, alignStart: true),

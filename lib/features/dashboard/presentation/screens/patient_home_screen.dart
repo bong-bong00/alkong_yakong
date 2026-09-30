@@ -246,7 +246,7 @@ class _PatientHomeScreenState extends ConsumerState<PatientHomeScreen> {
     final remaining = today.doses.where((dose) => !dose.taken).length;
 
     return Container(
-      color: AppColors.bgTinted,
+      color: AppColors.pageBg,
       child: Column(
         children: [
           // 쉬운 화면에서는 쉘이 위에 걸음 표시와 "일반 화면으로"를 둔다.
@@ -267,15 +267,14 @@ class _PatientHomeScreenState extends ConsumerState<PatientHomeScreen> {
                 // 동그라미는 남는 자리를 다 쓴다. 제목·칩·타일이 차지하는
                 // 만큼을 빼고 남은 높이와 화면 너비 중 작은 쪽에 맞춘다.
                 // 글자를 키우면 그 셋도 함께 커지므로 배율을 태워 잰다.
-                final scale = MediaQuery.textScalerOf(context).scale(1);
-                final room =
-                    box.maxHeight - bottomPad - 132 - 210 * scale;
-                final diameter = room
-                    .clamp(196.0, box.maxWidth - 40)
-                    .toDouble();
-                return SingleChildScrollView(
-              padding: EdgeInsets.fromLTRB(20, 10, 20, bottomPad),
-              child: Column(
+                // 글자를 키우면 한 화면에 다 못 담는다. 그때만 스크롤로
+                // 넘기고, 보통 크기에서는 남는 자리에 딱 맞춰 채운다.
+                // 작은 화면이나 키운 글씨에서는 한 화면에 다 못 담는다.
+                // 그때만 스크롤로 넘긴다.
+                final scrolls =
+                    MediaQuery.textScalerOf(context).scale(1) > 1.3 ||
+                    box.maxHeight < 560;
+                final body = Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   if (today.doses.isEmpty)
@@ -301,11 +300,13 @@ class _PatientHomeScreenState extends ConsumerState<PatientHomeScreen> {
                   else ...[
                     // 오늘 할 일을 한 줄로 먼저 말한다.
                     _TodayHeadline(remaining: remaining),
-                    const SizedBox(height: 20),
+                    const SizedBox(height: 18),
                     _SlotChips(today: today, next: next),
-                    const SizedBox(height: 28),
-                    _BigDoseButton(
-                      diameter: diameter,
+                    const SizedBox(height: 24),
+                    // 남는 세로 자리를 그대로 받아 그 안에 맞춘다.
+                    _Fill(
+                      scrolls: scrolls,
+                      child: _BigDoseButton(
                       done: next == null,
                       onTake: next == null
                           ? null
@@ -313,8 +314,9 @@ class _PatientHomeScreenState extends ConsumerState<PatientHomeScreen> {
                       onUndo: next != null
                           ? null
                           : () => _undo(_recordedSlot ?? today.doses.last.slot),
+                      ),
                     ),
-                    const SizedBox(height: 28),
+                    const SizedBox(height: 24),
                     _HomeTiles(
                       takenAt: next == null ? _lastTakenAt(today) : null,
                       onSnooze: next == null ? null : () => _snooze(next.slot),
@@ -326,7 +328,12 @@ class _PatientHomeScreenState extends ConsumerState<PatientHomeScreen> {
                     ],
                   ],
                 ],
-              ),
+                );
+                return Padding(
+                  padding: EdgeInsets.fromLTRB(20, 10, 20, bottomPad),
+                  child: scrolls
+                      ? SingleChildScrollView(child: body)
+                      : body,
                 );
               },
             ),
@@ -469,23 +476,30 @@ class _SlotChips extends StatelessWidget {
   }
 }
 
+/// 남는 세로 자리를 차지하는 껍데기. 스크롤하는 화면에서는 아무것도
+/// 하지 않는다 — 스크롤 안에서는 "남는 자리"라는 것이 없다.
+class _Fill extends StatelessWidget {
+  final bool scrolls;
+  final Widget child;
+
+  const _Fill({required this.scrolls, required this.child});
+
+  @override
+  Widget build(BuildContext context) =>
+      scrolls ? child : Expanded(child: child);
+}
+
 /// 오늘 화면에서 제일 큰 것 하나. 드시기 전에는 파란 "먹었어요",
 /// 다 드신 뒤에는 흰 "취소하기"로 바뀐다.
 ///
 /// 바깥의 연한 테는 심장이 뛰듯 두 번씩 커졌다 줄며 눈을 끈다.
 /// 어르신이 이 화면에서 누를 것이 하나뿐임을 몸으로 알리는 장치다.
 class _BigDoseButton extends StatefulWidget {
-  final double diameter;
   final bool done;
   final VoidCallback? onTake;
   final VoidCallback? onUndo;
 
-  const _BigDoseButton({
-    required this.diameter,
-    required this.done,
-    this.onTake,
-    this.onUndo,
-  });
+  const _BigDoseButton({required this.done, this.onTake, this.onUndo});
 
   @override
   State<_BigDoseButton> createState() => _BigDoseButtonState();
@@ -550,22 +564,24 @@ class _BigDoseButtonState extends State<_BigDoseButton>
       _beat.value = 0;
     }
 
-    // 글자를 키우면 "먹었어요"가 동그라미보다 넓어져 두 줄로 접히고,
-    // 그러면서 지름을 넘어선다. 글자를 실제로 재서 그보다 작게 잡지 않는다.
-    final labelStyle = AppText.cardTitle(size: 26, color: ink);
-    final painter = TextPainter(
-      text: TextSpan(text: label, style: labelStyle),
-      textDirection: TextDirection.ltr,
-      textScaler: MediaQuery.textScalerOf(context),
-    )..layout();
-    // 동그라미 안에 든 네모의 대각선이 지름보다 짧아야 한다.
-    final boxWidth = math.max(painter.width, 52);
-    final boxHeight = 52 + 4 + painter.height;
-    final need = math.sqrt(boxWidth * boxWidth + boxHeight * boxHeight) + 16;
-    final size = math.max(widget.diameter, need);
-    final ring = size * 0.14;
+    return LayoutBuilder(
+      builder: (context, box) {
+        // 받은 자리 안에 테까지 들어가야 한다. 가로·세로 중 좁은 쪽에
+        // 맞추되, 글자를 읽을 수 있는 크기 아래로는 줄이지 않는다.
+        final room = math.min(
+          box.maxWidth.isFinite ? box.maxWidth : 320,
+          box.maxHeight.isFinite ? box.maxHeight : 320,
+        );
+        final outer = room.clamp(180.0, 340.0).toDouble();
+        final ring = outer * 0.11;
+        final size = outer - ring * 2;
+        // 글자와 아이콘은 지름을 따라간다. 동그라미만 커지고 글자가
+        // 그대로면 가운데가 비어 보인다.
+        final labelSize = (size * 0.135).clamp(24.0, 34.0).toDouble();
+        final iconSize = (size * 0.24).clamp(44.0, 66.0).toDouble();
+        final labelStyle = AppText.cardTitle(size: labelSize, color: ink);
 
-    return Center(
+        return Center(
       child: Semantics(
         button: true,
         label: label,
@@ -573,8 +589,8 @@ class _BigDoseButtonState extends State<_BigDoseButton>
           onTap: widget.done ? widget.onUndo : widget.onTake,
           child: ExcludeSemantics(
             child: SizedBox(
-              width: size + ring * 2,
-              height: size + ring * 2,
+              width: outer,
+              height: outer,
               child: Stack(
                 alignment: Alignment.center,
                 children: [
@@ -585,8 +601,8 @@ class _BigDoseButtonState extends State<_BigDoseButton>
                       child: child,
                     ),
                     child: Container(
-                      width: size + ring * 2,
-                      height: size + ring * 2,
+                      width: outer,
+                      height: outer,
                       decoration: const BoxDecoration(
                         color: AppColors.pointRing,
                         shape: BoxShape.circle,
@@ -598,22 +614,28 @@ class _BigDoseButtonState extends State<_BigDoseButton>
                     height: size,
                     alignment: Alignment.center,
                     decoration: BoxDecoration(color: fill, shape: BoxShape.circle),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(
-                          widget.done
-                              ? TablerIcons.arrow_back_up
-                              : TablerIcons.check,
-                          size: 52,
-                          color: ink,
+                    // 동그라미 안에 드는 네모는 지름의 0.7배다. 글씨를
+                    // 키운 기기에서도 그 안에서 줄여 담아 넘치지 않게 한다.
+                    child: SizedBox(
+                      width: size * 0.72,
+                      height: size * 0.72,
+                      child: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              widget.done
+                                  ? TablerIcons.arrow_back_up
+                                  : TablerIcons.check,
+                              size: iconSize,
+                              color: ink,
+                            ),
+                            const SizedBox(height: 2),
+                            Text(label, style: labelStyle),
+                          ],
                         ),
-                        const SizedBox(height: 4),
-                        Text(
-                          label,
-                          style: AppText.cardTitle(size: 26, color: ink),
-                        ),
-                      ],
+                      ),
                     ),
                   ),
                 ],
@@ -622,6 +644,8 @@ class _BigDoseButtonState extends State<_BigDoseButton>
           ),
         ),
       ),
+        );
+      },
     );
   }
 }
@@ -769,7 +793,10 @@ class HomeTopBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SeniorHeader(
-      background: AppColors.bgTinted,
+      background: AppColors.pageBg,
+      // 바탕과 머리가 같은 흰색이라 선만 남는다. 카드 그림자가 이미
+      // 본문을 가르므로 여기서 한 번 더 그을 이유가 없다.
+      borderColor: Colors.transparent,
       child: Row(
         children: [
           Expanded(

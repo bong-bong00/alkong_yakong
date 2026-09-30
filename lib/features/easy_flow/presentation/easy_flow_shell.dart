@@ -181,7 +181,7 @@ class _EasyFlowShellState extends ConsumerState<EasyFlowShell> {
     final showBar = showsEasyBar(_screen);
     final stepIndex = kEasyFlow.indexWhere((step) => step.screen == _screen);
     return Scaffold(
-      backgroundColor: AppColors.bgTinted,
+      backgroundColor: AppColors.pageBg,
       body: SafeArea(
         bottom: false,
         child: Column(

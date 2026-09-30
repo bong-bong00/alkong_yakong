@@ -57,7 +57,7 @@ class _PolarScreenState extends State<PolarScreen> {
   Widget build(BuildContext context) {
     final connected = _sensor.status == HeartSensorStatus.streaming;
     return Scaffold(
-      backgroundColor: AppColors.bgTinted,
+      backgroundColor: AppColors.pageBg,
       body: Column(
         children: [
           // 상표 이름보다 무엇인지가 먼저다. 기기 이름은 카드 안에서 말한다.

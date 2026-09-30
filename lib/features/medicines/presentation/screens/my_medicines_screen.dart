@@ -28,7 +28,7 @@ class MyMedicinesScreen extends ConsumerWidget {
     final medicines = ref.watch(userMedicinesProvider);
 
     return Scaffold(
-      backgroundColor: AppColors.bgTinted,
+      backgroundColor: AppColors.pageBg,
       // 탭으로 열면 머리띠가 없다. 제목이 상태바에 붙지 않게 여기서 피한다.
       body: SafeArea(
         bottom: false,

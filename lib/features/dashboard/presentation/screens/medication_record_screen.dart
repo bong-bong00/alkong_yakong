@@ -68,7 +68,7 @@ class MedicationRecordScreen extends ConsumerWidget {
     final heartCheck = _todayHeartCheck(today);
 
     return Container(
-      color: AppColors.bgTinted,
+      color: AppColors.pageBg,
       // 제목이 본문에 있으므로 상태바를 여기서 피한다.
       child: SafeArea(
         bottom: false,
