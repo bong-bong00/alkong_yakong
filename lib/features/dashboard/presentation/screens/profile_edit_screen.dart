@@ -414,7 +414,7 @@ class _ProfileEditScreenState extends ConsumerState<ProfileEditScreen> {
       body: SafeArea(
         child: Column(
           children: [
-            const SeniorBackHeader(title: '내 정보 고치기'),
+            const SeniorBackHeader(title: '내 정보 수정'),
             Expanded(
               child: _original == null ? _buildLoading() : _buildForm(accent),
             ),
