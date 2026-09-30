@@ -174,7 +174,7 @@ abstract final class AppColors {
 
   /// 카드가 흰 배경 위에서 떠 보이게 하는 그림자.
   /// 화면 배경이 흰색이라 색 대비로는 카드 경계가 서지 않는다.
-  static const Color cardShadow = Color(0x24111114);
+  static const Color cardShadow = Color(0x33111114);
 
   /// 시트와 하단 바가 바닥에서 떠 보이게 하는 그림자.
   static const Color sheetShadow = Color(0x2E14161E);

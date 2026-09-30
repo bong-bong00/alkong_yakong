@@ -447,6 +447,8 @@ class _SlotChips extends StatelessWidget {
           decoration: BoxDecoration(
             color: background,
             borderRadius: BorderRadius.circular(30),
+            // 흰 칩은 흰 바탕에 묻힌다. 그림자로 띄운다.
+            boxShadow: background == AppColors.surface ? kCardShadow : null,
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
@@ -713,6 +715,7 @@ class _HomeTiles extends StatelessWidget {
             decoration: BoxDecoration(
               color: background,
               borderRadius: BorderRadius.circular(18),
+              boxShadow: background == AppColors.surface ? kCardShadow : null,
             ),
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
@@ -749,6 +752,7 @@ class _RefillRow extends StatelessWidget {
       decoration: BoxDecoration(
         color: AppColors.surface,
         borderRadius: BorderRadius.circular(22),
+        boxShadow: kCardShadow,
       ),
       child: Row(
         children: [
