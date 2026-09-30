@@ -140,7 +140,7 @@ class _MedicineList extends StatelessWidget {
         if (asTab) ...[
           Padding(
             padding: const EdgeInsets.fromLTRB(6, 6, 6, 0),
-            child: Text('내 약', style: AppText.screenTitle(size: 28)),
+            child: Text('내 약', style: AppText.screenTitle(size: 26)),
           ),
           const SizedBox(height: 14),
         ],
@@ -204,8 +204,8 @@ class _ActionTile extends StatelessWidget {
         onTap: onTap,
         child: ExcludeSemantics(
           child: Container(
-            constraints: const BoxConstraints(minHeight: 112),
-            padding: const EdgeInsets.all(16),
+            constraints: const BoxConstraints(minHeight: 94),
+            padding: const EdgeInsets.all(14),
             decoration: BoxDecoration(
               color: filled ? AppColors.pointFill : AppColors.surface,
               borderRadius: BorderRadius.circular(26),
@@ -216,17 +216,17 @@ class _ActionTile extends StatelessWidget {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Container(
-                  width: 46,
-                  height: 46,
+                  width: 42,
+                  height: 42,
                   alignment: Alignment.center,
                   decoration: BoxDecoration(
                     color: filled ? AppColors.surface : AppColors.pointTint,
                     shape: BoxShape.circle,
                   ),
-                  child: Icon(icon, size: 26, color: AppColors.point),
+                  child: Icon(icon, size: 24, color: AppColors.point),
                 ),
                 const SizedBox(height: 12),
-                Text(label, style: AppText.cardTitle(size: 20, color: ink)),
+                Text(label, style: AppText.cardTitle(size: 19, color: ink)),
               ],
             ),
           ),
@@ -261,13 +261,13 @@ class _MedicineCard extends StatelessWidget {
       child: Row(
         children: [
           // 홈 카드와 같은 생김새여야 같은 약으로 읽힌다.
-          const PillPhoto(size: 56),
+          const PillPhoto(size: 50),
           const SizedBox(width: 14),
           Expanded(
             child: Text(
               medicine.displayName,
               style: AppText.cardTitle(
-                size: 21,
+                size: 20,
                 color: past ? AppColors.textTertiary : AppColors.textPrimary,
               ),
               maxLines: 2,

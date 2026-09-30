@@ -94,12 +94,12 @@ class MedicationRecordScreen extends ConsumerWidget {
                           TextSpan(
                             text: patientName == null ? '나의 ' : '$patientName님 ',
                             style: AppText.screenTitle(
-                              size: 28,
+                              size: 26,
                             ).copyWith(fontWeight: FontWeight.w500),
                           ),
                           TextSpan(
                             text: '복약 기록',
-                            style: AppText.screenTitle(size: 28),
+                            style: AppText.screenTitle(size: 26),
                           ),
                         ],
                       ),

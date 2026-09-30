@@ -282,7 +282,7 @@ class _TimeCard extends StatelessWidget {
                 child: ExcludeSemantics(
                   child: Container(
                     color: Colors.transparent,
-                    constraints: const BoxConstraints(minHeight: 72),
+                    constraints: const BoxConstraints(minHeight: 64),
                     alignment: Alignment.centerLeft,
                     child: Row(
                       children: [
@@ -290,7 +290,7 @@ class _TimeCard extends StatelessWidget {
                           child: Text(
                             time,
                             style: AppText.screenTitle(
-                              size: 30,
+                              size: 27,
                               color: on
                                   ? AppColors.textPrimary
                                   : AppColors.textTertiary,
@@ -339,7 +339,7 @@ class _AddTimeCard extends StatelessWidget {
         onTap: onTap,
         child: ExcludeSemantics(
           child: Container(
-            constraints: const BoxConstraints(minHeight: 64),
+            constraints: const BoxConstraints(minHeight: 58),
             alignment: Alignment.center,
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
             decoration: BoxDecoration(

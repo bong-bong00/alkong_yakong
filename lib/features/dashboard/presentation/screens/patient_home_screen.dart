@@ -362,7 +362,7 @@ class _TodayHeadline extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final style = AppText.screenTitle(size: 28);
+    final style = AppText.screenTitle(size: 26);
     return Padding(
       padding: const EdgeInsets.fromLTRB(6, 10, 6, 0),
       child: remaining == 0
@@ -441,7 +441,7 @@ class _SlotChips extends StatelessWidget {
           : label,
       child: ExcludeSemantics(
         child: Container(
-          constraints: const BoxConstraints(minHeight: 60),
+          constraints: const BoxConstraints(minHeight: 52),
           alignment: Alignment.center,
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
           decoration: BoxDecoration(
@@ -457,7 +457,7 @@ class _SlotChips extends StatelessWidget {
                 child: Text(
                   label,
                   textAlign: TextAlign.center,
-                  style: AppText.cardTitle(size: 19, color: foreground),
+                  style: AppText.cardTitle(size: 18, color: foreground),
                 ),
               ),
               if (taken) ...[
@@ -702,7 +702,7 @@ class _HomeTiles extends StatelessWidget {
     VoidCallback? onTap,
     Color background = AppColors.surface,
     Color foreground = AppColors.textPrimary,
-    double fontSize = 19,
+    double fontSize = 18,
   }) {
     return Semantics(
       button: onTap != null,
@@ -711,9 +711,9 @@ class _HomeTiles extends StatelessWidget {
         onTap: onTap,
         child: ExcludeSemantics(
           child: Container(
-            constraints: const BoxConstraints(minHeight: 100),
+            constraints: const BoxConstraints(minHeight: 82),
             alignment: Alignment.center,
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 16),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
             decoration: BoxDecoration(
               color: background,
               borderRadius: BorderRadius.circular(18),
@@ -723,8 +723,8 @@ class _HomeTiles extends StatelessWidget {
               mainAxisAlignment: MainAxisAlignment.center,
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(icon, size: 34, color: foreground),
-                const SizedBox(height: 10),
+                Icon(icon, size: 28, color: foreground),
+                const SizedBox(height: 6),
                 Flexible(
                   child: Text(
                     label,

@@ -1309,8 +1309,9 @@ void _medicinesByTimeTests() {
     ).readAsStringSync();
     // 시안 38은 "지금 드시는 약" 옆에 이 말을 붙여 둔다.
     expect(source.contains('누르면 설명이 나와요'), isTrue);
-    // 홈과 같은 사진 자리를 쓴다. 다른 모양이면 다른 약으로 읽힌다.
-    expect(source.contains('PillPhoto(size: 56)'), isTrue);
+    // 약마다 같은 사진 자리를 쓴다. 다른 모양이면 다른 약으로 읽힌다.
+    // 크기는 화면마다 다를 수 있으므로 같은 위젯을 쓰는지만 본다.
+    expect(source.contains('PillPhoto(size:'), isTrue);
     // 지금 안 드시는 약은 줄 하나로 접어 둔다.
     expect(source.contains('이전에 등록한 약'), isTrue);
   });

@@ -163,7 +163,7 @@ class _PrimaryWay extends StatelessWidget {
         onTap: onTap,
         child: ExcludeSemantics(
           child: Container(
-            constraints: const BoxConstraints(minHeight: 128),
+            constraints: const BoxConstraints(minHeight: 108),
             padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
             decoration: BoxDecoration(
               color: AppColors.pointFill,
@@ -172,14 +172,14 @@ class _PrimaryWay extends StatelessWidget {
             child: Row(
               children: [
                 Container(
-                  width: 64,
-                  height: 64,
+                  width: 56,
+                  height: 56,
                   alignment: Alignment.center,
                   decoration: BoxDecoration(
                     color: AppColors.pointPressed,
                     borderRadius: BorderRadius.circular(20),
                   ),
-                  child: Icon(icon, size: 34, color: Colors.white),
+                  child: Icon(icon, size: 30, color: Colors.white),
                 ),
                 const SizedBox(width: 18),
                 Expanded(
@@ -189,7 +189,7 @@ class _PrimaryWay extends StatelessWidget {
                     children: [
                       Text(
                         label,
-                        style: AppText.cardTitle(size: 24, color: Colors.white),
+                        style: AppText.cardTitle(size: 22, color: Colors.white),
                       ),
                       const SizedBox(height: 4),
                       Text(
@@ -232,7 +232,7 @@ class _SmallWay extends StatelessWidget {
         onTap: onTap,
         child: ExcludeSemantics(
           child: Container(
-            constraints: const BoxConstraints(minHeight: 104),
+            constraints: const BoxConstraints(minHeight: 88),
             alignment: Alignment.center,
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 14),
             decoration: BoxDecoration(
@@ -243,7 +243,7 @@ class _SmallWay extends StatelessWidget {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(icon, size: 30, color: AppColors.textPrimary),
+                Icon(icon, size: 26, color: AppColors.textPrimary),
                 const SizedBox(height: 10),
                 Text(
                   label,

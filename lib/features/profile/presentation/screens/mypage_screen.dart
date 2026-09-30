@@ -105,12 +105,12 @@ class _MyPageScreenState extends ConsumerState<MyPageScreen> {
                           text:
                               profile?.name ??
                               (loadFailed ? '내 정보' : '불러오는 중이에요'),
-                          style: AppText.screenTitle(size: 28),
+                          style: AppText.screenTitle(size: 26),
                         ),
                         if (profile?.name != null)
                           TextSpan(
                             text: ' 님',
-                            style: AppText.screenTitle(size: 28).copyWith(
+                            style: AppText.screenTitle(size: 26).copyWith(
                               fontWeight: FontWeight.w500,
                               color: AppColors.textSecondary,
                             ),
@@ -299,7 +299,7 @@ class _WideTile extends StatelessWidget {
         onTap: onTap,
         child: ExcludeSemantics(
           child: Container(
-            constraints: const BoxConstraints(minHeight: 72),
+            constraints: const BoxConstraints(minHeight: 64),
             alignment: Alignment.center,
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
             decoration: BoxDecoration(
@@ -359,7 +359,7 @@ class _SquareTile extends StatelessWidget {
         onTap: onTap,
         child: ExcludeSemantics(
           child: Container(
-            constraints: const BoxConstraints(minHeight: 108),
+            constraints: const BoxConstraints(minHeight: 92),
             alignment: Alignment.center,
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 14),
             decoration: BoxDecoration(
@@ -370,9 +370,9 @@ class _SquareTile extends StatelessWidget {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(icon, size: 28, color: AppColors.textPrimary),
+                Icon(icon, size: 26, color: AppColors.textPrimary),
                 const SizedBox(height: 8),
-                Text(label, style: AppText.cardTitle(size: 19)),
+                Text(label, style: AppText.cardTitle(size: 18)),
                 const SizedBox(height: 2),
                 Text(
                   value,
