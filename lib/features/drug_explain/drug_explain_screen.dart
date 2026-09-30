@@ -41,6 +41,7 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
   bool _isLoadingMedicines = false;
   String? _selectedKeyword;
   String? _selectedMedicine;
+  bool _isAllMedicinesSelected = false;
   _DrugSearchCandidate? _selectedOfficialMedicine;
   final Map<String, _DrugSearchCandidate> _officialMedicinesByName = {};
   final Set<String> _confirmedOfficialProductNames = {};
@@ -169,9 +170,10 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
     final intent = keyword['intent'];
     if (label == null || prompt == null || intent == null) return;
 
-    final medicine = _selectedMedicine;
-    final isAllMedicines = medicine == null || medicine.isEmpty;
-    if (isAllMedicines && !_allMedicinePrompts.contains(keyword)) return;
+    if (_isAllMedicinesSelected && !_allMedicinePrompts.contains(keyword)) {
+      return;
+    }
+    if (!_isAllMedicinesSelected && _selectedMedicine == null) return;
 
     setState(() => _selectedKeyword = label);
     await _sendMessage(
@@ -331,9 +333,6 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
         _confirmedOfficialProductNames
           ..clear()
           ..addAll(officialNamesByCode.values);
-        if (_selectedMedicine == null && names.length == 1) {
-          _selectedMedicine = names.first;
-        }
         _selectedOfficialMedicine = _officialMedicinesByName[_selectedMedicine];
         _medicineLoadError = names.isEmpty ? '등록된 처방/복용약이 없습니다.' : null;
       });
@@ -372,17 +371,16 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
 
   Future<void> _pickSubject() async {
     if (_isLoading) return;
-    // 첫 칸은 "약 전체". 그 뒤로 내가 먹는 약이 온다.
-    final options = <String>['약 전체', ..._medicines];
-    final current = _selectedMedicine == null
-        ? 0
-        : options.indexOf(_selectedMedicine!);
+    final options = <String>['일반 질문', '약 전체', ..._medicines];
+    final current = _selectedMedicine != null
+        ? options.indexOf(_selectedMedicine!)
+        : (_isAllMedicinesSelected ? 1 : 0);
     final picked = await showSeniorWheel(
       context: context,
       title: '어떤 약을 물어볼까요?',
       options: options,
       selectedIndex: current < 0 ? 0 : current,
-      confirmLabel: '이 약으로 정하기',
+      confirmLabel: '선택',
       extraButtons: [
         Builder(
           builder: (dialogContext) => SeniorButton(
@@ -401,9 +399,11 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
       await _enterOtherMedicine();
       return;
     }
-    final name = picked == 0 ? null : options[picked];
+    final isAllMedicines = picked == 1;
+    final name = picked >= 2 ? options[picked] : null;
     setState(() {
       _selectedMedicine = name;
+      _isAllMedicinesSelected = isAllMedicines;
       _selectedOfficialMedicine = name == null
           ? null
           : _officialMedicinesByName[name];
@@ -440,6 +440,7 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
       }
       _officialMedicinesByName[medicine.itemName] = medicine;
       _selectedMedicine = medicine.itemName;
+      _isAllMedicinesSelected = false;
       _selectedOfficialMedicine = medicine;
       _selectedKeyword = null;
     });
@@ -498,7 +499,7 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
           'product_name': selectedOfficial.itemName,
         };
       }
-      if (_selectedMedicine == null && _temporaryMedicinesByCode.isNotEmpty) {
+      if (_isAllMedicinesSelected && _temporaryMedicinesByCode.isNotEmpty) {
         body['temporary_medicines'] = _temporaryMedicinesByCode.values
             .map(
               (medicine) => {
@@ -548,7 +549,10 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
       child: LayoutBuilder(
         builder: (context, constraints) => Scrollbar(
           child: SingleChildScrollView(
-            key: ValueKey(_selectedMedicine ?? 'all-medicines'),
+            key: ValueKey(
+              _selectedMedicine ??
+                  (_isAllMedicinesSelected ? 'all-medicines' : 'general'),
+            ),
             scrollDirection: Axis.horizontal,
             child: Row(
               children: prompts.map((keyword) {
@@ -604,6 +608,9 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
         _selectedMedicine != null &&
         _selectedMedicine!.isNotEmpty;
     final subject = _selectedMedicine?.trim();
+    final subjectLabel = subject?.isNotEmpty == true
+        ? subject!
+        : (_isAllMedicinesSelected ? '약 전체' : '일반 질문');
 
     return Scaffold(
       backgroundColor: AppColors.bg,
@@ -648,9 +655,7 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
                           Text('물어볼 약', style: AppText.caption(size: 17.5)),
                           const SizedBox(height: 2),
                           Text(
-                            (subject == null || subject.isEmpty)
-                                ? '약 전체'
-                                : subject,
+                            subjectLabel,
                             style: AppText.cardTitle(size: 22),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
@@ -750,11 +755,10 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
                 ],
               ),
             ),
-            if (!_isLoadingMedicines)
+            if (!_isLoadingMedicines &&
+                (_isAllMedicinesSelected || subject?.isNotEmpty == true))
               _buildKeywordBar(
-                subject == null || subject.isEmpty
-                    ? _allMedicinePrompts
-                    : _keywordPrompts,
+                _isAllMedicinesSelected ? _allMedicinePrompts : _keywordPrompts,
               ),
             Padding(
               padding: const EdgeInsets.fromLTRB(20, 10, 20, 14),

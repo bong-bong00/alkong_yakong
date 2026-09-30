@@ -991,7 +991,12 @@ def generate_chat_response(
 ) -> str:
     from app.services.chat_context_service import (
         DUR_TYPES_BY_INTENT,
+        AMBIGUOUS_QUESTION_REPLY,
+        MEDICINE_SELECTION_REQUIRED_REPLY,
+        UNRELATED_QUESTION_REPLY,
+        build_general_medication_prompt,
         build_grounded_chat_prompt,
+        classify_question_scope,
         enrich_dur_matches,
         general_conversation_reply,
         is_safety_question,
@@ -1003,13 +1008,26 @@ def generate_chat_response(
     if general_reply := general_conversation_reply(message):
         return general_reply
 
+    general_medication_question = False
+    if selected_medicine is None and intent is None:
+        question_scope = classify_question_scope(message)
+        if question_scope == "unrelated":
+            return UNRELATED_QUESTION_REPLY
+        if question_scope == "ambiguous":
+            return AMBIGUOUS_QUESTION_REPLY
+        if question_scope == "needs_medicine":
+            return MEDICINE_SELECTION_REQUIRED_REPLY
+        general_medication_question = question_scope == "general_medication"
+
     intents = resolve_question_intents(message, intent)
     safety_question = is_safety_question(intents)
+    compact_message = "".join(str(message or "").split())
     all_medicines_question = (
         selected_medicine is None
-        and (
-            intent in {"overview", "combination", "duplicate", "precautions"}
-            or (intent is None and bool(intents & {"combination", "duplicate"}))
+        and intent in {"overview", "combination", "duplicate", "precautions"}
+        and any(
+            marker in compact_message
+            for marker in ("현재먹는약전체", "복용약전체", "약전체", "약마다")
         )
     )
     unavailable_reply = (
@@ -1028,6 +1046,14 @@ def generate_chat_response(
             fetch_e_drug_info,
             search_drug_info_by_name,
         )
+
+        if general_medication_question:
+            with genai.Client(api_key=GEMINI_API_KEY) as client:
+                return _generate_complete_chat_reply(
+                    client,
+                    prompt=build_general_medication_prompt(message),
+                    max_output_tokens=512,
+                )
 
         selected_official = None
         official_data_list = []

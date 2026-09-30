@@ -16,8 +16,12 @@ from app.services import chat_context_service, gemini_service
 from app.services.mfds_drug_permission import client as permission_client
 from app.services.mfds_drug_permission import db as permission_db
 from app.services.chat_context_service import (
+    AMBIGUOUS_QUESTION_REPLY,
+    MEDICINE_SELECTION_REQUIRED_REPLY,
+    UNRELATED_QUESTION_REPLY,
     build_grounded_chat_prompt,
     classify_question,
+    classify_question_scope,
     general_conversation_reply,
     is_safety_question,
     load_latest_dur_context,
@@ -70,6 +74,100 @@ def _chat_response(text, *, finish_reason="STOP", candidates=True):
 
 
 class ChatContextTest(unittest.TestCase):
+    def test_unselected_question_scope_distinguishes_general_specific_and_unrelated(self):
+        self.assertEqual(
+            classify_question_scope("약 복용을 깜빡하면 어떻게 하나요?"),
+            "general_medication",
+        )
+        self.assertEqual(
+            classify_question_scope("비 오는 날 약 보관은 어떻게 하나요?"),
+            "general_medication",
+        )
+        self.assertEqual(classify_question_scope("부작용은 무엇인가요?"), "needs_medicine")
+        self.assertEqual(
+            classify_question_scope("아스피린 부작용은 무엇인가요?"),
+            "medicine_specific",
+        )
+        self.assertEqual(classify_question_scope("오늘 날씨 어때?"), "unrelated")
+        self.assertEqual(classify_question_scope("오늘 뭐하지?"), "ambiguous")
+
+    def test_unselected_non_medicine_and_missing_medicine_return_before_lookup(self):
+        with (
+            patch.object(gemini_service, "GEMINI_API_KEY", "configured"),
+            patch(
+                "app.services.external_api_service.search_drug_info_by_name"
+            ) as official_search,
+            patch(
+                "app.services.medication_feature_dur_client.load_remote_current_medicines"
+            ) as current_medicines,
+        ):
+            weather = gemini_service.generate_chat_response(
+                "오늘 날씨 어때?", user_id="synthetic-user"
+            )
+            missing = gemini_service.generate_chat_response(
+                "부작용은 무엇인가요?", user_id="synthetic-user"
+            )
+            ambiguous = gemini_service.generate_chat_response(
+                "오늘 뭐하지?", user_id="synthetic-user"
+            )
+
+        self.assertEqual(weather, UNRELATED_QUESTION_REPLY)
+        self.assertEqual(missing, MEDICINE_SELECTION_REQUIRED_REPLY)
+        self.assertEqual(ambiguous, AMBIGUOUS_QUESTION_REPLY)
+        official_search.assert_not_called()
+        current_medicines.assert_not_called()
+
+    def test_unselected_general_medicine_question_uses_short_general_prompt_only(self):
+        fake_client = MagicMock()
+        fake_client.__enter__.return_value = fake_client
+        fake_client.__exit__.return_value = False
+        short_reply = (
+            "약 복용을 잊었다면 임의로 두 배를 먹지 마세요. "
+            "약마다 대처가 다르므로 약 이름을 알려주거나 약사에게 확인하세요."
+        )
+        with (
+            patch.object(gemini_service, "GEMINI_API_KEY", "configured"),
+            patch("google.genai.Client", return_value=fake_client),
+            patch.object(
+                gemini_service,
+                "_generate_complete_chat_reply",
+                return_value=short_reply,
+            ) as generate,
+            patch(
+                "app.services.external_api_service.search_drug_info_by_name"
+            ) as official_search,
+            patch(
+                "app.services.medication_feature_dur_client.load_remote_current_medicines"
+            ) as current_medicines,
+        ):
+            reply = gemini_service.generate_chat_response(
+                "약 복용을 깜빡하면 어떻게 하나요?",
+                user_id="synthetic-user",
+            )
+
+        self.assertEqual(reply, short_reply)
+        prompt = generate.call_args.kwargs["prompt"]
+        self.assertIn("보통 2~3문장", prompt)
+        self.assertIn("개인 복용량", prompt)
+        official_search.assert_not_called()
+        current_medicines.assert_not_called()
+
+    def test_explicit_single_question_without_identity_is_not_treated_as_all_medicines(self):
+        with (
+            patch.object(gemini_service, "GEMINI_API_KEY", None),
+            patch(
+                "app.services.medication_feature_dur_client.load_remote_current_medicines"
+            ) as current_medicines,
+        ):
+            reply = gemini_service.generate_chat_response(
+                "이 약은 어디에 쓰는 약인가요?",
+                user_id="synthetic-user",
+                intent="efficacy",
+            )
+
+        self.assertIn("식약처 공식정보", reply)
+        current_medicines.assert_not_called()
+
     def test_chat_request_contract_accepts_overview_and_existing_intents(self):
         existing = (
             "efficacy",
@@ -1177,10 +1275,10 @@ class ChatContextTest(unittest.TestCase):
             ),
         ):
             reply = gemini_service.generate_chat_response(
-                "제가 먹는 약을 같이 먹어도 괜찮나요?",
+                "제가 현재 먹는 약 전체를 같이 먹을 때 확인해 주세요.",
                 user_id="U1",
                 selected_medicine=None,
-                intent=None,
+                intent="combination",
             )
         self.assertIn(
             "확인한 약들 사이에서 함께 먹으면 안 되는 조합은 확인되지 않았어요.",
@@ -2239,12 +2337,12 @@ class ChatContextTest(unittest.TestCase):
         self.assertIn("식약처 공식정보", general_conversation_reply("무슨 기능이 있어?"))
         self.assertIsNone(general_conversation_reply("이 약 같이 먹어도 돼?"))
 
-    def test_general_rules_bypass_gemini_and_safety_fallback_remains(self):
+    def test_general_rules_and_unselected_safety_question_bypass_gemini(self):
         with patch.object(gemini_service, "GEMINI_API_KEY", None):
             greeting = gemini_service.generate_chat_response("안녕", user_id="U1")
             safety = gemini_service.generate_chat_response("같이 먹어도 돼?", user_id="U1")
         self.assertIn("안녕하세요", greeting)
-        self.assertIn("현재 복용약으로 다시 확인", safety)
+        self.assertEqual(safety, MEDICINE_SELECTION_REQUIRED_REPLY)
         self.assertNotIn("타이레놀", safety)
 
         with (

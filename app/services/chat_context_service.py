@@ -1,4 +1,5 @@
 import json
+import re
 from collections import Counter
 from typing import Any
 
@@ -54,6 +55,120 @@ EXPLICIT_QUESTION_INTENTS = frozenset(
         "duplicate",
     }
 )
+
+UNRELATED_QUESTION_REPLY = (
+    "저는 약에 관한 질문을 도와드려요. "
+    "복용법이나 주의사항을 물어봐 주세요."
+)
+AMBIGUOUS_QUESTION_REPLY = (
+    "약에 관한 질문인지 한 번만 더 알려주세요. "
+    "궁금한 약 이름이나 복용법·주의사항 중 무엇을 묻는지 적어 주세요."
+)
+MEDICINE_SELECTION_REQUIRED_REPLY = (
+    "약마다 답이 달라요. "
+    "물어볼 약을 선택하거나 제품명·성분명을 알려주세요."
+)
+
+
+def classify_question_scope(message: str) -> str:
+    """Classify an unselected free-text question before any medicine lookup."""
+    normalized = "".join(str(message or "").lower().split())
+    if not normalized:
+        return "ambiguous"
+
+    medicine_terms = (
+        "약",
+        "복용",
+        "투여",
+        "처방",
+        "성분",
+        "부작용",
+        "이상반응",
+        "용량",
+        "금기",
+        "상호작용",
+        "같이먹",
+        "함께먹",
+        "알약",
+        "캡슐",
+        "연고",
+        "주사",
+        "보관",
+    )
+    has_medicine_topic = any(term in normalized for term in medicine_terms)
+    if not has_medicine_topic:
+        unrelated_terms = (
+            "날씨",
+            "기온",
+            "우산",
+            "맛집",
+            "뉴스",
+            "축구",
+            "야구",
+            "영화",
+            "음악",
+        )
+        return (
+            "unrelated"
+            if any(term in normalized for term in unrelated_terms)
+            else "ambiguous"
+        )
+
+    if any(term in normalized for term in ("깜빡", "잊었", "놓쳐", "보관", "저장")):
+        return "general_medication"
+
+    product_identity = bool(
+        re.search(
+            r"[0-9a-z가-힣]{2,}(?:정|캡슐|연질|시럽|주사|액|패치|크림|산)\b",
+            normalized,
+        )
+    )
+    medicine_specific_terms = (
+        "부작용",
+        "이상반응",
+        "몇번",
+        "용량",
+        "어떻게먹",
+        "복용법",
+        "사용법",
+        "같이먹",
+        "함께먹",
+        "먹어도돼",
+        "무슨약",
+        "어디에쓰",
+    )
+    matched_specific_terms = [
+        term for term in medicine_specific_terms if term in normalized
+    ]
+    if matched_specific_terms and not product_identity:
+        first_term_index = min(normalized.find(term) for term in matched_specific_terms)
+        prefix = normalized[:first_term_index]
+        product_identity = len(prefix) >= 2 and prefix not in {
+            "약",
+            "약의",
+            "이약",
+            "이약의",
+            "일반약",
+            "보통약",
+        }
+    if matched_specific_terms:
+        return "medicine_specific" if product_identity else "needs_medicine"
+
+    return "general_medication"
+
+
+def build_general_medication_prompt(message: str) -> str:
+    return f"""
+당신은 고령 사용자를 위한 의약품 일반 질문 도우미입니다.
+질문의 답을 첫 문장에 쓰고 보통 2~3문장으로 마치세요.
+특정 약의 제품명·성분·처방 정보가 없으므로 개인 복용량, 복용 시점, 안전 여부를 추정하지 마세요.
+특정 제품에 따라 답이 달라지면 약을 선택하거나 이름을 알려 달라고 짧게 물으세요.
+복용량을 두 배로 늘리거나 임의로 중단하라는 지시를 하지 마세요.
+반복되는 서론·인사·맺음말은 쓰지 마세요.
+
+[사용자 질문]
+{message}
+""".strip()
 
 
 def general_conversation_reply(message: str) -> str | None:
