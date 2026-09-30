@@ -723,14 +723,17 @@ class ChatContextTest(unittest.TestCase):
                 intent="combination",
             )
         self.assertIn(
-            "지금 드시는 약 중에 함께 먹으면 안 되는 조합은 확인되지 않았어요.",
+            "확인한 약들 사이에서 함께 먹으면 안 되는 조합은 확인되지 않았어요.",
             reply,
         )
-        self.assertIn("더 궁금하시면 의사나 약사와 상담해 주세요.", reply)
+        self.assertIn("더 궁금한 점이 있으면 의사나 약사와 상담해 주세요.", reply)
         self.assertNotIn("안전하다고 단정", reply)
         load_medicines.assert_called_once_with(user_id="U1")
         remote_dur.assert_called_once_with(
-            user_id="U1", selected_medicine=None, additional_medicines=[]
+            user_id="U1",
+            selected_medicine=None,
+            additional_medicines=[],
+            requested_types={"병용금기", "중복성분", "효능군중복"},
         )
         local_dur.assert_not_called()
 
@@ -1038,10 +1041,18 @@ class ChatContextTest(unittest.TestCase):
             )
 
         remote_dur.assert_called_once_with(
-            user_id="U1", selected_medicine=None, additional_medicines=[]
+            user_id="U1",
+            selected_medicine=None,
+            additional_medicines=[],
+            requested_types={"중복성분"},
         )
         local_latest.assert_not_called()
         self.assertNotIn("복용 중인 약이 바뀌어", reply)
+        self.assertIn(
+            "확인한 약들 사이에서 같은 성분의 중복은 확인되지 않았어요.",
+            reply,
+        )
+        self.assertIn("더 궁금한 점이 있으면 의사나 약사와 상담해 주세요.", reply)
 
     def test_combination_zero_does_not_hide_duplicate_warning(self):
         selected = {"medicine_code": "202400001", "product_name": "공식허가약정"}
@@ -1172,12 +1183,15 @@ class ChatContextTest(unittest.TestCase):
                 intent=None,
             )
         self.assertIn(
-            "지금 드시는 약 중에 함께 먹으면 안 되는 조합은 확인되지 않았어요.",
+            "확인한 약들 사이에서 함께 먹으면 안 되는 조합은 확인되지 않았어요.",
             reply,
         )
         load_medicines.assert_called_once_with(user_id="U1")
         remote_dur.assert_called_once_with(
-            user_id="U1", selected_medicine=None, additional_medicines=[]
+            user_id="U1",
+            selected_medicine=None,
+            additional_medicines=[],
+            requested_types={"병용금기", "중복성분", "효능군중복"},
         )
 
     def test_combination_incomplete_or_unknown_risk_is_not_zero_match(self):
@@ -2060,7 +2074,12 @@ class ChatContextTest(unittest.TestCase):
                 )
                 self.assertNotIn("다시 시도", zero)
                 self.assertNotIn("안전하다고", zero)
-                self.assertIn("더 궁금하시면 의사나 약사와 상담해 주세요.", zero)
+                expected_consultation = (
+                    "더 궁금한 점이 있으면 의사나 약사와 상담해 주세요."
+                    if intent in {"combination", "duplicate"}
+                    else "더 궁금하시면 의사나 약사와 상담해 주세요."
+                )
+                self.assertIn(expected_consultation, zero)
                 for reply in (missing, stale, zero):
                     for jargon in ("DUR", "병용금기", "연령금기", "임부금기", "효능군중복"):
                         self.assertNotIn(jargon, reply)
@@ -2142,7 +2161,7 @@ class ChatContextTest(unittest.TestCase):
             },
         )
         self.assertIn(
-            "지금 드시는 약 중에 함께 먹으면 안 되는 조합은 확인되지 않았어요.",
+            "확인한 약들 사이에서 함께 먹으면 안 되는 조합은 확인되지 않았어요.",
             all_combination,
         )
         self.assertIn(

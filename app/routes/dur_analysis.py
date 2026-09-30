@@ -20,9 +20,10 @@ router = APIRouter(prefix="/api/v1", tags=["DUR Analysis"])
     response_model_exclude_unset=True,
 )
 def analyze(request: DurAnalyzeRequest):
-    # 화면 요청은 로컬 자료로 즉시 판정한다. 외부 자료 갱신은 별도 동기화
-    # 작업에서만 수행해 사용자의 화면 이동을 막지 않는다.
-    return analyze_dur(request, refresh=False)
+    # 등록약 화면 요청은 저장된 기준으로 즉시 판정한다. AI 약사가 공식
+    # 코드를 명시한 임시 약까지 함께 검사할 때는 이번 요청의 기준 조회를
+    # 실제로 완료해야 "결과 없음"을 확정할 수 있다.
+    return analyze_dur(request, refresh=bool(request.medicine_codes))
 
 
 @router.get(

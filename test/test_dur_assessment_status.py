@@ -74,6 +74,70 @@ def test_completed_live_dur_check_can_report_safe(tmp_path, monkeypatch):
     assert result["incomplete_types"] == []
 
 
+def test_explicit_two_medicine_scope_completes_with_zero_duplicate(tmp_path, monkeypatch):
+    db_path = tmp_path / "dur.sqlite3"
+    _prepare_db(db_path)
+    conn = _open_db(db_path)
+    conn.execute(
+        "INSERT INTO medicines (medicine_code, product_name, ingredient) "
+        "VALUES ('MED-2', '다른약정', '다른성분')"
+    )
+    conn.commit()
+    conn.close()
+    monkeypatch.setattr(dur_service, "get_connection", lambda: _open_db(db_path))
+    monkeypatch.setattr(
+        dur_sync_service,
+        "refresh_dur_for_ingredients",
+        lambda _names: {"status": "ok", "fetched": 0, "upserted": 0},
+    )
+
+    result = dur_service.analyze_dur(
+        DurAnalyzeRequest(
+            user_id="patient-1",
+            medicine_codes=["MED-1", "MED-2"],
+        ),
+        persist=False,
+        refresh=True,
+    )
+
+    assert result["assessment_status"] == "SAFE"
+    assert result["analysis_complete"] is True
+    assert result["incomplete"] is False
+    assert result["medicine_names"] == ["테스트정", "다른약정"]
+    assert result["by_type"]["중복성분"]["count"] == 0
+
+
+def test_explicit_two_medicine_scope_preserves_duplicate_warning(tmp_path, monkeypatch):
+    db_path = tmp_path / "dur.sqlite3"
+    _prepare_db(db_path)
+    conn = _open_db(db_path)
+    conn.execute(
+        "INSERT INTO medicines (medicine_code, product_name, ingredient) "
+        "VALUES ('MED-2', '중복약정', '테스트성분')"
+    )
+    conn.commit()
+    conn.close()
+    monkeypatch.setattr(dur_service, "get_connection", lambda: _open_db(db_path))
+    monkeypatch.setattr(
+        dur_sync_service,
+        "refresh_dur_for_ingredients",
+        lambda _names: {"status": "ok", "fetched": 0, "upserted": 0},
+    )
+
+    result = dur_service.analyze_dur(
+        DurAnalyzeRequest(
+            user_id="patient-1",
+            medicine_codes=["MED-1", "MED-2"],
+        ),
+        persist=False,
+        refresh=True,
+    )
+
+    assert result["assessment_status"] == "RISK_FOUND"
+    assert result["analysis_complete"] is True
+    assert result["by_type"]["중복성분"]["count"] == 1
+
+
 def test_skipped_request_sync_uses_existing_stored_dur_reference(tmp_path, monkeypatch):
     db_path = tmp_path / "dur.sqlite3"
     _prepare_db(db_path)

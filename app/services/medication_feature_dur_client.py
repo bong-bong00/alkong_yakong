@@ -7,6 +7,7 @@ the source of truth for OCR/manual registrations.
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 from urllib.parse import quote
 
@@ -19,6 +20,7 @@ from app.core.config import (
 
 
 _COMBINATION_TYPES = {"병용금기", "중복성분", "효능군중복"}
+logger = logging.getLogger(__name__)
 
 
 def _compact_name(value: Any) -> str:
@@ -94,10 +96,14 @@ def load_remote_combination_context(
     user_id: str,
     selected_medicine: dict[str, Any] | None,
     additional_medicines: list[dict[str, Any]] | None = None,
+    requested_types: set[str] | None = None,
 ) -> dict[str, Any]:
     """Return prompt-ready DUR context without consulting the team DB."""
 
     uid = str(user_id or "").strip()
+    checked_types = set(requested_types or _COMBINATION_TYPES)
+    if not checked_types or not checked_types.issubset(_COMBINATION_TYPES):
+        return _unavailable("unsupported_dur_check_type")
     if not uid:
         return _unavailable("missing_user_id")
     if not MEDICATION_FEATURE_BASE_URL:
@@ -161,11 +167,11 @@ def load_remote_combination_context(
         return _unavailable("selected_medicine_identity_mismatch")
 
     try:
-        requested_codes = (
-            list(names_by_code)
-            if additional_medicines
-            else []
-        )
+        # Send the complete, already-validated scope explicitly. This lets the
+        # medication service verify/cache every catalog row and perform a fresh
+        # DUR lookup for this exact set instead of relying on a possibly stale
+        # user-medicine join.
+        requested_codes = list(names_by_code)
         dur_response = requests.post(
             f"{MEDICATION_FEATURE_BASE_URL}/api/v1/dur/analyze",
             json={"user_id": uid, "medicine_codes": requested_codes},
@@ -178,22 +184,12 @@ def load_remote_combination_context(
 
     if not isinstance(payload, dict):
         return _malformed()
-    if additional_medicines:
-        analyzed_names = payload.get("medicine_names")
-        if not isinstance(analyzed_names, list) or not {
-            _compact_name(name) for name in names_by_code.values()
-        }.issubset({_compact_name(name) for name in analyzed_names}):
-            return {
-                "status": "incomplete",
-                "items": [],
-                "has_risk": None,
-                "reason": "temporary_medicine_analysis_incomplete",
-            }
     assessment = payload.get("assessment_status")
     analysis_complete = payload.get("analysis_complete")
     incomplete = payload.get("incomplete")
     has_risk = payload.get("has_risk")
     matches = payload.get("matches")
+    incomplete_types = payload.get("incomplete_types")
     if (
         assessment not in {"SAFE", "RISK_FOUND", "INCOMPLETE"}
         or not isinstance(analysis_complete, bool)
@@ -201,10 +197,60 @@ def load_remote_combination_context(
         or not isinstance(has_risk, bool)
         or not isinstance(matches, list)
         or any(not isinstance(item, dict) for item in matches)
+        or (
+            incomplete_types is not None
+            and (
+                not isinstance(incomplete_types, list)
+                or any(not isinstance(item, str) for item in incomplete_types)
+            )
+        )
     ):
         return _malformed()
 
-    if assessment == "INCOMPLETE" or not analysis_complete or incomplete:
+    analyzed_names = payload.get("medicine_names")
+    scope_complete = isinstance(analyzed_names, list) and {
+        _compact_name(name) for name in names_by_code.values()
+    }.issubset({_compact_name(name) for name in analyzed_names})
+    logger.warning(
+        "Medication DUR scope diagnostic requested_count=%d analyzed_count=%d "
+        "scope_complete=%s",
+        len(names_by_code),
+        len(analyzed_names) if isinstance(analyzed_names, list) else 0,
+        scope_complete,
+    )
+    if not scope_complete:
+        return {
+            "status": "incomplete",
+            "items": [],
+            "has_risk": None,
+            "reason": "medicine_analysis_scope_incomplete",
+        }
+
+    incomplete_type_set = set(incomplete_types or [])
+    relevant_incomplete = checked_types & incomplete_type_set
+    globally_incomplete = (
+        assessment == "INCOMPLETE" or not analysis_complete or incomplete
+    )
+    logger.warning(
+        "Medication DUR completion diagnostic assessment=%s "
+        "analysis_complete=%s incomplete=%s incomplete_type_count=%d "
+        "relevant_incomplete_type_count=%d sync_status=%s "
+        "sync_fetched=%s sync_upserted=%s taboo_row_count=%s",
+        assessment,
+        analysis_complete,
+        incomplete,
+        len(incomplete_type_set),
+        len(relevant_incomplete),
+        str(payload.get("dur_sync_status") or "unknown"),
+        payload.get("dur_sync_fetched"),
+        payload.get("dur_sync_upserted"),
+        payload.get("taboo_row_count"),
+    )
+    # The medication service evaluates age/pregnancy checks in the same response.
+    # Those unrelated checks must not turn a completed combination/duplicate check
+    # into a failure. If the response does not identify incomplete types, remain
+    # conservative and reject it.
+    if globally_incomplete and (incomplete_types is None or relevant_incomplete):
         return {
             "status": "incomplete",
             "items": [],
@@ -215,7 +261,7 @@ def load_remote_combination_context(
     items = [
         dict(item)
         for item in matches
-        if item.get("type") in _COMBINATION_TYPES
+        if item.get("type") in checked_types
     ]
     matched_types = {
         str(item.get("type") or "").strip()
@@ -232,8 +278,8 @@ def load_remote_combination_context(
         "items": items,
         "has_risk": combination_has_risk,
         "reason": None,
-        "checked_types": sorted(_COMBINATION_TYPES),
-        "zero_result_types": sorted(_COMBINATION_TYPES - matched_types),
+        "checked_types": sorted(checked_types),
+        "zero_result_types": sorted(checked_types - matched_types),
     }
 
 

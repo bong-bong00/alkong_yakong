@@ -848,7 +848,7 @@ def _confirmed_zero_messages(
         messages.append(
             "선택한 약과 지금 드시는 약 사이에서 함께 먹으면 안 되는 조합은 확인되지 않았어요."
             if selected_medicine is not None
-            else "지금 드시는 약 중에 함께 먹으면 안 되는 조합은 확인되지 않았어요."
+            else "확인한 약들 사이에서 함께 먹으면 안 되는 조합은 확인되지 않았어요."
         )
     user_context = dur_result.get("user_context") or {}
     if (
@@ -899,10 +899,22 @@ def _dur_no_match_reply(
             "끝까지 확인하지 못했어요. 복용 전 의사나 약사와 상담해 주세요."
         )
     if zero_messages:
+        if "combination" in intents and selected_medicine is None:
+            return " ".join(
+                [*zero_messages, "더 궁금한 점이 있으면 의사나 약사와 상담해 주세요."]
+            )
         return " ".join(
             [*zero_messages, "더 궁금하시면 의사나 약사와 상담해 주세요."]
         )
     if "duplicate" in intents:
+        if selected_medicine is None and "중복성분" in {
+            str(value or "").strip()
+            for value in result.get("zero_result_types") or []
+        }:
+            return (
+                "확인한 약들 사이에서 같은 성분의 중복은 확인되지 않았어요. "
+                "더 궁금한 점이 있으면 의사나 약사와 상담해 주세요."
+            )
         scope = (
             "현재 복용 중인 약들 사이에서 성분이나 비슷한 효과가 겹친다는 정보를 "
             if selected_medicine is None
@@ -1302,6 +1314,11 @@ def generate_chat_response(
                     selected_medicine=selected_official,
                     additional_medicines=(
                         temporary_medicines or [] if all_medicines_question else []
+                    ),
+                    requested_types=(
+                        {"중복성분"}
+                        if all_medicines_question and "duplicate" in intents
+                        else {"병용금기", "중복성분", "효능군중복"}
                     ),
                 )
                 if all_medicines_question and "duplicate" in intents:
