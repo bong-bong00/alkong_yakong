@@ -48,6 +48,7 @@ class _MonthlyHeartScreenState extends State<MonthlyHeartScreen> {
       body: Column(
         children: [
           SeniorHeader(
+            background: AppColors.bgTinted,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
@@ -56,9 +57,21 @@ class _MonthlyHeartScreenState extends State<MonthlyHeartScreen> {
                     const SeniorBackButton(),
                     const SizedBox(width: 14),
                     Expanded(
-                      child: Text(
-                        '한 달 기록',
-                        style: AppText.screenTitle(size: 24),
+                      child: Text.rich(
+                        TextSpan(
+                          children: [
+                            TextSpan(
+                              text: '$_month월 ',
+                              style: AppText.screenTitle(
+                                size: 24,
+                              ).copyWith(fontWeight: FontWeight.w500),
+                            ),
+                            TextSpan(
+                              text: '심박수',
+                              style: AppText.screenTitle(size: 24),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
                   ],

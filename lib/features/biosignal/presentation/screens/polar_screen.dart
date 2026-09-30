@@ -60,7 +60,8 @@ class _PolarScreenState extends State<PolarScreen> {
       backgroundColor: AppColors.bgTinted,
       body: Column(
         children: [
-          const SeniorBackHeader(title: '폴라 센서'),
+          // 상표 이름보다 무엇인지가 먼저다. 기기 이름은 카드 안에서 말한다.
+          const SeniorBackHeader(title: '심박 센서'),
           Expanded(
             child: SingleChildScrollView(
               padding: const EdgeInsets.fromLTRB(20, 16, 20, 28),
