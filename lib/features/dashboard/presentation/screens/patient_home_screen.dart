@@ -570,11 +570,13 @@ class _BigDoseButtonState extends State<_BigDoseButton>
       builder: (context, box) {
         // 받은 자리 안에 테까지 들어가야 한다. 가로·세로 중 좁은 쪽에
         // 맞추되, 글자를 읽을 수 있는 크기 아래로는 줄이지 않는다.
+        // 가로는 양옆을 한 뼘씩 비워 둔다. 화면 폭을 꽉 채우면
+        // 동그라미가 벽에 낀 것처럼 답답해 보인다.
         final room = math.min(
-          box.maxWidth.isFinite ? box.maxWidth : 320,
+          (box.maxWidth.isFinite ? box.maxWidth : 320) - 56,
           box.maxHeight.isFinite ? box.maxHeight : 320,
         );
-        final outer = room.clamp(180.0, 340.0).toDouble();
+        final outer = room.clamp(180.0, 300.0).toDouble();
         final ring = outer * 0.11;
         final size = outer - ring * 2;
         // 글자와 아이콘은 지름을 따라간다. 동그라미만 커지고 글자가
