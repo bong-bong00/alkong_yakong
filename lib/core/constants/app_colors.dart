@@ -60,8 +60,10 @@ abstract final class AppColors {
   /// 화면 배경.
   static const Color bg = Color(0xFFF2F2F6);
 
-  /// 화면 바탕. 흰색 하나로 통일한다 — 카드는 색 대비가 아니라
-  /// 그림자([cardShadow])로 떠 보이게 한다.
+  /// 화면 바탕. 흰색 하나로 통일한다.
+  ///
+  /// 시안은 옅은 파랑 바탕에 납작한 흰 카드를 얹지만, 이 앱은 흰 바탕으로
+  /// 가기로 했다. 그래서 카드를 가르는 일은 그림자([cardShadow])가 맡는다.
   static const Color pageBg = Color(0xFFFFFFFF);
 
   /// 카드.

@@ -105,12 +105,12 @@ class _MyPageScreenState extends ConsumerState<MyPageScreen> {
                           text:
                               profile?.name ??
                               (loadFailed ? '내 정보' : '불러오는 중이에요'),
-                          style: AppText.screenTitle(size: 26),
+                          style: AppText.screenTitle(size: 28),
                         ),
                         if (profile?.name != null)
                           TextSpan(
                             text: ' 님',
-                            style: AppText.screenTitle(size: 26).copyWith(
+                            style: AppText.screenTitle(size: 28).copyWith(
                               fontWeight: FontWeight.w500,
                               color: AppColors.textSecondary,
                             ),
@@ -359,7 +359,7 @@ class _SquareTile extends StatelessWidget {
         onTap: onTap,
         child: ExcludeSemantics(
           child: Container(
-            constraints: const BoxConstraints(minHeight: 92),
+            constraints: const BoxConstraints(minHeight: 104),
             alignment: Alignment.center,
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 14),
             decoration: BoxDecoration(

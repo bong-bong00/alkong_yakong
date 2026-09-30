@@ -163,24 +163,24 @@ class _PrimaryWay extends StatelessWidget {
         onTap: onTap,
         child: ExcludeSemantics(
           child: Container(
-            constraints: const BoxConstraints(minHeight: 108),
+            constraints: const BoxConstraints(minHeight: 128),
             padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
             decoration: BoxDecoration(
               color: AppColors.pointFill,
               borderRadius: BorderRadius.circular(26),
-              boxShadow: kCardShadow,
+              boxShadow: kAccentShadow,
             ),
             child: Row(
               children: [
                 Container(
-                  width: 56,
-                  height: 56,
+                  width: 64,
+                  height: 64,
                   alignment: Alignment.center,
                   decoration: BoxDecoration(
                     color: AppColors.pointPressed,
                     borderRadius: BorderRadius.circular(20),
                   ),
-                  child: Icon(icon, size: 30, color: Colors.white),
+                  child: Icon(icon, size: 34, color: Colors.white),
                 ),
                 const SizedBox(width: 18),
                 Expanded(
@@ -190,7 +190,7 @@ class _PrimaryWay extends StatelessWidget {
                     children: [
                       Text(
                         label,
-                        style: AppText.cardTitle(size: 22, color: Colors.white),
+                        style: AppText.cardTitle(size: 24, color: Colors.white),
                       ),
                       const SizedBox(height: 4),
                       Text(

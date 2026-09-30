@@ -99,7 +99,7 @@ class MedicationRecordScreen extends ConsumerWidget {
                           ),
                           TextSpan(
                             text: '복약 기록',
-                            style: AppText.screenTitle(size: 26),
+                            style: AppText.screenTitle(size: 28),
                           ),
                         ],
                       ),

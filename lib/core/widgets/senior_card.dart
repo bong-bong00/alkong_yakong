@@ -11,10 +11,18 @@ import '../theme/app_typography.dart';
 
 /// 흰 배경 위에서 카드를 바닥에서 띄우는 그림자.
 /// 한 겹만 쓴다 — 여러 겹을 쌓으면 카드가 떠 있는 게 아니라 흐려 보인다.
+/// 흰 카드를 바닥에서 띄우는 그림자.
+///
+/// 바탕도 카드도 흰색이라 색으로는 경계가 서지 않는다. 사방으로 퍼뜨리지
+/// 않고 오른쪽 아래로만 떨어뜨려야 칸이 들린 것처럼 읽힌다.
 const List<BoxShadow> kCardShadow = [
-  // 사방으로 퍼뜨리지 않는다. 오른쪽 아래로만 떨어뜨려야 칸이
-  // 바닥에서 들린 것처럼 읽힌다.
   BoxShadow(color: AppColors.cardShadow, offset: Offset(5, 5), blurRadius: 14),
+];
+
+/// 파란 면으로 채운 칸에만 쓰는 그림자. 같은 파랑을 옅게 깔아
+/// 그 칸이 한 단계 앞에 있다고 말한다 (시안 `rgba(31,66,229,.28)`).
+const List<BoxShadow> kAccentShadow = [
+  BoxShadow(color: AppColors.pointShadow, offset: Offset(0, 4), blurRadius: 14),
 ];
 
 /// 색 카드가 뒤에 한 장 더 깔린 카드.
