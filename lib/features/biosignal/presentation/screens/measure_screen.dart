@@ -111,9 +111,9 @@ class _MeasureScreenState extends State<MeasureScreen> {
   /// 처음부터 다시 잰다. 센서가 붙어 있지 않으면 다시 붙인다.
   void _restart() {
     if (_live) {
-      _sensor.beginMeasurement();
+      _sensor.beginMeasurement(measurementContext: widget.measurementContext);
     } else {
-      unawaited(_sensor.start());
+      unawaited(_sensor.start(measurementContext: widget.measurementContext));
     }
   }
 

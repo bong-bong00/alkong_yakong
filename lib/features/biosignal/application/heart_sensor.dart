@@ -193,11 +193,27 @@ class HeartSensor extends ChangeNotifier {
       await _polar.stopStreaming();
       final previousDeviceId = _deviceId;
       if (previousDeviceId != null) {
+        // 심박 신호만 끊긴 경우 BLE 연결까지 끊고 다시 검색하면, SDK의
+        // 늦은 disconnect 이벤트가 새 스트림을 다시 닫을 수 있다. 먼저
+        // 현재 연결에서 HR 스트림만 다시 열고, 그것이 실패할 때만 실제
+        // 장치 검색·재연결로 내려간다.
+        try {
+          _acceptSamples = true;
+          await _polar.startHrStreaming(previousDeviceId);
+          if (_disposed || session != _session || !_acceptSamples) return;
+          _set(HeartSensorStatus.streaming);
+          _watchSignal();
+          return;
+        } catch (_) {
+          _acceptSamples = false;
+          await _polar.stopStreaming();
+        }
         try {
           await _polar.disconnectFromDevice(previousDeviceId);
         } catch (_) {
           // 이미 끊긴 기기여도 새 검색은 계속한다.
         }
+        _deviceId = null;
       }
 
       final deviceId = await _polar.findDeviceId(

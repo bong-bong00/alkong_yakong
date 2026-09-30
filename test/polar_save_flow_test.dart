@@ -66,6 +66,9 @@ class FakePolar implements Polar {
   final features = StreamController<PolarSdkFeatureReadyEvent>.broadcast();
   StreamController<PolarHrData> hr = StreamController<PolarHrData>.broadcast();
   int subscriptions = 0;
+  int searches = 0;
+  int connections = 0;
+  int disconnections = 0;
 
   @override
   Stream<PolarDeviceDisconnectedEvent> get deviceDisconnected =>
@@ -76,17 +79,25 @@ class FakePolar implements Polar {
   Stream<PolarSdkFeatureReadyEvent> get sdkFeatureReady =>
       TestStream(features.stream);
   @override
-  Stream<PolarDeviceInfo> searchForDevice() => Stream.value(device);
+  Stream<PolarDeviceInfo> searchForDevice() {
+    searches++;
+    return Stream.value(device);
+  }
+
   @override
   Future<void> connectToDevice(
     String identifier, {
     bool requestPermissions = true,
   }) async {
+    connections++;
     features.add(PolarSdkFeatureReadyEvent(identifier, PolarSdkFeature.hr));
   }
 
   @override
-  Future<void> disconnectFromDevice(String identifier) async {}
+  Future<void> disconnectFromDevice(String identifier) async {
+    disconnections++;
+  }
+
   @override
   Stream<PolarHrData> startHrStreaming(String identifier) {
     subscriptions++;
@@ -94,7 +105,11 @@ class FakePolar implements Polar {
     return TestStream(hr.stream);
   }
 
-  void sample(int bpm) => hr.add(
+  void sample(
+    int bpm, {
+    bool contactStatus = true,
+    bool contactStatusSupported = true,
+  }) => hr.add(
     PolarHrData(
       samples: [
         PolarHrSample(
@@ -102,8 +117,8 @@ class FakePolar implements Polar {
           ppgQuality: 0,
           correctedHr: bpm,
           rrsMs: const [],
-          contactStatus: true,
-          contactStatusSupported: true,
+          contactStatus: contactStatus,
+          contactStatusSupported: contactStatusSupported,
         ),
       ],
     ),
@@ -248,6 +263,40 @@ void main() {
       },
     );
   }
+
+  test('supported skin-contact loss cancels measurement and never saves', () {
+    fakeAsync((clock) {
+      final r = Rig();
+      r.start(clock);
+      r.baseline(clock);
+      r.sdk.sample(62, contactStatus: false);
+      clock.flushMicrotasks();
+
+      expect(r.sensor.status, HeartSensorStatus.failed);
+      expect(r.sensor.bpm, isNull);
+      clock.elapse(const Duration(minutes: 1));
+      expect(r.api.requests, isEmpty);
+      r.sensor.dispose();
+      clock.flushMicrotasks();
+    });
+  });
+
+  test(
+    'unsupported contact flag does not falsely reject a valid HR sample',
+    () {
+      fakeAsync((clock) {
+        final r = Rig();
+        r.start(clock);
+        r.sdk.sample(62, contactStatus: false, contactStatusSupported: false);
+        clock.flushMicrotasks();
+
+        expect(r.sensor.status, HeartSensorStatus.streaming);
+        expect(r.sensor.bpm, 62);
+        r.sensor.dispose();
+        clock.flushMicrotasks();
+      });
+    },
+  );
 
   test(
     'delayed HR never completes on wall time; baseline excluded; saved average frozen',
@@ -463,6 +512,42 @@ void main() {
       await tester.pump();
     });
   }
+
+  testWidgets('skin-contact loss retries the existing BLE connection first', (
+    tester,
+  ) async {
+    final r = Rig();
+    await r.sensor.start();
+    await tester.pumpWidget(
+      ProviderScope(
+        child: MaterialApp(home: MeasureScreen(sensor: r.sensor)),
+      ),
+    );
+    r.sdk.sample(62, contactStatus: false);
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.text('지금은 심장 박동을\n재지 못하고 있어요'), findsOneWidget);
+    expect(find.text('다시 연결하기'), findsOneWidget);
+    expect(find.text('폴라 센서로 재고 있어요'), findsNothing);
+    expect(r.api.requests, isEmpty);
+
+    await tester.tap(find.text('다시 연결하기'));
+    await tester.pump();
+    await tester.pump();
+    expect(r.sensor.status, HeartSensorStatus.streaming);
+    expect(r.sdk.subscriptions, 2);
+    expect(r.sdk.searches, 1);
+    expect(r.sdk.connections, 1);
+    expect(r.sdk.disconnections, 0);
+    r.sdk.sample(64);
+    await tester.pump();
+    expect(r.sensor.bpm, 64);
+
+    await tester.pumpWidget(const SizedBox());
+    r.sensor.dispose();
+    await tester.pump();
+  });
 
   testWidgets(
     'screen waits for saved response; repeated button taps never POST',

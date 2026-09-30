@@ -20,7 +20,10 @@ double? heartRateChangePercent({
 class PolarService {
   PolarService({Polar? polar}) : _polar = polar ?? Polar() {
     debugPrint('[POLAR_SERVICE] initialized');
-    _disconnectSubscription = _polar.deviceDisconnected.listen((_) {
+    _disconnectSubscription = _polar.deviceDisconnected.listen((event) {
+      // 실제 BLE 연결이 끊겼다면 이전 기능 준비 상태를 재사용하지 않는다.
+      // 다음 재시도는 기존 스트림 재개에 실패한 뒤 장치를 다시 찾는다.
+      _availableFeatures.remove(event.info.deviceId);
       unawaited(stopStreaming());
     });
   }
@@ -149,6 +152,19 @@ class PolarService {
           (data) {
             if (generation != _streamGeneration) return;
             for (final sample in data.samples) {
+              if (sample.contactStatusSupported && !sample.contactStatus) {
+                if (_acceptBpmEvents) {
+                  debugPrint('[POLAR_SERVICE] skin contact lost');
+                  _acceptBpmEvents = false;
+                  _averageTimer?.cancel();
+                  _averageTimer = null;
+                  _isAverageMonitoring = false;
+                  _bpmSamples.clear();
+                  _emitMeasurementReset();
+                  _emitError(StateError('Skin contact lost'));
+                }
+                continue;
+              }
               final bpm = sample.hr;
               if (bpm <= 0) continue;
               if (!_acceptBpmEvents) {
