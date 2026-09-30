@@ -1396,38 +1396,53 @@ class _ConfirmScreenState extends State<_ConfirmScreen> {
                     _OnBehalfBanner(title: widget.onBehalfOf!),
                     const SizedBox(height: 12),
                   ],
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 22,
-                      vertical: 18,
-                    ),
-                    decoration: BoxDecoration(
-                      color: AppColors.surface,
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(color: AppColors.point, width: 2),
-                    ),
+                  // 몇 가지를 찾았는지는 테 두른 알림이 아니라 제목으로
+                  // 말한다. 이 화면에서 제일 먼저 읽어야 할 문장이다.
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(6, 2, 6, 0),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
+                        if (_editedItems.isEmpty)
+                          Text(
+                            '글자는 읽었는데,\n공식 약과 아직 못 맞췄어요',
+                            style: AppText.screenTitle(size: 26),
+                          )
+                        else
+                          Text.rich(
+                            TextSpan(
+                              children: [
+                                TextSpan(
+                                  text: '약 ',
+                                  style: AppText.screenTitle(
+                                    size: 26,
+                                  ).copyWith(fontWeight: FontWeight.w500),
+                                ),
+                                TextSpan(
+                                  text: '${_editedItems.length}가지',
+                                  style: AppText.screenTitle(size: 26),
+                                ),
+                                TextSpan(
+                                  text: '를 찾았어요',
+                                  style: AppText.screenTitle(
+                                    size: 26,
+                                  ).copyWith(fontWeight: FontWeight.w500),
+                                ),
+                              ],
+                            ),
+                          ),
+                        const SizedBox(height: 6),
                         Text(
-                          _editedItems.isEmpty
-                              ? '글자는 읽었는데, 공식 약과 아직 못 맞췄어요'
-                              : '약 ${_editedItems.length}가지를 찾았어요',
-                          style: AppText.cardTitle(color: AppColors.point),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          _editedItems.isEmpty
-                              ? '글자는 읽었는데, 공식 약과 아직 못 맞췄어요'
-                              : '틀린 곳이 있으면 눌러서 고쳐주세요.',
-                          style: AppText.caption(
+                          '틀린 곳이 있으면 눌러서 고쳐주세요.',
+                          style: AppText.body(
+                            size: 18,
                             color: AppColors.textSecondary,
                           ),
                         ),
                       ],
                     ),
                   ),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 14),
                   for (int index = 0; index < _editedItems.length; index++) ...[
                     Builder(
                       builder: (context) {
