@@ -551,19 +551,21 @@ class _CaptureScreen extends StatelessWidget {
                                     ),
                                   ),
                                   const SizedBox(height: 18),
+                                  // 시안 17 — 한 줄짜리 짧은 말로 줄인다.
+                                  // 사진 찍는 중에 읽을 글이라 길면 안 읽힌다.
                                   _CaptureTip(
                                     number: '1',
-                                    text: '밝은 곳에 처방전이\n잘 보이게 펼쳐 놓으세요',
+                                    text: '밝은 곳에 펼쳐 놓기',
                                   ),
                                   const _CaptureTipArrow(),
                                   _CaptureTip(
                                     number: '2',
-                                    text: '종이 네 모서리가\n사진에 다 나오게 하세요',
+                                    text: '네 모서리가 다 보이게',
                                   ),
                                   const _CaptureTipArrow(),
                                   _CaptureTip(
                                     number: '3',
-                                    text: '두 손으로 잡고\n흔들리지 않게 찍으세요',
+                                    text: '두 손으로 잡고 찍기',
                                   ),
                                 ],
                               ),
