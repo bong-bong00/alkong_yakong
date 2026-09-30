@@ -12,7 +12,9 @@ import '../theme/app_typography.dart';
 /// 흰 배경 위에서 카드를 바닥에서 띄우는 그림자.
 /// 한 겹만 쓴다 — 여러 겹을 쌓으면 카드가 떠 있는 게 아니라 흐려 보인다.
 const List<BoxShadow> kCardShadow = [
-  BoxShadow(color: AppColors.cardShadow, offset: Offset(0, 4), blurRadius: 18),
+  // 사방으로 퍼뜨리지 않는다. 오른쪽 아래로만 떨어뜨려야 칸이
+  // 바닥에서 들린 것처럼 읽힌다.
+  BoxShadow(color: AppColors.cardShadow, offset: Offset(5, 5), blurRadius: 14),
 ];
 
 /// 색 카드가 뒤에 한 장 더 깔린 카드.

@@ -81,7 +81,7 @@ class _AddMedicineScreenState extends State<AddMedicineScreen> {
                     sub: '가장 쉽고 빨라요',
                     onTap: () => widget.onPick(AddMedicineMethod.camera),
                   ),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 16),
                   // 나머지 길은 작은 칸 셋으로 나란히 둔다.
                   IntrinsicHeight(
                     child: Row(
@@ -95,7 +95,7 @@ class _AddMedicineScreenState extends State<AddMedicineScreen> {
                                 widget.onPick(AddMedicineMethod.gallery),
                           ),
                         ),
-                        const SizedBox(width: 10),
+                        const SizedBox(width: 14),
                         Expanded(
                           child: _SmallWay(
                             icon: TablerIcons.pencil,
@@ -168,6 +168,7 @@ class _PrimaryWay extends StatelessWidget {
             decoration: BoxDecoration(
               color: AppColors.pointFill,
               borderRadius: BorderRadius.circular(26),
+              boxShadow: kCardShadow,
             ),
             child: Row(
               children: [

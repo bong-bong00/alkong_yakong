@@ -81,7 +81,7 @@ class _MedicineList extends StatelessWidget {
               onTap: () => context.push('/prescription'),
             ),
           ),
-          const SizedBox(width: 10),
+          const SizedBox(width: 14),
           Expanded(
             child: _ActionTile(
               icon: TablerIcons.messages,
@@ -165,7 +165,7 @@ class _MedicineList extends StatelessWidget {
         const SizedBox(height: 14),
         for (final med in active) ...[
           _MedicineCard(medicine: med),
-          const SizedBox(height: 10),
+          const SizedBox(height: 12),
         ],
         // 지금 안 드시는 약은 줄 하나로 접어 둔다. 목록을 보는 이유는
         // 대부분 "지금 먹는 약"이기 때문이다.
@@ -205,11 +205,11 @@ class _ActionTile extends StatelessWidget {
         child: ExcludeSemantics(
           child: Container(
             constraints: const BoxConstraints(minHeight: 94),
-            padding: const EdgeInsets.all(14),
+            padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
             decoration: BoxDecoration(
               color: filled ? AppColors.pointFill : AppColors.surface,
               borderRadius: BorderRadius.circular(26),
-              boxShadow: filled ? null : kCardShadow,
+              boxShadow: kCardShadow,
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,

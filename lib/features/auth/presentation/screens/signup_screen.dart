@@ -1153,7 +1153,7 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
                 color: selected ? AppColors.point : AppColors.strongBorder,
                 width: 2,
               ),
-              boxShadow: selected ? null : kCardShadow,
+              boxShadow: kCardShadow,
             ),
             child: Row(
               children: [

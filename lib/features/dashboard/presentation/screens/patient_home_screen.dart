@@ -406,7 +406,7 @@ class _SlotChips extends StatelessWidget {
       children: [
         for (final slot in DoseSlot.values) ...[
           Expanded(child: _chip(slot)),
-          if (slot != DoseSlot.values.last) const SizedBox(width: 10),
+          if (slot != DoseSlot.values.last) const SizedBox(width: 12),
         ],
       ],
     );
@@ -448,7 +448,7 @@ class _SlotChips extends StatelessWidget {
             color: background,
             borderRadius: BorderRadius.circular(30),
             // 흰 칩은 흰 바탕에 묻힌다. 그림자로 띄운다.
-            boxShadow: background == AppColors.surface ? kCardShadow : null,
+            boxShadow: kCardShadow,
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
@@ -717,7 +717,7 @@ class _HomeTiles extends StatelessWidget {
             decoration: BoxDecoration(
               color: background,
               borderRadius: BorderRadius.circular(18),
-              boxShadow: background == AppColors.surface ? kCardShadow : null,
+              boxShadow: kCardShadow,
             ),
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,

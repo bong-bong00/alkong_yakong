@@ -117,7 +117,7 @@ class _AlarmSettingsScreenState extends ConsumerState<AlarmSettingsScreen> {
                   // 시안 34 — 시각마다 칸 하나, 오른쪽에 스위치.
                   // 지우지 않고도 잠깐 끌 수 있어야 한다.
                   for (int i = 0; i < prefs.hours.length; i++) ...[
-                    if (i > 0) const SizedBox(height: 10),
+                    if (i > 0) const SizedBox(height: 14),
                     _TimeCard(
                       time: AlarmPreferences.clock(prefs.hours[i]),
                       on: prefs.autoAlarm && !prefs.isMuted(prefs.hours[i]),
@@ -156,7 +156,7 @@ class _AlarmSettingsScreenState extends ConsumerState<AlarmSettingsScreen> {
                     ),
                   ],
                   if (prefs.hours.length < AlarmPreferences.maxHours) ...[
-                    const SizedBox(height: 10),
+                    const SizedBox(height: 14),
                     _AddTimeCard(
                       onTap: () => _addHour(context, prefs, notifier),
                     ),

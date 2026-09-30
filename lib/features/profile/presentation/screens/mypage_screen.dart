@@ -136,7 +136,7 @@ class _MyPageScreenState extends ConsumerState<MyPageScreen> {
                     ),
                   ),
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: 16),
 
                 // ── 알림 · 센서 · 가족 세 칸 ──
                 IntrinsicHeight(
@@ -156,7 +156,7 @@ class _MyPageScreenState extends ConsumerState<MyPageScreen> {
                           ),
                         ),
                       ),
-                      const SizedBox(width: 10),
+                      const SizedBox(width: 14),
                       Expanded(
                         child: _SquareTile(
                           icon: TablerIcons.heart,
@@ -171,7 +171,7 @@ class _MyPageScreenState extends ConsumerState<MyPageScreen> {
                           ),
                         ),
                       ),
-                      const SizedBox(width: 10),
+                      const SizedBox(width: 14),
                       Expanded(
                         child: _SquareTile(
                           icon: TablerIcons.users,
@@ -244,7 +244,7 @@ class _MyPageScreenState extends ConsumerState<MyPageScreen> {
                           ),
                         ),
                       ),
-                      const SizedBox(width: 10),
+                      const SizedBox(width: 14),
                       Expanded(
                         child: _WideTile(
                           icon: TablerIcons.logout,
