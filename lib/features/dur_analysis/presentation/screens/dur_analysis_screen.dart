@@ -388,17 +388,33 @@ class _ConflictCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const Align(
-            alignment: Alignment.centerLeft,
-            child: SeniorBadge(
-              label: '꼭 확인하세요',
-              background: AppColors.danger,
-              foreground: Colors.white,
-              radius: 10,
-              fontSize: 17,
-              padding: EdgeInsets.symmetric(horizontal: 13, vertical: 6),
+          // 시안 22 — 무엇과 무엇이 부딪히는지를 한 문장으로 먼저 말한다.
+          // 배지로 "꼭 확인하세요"라고만 하면 무엇을 확인할지가 아래로 밀린다.
+          if (medicines.length >= 2)
+            Text.rich(
+              TextSpan(
+                children: [
+                  TextSpan(
+                    text: medicines[0].name,
+                    style: AppText.cardTitle(size: 22, color: AppColors.danger),
+                  ),
+                  TextSpan(text: '과 ', style: AppText.cardTitle(size: 22)),
+                  TextSpan(
+                    text: medicines[1].name,
+                    style: AppText.cardTitle(size: 22, color: AppColors.danger),
+                  ),
+                  TextSpan(
+                    text: '은 함께 드시는 건 주의해 주세요',
+                    style: AppText.cardTitle(size: 22),
+                  ),
+                ],
+              ),
+            )
+          else
+            Text(
+              '함께 드실 때 주의가 필요해요',
+              style: AppText.cardTitle(size: 22, color: AppColors.danger),
             ),
-          ),
           const SizedBox(height: 14),
           _PairRow(medicines: medicines),
           if (why.isNotEmpty) ...[
