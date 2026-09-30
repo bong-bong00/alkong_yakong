@@ -109,9 +109,9 @@ class _PolarScreenState extends State<PolarScreen> {
                         const NumberedSteps(
                           boxed: false,
                           steps: [
-                            '센서 안쪽 두 군데를 물로 살짝 적셔주세요',
-                            '가슴 아래, 명치 높이에 맞춰 차세요',
-                            '약을 드시기 5분 전에 차 두시면 편해요',
+                            '팔꿈치 위, 팔뚝 안쪽에 차요',
+                            '동그란 면이 살에 닿게 돌려요',
+                            '밴드를 조금 조여 흔들리지 않게 해요',
                           ],
                         ),
                       ],
