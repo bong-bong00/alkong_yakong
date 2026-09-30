@@ -108,16 +108,6 @@ class _PatientLinkScreenState extends ConsumerState<PatientLinkScreen> {
               color: kText,
             ),
           ),
-          const SizedBox(height: 8),
-          Text(
-            '환자가 가입한 휴대폰번호로 연결을 요청하면,\n환자가 수락한 뒤 복약 현황을 볼 수 있어요.',
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              fontSize: 14,
-              color: Colors.grey[500],
-              height: 1.5,
-            ),
-          ),
           const SizedBox(height: 28),
 
           _label('환자 휴대폰번호'),
@@ -164,10 +154,6 @@ class _PatientLinkScreenState extends ConsumerState<PatientLinkScreen> {
                           ? kGuardian.withValues(alpha: 0.10)
                           : Colors.white,
                       borderRadius: BorderRadius.circular(12),
-                      border: Border.all(
-                        color: _relation == r ? kGuardian : Colors.grey[300]!,
-                        width: _relation == r ? 1.5 : 1,
-                      ),
                     ),
                     child: Text(
                       r,

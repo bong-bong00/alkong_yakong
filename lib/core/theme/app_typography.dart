@@ -125,9 +125,9 @@ abstract final class AppText {
     Color color = AppColors.textPrimary,
   }) => _base(size: size, weight: _bold, height: 1.35, color: color);
 
-  /// 버튼 라벨. 23–25px / 700.
+  /// 버튼 라벨. 23–25px / 900 (명세서 0장: 주 액션은 흰 글씨 900).
   static TextStyle button({double size = 24, Color color = Colors.white}) =>
-      _base(size: size, weight: _bold, height: 1, color: color);
+      _base(size: size, weight: _black, height: 1, color: color);
 
   /// 본문. 18.5~19px / 500. 강조가 필요하면 [weight]로 700까지 올린다.
   static TextStyle body({
@@ -153,7 +153,7 @@ abstract final class AppText {
 
   /// 탭 라벨. 16px, 활성 900 / 비활성 700.
   static TextStyle tab({required bool active}) => _base(
-    size: 16,
+    size: 18,
     weight: active ? _black : _bold,
     height: 1,
     color: active ? AppColors.point : AppColors.inactiveLabel,

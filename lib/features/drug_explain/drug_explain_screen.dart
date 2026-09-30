@@ -482,7 +482,7 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
 
   Widget _buildKeywordBar() {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 4, 20, 0),
+      padding: const EdgeInsets.fromLTRB(20, 18, 20, 0),
       child: LayoutBuilder(
         builder: (context, constraints) => Scrollbar(
           child: SingleChildScrollView(
@@ -692,11 +692,8 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
                       constraints: const BoxConstraints(minHeight: 60),
                       decoration: BoxDecoration(
                         color: AppColors.surface,
-                        borderRadius: BorderRadius.circular(30),
-                        border: Border.all(
-                          color: AppColors.strongLine,
-                          width: 2,
-                        ),
+                        borderRadius: BorderRadius.circular(31),
+                        boxShadow: kCardShadow,
                       ),
                       padding: const EdgeInsets.symmetric(horizontal: 20),
                       child: TextField(

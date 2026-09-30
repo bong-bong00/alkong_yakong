@@ -135,7 +135,7 @@ class _TopicCard extends StatelessWidget {
           ),
           if (open)
             Padding(
-              padding: const EdgeInsets.fromLTRB(22, 0, 22, 20),
+              padding: const EdgeInsets.fromLTRB(22, 18, 22, 20),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
@@ -185,7 +185,7 @@ class _NoteBox extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
       decoration: BoxDecoration(
-        color: warning ? AppColors.dangerBgSoft : AppColors.sunken,
+        color: warning ? AppColors.dangerBg : AppColors.sunken,
         borderRadius: BorderRadius.circular(16),
         border: warning
             ? Border.all(color: AppColors.dangerBorder, width: 2)

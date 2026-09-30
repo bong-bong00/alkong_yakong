@@ -197,6 +197,10 @@ class UserMedicine {
       allApprovedUses.isNotEmpty ||
       treatmentUses.isNotEmpty;
 
+  /// 생김새 한 줄 ("정제"). 서버가 주는 제형만 쓴다 —
+  /// 색·모양은 받지 않으므로 지어내지 않는다.
+  String get appearanceLine => dosageForm.trim();
+
   String get ingredientLabel {
     final summary = ingredientSummary.trim().isNotEmpty
         ? ingredientSummary.trim()

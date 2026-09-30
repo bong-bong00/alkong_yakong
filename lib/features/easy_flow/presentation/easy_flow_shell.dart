@@ -8,12 +8,12 @@ import '../../../core/mode/app_mode.dart';
 import '../../../core/theme/app_typography.dart';
 import '../../../core/widgets/senior_button.dart';
 import '../../../core/widgets/senior_card.dart';
+import '../../../dev_mock.dart';
 import '../../biosignal/presentation/screens/heart_screen.dart';
 import '../../biosignal/presentation/screens/measure_screen.dart';
 import '../../dashboard/presentation/screens/medication_record_screen.dart';
 import '../../dur_analysis/presentation/screens/dur_analysis_screen.dart';
-import 'easy_dose_screen.dart';
-import '../../medication/application/medication_controller.dart';
+import 'easy_dose_flow.dart';
 import '../../medication/domain/medication_models.dart';
 import '../../medication/presentation/screens/dose_done_screen.dart';
 import '../../medicines/presentation/screens/my_medicines_screen.dart';
@@ -81,26 +81,6 @@ class _EasyFlowShellState extends ConsumerState<EasyFlowShell> {
       return;
     }
 
-    // 오늘 화면에서 아직 안 드신 약이 있는데 넘어가려 하면 한 번 묻는다.
-    if (_screen == EasyScreen.today) {
-      final pending = ref.read(medicationProvider).nextDose;
-      if (pending != null) {
-        final choice = await showSkipConfirmSheet(
-          context,
-          slotLabel: pending.slot.label,
-        );
-        if (!mounted) return;
-        switch (choice) {
-          case SkipChoice.stay:
-            return;
-          case SkipChoice.takeAndContinue:
-            ref.read(medicationProvider.notifier).takeAnyway(pending.slot);
-          case SkipChoice.skip:
-            break;
-        }
-      }
-    }
-
     final nextIndex = index + 1;
     _goTo(
       nextIndex < kEasyFlow.length
@@ -130,9 +110,15 @@ class _EasyFlowShellState extends ConsumerState<EasyFlowShell> {
   Widget _buildScreen() {
     switch (_screen) {
       case EasyScreen.today:
-        // 시안의 쉬운 화면은 일반 화면과 다른 장이다. 고를 것을 없애고
-        // 이번에 드실 약만 늘어놓는다.
-        return const EasyDoseScreen();
+        // 명세서 76~85. 약 드실 시간 → 가슴 띠 → 먹기 전 재기 → 약 드시기
+        // → 먹은 후 재기 → 결과 → 오늘 다 했어요를 한 걸음씩 지난다.
+        return EasyDoseFlow(
+          onOpenMedicines: () => _goTo(EasyScreen.medicines),
+          onOpenRecord: () => _goTo(EasyScreen.record),
+          onOpenHeart: () => _goTo(EasyScreen.heart),
+          onOpenMyInfo: () => _goTo(EasyScreen.myInfo),
+          onOpenChat: () => _goTo(EasyScreen.chat),
+        );
       case EasyScreen.done:
         return DoseDoneScreen(
           slot: _recordedSlot ?? DoseSlot.dinner,
@@ -143,7 +129,7 @@ class _EasyFlowShellState extends ConsumerState<EasyFlowShell> {
           onBackToToday: () => _goTo(EasyScreen.today),
         );
       case EasyScreen.heart:
-        return const HeartScreen();
+        return HeartScreen(repository: mockHeartRepository());
       case EasyScreen.medicines:
         return const MyMedicinesScreen();
       case EasyScreen.prescription:
@@ -179,7 +165,6 @@ class _EasyFlowShellState extends ConsumerState<EasyFlowShell> {
   @override
   Widget build(BuildContext context) {
     final showBar = showsEasyBar(_screen);
-    final stepIndex = kEasyFlow.indexWhere((step) => step.screen == _screen);
     return Scaffold(
       backgroundColor: AppColors.pageBg,
       body: SafeArea(
@@ -187,8 +172,6 @@ class _EasyFlowShellState extends ConsumerState<EasyFlowShell> {
         child: Column(
           children: [
             _EasyFlowTop(
-              stepIndex: stepIndex,
-              total: kEasyFlow.length,
               onMenu: _openMenu,
               onLeave: () =>
                   ref.read(appModeProvider.notifier).set(AppMode.normal),
@@ -219,67 +202,25 @@ class _EasyFlowShellState extends ConsumerState<EasyFlowShell> {
   }
 }
 
-/// 쉬운 화면 맨 위 — 지금 몇 걸음째인지와 일반 화면으로 나가는 길.
+/// 쉬운 화면 맨 위 — 메뉴와 일반 화면으로 나가는 길.
 ///
-/// 시안은 걸음을 짧은 막대로 늘어놓고 오른쪽에 "1 / 8"을 적는다.
-/// 막대만으로는 몇 걸음 남았는지 세기 어렵고, 숫자만으로는 얼마나 왔는지
-/// 한눈에 안 보인다 — 둘을 함께 둔다.
+/// 걸음 막대는 여기서 그리지 않는다. 명세서는 복약 한 바퀴(76~84)에서만
+/// 여덟 칸 막대를 두고, 나머지 쉬운 화면(85~90)에는 두지 않는다.
 class _EasyFlowTop extends StatelessWidget {
-  final int stepIndex;
-  final int total;
   final VoidCallback onMenu;
   final VoidCallback onLeave;
 
-  const _EasyFlowTop({
-    required this.stepIndex,
-    required this.total,
-    required this.onMenu,
-    required this.onLeave,
-  });
+  const _EasyFlowTop({required this.onMenu, required this.onLeave});
 
   @override
   Widget build(BuildContext context) {
-    // 흐름에 없는 화면(약 설명 같은 곁가지)에서는 걸음을 세지 않는다.
-    final counted = stepIndex >= 0;
-
     return Padding(
       padding: const EdgeInsets.fromLTRB(18, 10, 18, 6),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
+      child: Row(
         children: [
-          Row(
-            children: [
-              EasyMenuButton(onTap: onMenu),
-              const Spacer(),
-              _pill(onTap: onLeave, label: '일반 화면으로'),
-            ],
-          ),
-          if (counted) ...[
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                for (int i = 0; i < total; i++) ...[
-                  Expanded(
-                    child: Container(
-                      height: 6,
-                      decoration: BoxDecoration(
-                        color: i <= stepIndex
-                            ? AppColors.pointFill
-                            : AppColors.secondaryFill,
-                        borderRadius: BorderRadius.circular(3),
-                      ),
-                    ),
-                  ),
-                  if (i != total - 1) const SizedBox(width: 6),
-                ],
-                const SizedBox(width: 12),
-                Text(
-                  '${stepIndex + 1} / $total',
-                  style: AppText.cardTitle(size: 18, color: AppColors.point),
-                ),
-              ],
-            ),
-          ],
+          EasyMenuButton(onTap: onMenu),
+          const Spacer(),
+          _pill(onTap: onLeave, label: '일반 화면으로'),
         ],
       ),
     );
@@ -338,6 +279,7 @@ class _EasyFlowBar extends StatelessWidget {
       decoration: const BoxDecoration(
         color: AppColors.surface,
         border: Border(top: BorderSide(color: AppColors.chartPast, width: 1)),
+        // 명세서 86~90: 위로 1px 선 하나와 넓은 그림자.
         boxShadow: [
           BoxShadow(
             color: AppColors.barShadow,
@@ -365,9 +307,9 @@ class _EasyFlowBar extends StatelessWidget {
                         label: '뒤로',
                         icon: TablerIcons.arrow_left,
                         kind: SeniorButtonKind.dark,
-                        minHeight: 76,
-                        fontSize: 22,
-                        radius: 20,
+                        minHeight: 72,
+                        fontSize: 21,
+                        radius: 18,
                         onPressed: onBack,
                       ),
                     ),
@@ -376,9 +318,9 @@ class _EasyFlowBar extends StatelessWidget {
                   Expanded(
                     child: SeniorButton(
                       label: label,
-                      minHeight: 76,
-                      fontSize: 24,
-                      radius: 20,
+                      minHeight: 72,
+                      fontSize: 22,
+                      radius: 18,
                       onPressed: onNext,
                     ),
                   ),

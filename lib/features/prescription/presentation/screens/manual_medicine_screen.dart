@@ -14,6 +14,7 @@ import '../../../../core/widgets/senior_button.dart';
 import '../../../../core/widgets/senior_card.dart';
 import '../../../../core/widgets/senior_feedback.dart';
 import '../../../../core/widgets/senior_header.dart';
+import '../../../../core/widgets/senior_wheel.dart';
 import '../../../dashboard/application/medication_history_provider.dart';
 import '../../../medication/application/medication_controller.dart';
 import '../../../medicines/application/user_medicines_controller.dart';
@@ -33,7 +34,9 @@ class ManualMedicineScreen extends ConsumerStatefulWidget {
 class _ManualMedicineScreenState extends ConsumerState<ManualMedicineScreen> {
   final _api = ApiClient(baseUrl: ApiConfig.localFeatureBaseUrl);
   final _query = TextEditingController();
-  final _amount = TextEditingController();
+
+  /// 굴림판에서 고른 한 번에 먹는 양. 안 골랐으면 null.
+  String? _amount;
 
   List<Map<String, dynamic>> _hits = const [];
   Map<String, dynamic>? _picked;
@@ -52,8 +55,51 @@ class _ManualMedicineScreenState extends ConsumerState<ManualMedicineScreen> {
   void dispose() {
     _debounce?.cancel();
     _query.dispose();
-    _amount.dispose();
     super.dispose();
+  }
+
+  /// 한 번에 먹는 양 · 하루 몇 번 · 며칠분을 굴림판으로 고른다.
+  /// 숫자를 자판으로 적게 하면 잘못 눌러도 알아채기 어렵다.
+  Future<void> _pickAmount() async {
+    const options = ['0.5알', '1알', '1.5알', '2알', '3알'];
+    final index = await showSeniorWheel(
+      context: context,
+      title: '한 번에 먹는 양',
+      options: options,
+      selectedIndex: _amount == null
+          ? 1
+          : options.indexOf(_amount!).clamp(0, 4),
+    );
+    if (index == null || !mounted) return;
+    setState(() => _amount = options[index]);
+  }
+
+  Future<void> _pickFrequency() async {
+    final options = [for (final count in _frequencyOptions) '$count번'];
+    final index = await showSeniorWheel(
+      context: context,
+      title: '하루 복용 횟수',
+      options: options,
+      selectedIndex: _frequency == null
+          ? 1
+          : _frequencyOptions.indexOf(_frequency!).clamp(0, options.length - 1),
+    );
+    if (index == null || !mounted) return;
+    setState(() => _frequency = _frequencyOptions[index]);
+  }
+
+  Future<void> _pickDays() async {
+    final options = [for (final days in _dayOptions) '$days일'];
+    final index = await showSeniorWheel(
+      context: context,
+      title: '며칠분',
+      options: options,
+      selectedIndex: _days == null
+          ? 1
+          : _dayOptions.indexOf(_days!).clamp(0, options.length - 1),
+    );
+    if (index == null || !mounted) return;
+    setState(() => _days = _dayOptions[index]);
   }
 
   /// 오류는 버튼 아래에 끼워 넣지 않고 스낵바로 알린다.
@@ -122,7 +168,7 @@ class _ManualMedicineScreenState extends ConsumerState<ManualMedicineScreen> {
       return;
     }
     // 용량과 날수는 나중에 채워도 된다. 여기서 다 물으면 대부분 포기한다.
-    final amount = _amount.text.trim();
+    final amount = _amount ?? '';
     ScaffoldMessenger.of(context).hideCurrentSnackBar();
     setState(() => _saving = true);
     final userId = MvpSession.userId.trim().isEmpty
@@ -230,37 +276,6 @@ class _ManualMedicineScreenState extends ConsumerState<ManualMedicineScreen> {
             child: ListView(
               padding: const EdgeInsets.fromLTRB(20, 16, 20, 28),
               children: [
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 22,
-                    vertical: 18,
-                  ),
-                  decoration: BoxDecoration(
-                    color: AppColors.pointTint,
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        '약 이름과 드시는 때만 적으면 돼요',
-                        style: AppText.cardTitle(
-                          size: 20,
-                          color: AppColors.point,
-                        ),
-                      ),
-                      const SizedBox(height: 6),
-                      Text(
-                        '용량과 남은 날수는 나중에 채워도 됩니다.',
-                        style: AppText.body(
-                          size: 17.5,
-                          color: AppColors.pointInk,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 16),
                 SeniorCard(
                   padding: const EdgeInsets.all(20),
                   child: Column(
@@ -270,6 +285,7 @@ class _ManualMedicineScreenState extends ConsumerState<ManualMedicineScreen> {
                         label: '약 이름',
                         controller: _query,
                         hint: '예: 메트포르민',
+                        onCard: true,
                         onChanged: (_) => _searchLater(),
                       ),
                       if (_searching) ...[
@@ -308,51 +324,22 @@ class _ManualMedicineScreenState extends ConsumerState<ManualMedicineScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      SeniorField(
+                      _PickRow(
                         label: '한 번에 먹는 양',
-                        controller: _amount,
-                        hint: '예: 1알 또는 0.5정',
+                        value: _amount,
+                        onTap: _pickAmount,
                       ),
-                      const SizedBox(height: 18),
-                      Text('하루 복용 횟수', style: AppText.label(size: 18)),
-                      const SizedBox(height: 10),
-                      Row(
-                        children: [
-                          for (
-                            int i = 0;
-                            i < _frequencyOptions.length;
-                            i++
-                          ) ...[
-                            if (i > 0) const SizedBox(width: 10),
-                            Expanded(
-                              child: _OptionChip(
-                                label: '${_frequencyOptions[i]}번',
-                                selected: _frequency == _frequencyOptions[i],
-                                onTap: () => setState(
-                                  () => _frequency = _frequencyOptions[i],
-                                ),
-                              ),
-                            ),
-                          ],
-                        ],
+                      const SizedBox(height: 14),
+                      _PickRow(
+                        label: '하루 복용 횟수',
+                        value: _frequency == null ? null : '$_frequency번',
+                        onTap: _pickFrequency,
                       ),
-                      const SizedBox(height: 18),
-                      Text('며칠분', style: AppText.label(size: 18)),
-                      const SizedBox(height: 10),
-                      Row(
-                        children: [
-                          for (int i = 0; i < _dayOptions.length; i++) ...[
-                            if (i > 0) const SizedBox(width: 10),
-                            Expanded(
-                              child: _OptionChip(
-                                label: '${_dayOptions[i]}일',
-                                selected: _days == _dayOptions[i],
-                                onTap: () =>
-                                    setState(() => _days = _dayOptions[i]),
-                              ),
-                            ),
-                          ],
-                        ],
+                      const SizedBox(height: 14),
+                      _PickRow(
+                        label: '며칠분',
+                        value: _days == null ? null : '$_days일',
+                        onTap: _pickDays,
                       ),
                     ],
                   ),
@@ -447,61 +434,14 @@ class _NameChip extends StatelessWidget {
           alignment: Alignment.center,
           padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
           decoration: BoxDecoration(
-            color: selected ? AppColors.pointTint : AppColors.surface,
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(
-              color: selected ? AppColors.point : AppColors.strongLine,
-              width: 2,
-            ),
-          ),
-          child: Text(
-            label,
-            style: AppText.label(
-              size: 18,
-              color: selected ? AppColors.point : AppColors.textPrimary,
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// 숫자 하나를 고르는 칸. 고른 것만 파란 글씨·테두리다.
-class _OptionChip extends StatelessWidget {
-  final String label;
-  final bool selected;
-  final VoidCallback onTap;
-
-  const _OptionChip({
-    required this.label,
-    required this.selected,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Semantics(
-      button: true,
-      selected: selected,
-      child: GestureDetector(
-        onTap: onTap,
-        child: Container(
-          constraints: const BoxConstraints(minHeight: 62),
-          alignment: Alignment.center,
-          decoration: BoxDecoration(
-            color: selected ? AppColors.pointTint : AppColors.surface,
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(
-              color: selected ? AppColors.point : AppColors.strongLine,
-              width: 2,
-            ),
+            color: selected ? AppColors.pointFill : AppColors.pointRing,
+            borderRadius: BorderRadius.circular(14),
           ),
           child: Text(
             label,
             style: AppText.cardTitle(
-              size: 19,
-              color: selected ? AppColors.point : AppColors.textPrimary,
+              size: 18,
+              color: selected ? Colors.white : AppColors.pointBorder,
             ),
           ),
         ),
@@ -510,7 +450,7 @@ class _OptionChip extends StatelessWidget {
   }
 }
 
-/// 3분할 칩. 고르면 파랑으로 채워진다.
+/// 숫자 하나를 고르는 칸. 고른 것만 파랗게 채운다 (명세서 28).
 class _SlotChip extends StatelessWidget {
   final String label;
   final bool selected;
@@ -536,23 +476,83 @@ class _SlotChip extends StatelessWidget {
             alignment: Alignment.center,
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 14),
             decoration: BoxDecoration(
-              color: selected ? AppColors.point : AppColors.surface,
+              color: selected ? AppColors.pointFill : AppColors.sunken,
               borderRadius: BorderRadius.circular(16),
-              border: Border.all(
-                color: selected
-                    ? AppColors.pointBorder
-                    : AppColors.strongBorder,
-                width: 2,
-              ),
             ),
             child: Text(
               label,
               textAlign: TextAlign.center,
               style: AppText.cardTitle(
-                size: 19,
-                color: selected ? Colors.white : AppColors.textBody,
+                size: 20,
+                color: selected ? Colors.white : AppColors.textPrimary,
               ),
             ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// 굴림판으로 고르는 줄 (손으로 적기).
+///
+/// 숫자를 자판으로 적게 하지 않는다 — 잘못 눌러도 알아채기 어렵다.
+/// 카드 안이라 흰 면 대신 #F0F1F5로 채워 카드와 구별한다.
+class _PickRow extends StatelessWidget {
+  final String label;
+  final String? value;
+  final VoidCallback onTap;
+
+  const _PickRow({
+    required this.label,
+    required this.value,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final empty = value == null;
+    return Semantics(
+      button: true,
+      label: '$label ${value ?? '고르지 않음'}, 고르기',
+      child: ExcludeSemantics(
+        // 이름줄까지 눌러도 굴림판이 열린다 — 짚을 자리가 넓어야 한다.
+        child: GestureDetector(
+          onTap: onTap,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(label, style: AppText.label(size: 18)),
+              const SizedBox(height: 8),
+              Container(
+                constraints: const BoxConstraints(minHeight: 64),
+                padding: const EdgeInsets.symmetric(horizontal: 18),
+                decoration: BoxDecoration(
+                  color: AppColors.sunken,
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        value ?? '고르기',
+                        style: AppText.cardTitle(
+                          size: 21,
+                          color: empty
+                              ? AppColors.chevron
+                              : AppColors.textPrimary,
+                        ),
+                      ),
+                    ),
+                    const Icon(
+                      Icons.expand_more_rounded,
+                      size: 26,
+                      color: AppColors.textTertiary,
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ),
         ),
       ),

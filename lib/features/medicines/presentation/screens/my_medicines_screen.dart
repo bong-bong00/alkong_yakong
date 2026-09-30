@@ -43,12 +43,12 @@ class MyMedicinesScreen extends ConsumerWidget {
                   title: '약 목록을\n불러오지 못했어요',
                   reassurance: '인터넷이나 서버가 잠깐 끊겼을 수 있어요. ',
                   reassuranceEmphasis: '고장이 아니니 걱정하지 마세요.',
-                  steps: const ['잠시 후 다시 시도해 보세요', '와이파이나 데이터 연결을 확인해 보세요'],
+                  steps: const ['잠시 후 다시 눌러 보세요', '와이파이나 데이터 연결을 확인해 보세요'],
                   actionLabel: '다시 불러오기',
                   onAction: () =>
                       ref.read(userMedicinesProvider.notifier).refresh(),
                   stillWorksTitle: '지금도 할 수 있는 것',
-                  stillWorksBody: '오늘 홈에서 복약 기록과 처방전 등록은 그대로 쓸 수 있어요.',
+                  stillWorksBody: '오늘 홈에서 복약 기록과 처방전 사진 찍기는 그대로 쓸 수 있어요.',
                 ),
                 data: (items) => _MedicineList(items: items, asTab: asTab),
               ),
@@ -320,7 +320,7 @@ class _PastMedicinesState extends State<_PastMedicines> {
           child: SeniorCard(
             padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
             child: SeniorListRow(
-              label: '이전에 등록한 약',
+              label: '이전에 먹던 약',
               labelColor: AppColors.textTertiary,
               value: '${widget.medicines.length}가지',
               trailing: const SeniorChevron(),

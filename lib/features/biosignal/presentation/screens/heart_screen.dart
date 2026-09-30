@@ -305,31 +305,45 @@ class _HeartScreenState extends State<HeartScreen> {
                     ),
                     const SizedBox(height: 12),
                     SeniorButton(
-                      label: '지금 측정',
-                      minHeight: 66,
+                      label: '지금 재기',
+                      icon: Icons.favorite_rounded,
+                      minHeight: 72,
                       fontSize: 23,
                       onPressed: () => unawaited(_openMeasure()),
                     ),
                   ],
-                  if (!_viewingOther) ...[
-                    const SizedBox(height: 12),
-                    _SensorRow(
-                      sensor: widget.sensor,
-                      onTap: () => Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (_) => PolarScreen(sensor: widget.sensor),
-                        ),
-                      ),
-                    ),
-                  ],
                   const SizedBox(height: 12),
-                  _NotifyRow(
-                    guardianTitle: resolveGuardianTitle(
-                      context,
-                      widget.guardianTitle,
+                  IntrinsicHeight(
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        if (!_viewingOther) ...[
+                          Expanded(
+                            child: _SensorTile(
+                              sensor: widget.sensor,
+                              onTap: () => Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (_) =>
+                                      PolarScreen(sensor: widget.sensor),
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                        ],
+                        Expanded(
+                          child: _NotifyTile(
+                            guardianTitle: resolveGuardianTitle(
+                              context,
+                              widget.guardianTitle,
+                            ),
+                            value: _notifyGuardian,
+                            onChanged: (v) =>
+                                setState(() => _notifyGuardian = v),
+                          ),
+                        ),
+                      ],
                     ),
-                    value: _notifyGuardian,
-                    onChanged: (v) => setState(() => _notifyGuardian = v),
                   ),
                 ],
               ),
@@ -504,29 +518,14 @@ class _TodayCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Row(
-            children: [
-              Expanded(child: Text('오늘 측정', style: AppText.cardTitle())),
-              // 오늘 잰 것이 없으면 "저녁 약"이라고 붙일 근거도 없다.
-              if (hasMedicationReading && data.todaySlotLabel.isNotEmpty)
-                // Flexible로 두면 남은 폭을 제목과 반씩 나눠 가져
-                // 때 이름이 화면 한가운데로 밀려난다. 폭 상한만 건다.
-                ConstrainedBox(
-                  constraints: BoxConstraints(
-                    maxWidth: MediaQuery.sizeOf(context).width * 0.45,
-                  ),
-                  child: Text(
-                    data.todaySlotLabel,
-                    textAlign: TextAlign.end,
-                    style: AppText.label(
-                      size: 17,
-                      color: AppColors.textTertiary,
-                    ),
-                  ),
-                ),
-            ],
-          ),
-          const SizedBox(height: 14),
+          // 오늘 잰 것이 없으면 "저녁 약"이라고 붙일 근거도 없다.
+          if (hasMedicationReading && data.todaySlotLabel.isNotEmpty) ...[
+            Text(
+              data.todaySlotLabel,
+              style: AppText.label(size: 17, color: AppColors.textSecondary),
+            ),
+            const SizedBox(height: 10),
+          ],
           if (!measuredToday)
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
@@ -544,28 +543,26 @@ class _TodayCard extends StatelessWidget {
               children: [
                 Expanded(
                   child: _ValueBox(
-                    label: '약 먹기 전',
+                    label: '먹기 전',
                     value: today.before,
-                    background: AppColors.sunken,
-                    labelColor: AppColors.textTertiary,
-                    valueColor: AppColors.textPrimary,
+                    labelColor: AppColors.textSecondary,
+                    valueColor: AppColors.heartBefore,
                   ),
                 ),
                 const Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 10),
+                  padding: EdgeInsets.symmetric(horizontal: 6),
                   child: ExcludeSemantics(
                     child: Icon(
                       TablerIcons.arrow_right,
-                      size: 30,
-                      color: AppColors.point,
+                      size: 34,
+                      color: AppColors.strongLine,
                     ),
                   ),
                 ),
                 Expanded(
                   child: _ValueBox(
-                    label: '약 먹은 후',
+                    label: '먹은 후',
                     value: today.after,
-                    background: AppColors.pointTint,
                     labelColor: AppColors.point,
                     valueColor: AppColors.point,
                   ),
@@ -611,39 +608,15 @@ class _TodayCard extends StatelessWidget {
             ),
           ],
           if (drop != null) ...[
+            const SizedBox(height: 16),
+            const SeniorDivider(),
             const SizedBox(height: 14),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-              decoration: BoxDecoration(
-                color: AppColors.sunken,
-                borderRadius: BorderRadius.circular(16),
-              ),
-              child: Row(
-                children: [
-                  ExcludeSemantics(
-                    child: Icon(
-                      drop > 0
-                          ? TablerIcons.trending_down
-                          : TablerIcons.trending_up,
-                      size: 24,
-                      color: AppColors.point,
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Text(
-                      drop > 0
-                          ? '$drop회 낮아졌어요'
-                          : drop < 0
-                          ? '${-drop}회 높아졌어요'
-                          : '먹기 전과 같은 수치예요',
-                      style: AppText.label(
-                        size: 18.5,
-                        color: AppColors.textPrimary,
-                      ),
-                    ),
-                  ),
-                ],
+            Text(
+              _summaryLine(drop, today.after),
+              style: AppText.label(
+                size: 19,
+                color: AppColors.textPrimary,
+                weight: FontWeight.w700,
               ),
             ),
           ],
@@ -660,14 +633,12 @@ class _TodayCard extends StatelessWidget {
 class _ValueBox extends StatelessWidget {
   final String label;
   final int? value;
-  final Color background;
   final Color labelColor;
   final Color valueColor;
 
   const _ValueBox({
     required this.label,
     required this.value,
-    required this.background,
     required this.labelColor,
     required this.valueColor,
   });
@@ -677,114 +648,94 @@ class _ValueBox extends StatelessWidget {
     return Semantics(
       label: value == null ? '$label 재지 못했어요' : '$label $value회',
       child: ExcludeSemantics(
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-          decoration: BoxDecoration(
-            color: background,
-            borderRadius: BorderRadius.circular(18),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(label, style: AppText.label(size: 17.5, color: labelColor)),
-              const SizedBox(height: 6),
-              Text(
-                value?.toString() ?? '–',
-                style: AppText.hero(size: 44, color: valueColor),
-              ),
-            ],
-          ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(label, style: AppText.label(size: 17, color: labelColor)),
+            const SizedBox(height: 4),
+            Text(
+              value?.toString() ?? '–',
+              style: AppText.hero(size: 52, color: valueColor),
+            ),
+          ],
         ),
       ),
     );
   }
 }
 
-/// 센서 상태 한 줄.
+/// 심박수 한 줄 요약 (명세서 52).
 ///
-/// 연결 여부·배터리·마지막 측정은 **센서가 말한 것만** 쓴다. 이 화면이
-/// 센서를 넘겨받지 않았으면 연결됐는지 모르므로 "끊김"이라고도 하지 않는다.
-class _SensorRow extends StatelessWidget {
+/// "정상 범위예요"는 먹은 후 값이 60~100일 때만 붙인다.
+/// 범위를 벗어난 값에 정상이라고 말하면 안심할 근거를 지어내는 것이다.
+String _summaryLine(int drop, int? after) {
+  final change = drop > 0
+      ? '$drop회 낮아졌어요'
+      : drop < 0
+      ? '${-drop}회 높아졌어요'
+      : '먹기 전과 같은 수치예요';
+  final inRange = after != null && after >= 60 && after <= 100;
+  return inRange ? '$change · 정상 범위예요' : change;
+}
+
+/// 심박 센서 칸 (명세서 52). 네모 한 칸에 이름과 상태만 둔다.
+///
+/// 연결 여부·배터리는 **센서가 말한 것만** 쓴다. 이 화면이 센서를
+/// 넘겨받지 않았으면 연결됐는지 모르므로 "끊김"이라고도 하지 않는다.
+class _SensorTile extends StatelessWidget {
   final HeartSensor? sensor;
   final VoidCallback onTap;
 
-  const _SensorRow({required this.sensor, required this.onTap});
-
-  /// 아는 것만 잇는다. 배터리도 마지막 측정도 없으면 아무 말도 만들지 않는다.
-  String _connectedLine(HeartSensor sensor) {
-    final lastReadAt = sensor.lastReadAt;
-    final parts = <String>[
-      if (sensor.battery != null) '배터리 ${sensor.battery}%',
-      if (lastReadAt != null)
-        '${DoseSlot.absoluteTime(lastReadAt)}에 측정한 것이 마지막이에요',
-    ];
-    return parts.isEmpty ? '연결되어 있어요' : parts.join(' · ');
-  }
+  const _SensorTile({required this.sensor, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
     final sensor = this.sensor;
     final connected = sensor?.status == HeartSensorStatus.streaming;
-    final String title;
-    final String caption;
+    final String state;
     if (sensor == null) {
-      title = '폴라 센서';
-      caption = '눌러서 연결하고 차는 방법을 봐요';
+      state = '눌러서 연결하기';
     } else if (connected) {
-      title = '폴라 센서 연결됨';
-      caption = _connectedLine(sensor);
+      state = sensor.battery == null ? '연결됨' : '연결됨 · ${sensor.battery}%';
     } else {
-      title = '폴라 센서 끊김';
-      caption = '센서를 차고 다시 연결해 주세요';
+      state = '연결 안 됨';
     }
 
     return SeniorCard(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 17),
+      radius: 22,
+      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 18),
       onTap: onTap,
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Padding(
-            // 점은 제목 줄 높이에 맞춘다. 가운데 정렬하면 두 줄 사이에 낀다.
-            padding: const EdgeInsets.only(top: 7),
-            child: Container(
-              width: 14,
-              height: 14,
-              decoration: BoxDecoration(
-                color: connected ? AppColors.point : AppColors.strongLine,
-                borderRadius: BorderRadius.circular(7),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(minHeight: 90),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisAlignment: MainAxisAlignment.end,
+          children: [
+            Text('심박 센서', style: AppText.cardTitle(size: 19)),
+            const SizedBox(height: 4),
+            Text(
+              state,
+              style: AppText.label(
+                size: 17,
+                color: connected ? AppColors.point : AppColors.textTertiary,
               ),
             ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(title, style: AppText.cardTitle(size: 19)),
-                Text(caption, style: AppText.caption(size: 17.5)),
-              ],
-            ),
-          ),
-          const SizedBox(width: 10),
-          const Padding(
-            padding: EdgeInsets.only(top: 2),
-            child: SeniorChevron(),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
 }
 
-/// 심박수가 빠르면 보호자에게 자동으로 알리는 스위치.
-class _NotifyRow extends StatelessWidget {
+/// 심박수가 빠르면 보호자에게 알리는 칸 (명세서 52).
+/// 칸 전체가 켜고 끄는 단추다 — 작은 스위치보다 짚기 쉽다.
+class _NotifyTile extends StatelessWidget {
   final String guardianTitle;
   final bool value;
   final ValueChanged<bool> onChanged;
 
-  const _NotifyRow({
+  const _NotifyTile({
     required this.guardianTitle,
     required this.value,
     required this.onChanged,
@@ -792,23 +743,42 @@ class _NotifyRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SeniorCard(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 17),
-      child: Row(
-        children: [
-          Expanded(
-            child: Text(
-              '심박수가 너무 빠르면\n$guardianTitle에게 바로 알려요',
-              style: AppText.label(size: 19, color: AppColors.textPrimary),
+    return Semantics(
+      toggled: value,
+      button: true,
+      label: '심박수가 빠를 때 $guardianTitle에게 알리기',
+      child: ExcludeSemantics(
+        child: SeniorCard(
+          radius: 22,
+          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 18),
+          onTap: () => onChanged(!value),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(minHeight: 90),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Icon(
+                  value
+                      ? Icons.notifications_active_rounded
+                      : Icons.notifications_off_rounded,
+                  size: 32,
+                  color: AppColors.textPrimary,
+                ),
+                const SizedBox(height: 10),
+                Text('빠르면 가족에게', style: AppText.cardTitle(size: 19)),
+                const SizedBox(height: 4),
+                Text(
+                  value ? '알림 켜짐' : '알림 꺼짐',
+                  style: AppText.label(
+                    size: 17,
+                    color: value ? AppColors.point : AppColors.textTertiary,
+                  ),
+                ),
+              ],
             ),
           ),
-          const SizedBox(width: 12),
-          SeniorToggle(
-            value: value,
-            semanticLabel: '심박수가 빠를 때 $guardianTitle에게 알리기',
-            onChanged: onChanged,
-          ),
-        ],
+        ),
       ),
     );
   }

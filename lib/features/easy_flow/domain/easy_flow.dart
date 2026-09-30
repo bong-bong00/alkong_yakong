@@ -73,8 +73,14 @@ class EasyDestination {
 ///
 /// 측정 중이거나, 등록 뒤 약 있는 날을 확인하는 화면에서는
 /// "다음 한 걸음"이 방해가 된다. 그 화면들은 자기 단추로 마친다.
+/// 하단 "다음 한 걸음" 바를 띄울 화면.
+///
+/// 오늘 화면은 명세서 76~85의 복약 한 바퀴를 스스로 이끈다 — 그 안에
+/// 다음 걸음 버튼이 이미 있어 바를 겹쳐 두지 않는다.
 bool showsEasyBar(EasyScreen screen) =>
-    screen != EasyScreen.measure && screen != EasyScreen.scheduleDays;
+    screen != EasyScreen.measure &&
+    screen != EasyScreen.scheduleDays &&
+    screen != EasyScreen.today;
 
 /// 하단 바가 뜰 때 스크롤 아래에 둘 여백.
 /// 바가 마지막 카드를 가리지 않게 한다.

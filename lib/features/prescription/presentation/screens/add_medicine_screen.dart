@@ -50,7 +50,7 @@ class _AddMedicineScreenState extends State<AddMedicineScreen> {
           const SeniorBackHeader(title: '처방전 넣기'),
           Expanded(
             child: SingleChildScrollView(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 28),
+              padding: const EdgeInsets.fromLTRB(16, 18, 16, 28),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [

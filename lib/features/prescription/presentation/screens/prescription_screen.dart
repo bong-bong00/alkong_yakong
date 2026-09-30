@@ -404,6 +404,19 @@ class _PrescriptionScreenState extends ConsumerState<PrescriptionScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // 전화기의 뒤로 단추도 화면 안에서 한 걸음만 되돌린다.
+    // 방법 고르기까지 왔을 때만 이 화면을 벗어난다.
+    return PopScope(
+      canPop: _step == PrescriptionStep.pickMethod,
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop) return;
+        setState(() => _step = PrescriptionStep.pickMethod);
+      },
+      child: _buildStep(context),
+    );
+  }
+
+  Widget _buildStep(BuildContext context) {
     switch (_step) {
       case PrescriptionStep.pickMethod:
         return AddMedicineScreen(
@@ -521,7 +534,7 @@ class _CaptureScreen extends StatelessWidget {
           SeniorBackHeader(title: '처방전 찍기', onDark: true, onBack: onBack),
           if (onBehalfOf != null)
             Padding(
-              padding: const EdgeInsets.fromLTRB(22, 4, 22, 0),
+              padding: const EdgeInsets.fromLTRB(22, 18, 22, 0),
               child: _OnBehalfBanner(title: onBehalfOf!),
             ),
           Expanded(
@@ -572,12 +585,12 @@ class _CaptureScreen extends StatelessWidget {
                                   // 시안 17 — 한 줄짜리 짧은 말로 줄인다.
                                   // 사진 찍는 중에 읽을 글이라 길면 안 읽힌다.
                                   _CaptureTip(number: '1', text: '밝은 곳에 펼쳐 놓기'),
-                                  const _CaptureTipArrow(),
+                                  const SizedBox(height: 14),
                                   _CaptureTip(
                                     number: '2',
                                     text: '네 모서리가 다 보이게',
                                   ),
-                                  const _CaptureTipArrow(),
+                                  const SizedBox(height: 14),
                                   _CaptureTip(number: '3', text: '두 손으로 잡고 찍기'),
                                 ],
                               ),
@@ -691,32 +704,6 @@ class _CaptureTip extends StatelessWidget {
           ),
         ),
       ],
-    );
-  }
-}
-
-class _CaptureTipArrow extends StatelessWidget {
-  const _CaptureTipArrow();
-
-  @override
-  Widget build(BuildContext context) {
-    // 긴 화살표를 번호 동그라미(40px) 바로 아래, 같은 세로줄에 둔다.
-    return const Padding(
-      padding: EdgeInsets.symmetric(vertical: 4),
-      // 화살표 그림(48)이 동그라미 칸(40)보다 넓어, 넘치는 만큼 양쪽으로
-      // 고르게 나눠 동그라미 중심과 같은 세로줄에 맞춘다.
-      child: SizedBox(
-        width: 40,
-        height: 48,
-        child: OverflowBox(
-          maxWidth: 48,
-          child: Icon(
-            TablerIcons.arrow_narrow_down,
-            size: 48,
-            color: AppColors.onDarkMuted,
-          ),
-        ),
-      ),
     );
   }
 }
@@ -1587,7 +1574,7 @@ class _DrugCard extends StatelessWidget {
     required this.onEditDosing,
   });
 
-  /// 인식·복용 정보 확인은 주황, 실제 약 충돌은 빨강으로 구분한다.
+  /// 확인이 필요한 칸. 명세서 26은 이 칸만 붉게 두른다.
   bool get _needsCheck =>
       uncertain ||
       conflicts.isNotEmpty ||
@@ -1601,23 +1588,49 @@ class _DrugCard extends StatelessWidget {
     return SeniorCard(
       onTap: onToggle,
       padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 20),
-      borderColor: conflicts.isNotEmpty
-          ? AppColors.danger
-          : (_needsCheck ? AppColors.attentionBorder : null),
-      borderWidth: conflicts.isNotEmpty ? 3 : 2,
+      borderColor: _needsCheck ? AppColors.danger : null,
+      borderWidth: 3,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(name, style: AppText.cardTitle(size: 21)),
-          if (ingredient.trim().isNotEmpty) ...[
-            const SizedBox(height: 5),
-            Text(
-              '주성분: ${[compactIngredientSummary(ingredient), ingredientStrength].where((value) => value.trim().isNotEmpty).join(' · ')}',
-              style: AppText.caption(size: 17, color: AppColors.textSecondary),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
-          ],
+          Row(
+            children: [
+              const PillPhoto(size: 52),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(name, style: AppText.cardTitle(size: 21)),
+                    if (ingredient.trim().isNotEmpty) ...[
+                      const SizedBox(height: 3),
+                      Text(
+                        '주성분: ${[compactIngredientSummary(ingredient), ingredientStrength].where((value) => value.trim().isNotEmpty).join(' · ')}',
+                        style: AppText.caption(
+                          size: 17,
+                          color: AppColors.textSecondary,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              if (_needsCheck) ...[
+                const SizedBox(width: 10),
+                const SeniorBadge(
+                  label: '확인 필요',
+                  background: AppColors.dangerBg,
+                  foreground: AppColors.danger,
+                  radius: 12,
+                  fontSize: 16,
+                  padding: EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                ),
+              ],
+            ],
+          ),
           if (explanation != null && explanation!.isNotEmpty) ...[
             const SizedBox(height: 8),
             Text(
@@ -1661,13 +1674,7 @@ class _DrugCard extends StatelessWidget {
               ],
             ),
           ),
-          if (uncertain) ...[
-            const SizedBox(height: 10),
-            Text(
-              '약 확인 필요',
-              style: AppText.label(size: 17.5, color: AppColors.danger),
-            ),
-          ],
+
           if (conflicts.isNotEmpty) ...[
             const SizedBox(height: 10),
             for (final conflict in conflicts) ...[
@@ -1687,10 +1694,12 @@ class _DrugCard extends StatelessWidget {
           ],
           const SizedBox(height: 14),
           SeniorButton(
-            label: '복용 정보 고치기',
-            kind: SeniorButtonKind.neutral,
-            minHeight: 66,
-            fontSize: 21,
+            label: '고치기',
+            icon: Icons.edit_rounded,
+            kind: SeniorButtonKind.secondary,
+            minHeight: 56,
+            radius: 14,
+            fontSize: 19,
             onPressed: onEditDosing,
           ),
         ],
@@ -1782,7 +1791,6 @@ class _StepperButton extends StatelessWidget {
             decoration: BoxDecoration(
               color: AppColors.secondaryFill,
               borderRadius: BorderRadius.circular(18),
-              border: Border.all(color: AppColors.strongLine, width: 2),
             ),
             child: Icon(
               icon,

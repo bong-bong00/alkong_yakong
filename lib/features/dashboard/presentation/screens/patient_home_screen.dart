@@ -445,7 +445,7 @@ class _SlotChips extends StatelessWidget {
         ? '${slot.label} ${_clock(slot)}'
         : slot.label;
     final background = dose == null
-        ? AppColors.secondaryFill
+        ? AppColors.neutralFill
         : isNext
         ? AppColors.pointFill
         : AppColors.surface;
@@ -469,8 +469,8 @@ class _SlotChips extends StatelessWidget {
           decoration: BoxDecoration(
             color: background,
             borderRadius: BorderRadius.circular(30),
-            // 흰 칩은 흰 바탕에 묻힌다. 그림자로 띄운다.
-            boxShadow: kCardShadow,
+            // 흰 칩만 그림자로 띄운다. 채운 칩은 색이 이미 자리를 잡는다.
+            boxShadow: background == AppColors.surface ? kCardShadow : null,
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
@@ -853,7 +853,7 @@ class HomeTopBar extends StatelessWidget {
           const SizedBox(width: 10),
           // 지금 어느 화면인지는 두 모드 모두에서 보여야 한다.
           // 쉬운 화면에서는 그 옆에 메뉴 단추가 하나 더 붙는다.
-          const ModeBadge(),
+          const Flexible(child: ModeBadge()),
           if (easyMode && onOpenMenu != null) ...[
             const SizedBox(width: 10),
             EasyMenuButton(onTap: onOpenMenu!),

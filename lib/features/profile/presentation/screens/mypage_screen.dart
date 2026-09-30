@@ -1,23 +1,21 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 import 'package:flutter_tabler_icons/flutter_tabler_icons.dart';
 
 import '../../../../core/constants/app_colors.dart';
+import '../../../prescription/presentation/screens/prescription_history_screen.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../core/widgets/senior_card.dart';
-import '../../../../core/widgets/senior_feedback.dart';
 import '../../../../core/widgets/senior_header.dart';
+import '../../../../core/widgets/senior_feedback.dart';
 import '../../../dashboard/presentation/screens/profile_edit_screen.dart';
 import '../../../dashboard/presentation/screens/settings_menu.dart';
 import '../../../guardian/application/guardians_provider.dart';
 import '../../../guardian/data/guardian_repository.dart';
 import '../../../guardian/presentation/widgets/add_care_sheet.dart';
 import '../../../medication/application/medication_controller.dart';
-import '../../../reminder/application/alarm_preferences.dart';
 import '../../../reminder/presentation/screens/alarm_settings_screen.dart';
 import '../../../biosignal/presentation/screens/polar_screen.dart';
-import '../../../medicines/application/user_medicines_controller.dart';
 import '../../application/current_user_controller.dart';
 import 'account_screen.dart';
 import 'family_screen.dart';
@@ -65,19 +63,8 @@ class _MyPageScreenState extends ConsumerState<MyPageScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final today = ref.watch(medicationProvider);
     final user = ref.watch(currentUserProvider);
     final profile = user.valueOrNull;
-    final guardians = ref.watch(guardiansProvider);
-    final alarm = ref.watch(alarmPreferencesProvider);
-    final medicines = ref.watch(userMedicinesProvider);
-    final medicineCount = medicines.maybeWhen(
-      data: (items) => items.length,
-      orElse: () => today.doses
-          .expand((d) => d.medicines.map((m) => m.medicineCode ?? m.ingredient))
-          .toSet()
-          .length,
-    );
     final loadFailed = profile == null && user.hasError;
     final ageLine = profile?.ageLine(DateTime.now()) ?? '';
 
@@ -135,7 +122,7 @@ class _MyPageScreenState extends ConsumerState<MyPageScreen> {
                         ),
                       ),
                     ),
-                    const SizedBox(height: 16),
+                    const SizedBox(height: 20),
 
                     // ── 알림 · 센서 · 가족 세 칸 ──
                     IntrinsicHeight(
@@ -146,8 +133,6 @@ class _MyPageScreenState extends ConsumerState<MyPageScreen> {
                             child: _SquareTile(
                               icon: TablerIcons.bell,
                               label: '알림',
-                              // 소리로 알려주기만 한다. 말로 기록하는 기능은 없다.
-                              value: alarm.summary,
                               onTap: () => Navigator.of(context).push(
                                 MaterialPageRoute<void>(
                                   builder: (_) => const AlarmSettingsScreen(),
@@ -155,14 +140,11 @@ class _MyPageScreenState extends ConsumerState<MyPageScreen> {
                               ),
                             ),
                           ),
-                          const SizedBox(width: 14),
+                          const SizedBox(width: 12),
                           Expanded(
                             child: _SquareTile(
                               icon: TablerIcons.heart,
                               label: '센서',
-                              // 연결 여부는 들어가야 안다. 여기서 "연결됨"이라고
-                              // 적어 두면 안 차고 계신 분께 거짓말이 된다.
-                              value: '차는 방법',
                               onTap: () => Navigator.of(context).push(
                                 MaterialPageRoute<void>(
                                   builder: (_) => const PolarScreen(),
@@ -170,15 +152,11 @@ class _MyPageScreenState extends ConsumerState<MyPageScreen> {
                               ),
                             ),
                           ),
-                          const SizedBox(width: 14),
+                          const SizedBox(width: 12),
                           Expanded(
                             child: _SquareTile(
                               icon: TablerIcons.users,
                               label: '가족',
-                              value: guardians.maybeWhen(
-                                data: (list) => '${list.length}명',
-                                orElse: () => '보기',
-                              ),
                               onTap: () => Navigator.of(context).push(
                                 MaterialPageRoute<void>(
                                   builder: (_) =>
@@ -190,40 +168,26 @@ class _MyPageScreenState extends ConsumerState<MyPageScreen> {
                         ],
                       ),
                     ),
-                    const SizedBox(height: 12),
+                    const SizedBox(height: 20),
 
-                    // ── 설정 목록 ──
+                    // ── 지금까지 넣은 처방전 ──
                     SeniorCard(
                       padding: const EdgeInsets.symmetric(
                         horizontal: 22,
                         vertical: 4,
                       ),
-                      child: Column(
-                        children: [
-                          SeniorListRow(
-                            label: '내 약 목록',
-                            icon: TablerIcons.pill,
-                            value: '$medicineCount가지',
-                            trailing: const SeniorChevron(),
-                            onTap: () => context.push('/my-medicines'),
+                      child: SeniorListRow(
+                        label: '처방전 기록',
+                        icon: TablerIcons.file_text,
+                        trailing: const SeniorChevron(),
+                        onTap: () => Navigator.of(context).push(
+                          MaterialPageRoute<void>(
+                            builder: (_) => const PrescriptionHistoryScreen(),
                           ),
-                          const SeniorDivider(),
-                          SeniorListRow(
-                            label: '폴라 센서',
-                            icon: TablerIcons.heart,
-                            // 여기서는 연결 여부를 모른다. 들어가야 센서를 찾는다.
-                            subtitle: '심박 센서 연결 · 차는 방법',
-                            trailing: const SeniorChevron(),
-                            onTap: () => Navigator.of(context).push(
-                              MaterialPageRoute<void>(
-                                builder: (_) => const PolarScreen(),
-                              ),
-                            ),
-                          ),
-                        ],
+                        ),
                       ),
                     ),
-                    const SizedBox(height: 12),
+                    const SizedBox(height: 20),
 
                     // ── 도움말 · 계정, 넓은 두 칸 ──
                     // 위험한 동작(로그아웃·탈퇴)은 계정 화면 안에 둔다.
@@ -302,7 +266,7 @@ class _WideTile extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
             decoration: BoxDecoration(
               color: danger ? AppColors.dangerBg : AppColors.surface,
-              borderRadius: BorderRadius.circular(20),
+              borderRadius: BorderRadius.circular(18),
               boxShadow: danger ? null : kCardShadow,
             ),
             child: Row(
@@ -334,17 +298,16 @@ class _WideTile extends StatelessWidget {
   }
 }
 
-/// 내 정보 가운데 줄의 네모 칸. 아이콘 · 이름 · 지금 값을 쌓는다.
+/// 내 정보 가운데 줄의 네모 칸. 아이콘과 이름만 둔다 —
+/// 지금 값은 들어가서 보므로 여기서 또 적지 않는다.
 class _SquareTile extends StatelessWidget {
   final IconData icon;
   final String label;
-  final String value;
   final VoidCallback onTap;
 
   const _SquareTile({
     required this.icon,
     required this.label,
-    required this.value,
     required this.onTap,
   });
 
@@ -352,12 +315,12 @@ class _SquareTile extends StatelessWidget {
   Widget build(BuildContext context) {
     return Semantics(
       button: true,
-      label: '$label, $value',
+      label: label,
       child: GestureDetector(
         onTap: onTap,
         child: ExcludeSemantics(
           child: Container(
-            constraints: const BoxConstraints(minHeight: 104),
+            constraints: const BoxConstraints(minHeight: 92),
             alignment: Alignment.center,
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 14),
             decoration: BoxDecoration(
@@ -368,17 +331,20 @@ class _SquareTile extends StatelessWidget {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(icon, size: 26, color: AppColors.textPrimary),
+                // 아이콘은 연파랑 자리 위에 파랑으로 둔다. 세 칸을
+                // 한눈에 구분하는 데 색이 가장 빠르다.
+                Container(
+                  width: 46,
+                  height: 46,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: AppColors.pointRing,
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: Icon(icon, size: 26, color: AppColors.point),
+                ),
                 const SizedBox(height: 8),
                 Text(label, style: AppText.cardTitle(size: 18)),
-                const SizedBox(height: 2),
-                Text(
-                  value,
-                  textAlign: TextAlign.center,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: AppText.cardTitle(size: 16, color: AppColors.point),
-                ),
               ],
             ),
           ),
@@ -493,10 +459,15 @@ class _BodyInfoCard extends StatelessWidget {
     );
   }
 
-  /// "68세 · 여자"에서 나이만 떼어 쓴다. 칸이 좁아 둘 다 들어가지 않는다.
+  /// 명세서 61은 "나이 68세"라고 적는다. 생년은 고치기 화면에서 본다.
   String get _age {
-    final head = ageLine.split('·').first.trim();
-    return head.isEmpty ? '모름' : head;
+    final parts = ageLine
+        .split('·')
+        .map((part) => part.trim())
+        .where((part) => part.isNotEmpty)
+        .toList();
+    if (parts.isEmpty) return '모름';
+    return parts.length > 1 ? parts.last : parts.first;
   }
 
   /// 여러 개면 첫 것만 적고 나머지는 "외 N"으로 줄인다.
@@ -513,10 +484,10 @@ class _BodyInfoCard extends StatelessWidget {
       children: [
         Text(
           label,
-          style: AppText.body(size: 17, color: AppColors.textSecondary),
+          style: AppText.label(size: 16, color: AppColors.textSecondary),
         ),
         const SizedBox(height: 4),
-        Text(value, style: AppText.cardTitle(size: 20)),
+        Text(value, style: AppText.cardTitle(size: 22)),
       ],
     );
   }

@@ -578,8 +578,6 @@ class _ResultCard extends StatelessWidget {
               ),
             ],
           ),
-          const SizedBox(height: 12),
-          Text('준비 시간을 포함해 받은 심박수의 범위예요.', style: AppText.body(size: 18)),
         ],
       ),
     );

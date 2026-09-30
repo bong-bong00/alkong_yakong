@@ -494,13 +494,16 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.textContaining('98회/분'), findsWidgets);
       expect(find.text('평소 심박 측정'), findsWidgets);
-      expect(find.textContaining('비교할 자료는 부족'), findsOneWidget);
+      // 기록만 있고 비교할 짝이 없으면 아무 비교도 말하지 않는다.
+      // (설명 문구는 명세서에 없어 걷어냈다.)
+      expect(find.textContaining('비교'), findsNothing);
+      expect(find.text('먹기 전'), findsNothing);
       expect(find.text('지난 기록 보기'), findsNothing);
       expect(find.widgetWithText(SeniorSegmented, '이번 주'), findsOneWidget);
       expect(find.widgetWithText(SeniorSegmented, '한 달'), findsOneWidget);
-      expect(find.text('지금 측정'), findsOneWidget);
-      expect(find.text('폴라 센서'), findsOneWidget);
-      expect(find.textContaining('에게 바로 알려요'), findsOneWidget);
+      expect(find.text('지금 재기'), findsOneWidget);
+      expect(find.text('심박 센서'), findsOneWidget);
+      expect(find.text('빠르면 가족에게'), findsOneWidget);
       expect(gets, 1);
       await tester.tap(find.text('한 달'));
       await tester.pumpAndSettle();
@@ -546,16 +549,14 @@ void main() {
       await tester.pumpWidget(wrap(HeartScreen(repository: repository)));
       await tester.pumpAndSettle();
 
-      final todayCard = find.ancestor(
-        of: find.text('오늘 측정'),
-        matching: find.byType(SeniorCard),
-      );
+      final todayCard = find
+          .ancestor(
+            of: find.text('평소 심박 측정'),
+            matching: find.byType(SeniorCard),
+          )
+          .first;
       expect(
         find.descendant(of: todayCard, matching: find.text('92회/분')),
-        findsOneWidget,
-      );
-      expect(
-        find.descendant(of: todayCard, matching: find.text('평소 심박 측정')),
         findsOneWidget,
       );
       expect(
@@ -656,8 +657,8 @@ void main() {
       );
       await tester.pumpAndSettle();
       expect(find.text('아직 측정 기록이 없어요'), findsOneWidget);
-      await tester.ensureVisible(find.text('지금 측정'));
-      await tester.tap(find.text('지금 측정'));
+      await tester.ensureVisible(find.text('지금 재기'));
+      await tester.tap(find.text('지금 재기'));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 400));
       await rig.widgetWindow(tester);
@@ -734,8 +735,8 @@ void main() {
           await tester.ensureVisible(find.text(purpose.label));
           await tester.tap(find.text(purpose.label));
         }
-        await tester.ensureVisible(find.text('지금 측정'));
-        await tester.tap(find.text('지금 측정'));
+        await tester.ensureVisible(find.text('지금 재기'));
+        await tester.tap(find.text('지금 재기'));
         await tester.pump();
         await tester.pump(const Duration(milliseconds: 400));
         await rig.widgetWindow(tester);
@@ -803,8 +804,8 @@ void main() {
         );
         await tester.tap(find.text('홈에서 심박수 관리 열기'));
         await tester.pumpAndSettle();
-        await tester.ensureVisible(find.text('지금 측정'));
-        await tester.tap(find.text('지금 측정'));
+        await tester.ensureVisible(find.text('지금 재기'));
+        await tester.tap(find.text('지금 재기'));
         await tester.pump(const Duration(milliseconds: 400));
         await rig.widgetWindow(tester);
         if (saveFailure.rejected) {
@@ -918,8 +919,8 @@ void main() {
     );
     await tester.tap(find.text('홈에서 심박수 관리 열기'));
     await tester.pumpAndSettle();
-    await tester.ensureVisible(find.text('지금 측정'));
-    await tester.tap(find.text('지금 측정'));
+    await tester.ensureVisible(find.text('지금 재기'));
+    await tester.tap(find.text('지금 재기'));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 400));
     expect(find.byType(MeasureScreen), findsOneWidget);
@@ -956,10 +957,10 @@ void main() {
       await tester.pumpAndSettle();
       await tester.ensureVisible(find.text('복약 전 측정'));
       await tester.tap(find.text('복약 전 측정'));
-      await tester.ensureVisible(find.text('지금 측정'));
+      await tester.ensureVisible(find.text('지금 재기'));
       final startButton = tester.widget<SeniorButton>(
         find.ancestor(
-          of: find.text('지금 측정'),
+          of: find.text('지금 재기'),
           matching: find.byType(SeniorButton),
         ),
       );

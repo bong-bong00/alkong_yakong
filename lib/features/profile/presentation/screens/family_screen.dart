@@ -119,24 +119,6 @@ class FamilyScreen extends ConsumerWidget {
                     elevated: true,
                     onPressed: onInvite,
                   ),
-                  const SizedBox(height: 16),
-                  // 보호자 계정은 따로 있다. 여기서 열리지 않는다는 사실을
-                  // 미리 적어 두지 않으면 "안 열린다"는 문의가 된다.
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 18,
-                      vertical: 16,
-                    ),
-                    decoration: BoxDecoration(
-                      color: AppColors.sunken,
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                    child: Text(
-                      '가족은 따로 가입한 보호자 계정으로 봅니다. '
-                      '어르신 화면에서는 보호자 화면이 열리지 않아요.',
-                      style: AppText.body(size: 17.5),
-                    ),
-                  ),
                 ],
               ),
             ),

@@ -183,7 +183,7 @@ void main() {
     await tester.pumpAndSettle();
     // 기록보다 시트가 먼저다. 띠를 차고 계시면 심박수를 잴 기회이기 때문이다.
     expect(find.textContaining('심박 센서를'), findsOneWidget);
-    expect(find.text('차고 있어요 · 측정'), findsOneWidget);
+    expect(find.text('차고 있어요 · 재기'), findsOneWidget);
     expect(find.text('안 차고 있어요 · 복약만 기록'), findsOneWidget);
     expect(find.text('그만두기'), findsOneWidget);
   });
@@ -297,33 +297,7 @@ void main() {
 // ════════════════════════════════════════════════════════════════
 
 void _easyModeTests() {
-  testWidgets('쉬운 모드는 탭 대신 "다음 한 걸음" 버튼 하나를 쓴다 (40)', (tester) async {
-    SharedPreferences.setMockInitialValues({});
-    await tester.pumpWidget(
-      ProviderScope(
-        overrides: [appModeProvider.overrideWith((ref) => _EasyMode())],
-        child: MaterialApp(
-          theme: AppTheme.build(),
-          home: const MediaQuery(
-            data: MediaQueryData(disableAnimations: true),
-            child: HomeScreen(),
-          ),
-        ),
-      ),
-    );
-    await tester.pump();
-
-    expect(find.byType(SeniorBottomNav), findsNothing);
-    expect(find.text(kEasyFlow.first.nextLabel), findsOneWidget);
-    // 아바타 자리가 메뉴 버튼으로 바뀐다.
-    expect(find.text('메뉴'), findsOneWidget);
-    // 시안대로 나가는 길을 이름으로 적는다. 지금이 쉬운 화면이라는 것은
-    // 걸음 표시와 이 단추가 함께 말한다.
-    expect(find.text('일반 화면으로'), findsOneWidget);
-    expect(find.textContaining(RegExp(r'^1 / \d+$')), findsOneWidget);
-  });
-
-  testWidgets('약을 안 눌렀는데 넘어가려 하면 한 번 묻는다 (42)', (tester) async {
+  testWidgets('쉬운 모드는 탭 대신 걸음 하나씩 지나간다 (명세서 76)', (tester) async {
     SharedPreferences.setMockInitialValues({});
     await tester.pumpWidget(
       ProviderScope(
@@ -342,14 +316,57 @@ void _easyModeTests() {
     );
     await tester.pump();
 
-    await tester.tap(find.text(kEasyFlow.first.nextLabel));
-    await tester.pumpAndSettle();
+    expect(find.byType(SeniorBottomNav), findsNothing);
+    // 첫 걸음의 주 버튼 (명세서 76).
+    expect(find.text('복약 전 심박 측정'), findsOneWidget);
+    // 아바타 자리가 메뉴 버튼으로 바뀐다.
+    expect(find.text('메뉴'), findsOneWidget);
+    // 시안대로 나가는 길을 이름으로 적는다. 지금이 쉬운 화면이라는 것은
+    // 걸음 표시와 이 단추가 함께 말한다.
+    expect(find.text('일반 화면으로'), findsOneWidget);
+    expect(find.text('1 / 8'), findsOneWidget);
+  });
 
-    // 자동으로 "안 드셨어요"로 확정하지 않는다.
-    expect(find.textContaining('아직 안 누르셨어요'), findsOneWidget);
-    expect(find.text('먹었어요 · 다음으로'), findsOneWidget);
-    expect(find.text('그냥 넘어갈게요'), findsOneWidget);
-    expect(find.text('이 화면에 그대로 있기'), findsOneWidget);
+  testWidgets('복약 한 바퀴는 재기 → 약 → 다시 재기 순서로 간다 (명세서 76~81)', (tester) async {
+    SharedPreferences.setMockInitialValues({});
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          appModeProvider.overrideWith((ref) => _EasyMode()),
+          medicationProvider.overrideWith(_SeniorTestMedicationController.new),
+        ],
+        child: MaterialApp(
+          theme: AppTheme.build(),
+          home: const MediaQuery(
+            data: MediaQueryData(disableAnimations: true),
+            child: HomeScreen(),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    // 1걸음 → 2걸음: 가슴 띠 차는 방법을 먼저 보여 준다.
+    await tester.tap(find.text('복약 전 심박 측정'));
+    await tester.pumpAndSettle();
+    expect(find.text('차 주세요'), findsOneWidget);
+    expect(find.text('2 / 8'), findsOneWidget);
+    expect(find.text('팔꿈치 위에 차요'), findsOneWidget);
+
+    // 첫 걸음의 "안 잴래요"를 고르면 재는 걸음을 건너뛴다.
+    await tester.tap(find.text('뒤로'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('안 잴래요'));
+    await tester.pumpAndSettle();
+    expect(find.text('복약 완료하셨나요?'), findsOneWidget);
+    expect(find.text('5 / 8'), findsOneWidget);
+
+    // 심박수를 안 쟀으면 먹은 뒤에 재자고 묻지 않는다.
+    await tester.tap(find.text('먹었어요'));
+    await tester.pumpAndSettle();
+    expect(find.text('한 번 더 재요'), findsNothing);
+    expect(find.text('다 드셨어요'), findsOneWidget);
+    expect(find.text('복약 기록'), findsOneWidget);
   });
 
   test('쉬운 모드가 부르는 화면은 모두 일반 모드에도 있는 화면이다', () {
@@ -366,10 +383,12 @@ void _easyModeTests() {
     }
   });
 
-  test('측정 중에는 하단 바를 숨긴다', () {
+  test('스스로 흐름을 이끄는 화면에서는 하단 바를 숨긴다', () {
     // 자기 흐름을 끝까지 마쳐야 하는 화면에서는 "다음"이 방해가 된다.
     expect(showsEasyBar(EasyScreen.measure), isFalse);
-    expect(showsEasyBar(EasyScreen.today), isTrue);
+    // 오늘 화면은 명세서 76~85의 걸음을 스스로 이끈다.
+    expect(showsEasyBar(EasyScreen.today), isFalse);
+    expect(showsEasyBar(EasyScreen.record), isTrue);
   });
 
   test('메뉴에서 갈 수 있는 곳이 흐름보다 넓다', () {
@@ -724,7 +743,7 @@ void _sensorTests() {
     await tester.tap(find.text('다시 불러오기'));
     await tester.pump();
     await tester.pump();
-    expect(find.text('오늘 측정'), findsOneWidget);
+    expect(find.text('먹기 전'), findsOneWidget);
     expect(find.text('78'), findsOneWidget);
     expect(find.text('72'), findsOneWidget);
   });
@@ -735,7 +754,7 @@ void _sensorTests() {
     );
     await tester.pump();
     expect(find.text('아직 측정 기록이 없어요'), findsOneWidget);
-    expect(find.text('오늘 측정'), findsNothing);
+    expect(find.text('먹기 전'), findsNothing);
   });
 
   testWidgets('보호자가 어르신 id로 열면 그 기록을 읽고 재기 버튼은 없다 (24)', (tester) async {
@@ -745,7 +764,7 @@ void _sensorTests() {
     );
     await tester.pump();
     expect(repository.lastUserId, 'patient-1');
-    expect(find.text('지금 측정'), findsNothing);
+    expect(find.text('지금 재기'), findsNothing);
   });
 
   test('측정 전에는 최저·최고 값을 지어내지 않는다', () {
@@ -1276,13 +1295,14 @@ void _recordTimelineTests() {
 
     expect(find.text('3월 2일'), findsOneWidget);
     // 지난 날이므로 아직 오지 않은 때가 아니라 빠뜨린 것으로 읽는다.
-    expect(find.text('드셨어요'), findsOneWidget);
-    expect(find.text('못 드셨어요'), findsOneWidget);
+    // 칸에는 때 이름과 시각만 적히므로(명세서 43) 상태는 낭독 글로 확인한다.
+    expect(find.bySemanticsLabel(RegExp('아침 드셨어요')), findsOneWidget);
+    expect(find.bySemanticsLabel(RegExp('저녁 못 드셨어요')), findsOneWidget);
 
     await tester.tap(find.text('1'));
     await tester.pump();
     expect(find.text('3월 1일'), findsOneWidget);
-    expect(find.text('드셨어요'), findsNWidgets(2));
+    expect(find.bySemanticsLabel(RegExp('^(아침|저녁) 드셨어요')), findsNWidgets(2));
   });
 }
 
@@ -1313,7 +1333,7 @@ void _medicinesByTimeTests() {
     // 크기는 화면마다 다를 수 있으므로 같은 위젯을 쓰는지만 본다.
     expect(source.contains('PillPhoto(size:'), isTrue);
     // 지금 안 드시는 약은 줄 하나로 접어 둔다.
-    expect(source.contains('이전에 등록한 약'), isTrue);
+    expect(source.contains('이전에 먹던 약'), isTrue);
   });
 }
 

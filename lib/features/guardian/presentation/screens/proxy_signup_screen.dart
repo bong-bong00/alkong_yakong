@@ -562,7 +562,7 @@ class _StepBody extends StatelessWidget {
                 SafeArea(
                   top: false,
                   child: Padding(
-                    padding: const EdgeInsets.fromLTRB(20, 0, 20, 14),
+                    padding: const EdgeInsets.fromLTRB(20, 18, 20, 14),
                     child: Column(
                       key: actionsKey,
                       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -629,12 +629,8 @@ class _RelationChoice extends StatelessWidget {
             alignment: Alignment.center,
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
             decoration: BoxDecoration(
-              color: selected ? AppColors.pointTint : AppColors.sunken,
+              color: selected ? AppColors.pointFill : AppColors.sunken,
               borderRadius: BorderRadius.circular(16),
-              border: Border.all(
-                color: selected ? AppColors.point : AppColors.border,
-                width: 2,
-              ),
             ),
             child: Text(
               label,
@@ -663,9 +659,8 @@ class _CodeField extends StatelessWidget {
     return Container(
       constraints: const BoxConstraints(minHeight: 78),
       decoration: BoxDecoration(
-        color: AppColors.sunken,
+        color: AppColors.pointRing,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppColors.point, width: 2),
       ),
       padding: const EdgeInsets.symmetric(horizontal: 16),
       child: Center(

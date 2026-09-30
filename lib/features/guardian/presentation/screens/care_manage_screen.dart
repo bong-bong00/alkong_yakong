@@ -170,7 +170,7 @@ class CareManageScreen extends ConsumerWidget {
           SafeArea(
             top: false,
             child: Padding(
-              padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
+              padding: const EdgeInsets.fromLTRB(20, 18, 20, 12),
               child: SeniorButton(
                 label: '돌보는 분 추가하기',
                 icon: TablerIcons.user_plus,

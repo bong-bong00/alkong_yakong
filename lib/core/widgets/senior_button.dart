@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../constants/app_colors.dart';
 import '../theme/app_typography.dart';
+import 'senior_card.dart';
 
 /// 버튼 종류.
 ///
@@ -11,11 +12,14 @@ enum SeniorButtonKind {
   /// 주 액션. 파랑 채움 + 흰 글씨. 높이 68 이상.
   primary,
 
-  /// 보조 액션. 연한 면 + **2px 테두리**. 테두리 없는 연회색 버튼은 만들지 않는다.
+  /// 보조 액션. 연한 면(#F0F1F5)에 검은 글씨. 테두리는 두르지 않는다.
   secondary,
 
   /// 카드 안에 들어가는 낮은 위계. "되돌리기", "30분 뒤에 다시".
   neutral,
+
+  /// 흰 면 + 카드 그림자. 명세서가 가장 많이 쓰는 보조 버튼이다.
+  card,
 
   /// 위험 액션 — 채움. 화면당 최대 하나.
   danger,
@@ -72,23 +76,25 @@ class SeniorButton extends StatefulWidget {
 class _SeniorButtonState extends State<SeniorButton> {
   bool _pressed = false;
 
-  /// 높이 70 이상은 라운드 20, 그 아래는 18.
-  double get _radius => widget.radius ?? (widget.minHeight >= 70 ? 20 : 18);
+  /// 명세서 0장: 큰 버튼 18, 작은 버튼 14.
+  double get _radius => widget.radius ?? (widget.minHeight >= 60 ? 18 : 14);
 
   Color get _background {
     switch (widget.kind) {
       case SeniorButtonKind.primary:
-        return _pressed ? AppColors.pointPressed : AppColors.point;
+        return _pressed ? AppColors.pointPressed : AppColors.pointFill;
       case SeniorButtonKind.danger:
         return _pressed ? AppColors.dangerPressed : AppColors.danger;
       case SeniorButtonKind.secondary:
       case SeniorButtonKind.outline:
         return _pressed ? AppColors.secondaryPressed : AppColors.secondaryFill;
+      case SeniorButtonKind.card:
+        return _pressed ? AppColors.sunken : AppColors.surface;
       case SeniorButtonKind.neutral:
       case SeniorButtonKind.dangerQuiet:
-        return _pressed ? AppColors.neutralPressed : AppColors.bg;
+        return _pressed ? AppColors.neutralPressed : AppColors.neutralFill;
       case SeniorButtonKind.dark:
-        return _pressed ? AppColors.darkPressed : AppColors.camChip;
+        return _pressed ? AppColors.darkPressed : AppColors.darkButton;
     }
   }
 
@@ -102,7 +108,8 @@ class _SeniorButtonState extends State<SeniorButton> {
       case SeniorButtonKind.secondary:
       case SeniorButtonKind.outline:
       case SeniorButtonKind.neutral:
-        return AppColors.textBody;
+      case SeniorButtonKind.card:
+        return AppColors.textPrimary;
       case SeniorButtonKind.dark:
         return Colors.white;
     }
@@ -122,16 +129,22 @@ class _SeniorButtonState extends State<SeniorButton> {
     }
   }
 
-  BoxBorder? get _border {
-    switch (widget.kind) {
-      case SeniorButtonKind.secondary:
-      case SeniorButtonKind.outline:
-        return Border.all(color: AppColors.strongLine, width: 2);
-      case SeniorButtonKind.dark:
-        return Border.all(color: AppColors.onDarkBorder, width: 2);
-      default:
-        return null;
-    }
+  /// 명세서에는 테두리를 두른 버튼이 없다.
+  BoxBorder? get _border => null;
+
+  /// 흰 면 버튼은 카드 그림자로 띄우고, "강조가 필요한 하나"에는
+  /// 파란 그림자를 준다. 나머지는 그림자가 없다.
+  List<BoxShadow>? get _shadow {
+    if (_pressed) return null;
+    if (widget.kind == SeniorButtonKind.card) return kCardShadow;
+    if (!widget.elevated) return null;
+    return const [
+      BoxShadow(
+        color: AppColors.pointShadow,
+        blurRadius: 14,
+        offset: Offset(0, 4),
+      ),
+    ];
   }
 
   @override
@@ -178,15 +191,7 @@ class _SeniorButtonState extends State<SeniorButton> {
               color: _background,
               borderRadius: BorderRadius.circular(_radius),
               border: _border,
-              boxShadow: widget.elevated && !_pressed
-                  ? const [
-                      BoxShadow(
-                        color: AppColors.pointShadow,
-                        blurRadius: 14,
-                        offset: Offset(0, 4),
-                      ),
-                    ]
-                  : null,
+              boxShadow: _shadow,
             ),
             child: widget.icon == null
                 ? label
@@ -216,7 +221,7 @@ class SeniorChoiceCard extends StatefulWidget {
   final String description;
   final VoidCallback? onPressed;
 
-  /// 권하는 쪽이면 파랑 채움, 아니면 연한 면 + 2px 테두리.
+  /// 권하는 쪽이면 파랑 채움, 아니면 연한 면. 테두리는 없다.
   final bool primary;
 
   const SeniorChoiceCard({
@@ -239,9 +244,9 @@ class _SeniorChoiceCardState extends State<SeniorChoiceCard> {
   Widget build(BuildContext context) {
     final primary = widget.primary;
     final bg = primary
-        ? (_pressed ? AppColors.pointPressed : AppColors.point)
+        ? (_pressed ? AppColors.pointPressed : AppColors.pointFill)
         : (_pressed ? AppColors.secondaryPressed : AppColors.secondaryFill);
-    final fg = primary ? Colors.white : AppColors.textBody;
+    final fg = primary ? Colors.white : AppColors.textPrimary;
     final subFg = primary ? AppColors.onPointMuted : AppColors.textSecondary;
 
     return Semantics(
@@ -261,10 +266,7 @@ class _SeniorChoiceCardState extends State<SeniorChoiceCard> {
           ),
           decoration: BoxDecoration(
             color: bg,
-            borderRadius: BorderRadius.circular(22),
-            border: primary
-                ? null
-                : Border.all(color: AppColors.strongLine, width: 2),
+            borderRadius: BorderRadius.circular(20),
             boxShadow: primary && !_pressed
                 ? const [
                     BoxShadow(

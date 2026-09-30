@@ -36,65 +36,65 @@ void main() {
     }
   });
 
-  testWidgets('confirmed pair uses two tiles without changing risk result', (
-    tester,
-  ) async {
-    final previousUserId = MvpSession.userId;
-    MvpSession.userId = 'synthetic-user';
-    addTearDown(() => MvpSession.userId = previousUserId);
-    tester.view.physicalSize = const Size(320, 640);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.resetPhysicalSize);
-    addTearDown(tester.view.resetDevicePixelRatio);
+  testWidgets(
+    'confirmed pair fits small screens without changing risk result',
+    (tester) async {
+      final previousUserId = MvpSession.userId;
+      MvpSession.userId = 'synthetic-user';
+      addTearDown(() => MvpSession.userId = previousUserId);
+      tester.view.physicalSize = const Size(320, 640);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
 
-    final client = MockClient((request) async {
-      expect(request.url.path, '/api/v1/guardians/users/synthetic-user');
-      return http.Response(jsonEncode([]), 200);
-    });
-    await http.runWithClient(() async {
-      await tester.pumpWidget(
-        ProviderScope(
-          overrides: [
-            medicationProvider.overrideWith(_EmptyMedicationController.new),
-          ],
-          child: MaterialApp(
-            builder: (context, child) => MediaQuery(
-              data: MediaQuery.of(
-                context,
-              ).copyWith(textScaler: const TextScaler.linear(1.5)),
-              child: child!,
-            ),
-            home: const DurAnalysisScreen(
-              initialResult: {
-                'analysis_complete': true,
-                'assessment_status': 'RISK_FOUND',
-                'has_risk': true,
-                'matches': [
-                  {
-                    'type': '병용금기',
-                    'medicine_names_a': ['합성 약 A'],
-                    'medicine_names_b': ['합성 약 B'],
-                    'easy_line_a': '가려움을 줄이는 데 쓰는 약이에요',
-                    'easy_line_b': '심장 박동을 조절하는 약이에요',
-                    'why_easy': '두 약을 함께 사용할 때 확인이 필요해요.',
-                    'source_label': '합성 시험 자료',
-                  },
-                ],
-              },
+      final client = MockClient((request) async {
+        expect(request.url.path, '/api/v1/guardians/users/synthetic-user');
+        return http.Response(jsonEncode([]), 200);
+      });
+      await http.runWithClient(() async {
+        await tester.pumpWidget(
+          ProviderScope(
+            overrides: [
+              medicationProvider.overrideWith(_EmptyMedicationController.new),
+            ],
+            child: MaterialApp(
+              builder: (context, child) => MediaQuery(
+                data: MediaQuery.of(
+                  context,
+                ).copyWith(textScaler: const TextScaler.linear(1.5)),
+                child: child!,
+              ),
+              home: const DurAnalysisScreen(
+                initialResult: {
+                  'analysis_complete': true,
+                  'assessment_status': 'RISK_FOUND',
+                  'has_risk': true,
+                  'matches': [
+                    {
+                      'type': '병용금기',
+                      'medicine_names_a': ['합성 약 A'],
+                      'medicine_names_b': ['합성 약 B'],
+                      'easy_line_a': '가려움을 줄이는 데 쓰는 약이에요',
+                      'easy_line_b': '심장 박동을 조절하는 약이에요',
+                      'why_easy': '두 약을 함께 사용할 때 확인이 필요해요.',
+                      'source_label': '합성 시험 자료',
+                    },
+                  ],
+                },
+              ),
             ),
           ),
-        ),
-      );
-      await tester.pumpAndSettle();
-      expect(find.text('합성 약 A'), findsOneWidget);
-      expect(find.text('합성 약 B'), findsOneWidget);
-      expect(find.text('+'), findsOneWidget);
-      expect(find.text('같이'), findsOneWidget);
-      expect(find.text('두 약을 함께 사용할 때 확인이 필요해요.'), findsOneWidget);
-      expect(find.text('확인했어요'), findsOneWidget);
-      expect(tester.takeException(), isNull);
-    }, () => client);
-  });
+        );
+        await tester.pumpAndSettle();
+        // 명세서 29는 약 이름을 한 문장 안에 넣는다 — 이름 칩은 두지 않는다.
+        expect(find.textContaining('합성 약 A'), findsWidgets);
+        expect(find.textContaining('합성 약 B'), findsWidgets);
+        expect(find.text('두 약을 함께 사용할 때 확인이 필요해요.'), findsOneWidget);
+        expect(find.text('확인했어요'), findsOneWidget);
+        expect(tester.takeException(), isNull);
+      }, () => client);
+    },
+  );
 
   testWidgets('incomplete result never becomes a no-risk message', (
     tester,

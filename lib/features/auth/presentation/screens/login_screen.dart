@@ -1,4 +1,3 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -64,7 +63,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.pageBg,
+      // 명세서 01: 로그인만 바탕이 흰색이다.
+      backgroundColor: AppColors.surface,
       body: SafeArea(
         child: SingleChildScrollView(
           padding: const EdgeInsets.fromLTRB(24, 32, 24, 32),
@@ -80,7 +80,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
               const SizedBox(height: 8),
               Text(
                 '약 드실 시간을 알려드리고,\n가족이 함께 챙겨드려요.',
-                style: AppText.body(size: 21, color: AppColors.point),
+                style: AppText.body(size: 21, color: AppColors.textSecondary),
               ),
               const SizedBox(height: 34),
 
@@ -112,6 +112,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
               SeniorButton(
                 label: _loggingIn ? '들어가는 중...' : '시작하기',
+                icon: Icons.play_arrow_rounded,
                 minHeight: 74,
                 fontSize: 25,
                 onPressed: _loggingIn ? null : _login,
@@ -152,19 +153,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                 ),
               ),
               const SizedBox(height: 30),
-
-              // 화면 확인용 임시 단추. 개발 빌드에서만 보인다.
-              // 확인이 끝나면 이 블록과 /demo-guardian, demo_guardian.dart 를 지운다.
-              if (kDebugMode) ...[
-                const SizedBox(height: 18),
-                SeniorButton(
-                  label: '화면 확인용 · 보호자 화면',
-                  kind: SeniorButtonKind.neutral,
-                  minHeight: 56,
-                  fontSize: 18,
-                  onPressed: () => context.push('/demo-guardian'),
-                ),
-              ],
             ],
           ),
         ),
@@ -184,7 +172,7 @@ class _FieldLabel extends StatelessWidget {
   );
 }
 
-/// 높이 66, bg 배경, 2px 테두리, 값 22px/700.
+/// 명세서 01: 338×66, #F2F2F6 채움, r13, 값 22/700. 테두리는 없다.
 class _SeniorField extends StatelessWidget {
   final TextEditingController controller;
   final String hint;
@@ -210,7 +198,7 @@ class _SeniorField extends StatelessWidget {
       // 채우는 것만으로 적는 자리가 드러난다.
       decoration: BoxDecoration(
         color: AppColors.bg,
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: BorderRadius.circular(13),
       ),
       // "보기" 같은 우측 버튼이 붙으면 오른쪽 여백을 줄여 버튼을 테두리 쪽으로
       // 붙인다. 버튼 자체의 탭 영역은 그대로 48px를 넘긴다.

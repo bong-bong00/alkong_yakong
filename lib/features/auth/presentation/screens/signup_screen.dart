@@ -468,9 +468,9 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
                         vertical: 14,
                       ),
                       decoration: BoxDecoration(
-                        color: AppColors.bg,
-                        borderRadius: BorderRadius.circular(18),
-                        border: Border.all(color: AppColors.border, width: 2),
+                        color: AppColors.surface,
+                        borderRadius: BorderRadius.circular(16),
+                        boxShadow: kCardShadow,
                       ),
                       child: Row(
                         children: [
@@ -858,15 +858,10 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
                     ),
                     decoration: BoxDecoration(
                       color: _allChecked
-                          ? AppColors.pointTint
+                          ? AppColors.pointFillSignup
                           : AppColors.surface,
                       borderRadius: BorderRadius.circular(18),
-                      border: Border.all(
-                        color: _allChecked
-                            ? AppColors.point
-                            : AppColors.strongBorder,
-                        width: 2,
-                      ),
+                      boxShadow: _allChecked ? null : kCardShadow,
                     ),
                     child: Row(
                       children: [
@@ -876,8 +871,8 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
                               : TablerIcons.circle,
                           size: 32,
                           color: _allChecked
-                              ? AppColors.point
-                              : AppColors.inactive,
+                              ? Colors.white
+                              : AppColors.textTertiary,
                         ),
                         const SizedBox(width: 12),
                         Expanded(
@@ -1091,19 +1086,16 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
             alignment: Alignment.center,
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 18),
             decoration: BoxDecoration(
-              color: selected ? AppColors.pointTint : AppColors.surface,
-              borderRadius: BorderRadius.circular(22),
-              border: Border.all(
-                color: selected ? AppColors.point : AppColors.strongBorder,
-                width: 2,
-              ),
+              color: selected ? AppColors.pointFillSignup : AppColors.surface,
+              borderRadius: BorderRadius.circular(20),
+              boxShadow: selected ? null : kCardShadow,
             ),
             child: Row(
               children: [
                 Icon(
                   role == 'guardian' ? TablerIcons.users : TablerIcons.user,
-                  size: 32,
-                  color: selected ? AppColors.point : AppColors.textTertiary,
+                  size: 34,
+                  color: selected ? Colors.white : AppColors.textPrimary,
                 ),
                 const SizedBox(width: 16),
                 Expanded(
@@ -1114,14 +1106,22 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
                       Text(
                         title,
                         style: AppText.cardTitle(
-                          size: 20,
+                          size: 25,
                           color: selected
-                              ? AppColors.point
+                              ? Colors.white
                               : AppColors.textPrimary,
                         ),
                       ),
                       const SizedBox(height: 2),
-                      Text(sub, style: AppText.caption(size: 17)),
+                      Text(
+                        sub,
+                        style: AppText.caption(
+                          size: 16.5,
+                          color: selected
+                              ? AppColors.onPointMuted
+                              : AppColors.textSecondary,
+                        ),
+                      ),
                     ],
                   ),
                 ),
@@ -1153,21 +1153,17 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
             alignment: Alignment.center,
             padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
             decoration: BoxDecoration(
-              color: selected ? AppColors.pointTint : AppColors.surface,
+              color: selected ? AppColors.pointFillSignup : AppColors.surface,
               borderRadius: BorderRadius.circular(20),
-              border: Border.all(
-                color: selected ? AppColors.point : AppColors.strongBorder,
-                width: 2,
-              ),
-              boxShadow: kCardShadow,
+              boxShadow: selected ? null : kCardShadow,
             ),
             child: Row(
               children: [
                 if (icon != null) ...[
                   Icon(
                     icon,
-                    size: 30,
-                    color: selected ? AppColors.point : AppColors.textTertiary,
+                    size: 34,
+                    color: selected ? Colors.white : AppColors.textPrimary,
                   ),
                   const SizedBox(width: 14),
                 ],
@@ -1179,15 +1175,23 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
                       Text(
                         label,
                         style: AppText.cardTitle(
-                          size: 22,
+                          size: 25,
                           color: selected
-                              ? AppColors.point
+                              ? Colors.white
                               : AppColors.textPrimary,
                         ),
                       ),
                       if (sub != null) ...[
                         const SizedBox(height: 3),
-                        Text(sub, style: AppText.caption(size: 17)),
+                        Text(
+                          sub,
+                          style: AppText.caption(
+                            size: 16.5,
+                            color: selected
+                                ? AppColors.onPointMuted
+                                : AppColors.textSecondary,
+                          ),
+                        ),
                       ],
                     ],
                   ),
@@ -1218,21 +1222,16 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
             alignment: Alignment.center,
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
             decoration: BoxDecoration(
-              color: selected ? AppColors.point : AppColors.surface,
+              color: selected ? AppColors.pointFillSignup : AppColors.surface,
               borderRadius: BorderRadius.circular(16),
-              border: Border.all(
-                color: selected
-                    ? AppColors.pointBorder
-                    : AppColors.strongBorder,
-                width: 2,
-              ),
+              boxShadow: selected ? null : kCardShadow,
             ),
             child: Text(
               label,
               textAlign: TextAlign.center,
               style: AppText.cardTitle(
-                size: 19,
-                color: selected ? Colors.white : AppColors.textBody,
+                size: 20,
+                color: selected ? Colors.white : AppColors.textPrimary,
               ),
             ),
           ),
@@ -1288,21 +1287,16 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
                   vertical: 12,
                 ),
                 decoration: BoxDecoration(
-                  color: picked ? AppColors.point : AppColors.surface,
+                  color: picked ? AppColors.pointFillSignup : AppColors.surface,
                   borderRadius: BorderRadius.circular(16),
-                  border: Border.all(
-                    color: picked
-                        ? AppColors.pointBorder
-                        : AppColors.strongBorder,
-                    width: 2,
-                  ),
+                  boxShadow: picked ? null : kCardShadow,
                 ),
                 child: Text(
                   option,
                   textAlign: TextAlign.center,
                   style: AppText.cardTitle(
-                    size: 18,
-                    color: picked ? Colors.white : AppColors.textBody,
+                    size: 19,
+                    color: picked ? Colors.white : AppColors.textPrimary,
                   ),
                 ),
               ),

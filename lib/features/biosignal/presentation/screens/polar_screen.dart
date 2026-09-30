@@ -68,7 +68,7 @@ class _PolarScreenState extends State<PolarScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  _StatusCard(connected: connected),
+                  _StatusCard(connected: connected, sensor: _sensor),
                   const SizedBox(height: 12),
                   if (connected) ...[
                     _InfoCard(sensor: _sensor),
@@ -160,7 +160,14 @@ class _PolarScreenState extends State<PolarScreen> {
 /// 큰 원 안의 하트 — 연결됐는지를 색으로 말한다.
 class _StatusCard extends StatelessWidget {
   final bool connected;
-  const _StatusCard({required this.connected});
+  final HeartSensor sensor;
+  const _StatusCard({required this.connected, required this.sensor});
+
+  /// 명세서 59: 연결됐으면 기기 이름과 배터리만 적는다.
+  /// 배터리를 아직 못 받았으면 지어내지 않고 기기 이름만 적는다.
+  String get _deviceLine => sensor.battery == null
+      ? 'Polar Verity Sense'
+      : 'Polar Verity Sense · 배터리 ${sensor.battery}%';
 
   @override
   Widget build(BuildContext context) {
@@ -192,7 +199,7 @@ class _StatusCard extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           Text(
-            connected ? '센서를 차고 계시면 약 드신 뒤 심박수를 측정합니다' : '센서를 차고 아래 버튼을 눌러주세요',
+            connected ? _deviceLine : '센서를 차고 아래 버튼을 눌러주세요',
             textAlign: TextAlign.center,
             style: AppText.body(size: 18.5, color: AppColors.textSecondary),
           ),

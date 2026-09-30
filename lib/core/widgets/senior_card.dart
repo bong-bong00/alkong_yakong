@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_tabler_icons/flutter_tabler_icons.dart';
 
 import '../constants/app_colors.dart';
 import '../theme/app_typography.dart';
@@ -9,14 +8,15 @@ import '../theme/app_typography.dart';
 /// 촘촘해 보이고, 주의를 뜻하는 색 테두리와 헷갈린다.
 /// 강조가 필요한 카드만 3px 포인트/위험색 테두리를 두른다.
 
-/// 흰 배경 위에서 카드를 바닥에서 띄우는 그림자.
-/// 한 겹만 쓴다 — 여러 겹을 쌓으면 카드가 떠 있는 게 아니라 흐려 보인다.
-/// 흰 카드를 바닥에서 띄우는 그림자.
-///
-/// 바탕도 카드도 흰색이라 색으로는 경계가 서지 않는다. 사방으로 퍼뜨리지
-/// 않고 오른쪽 아래로만 떨어뜨려야 칸이 들린 것처럼 읽힌다.
+/// 카드 그림자. 명세서 0장이 준 두 겹을 그대로 쓴다.
+/// CSS `0 1px 2px rgba(17,17,20,.05), 0 2px 8px rgba(17,17,20,.04)`.
 const List<BoxShadow> kCardShadow = [
-  BoxShadow(color: AppColors.cardShadow, offset: Offset(5, 5), blurRadius: 14),
+  BoxShadow(color: AppColors.cardShadow, offset: Offset(0, 1), blurRadius: 1),
+  BoxShadow(
+    color: AppColors.cardShadowWide,
+    offset: Offset(0, 2),
+    blurRadius: 6,
+  ),
 ];
 
 /// 파란 면으로 채운 칸에만 쓰는 그림자. 같은 파랑을 옅게 깔아
@@ -412,7 +412,8 @@ class LabelValueRow extends StatelessWidget {
   }
 }
 
-/// 약 사진 자리. 사진이 붙기 전까지는 알약 아이콘으로 둔다.
+/// 약 사진 자리 (명세서 45). #F2F2F6 동그라미 안에 "사진" 한 마디.
+/// 테두리는 두르지 않는다.
 ///
 /// 홈 카드와 내 약 목록이 **같은 생김새**를 써야 같은 약으로 읽힌다.
 class PillPhoto extends StatelessWidget {
@@ -427,15 +428,17 @@ class PillPhoto extends StatelessWidget {
         width: size,
         height: size,
         alignment: Alignment.center,
-        decoration: BoxDecoration(
+        decoration: const BoxDecoration(
           color: AppColors.bg,
           shape: BoxShape.circle,
-          border: Border.all(color: AppColors.border, width: 2),
         ),
-        child: Icon(
-          TablerIcons.pill,
-          size: size * 0.45,
-          color: AppColors.inactive,
+        child: Text(
+          '사진',
+          style: AppText.caption(
+            size: 13,
+            color: AppColors.textTertiary,
+            weight: FontWeight.w700,
+          ),
         ),
       ),
     );

@@ -9,6 +9,7 @@ import 'package:alkong_yakong/features/biosignal/domain/heart_data.dart';
 import 'package:alkong_yakong/features/auth/presentation/screens/signup_screen.dart';
 import 'package:alkong_yakong/features/dashboard/presentation/screens/month_calendar_screen.dart';
 import 'package:alkong_yakong/features/dur_analysis/presentation/screens/dur_analysis_screen.dart';
+import 'package:alkong_yakong/features/easy_flow/presentation/easy_dose_flow.dart';
 import 'package:alkong_yakong/features/guardian/presentation/screens/care_family_screen.dart';
 import 'package:alkong_yakong/features/guardian/presentation/screens/care_manage_screen.dart';
 import 'package:alkong_yakong/features/guardian/presentation/screens/care_patient_screen.dart';
@@ -168,6 +169,8 @@ void main() {
     '약 넣기 방법 고르기 (07)': () => AddMedicineScreen(onPick: (_) {}),
     '손으로 적기 (10)': () => const ManualMedicineScreen(),
     '내 약 목록 (20)': () => const MyMedicinesScreen(),
+    // 쉬운 화면 복약 한 바퀴의 첫 걸음 (명세서 76).
+    '쉬운 · 약 드실 시간 (76)': () => const EasyDoseFlow(),
     '약 설명 (21)': () => const DrugDetailScreen(medicineCode: '200701021'),
     'AI 약사 상담 (22)': () => const PharmacistChatScreen(),
     // 심박 화면은 서버에서 읽은 기록만 그린다. 채운·빈·실패 세 모양을 다 본다.
