@@ -29,7 +29,10 @@ class MyMedicinesScreen extends ConsumerWidget {
 
     return Scaffold(
       backgroundColor: AppColors.bgTinted,
-      body: Column(
+      // 탭으로 열면 머리띠가 없다. 제목이 상태바에 붙지 않게 여기서 피한다.
+      body: SafeArea(
+        bottom: false,
+        child: Column(
         children: [
           if (!asTab)
             SeniorBackHeader(title: '내 약 목록', onBack: () => context.pop()),
@@ -51,6 +54,7 @@ class MyMedicinesScreen extends ConsumerWidget {
             ),
           ),
         ],
+        ),
       ),
     );
   }
@@ -131,7 +135,7 @@ class _MedicineList extends StatelessWidget {
     final active = items.where((item) => item.status == 'active').toList();
     final past = items.where((item) => item.status != 'active').toList();
     return ListView(
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 28),
+      padding: const EdgeInsets.fromLTRB(16, 18, 16, 28),
       children: [
         if (asTab) ...[
           Padding(

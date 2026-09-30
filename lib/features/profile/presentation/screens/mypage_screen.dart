@@ -84,11 +84,14 @@ class _MyPageScreenState extends ConsumerState<MyPageScreen> {
 
     return Container(
       color: AppColors.bgTinted,
-      child: Column(
+      // 탭으로 열려 머리띠가 없다. 이름이 상태바에 붙지 않게 피한다.
+      child: SafeArea(
+        bottom: false,
+        child: Column(
       children: [
         Expanded(
           child: SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(16, 14, 16, 28),
+            padding: const EdgeInsets.fromLTRB(16, 20, 16, 28),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
@@ -246,6 +249,7 @@ class _MyPageScreenState extends ConsumerState<MyPageScreen> {
                         child: _WideTile(
                           icon: TablerIcons.logout,
                           label: '로그아웃·탈퇴',
+                          danger: true,
                           onTap: () => Navigator.of(context).push(
                             MaterialPageRoute<void>(
                               builder: (_) => const AccountScreen(),
@@ -263,6 +267,7 @@ class _MyPageScreenState extends ConsumerState<MyPageScreen> {
           ),
         ),
       ],
+        ),
       ),
     );
   }
@@ -272,11 +277,16 @@ class _MyPageScreenState extends ConsumerState<MyPageScreen> {
 class _WideTile extends StatelessWidget {
   final IconData icon;
   final String label;
+
+  /// 되돌리기 어려운 자리(로그아웃·탈퇴)는 연한 빨강 면으로 둔다.
+  /// 누르기 전에 무게가 다르다는 것을 색으로 먼저 알린다.
+  final bool danger;
   final VoidCallback onTap;
 
   const _WideTile({
     required this.icon,
     required this.label,
+    this.danger = false,
     required this.onTap,
   });
 
@@ -293,21 +303,28 @@ class _WideTile extends StatelessWidget {
             alignment: Alignment.center,
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
             decoration: BoxDecoration(
-              color: AppColors.surface,
+              color: danger ? AppColors.dangerBg : AppColors.surface,
               borderRadius: BorderRadius.circular(20),
-              boxShadow: kCardShadow,
+              boxShadow: danger ? null : kCardShadow,
             ),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.center,
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(icon, size: 24, color: AppColors.textPrimary),
+                Icon(
+                  icon,
+                  size: 24,
+                  color: danger ? AppColors.danger : AppColors.textPrimary,
+                ),
                 const SizedBox(width: 8),
                 Flexible(
                   child: Text(
                     label,
                     textAlign: TextAlign.center,
-                    style: AppText.cardTitle(size: 19),
+                    style: AppText.cardTitle(
+                      size: 19,
+                      color: danger ? AppColors.danger : AppColors.textPrimary,
+                    ),
                   ),
                 ),
               ],

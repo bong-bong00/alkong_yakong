@@ -69,7 +69,10 @@ class MedicationRecordScreen extends ConsumerWidget {
 
     return Container(
       color: AppColors.bgTinted,
-      child: Column(
+      // 제목이 본문에 있으므로 상태바를 여기서 피한다.
+      child: SafeArea(
+        bottom: false,
+        child: Column(
       children: [
         if (showBack)
           SeniorBackHeader(title: title)
@@ -78,7 +81,7 @@ class MedicationRecordScreen extends ConsumerWidget {
           const SizedBox.shrink(),
         Expanded(
           child: SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(16, 14, 16, 28),
+            padding: const EdgeInsets.fromLTRB(16, 20, 16, 28),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
@@ -174,6 +177,7 @@ class MedicationRecordScreen extends ConsumerWidget {
           ),
         ),
       ],
+        ),
       ),
     );
   }
