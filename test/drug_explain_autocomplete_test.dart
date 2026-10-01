@@ -615,6 +615,10 @@ void main() {
     expect(chatBody?['intent'], 'combination');
     expect(chatBody?.containsKey('selected_medicine'), isFalse);
     expect(chatBody?.containsKey('current_medicines'), isFalse);
+    expect(chatBody?['selected_medicines'], [
+      {'medicine_code': '111', 'product_name': '첫번째약정'},
+      {'medicine_code': '222', 'product_name': '두번째약정'},
+    ]);
     expect(chatBody?['message'], contains('첫번째약정'));
     expect(chatBody?['message'], contains('두번째약정'));
     expect(chatBody?['message'], isNot(contains('선택안한약정')));
@@ -674,6 +678,10 @@ void main() {
 
     expect(chatBody?['message'], contains('등록약정'));
     expect(chatBody?['message'], contains('검색약정'));
+    expect(chatBody?['selected_medicines'], [
+      {'medicine_code': '111', 'product_name': '등록약정'},
+      {'medicine_code': '222', 'product_name': '검색약정'},
+    ]);
     expect(chatBody?['temporary_medicines'], [
       {'medicine_code': '222', 'product_name': '검색약정'},
     ]);

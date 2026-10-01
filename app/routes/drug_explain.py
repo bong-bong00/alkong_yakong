@@ -25,6 +25,9 @@ def chat_with_pharmacist(request: DrugExplainChatRequest):
             if request.selected_medicine is not None
             else None
         ),
+        selected_medicines=[
+            medicine.model_dump() for medicine in request.selected_medicines
+        ],
         temporary_medicines=[
             medicine.model_dump() for medicine in request.temporary_medicines
         ],

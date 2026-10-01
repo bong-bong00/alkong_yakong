@@ -199,6 +199,10 @@ class DrugExplainChatRequest(BaseModel):
     user_id: str
     message: str
     selected_medicine: Optional[SelectedMedicine] = None
+    selected_medicines: List[SelectedMedicine] = Field(
+        default_factory=list,
+        max_length=20,
+    )
     temporary_medicines: List[SelectedMedicine] = Field(
         default_factory=list,
         max_length=20,

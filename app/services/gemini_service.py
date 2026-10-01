@@ -981,11 +981,46 @@ def _merge_temporary_medicines(
     }
 
 
+def _selected_medicines_context(
+    selected_medicines: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """Build an exact AI-screen selection scope without loading all current medicines."""
+
+    items: list[dict[str, str]] = []
+    names_by_code: dict[str, str] = {}
+    incomplete = len(selected_medicines) < 2
+    for medicine in selected_medicines:
+        if not isinstance(medicine, dict):
+            incomplete = True
+            continue
+        code = str(medicine.get("medicine_code") or "").strip()
+        name = str(medicine.get("product_name") or "").strip()
+        if not code or not name:
+            incomplete = True
+            continue
+        previous_name = names_by_code.get(code)
+        if previous_name is not None:
+            if _compact_product_name(previous_name) != _compact_product_name(name):
+                incomplete = True
+            continue
+        names_by_code[code] = name
+        items.append({"medicine_code": code, "product_name": name})
+
+    if len(items) != len(selected_medicines):
+        incomplete = True
+    return {
+        "status": "incomplete" if incomplete else "current",
+        "items": items,
+        "reason": "medicine_identity_incomplete" if incomplete else None,
+    }
+
+
 def generate_chat_response(
     message: str,
     *,
     user_id: str = "",
     selected_medicine: dict[str, Any] | None = None,
+    selected_medicines: list[dict[str, Any]] | None = None,
     temporary_medicines: list[dict[str, Any]] | None = None,
     intent: str | None = None,
 ) -> str:
@@ -1030,6 +1065,9 @@ def generate_chat_response(
             for marker in ("현재먹는약전체", "복용약전체", "약전체", "약마다")
         )
     )
+    selected_medicines_question = (
+        selected_medicine is None and len(selected_medicines or []) >= 2
+    )
     unavailable_reply = (
         "현재 확인된 식약처 정보만으로는 답변하기 어려워요. "
         "현재 복용약으로 다시 확인하고, 복용 중인 약 전체를 의사 또는 약사에게 알려 주세요."
@@ -1063,16 +1101,21 @@ def generate_chat_response(
         all_medicines_context = None
         verified_all_medicine_names: list[str] = []
         unverified_all_medicine_names: list[str] = []
-        if all_medicines_question:
+        if all_medicines_question or selected_medicines_question:
             from app.services.medication_feature_dur_client import (
                 load_remote_current_medicines,
             )
 
-            all_medicines_context = load_remote_current_medicines(user_id=user_id)
-            all_medicines_context = _merge_temporary_medicines(
-                all_medicines_context,
-                temporary_medicines or [],
-            )
+            if selected_medicines_question:
+                all_medicines_context = _selected_medicines_context(
+                    selected_medicines or []
+                )
+            else:
+                all_medicines_context = load_remote_current_medicines(user_id=user_id)
+                all_medicines_context = _merge_temporary_medicines(
+                    all_medicines_context,
+                    temporary_medicines or [],
+                )
             all_status = all_medicines_context.get("status")
             all_items = all_medicines_context.get("items") or []
             if all_status == "empty":
@@ -1081,6 +1124,11 @@ def generate_chat_response(
                 return (
                     "현재 복용약 목록을 불러오지 못했어요. 잠시 후 다시 시도해 주세요. "
                     "복용 전 의사나 약사와 상담해 주세요."
+                )
+            if selected_medicines_question and all_status == "incomplete":
+                return (
+                    "선택한 약 중 공식 제품명과 코드를 확인하지 못한 약이 있어 "
+                    "검사를 끝까지 진행하지 못했어요. 약을 다시 선택해 주세요."
                 )
             if not all_items:
                 return (
@@ -1246,31 +1294,35 @@ def generate_chat_response(
 
         with genai.Client(api_key=GEMINI_API_KEY) as client:
             # Step 0 & 1: 오타 교정 및 약품명 추출 (추론 강화)
-            extract_prompt = (
-                "당신은 제약 전문가입니다. 사용자의 질문에서 약품명이나 성분명을 추출해야 합니다.\n"
-                "사용자가 약품명을 잘못 입력했거나(오타), 속어/줄임말을 사용했을 수 있습니다. "
-                "의약품 정보는 아주 작은 오타로도 검색이 안 되거나 잘못된 결과가 나올 수 있으므로, "
-                "반드시 머릿속으로 다음 3번의 검증(추론)을 거쳐 가장 정확한 명칭을 도출하세요:\n\n"
-                "1. 원본 확인: 사용자가 입력한 단어 그대로 인식\n"
-                "2. 오타 및 유사도 검증: 해당 단어가 흔한 오타인지, 혹은 시판되는 비슷한 이름의 정식 약품이 있는지 분석 (예: 타이래놀 -> 타이레놀, 후시딘 -> 부채표후시딘연고)\n"
-                "3. 최종 확정: 식약처 DB에 검색될 확률이 가장 높은 '정확한 정식 제품명' 또는 '표준 성분명'으로 교정\n\n"
-                "3단계 검증을 모두 마친 최종 확정된 약품명들만 'drug_names' 배열에 담아 JSON으로 반환하세요. 없으면 빈 배열을 반환하세요.\n\n"
-                f"질문: {message}"
-            )
-            extract_response = _generate_content_with_retry(
-                client,
-                model=GEMINI_MODEL,
-                contents=extract_prompt,
-                config={
-                    "temperature": 0.2,
-                    "max_output_tokens": 512,
-                    "response_mime_type": "application/json",
-                    "response_json_schema": CHAT_EXTRACTION_SCHEMA,
-                    "thinking_config": {"thinking_budget": 0},
-                },
-            )
-
-            drug_names = _extract_drug_names(extract_response)
+            if selected_medicines_question:
+                # The client already supplied exact code/name pairs. Re-extracting names
+                # from the natural-language prompt can mutate verified product names.
+                drug_names = []
+            else:
+                extract_prompt = (
+                    "당신은 제약 전문가입니다. 사용자의 질문에서 약품명이나 성분명을 추출해야 합니다.\n"
+                    "사용자가 약품명을 잘못 입력했거나(오타), 속어/줄임말을 사용했을 수 있습니다. "
+                    "의약품 정보는 아주 작은 오타로도 검색이 안 되거나 잘못된 결과가 나올 수 있으므로, "
+                    "반드시 머릿속으로 다음 3번의 검증(추론)을 거쳐 가장 정확한 명칭을 도출하세요:\n\n"
+                    "1. 원본 확인: 사용자가 입력한 단어 그대로 인식\n"
+                    "2. 오타 및 유사도 검증: 해당 단어가 흔한 오타인지, 혹은 시판되는 비슷한 이름의 정식 약품이 있는지 분석 (예: 타이래놀 -> 타이레놀, 후시딘 -> 부채표후시딘연고)\n"
+                    "3. 최종 확정: 식약처 DB에 검색될 확률이 가장 높은 '정확한 정식 제품명' 또는 '표준 성분명'으로 교정\n\n"
+                    "3단계 검증을 모두 마친 최종 확정된 약품명들만 'drug_names' 배열에 담아 JSON으로 반환하세요. 없으면 빈 배열을 반환하세요.\n\n"
+                    f"질문: {message}"
+                )
+                extract_response = _generate_content_with_retry(
+                    client,
+                    model=GEMINI_MODEL,
+                    contents=extract_prompt,
+                    config={
+                        "temperature": 0.2,
+                        "max_output_tokens": 512,
+                        "response_mime_type": "application/json",
+                        "response_json_schema": CHAT_EXTRACTION_SCHEMA,
+                        "thinking_config": {"thinking_budget": 0},
+                    },
+                )
+                drug_names = _extract_drug_names(extract_response)
             logger.warning(
                 "Gemini extraction_result drug_name_count=%d",
                 len(drug_names),
@@ -1372,13 +1424,14 @@ def generate_chat_response(
             ]
             official_contexts = [item for item in official_contexts if item]
             if "combination" in intents or (
-                all_medicines_question and "duplicate" in intents
+                (all_medicines_question or selected_medicines_question)
+                and "duplicate" in intents
             ):
                 from app.services.medication_feature_dur_client import (
                     load_remote_combination_context,
                 )
 
-                explicit_question_scope = (
+                explicit_question_scope = selected_medicines_question or (
                     selected_medicine is None
                     and not all_medicines_question
                     and len(question_official_medicines) >= 2
@@ -1391,11 +1444,18 @@ def generate_chat_response(
                     "additional_medicines": (
                         temporary_medicines or []
                         if all_medicines_question
-                        else question_official_medicines
+                        else (
+                            selected_medicines or []
+                            if selected_medicines_question
+                            else question_official_medicines
+                        )
                     ),
                     "requested_types": (
                         {"중복성분"}
-                        if all_medicines_question and "duplicate" in intents
+                        if (
+                            all_medicines_question or selected_medicines_question
+                        )
+                        and "duplicate" in intents
                         else {"병용금기", "중복성분", "효능군중복"}
                     ),
                 }
@@ -1404,7 +1464,9 @@ def generate_chat_response(
                 dur_result = load_remote_combination_context(
                     **dur_request,
                 )
-                if all_medicines_question and "duplicate" in intents:
+                if (
+                    all_medicines_question or selected_medicines_question
+                ) and "duplicate" in intents:
                     duplicate_items = [
                         item
                         for item in dur_result.get("items", [])
@@ -1438,7 +1500,7 @@ def generate_chat_response(
                     (
                         "combination" in intents
                         or (
-                            all_medicines_question
+                            (all_medicines_question or selected_medicines_question)
                             and "duplicate" in intents
                         )
                     )
@@ -1465,7 +1527,7 @@ def generate_chat_response(
                     selected_medicine=selected_medicine,
                 )
             if not official_contexts and not dur_result["items"]:
-                if all_medicines_question:
+                if all_medicines_question or selected_medicines_question:
                     notice = _all_medicine_unverified_notice(
                         unverified_names=unverified_all_medicine_names,
                         identity_incomplete=(
@@ -1510,21 +1572,36 @@ def generate_chat_response(
                 official_contexts=official_contexts,
                 dur_result=prompt_dur_result,
             )
-            if all_medicines_question:
+            if all_medicines_question or selected_medicines_question:
                 verified_count = len(official_contexts)
                 total_count = len((all_medicines_context or {}).get("items") or [])
+                scope_label = (
+                    "약 데이터 서버의 현재 복용약"
+                    if all_medicines_question
+                    else "사용자가 선택한 약"
+                )
+                answer_scope_rule = (
+                    '약 전체 질문을 "선택한 약"이나 단일 제품만 확인한 것처럼 표현하지 마세요.'
+                    if all_medicines_question
+                    else "복수 선택 질문을 현재 복용약 전체를 확인한 것처럼 표현하지 마세요."
+                )
+                answer_detail_rule = (
+                    "약 전체 답변은 공식정보를 확인한 약마다 핵심 1~2문장만 쓰고, "
+                    if all_medicines_question
+                    else "복수 선택 답변은 공식정보를 확인한 약마다 핵심 1~2문장만 쓰고, "
+                )
                 prompt += (
                     "\n\n[답변 작성 규칙 - 이 제목과 규칙은 사용자에게 출력하지 마세요]\n"
-                    f"약 데이터 서버의 현재 복용약 {total_count}개 중 "
+                    f"{scope_label} {total_count}개 중 "
                     f"공식정보가 정확히 확인된 약은 {verified_count}개입니다.\n"
                     "공식정보를 확인하지 못한 약의 이름이나 상세정보는 답변에 쓰지 마세요.\n"
                     "공식정보를 확인한 약은 각 제품명을 한 번 이상 직접 쓰고, 한 제품의 정보를 "
                     "다른 제품에 적용하거나 제품을 조용히 누락하지 마세요.\n"
-                    "약 전체 답변은 공식정보를 확인한 약마다 핵심 1~2문장만 쓰고, "
+                    f"{answer_detail_rule}"
                     "공통 안내는 한 번만 쓰세요. 약이 많아도 분량을 맞추려고 특정 약을 누락하지 마세요. "
                     "단, 중요한 숫자·금지·연령·예외 조건과 확인하지 못한 약·검사 범위는 "
                     "줄이거나 의미를 약하게 만들지 마세요.\n"
-                    '약 전체 질문을 "선택한 약"이나 단일 제품만 확인한 것처럼 표현하지 마세요.'
+                    f"{answer_scope_rule}"
                 )
                 if verified_all_medicine_names:
                     prompt += (
@@ -1533,7 +1610,9 @@ def generate_chat_response(
                     )
                 if unverified_all_medicine_names:
                     prompt += (
-                        "\n공식정보를 확인하지 못한 등록 약이 있으므로, 그 약의 상세정보를 추측하지 마세요."
+                        f"\n공식정보를 확인하지 못한 "
+                        f"{'등록 약' if all_medicines_question else '선택 약'}이 있으므로, "
+                        "그 약의 상세정보를 추측하지 마세요."
                     )
                 if (all_medicines_context or {}).get("status") == "incomplete":
                     prompt += (
@@ -1543,12 +1622,12 @@ def generate_chat_response(
 
             required_names = (
                 tuple(verified_all_medicine_names)
-                if all_medicines_question
+                if (all_medicines_question or selected_medicines_question)
                 and bool(intents & {"overview", "precautions"})
                 else ()
             )
             forbidden_phrases: tuple[str, ...] = ()
-            if all_medicines_question:
+            if all_medicines_question or selected_medicines_question:
                 forbidden_phrases = (
                     "답변 작성 규칙",
                     "현재 복용약 확인 범위",
@@ -1559,7 +1638,9 @@ def generate_chat_response(
                         if name and name != "이름을 확인하지 못한 약"
                     ),
                 )
-                if bool(intents & {"combination", "duplicate"}):
+                if all_medicines_question and bool(
+                    intents & {"combination", "duplicate"}
+                ):
                     forbidden_phrases += ("선택한 약",)
             reply = _generate_complete_chat_reply(
                 client,

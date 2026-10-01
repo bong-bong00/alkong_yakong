@@ -574,6 +574,17 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
           'product_name': selectedOfficial.itemName,
         };
       }
+      if (_hasMultipleMedicines) {
+        body['selected_medicines'] = _selectedMedicines
+            .map((name) {
+              final official = _officialMedicinesByName[name];
+              return {
+                'medicine_code': official?.itemSeq ?? '',
+                'product_name': official?.itemName ?? name,
+              };
+            })
+            .toList(growable: false);
+      }
       final temporaryMedicines = _isAllMedicinesSelected
           ? _temporaryMedicinesByCode.values
           : _temporaryMedicinesByCode.values.where(
