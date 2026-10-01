@@ -61,9 +61,9 @@ def fetch_e_drug_info(
         items = _extract_items(payload)
         if not items:
             logger.info(
-                "e약은요 returned no result for code=%s name=%s",
-                medicine_code,
-                medicine_name,
+                "e약은요 returned no result code_supplied=%s name_supplied=%s",
+                bool(medicine_code),
+                bool(medicine_name),
             )
             return None
         return _normalize_item(items[0])

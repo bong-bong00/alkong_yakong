@@ -41,6 +41,8 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
   String? _selectedKeyword;
   String? _selectedMedicine;
   _DrugSearchCandidate? _selectedOfficialMedicine;
+  final List<String> _selectedMedicines = [];
+  final Map<String, _DrugSearchCandidate> _temporaryMedicinesByCode = {};
   final Map<String, _DrugSearchCandidate> _officialMedicinesByName = {};
   final List<Map<String, String>> _currentMedicines = [];
   String? _medicineLoadError;
@@ -140,7 +142,9 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
     final intent = keyword['intent'];
     if (label == null || prompt == null || intent == null) return;
 
-    final medicine = _selectedMedicine;
+    final medicine = _selectedMedicines.length > 1
+        ? _selectedMedicines.join(', ')
+        : _selectedMedicine;
     if (medicine == null || medicine.isEmpty) {
       showSeniorSnackbar(context, '먼저 궁금한 약을 선택해주세요.', error: true);
       return;
@@ -287,6 +291,10 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
       for (final medicine in response['medicines'] as List) {
         addCurrentMedicine(medicine);
       }
+      for (final medicine in _temporaryMedicinesByCode.values) {
+        if (!names.contains(medicine.itemName)) names.add(medicine.itemName);
+        officialMedicines[medicine.itemName] = medicine;
+      }
       if (!mounted) return;
       setState(() {
         _medicines
@@ -295,7 +303,9 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
         _officialMedicinesByName
           ..clear()
           ..addAll(officialMedicines);
-        if (_selectedMedicine == null && names.length == 1) {
+        if (_selectedMedicine == null &&
+            _selectedMedicines.isEmpty &&
+            names.length == 1) {
           _selectedMedicine = names.first;
         }
         _selectedOfficialMedicine = _officialMedicinesByName[_selectedMedicine];
@@ -331,7 +341,7 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
   Future<void> _pickSubject() async {
     if (_isLoading) return;
     // 첫 칸은 "약 전체". 그 뒤로 내가 먹는 약이 온다.
-    final options = <String>['약 전체', ..._medicines];
+    final options = <String>['약 전체', ..._medicines, '여러 약 선택'];
     final current = _selectedMedicine == null
         ? 0
         : options.indexOf(_selectedMedicine!);
@@ -359,9 +369,14 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
       await _enterOtherMedicine();
       return;
     }
+    if (picked == options.length - 1) {
+      await _pickMedicines();
+      return;
+    }
     final name = picked == 0 ? null : options[picked];
     setState(() {
       _selectedMedicine = name;
+      _selectedMedicines.clear();
       _selectedOfficialMedicine = name == null
           ? null
           : _officialMedicinesByName[name];
@@ -369,10 +384,36 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
     });
   }
 
+  Future<void> _pickMedicines() async {
+    final result = await SeniorSheet.show<_MedicineSelectionResult>(
+      context: context,
+      builder: (_) => _MedicineSelectionSheet(
+        medicines: _medicines,
+        selectedMedicines: _selectedMedicines.isNotEmpty
+            ? _selectedMedicines
+            : [?_selectedMedicine],
+      ),
+    );
+    if (!mounted || result == null) return;
+    setState(() {
+      _selectedMedicines
+        ..clear()
+        ..addAll(result.medicines);
+      _selectedMedicine = result.medicines.length == 1
+          ? result.medicines.first
+          : null;
+      _selectedOfficialMedicine = _officialMedicinesByName[_selectedMedicine];
+      _selectedKeyword = null;
+    });
+    if (result.searchOther) await _enterOtherMedicine(addToSelection: true);
+  }
+
   Future<void> _askSuggestion(Map<String, String> suggestion) async {
     if (_isLoading) return;
     // 약을 아직 안 골랐으면 "제가 먹는 약"으로 물어본다. 되묻지 않는다.
-    final medicine = _selectedMedicine?.trim();
+    final medicine = _selectedMedicines.length > 1
+        ? _selectedMedicines.join(', ')
+        : _selectedMedicine?.trim();
     final subject = (medicine == null || medicine.isEmpty)
         ? '제가 먹는 약'
         : medicine;
@@ -382,7 +423,7 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
     );
   }
 
-  Future<void> _enterOtherMedicine() async {
+  Future<void> _enterOtherMedicine({bool addToSelection = false}) async {
     final medicine = await SeniorSheet.show<_DrugSearchCandidate>(
       context: context,
       builder: (_) => _OtherMedicineDialog(apiClient: _chatApiClient),
@@ -393,8 +434,18 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
         _medicines.add(medicine.itemName);
       }
       _officialMedicinesByName[medicine.itemName] = medicine;
-      _selectedMedicine = medicine.itemName;
-      _selectedOfficialMedicine = medicine;
+      final code = medicine.itemSeq;
+      if (code != null && code.isNotEmpty) {
+        _temporaryMedicinesByCode[code] = medicine;
+      }
+      if (!addToSelection) _selectedMedicines.clear();
+      if (!_selectedMedicines.contains(medicine.itemName)) {
+        _selectedMedicines.add(medicine.itemName);
+      }
+      _selectedMedicine = _selectedMedicines.length == 1
+          ? medicine.itemName
+          : null;
+      _selectedOfficialMedicine = _officialMedicinesByName[_selectedMedicine];
       _selectedKeyword = null;
     });
   }
@@ -446,6 +497,34 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
           'medicine_code': selectedOfficial!.itemSeq,
           'product_name': selectedOfficial.itemName,
         };
+      }
+      if (_selectedMedicines.length > 1) {
+        body['selected_medicines'] = _selectedMedicines
+            .map((name) {
+              final official = _officialMedicinesByName[name];
+              return {
+                'medicine_code': official?.itemSeq ?? '',
+                'product_name': official?.itemName ?? name,
+              };
+            })
+            .toList(growable: false);
+      }
+      final isAll = _selectedMedicine == null && _selectedMedicines.isEmpty;
+      final temporaryMedicines = _temporaryMedicinesByCode.values.where(
+        (medicine) =>
+            isAll ||
+            _selectedMedicines.contains(medicine.itemName) ||
+            _selectedMedicine == medicine.itemName,
+      );
+      if (temporaryMedicines.isNotEmpty) {
+        body['temporary_medicines'] = temporaryMedicines
+            .map(
+              (medicine) => {
+                'medicine_code': medicine.itemSeq,
+                'product_name': medicine.itemName,
+              },
+            )
+            .toList(growable: false);
       }
       final response = await _chatApiClient.post(
         '/api/v1/drug-explain/chat', // 가상의 챗봇 엔드포인트
@@ -538,7 +617,9 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
   Widget build(BuildContext context) {
     // 아직 아무것도 안 물어봤을 때만 예시 질문을 보여준다.
     final showSuggestions = _messages.length <= 1;
-    final subject = _selectedMedicine?.trim();
+    final subject = _selectedMedicines.length > 1
+        ? _selectedMedicines.join(', ')
+        : _selectedMedicine?.trim();
 
     return Scaffold(
       backgroundColor: AppColors.bg,
@@ -748,6 +829,100 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
           ],
         ),
       ),
+    );
+  }
+}
+
+class _MedicineSelectionResult {
+  final List<String> medicines;
+  final bool searchOther;
+
+  const _MedicineSelectionResult({
+    this.medicines = const [],
+    this.searchOther = false,
+  });
+}
+
+class _MedicineSelectionSheet extends StatefulWidget {
+  final List<String> medicines;
+  final List<String> selectedMedicines;
+
+  const _MedicineSelectionSheet({
+    required this.medicines,
+    required this.selectedMedicines,
+  });
+
+  @override
+  State<_MedicineSelectionSheet> createState() =>
+      _MedicineSelectionSheetState();
+}
+
+class _MedicineSelectionSheetState extends State<_MedicineSelectionSheet> {
+  late final Set<String> _selected = widget.selectedMedicines.toSet();
+
+  @override
+  Widget build(BuildContext context) {
+    return SeniorSheet(
+      title: '약 이름을 선택해 주세요',
+      body: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            '여러 약을 함께 확인하려면 두 개 이상 선택하세요.',
+            style: AppText.body(size: 18, color: AppColors.textBody),
+          ),
+          const SizedBox(height: 10),
+          for (final medicine in widget.medicines)
+            Material(
+              color: Colors.transparent,
+              child: CheckboxListTile(
+                key: ValueKey('medicine-selection-$medicine'),
+                value: _selected.contains(medicine),
+                onChanged: (checked) {
+                  setState(() {
+                    if (checked == true) {
+                      _selected.add(medicine);
+                    } else {
+                      _selected.remove(medicine);
+                    }
+                  });
+                },
+                title: Text(medicine, style: AppText.label(size: 19)),
+                activeColor: AppColors.point,
+                checkColor: Colors.white,
+                controlAffinity: ListTileControlAffinity.leading,
+                contentPadding: EdgeInsets.zero,
+              ),
+            ),
+          if (widget.medicines.isEmpty)
+            Text(
+              '목록에 약이 없습니다. 다른 약을 검색해 주세요.',
+              style: AppText.caption(size: 17),
+            ),
+        ],
+      ),
+      actions: [
+        SeniorButton(
+          label: _selected.isEmpty ? '약을 선택해 주세요' : '${_selected.length}개 선택',
+          onPressed: _selected.isEmpty
+              ? null
+              : () => Navigator.of(
+                  context,
+                ).pop(_MedicineSelectionResult(medicines: _selected.toList())),
+        ),
+        SeniorButton(
+          label: '다른 약 검색하기',
+          kind: SeniorButtonKind.secondary,
+          minHeight: 60,
+          fontSize: 19,
+          onPressed: () => Navigator.of(context).pop(
+            _MedicineSelectionResult(
+              medicines: _selected.toList(),
+              searchOther: true,
+            ),
+          ),
+        ),
+      ],
     );
   }
 }
