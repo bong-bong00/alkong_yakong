@@ -258,5 +258,25 @@ void main() {
     expect(sent.last.containsKey('selected_medicines'), isFalse);
     expect(sent.last['temporary_medicines'][0]['medicine_code'], 'TEMP-1');
     expect(sent.last['user_id'], 'scope-user');
+    await pick(tester, '약 이름 선택');
+    expect(find.text('함께 확인할 약을 선택해 주세요.'), findsOneWidget);
+    expect(find.text('등록된 약'), findsNWidgets(2)); // 범례와 등록약 행
+    expect(find.text('검색한 약'), findsNWidgets(2)); // 범례와 검색약 행
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('medicine-selection-등록약정')),
+        matching: find.text('등록된 약'),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('medicine-selection-검색약정')),
+        matching: find.text('검색한 약'),
+      ),
+      findsOneWidget,
+    );
+    expect(find.text('상담용으로 추가했어요'), findsNothing);
+    expect(tester.takeException(), isNull);
   });
 }

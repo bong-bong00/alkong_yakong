@@ -46,6 +46,7 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
   final Map<String, _DrugSearchCandidate> _officialMedicinesByName = {};
   final Set<String> _confirmedOfficialProductNames = {};
   final Map<String, _DrugSearchCandidate> _temporaryMedicinesByCode = {};
+  final Set<String> _registeredMedicineCodes = {};
   String? _medicineLoadError;
   final List<String> _medicines = [];
   final List<Map<String, dynamic>> _messages = [];
@@ -374,11 +375,15 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
           );
         }
       }
+      final registeredCodes = namesByCode.keys.toSet();
       for (final medicine in _temporaryMedicinesByCode.values) {
         addMedicine(medicine.itemName, medicine.itemSeq);
       }
       if (!mounted) return;
       setState(() {
+        _registeredMedicineCodes
+          ..clear()
+          ..addAll(registeredCodes);
         _medicines
           ..clear()
           ..addAll(names);
@@ -456,6 +461,12 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
       builder: (_) => _MedicineSelectionSheet(
         medicines: _medicines,
         selectedMedicines: _selectedMedicines,
+        searchedMedicines: _medicines.where((name) {
+          final code = _officialMedicinesByName[name]?.itemSeq;
+          return code != null &&
+              _temporaryMedicinesByCode.containsKey(code) &&
+              !_registeredMedicineCodes.contains(code);
+        }).toSet(),
       ),
     );
     if (!mounted || result == null) return;
@@ -990,10 +1001,12 @@ class _MedicineSelectionResult {
 class _MedicineSelectionSheet extends StatefulWidget {
   final List<String> medicines;
   final List<String> selectedMedicines;
+  final Set<String> searchedMedicines;
 
   const _MedicineSelectionSheet({
     required this.medicines,
     required this.selectedMedicines,
+    required this.searchedMedicines,
   });
 
   @override
@@ -1012,10 +1025,19 @@ class _MedicineSelectionSheetState extends State<_MedicineSelectionSheet> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Text(
-            '여러 약을 함께 확인하려면 두 개 이상 선택하세요.',
+            '함께 확인할 약을 선택해 주세요.',
             style: AppText.body(size: 18, color: AppColors.textBody),
           ),
           const SizedBox(height: 10),
+          const Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              _MedicineSourceBadge(isSearched: false),
+              _MedicineSourceBadge(isSearched: true),
+            ],
+          ),
+          const SizedBox(height: 14),
           for (final medicine in widget.medicines)
             Material(
               color: Colors.transparent,
@@ -1032,6 +1054,15 @@ class _MedicineSelectionSheetState extends State<_MedicineSelectionSheet> {
                   });
                 },
                 title: Text(medicine, style: AppText.label(size: 19)),
+                subtitle: Padding(
+                  padding: const EdgeInsets.only(top: 6, bottom: 6),
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: _MedicineSourceBadge(
+                      isSearched: widget.searchedMedicines.contains(medicine),
+                    ),
+                  ),
+                ),
                 activeColor: AppColors.point,
                 checkColor: Colors.white,
                 controlAffinity: ListTileControlAffinity.leading,
@@ -1067,6 +1098,30 @@ class _MedicineSelectionSheetState extends State<_MedicineSelectionSheet> {
           ),
         ),
       ],
+    );
+  }
+}
+
+class _MedicineSourceBadge extends StatelessWidget {
+  final bool isSearched;
+
+  const _MedicineSourceBadge({required this.isSearched});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: isSearched ? const Color(0xFFF0F0F3) : const Color(0xFFEAF0FF),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Text(
+        isSearched ? '검색한 약' : '등록된 약',
+        style: AppText.body(
+          size: 15,
+          color: isSearched ? AppColors.textBody : AppColors.point,
+        ),
+      ),
     );
   }
 }
