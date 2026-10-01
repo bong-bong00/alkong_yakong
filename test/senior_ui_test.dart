@@ -1470,6 +1470,13 @@ void _colorTokenTests() {
       )) {
         continue;
       }
+      // 착용 그림은 화면 색이 아니라 그림 물감이다 — 살색·센서 몸통처럼
+      // 다른 화면과 나눠 쓸 수 없는 색이라 토큰으로 옮기지 않는다.
+      if (path.endsWith(
+        'features/easy_flow/presentation/easy_heart_result.dart',
+      )) {
+        continue;
+      }
       final text = file.readAsStringSync();
       for (final match in RegExp(
         r'Color\(0x[0-9A-Fa-f]{8}\)',

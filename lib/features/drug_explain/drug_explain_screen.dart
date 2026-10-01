@@ -187,8 +187,10 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
       _scrollToBottom();
     } catch (_) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('이전 대화를 불러오지 못했어요. 다시 시도해 주세요.')),
+        showSeniorSnackbar(
+          context,
+          '이전 대화를 불러오지 못했어요. 다시 시도해 주세요.',
+          error: true,
         );
       }
     }
@@ -957,9 +959,7 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
         await _saveConversation();
       } catch (_) {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('답변은 받았지만 대화를 저장하지 못했어요.')),
-          );
+          showSeniorSnackbar(context, '답변은 받았지만 대화를 저장하지 못했어요.', error: true);
         }
       }
       if (mounted) {
@@ -1450,7 +1450,7 @@ class _MedicineSourceBadge extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
       decoration: BoxDecoration(
-        color: isSearched ? const Color(0xFFF0F0F3) : const Color(0xFFEAF0FF),
+        color: isSearched ? AppColors.bg : AppColors.pointTint,
         borderRadius: BorderRadius.circular(8),
       ),
       child: Text(
@@ -1937,7 +1937,7 @@ class _ChatBubble extends StatelessWidget {
                           color: isMe ? Colors.white : AppColors.textPrimary,
                         ),
                         emphasisColor: isHealthReply
-                            ? const Color(0xFFB3261E)
+                            ? AppColors.danger
                             : AppColors.detailEmphasis,
                         healthWarningsOnly: isHealthReply,
                       ),

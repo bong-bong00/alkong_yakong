@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:alkong_yakong/core/polar_pharmacist_ui/constants/app_colors.dart';
 import 'package:alkong_yakong/core/network/api_client.dart';
 import 'package:alkong_yakong/core/session/mvp_session.dart';
 import 'package:alkong_yakong/features/drug_explain/drug_explain_screen.dart';
@@ -233,7 +234,7 @@ void main() {
         final emphasized = spans
             .where(
               (span) =>
-                  span.style?.color == const Color(0xFFB3261E) &&
+                  span.style?.color == AppColors.danger &&
                   span.style?.fontWeight == FontWeight.w700,
             )
             .map((span) => span.text);
@@ -241,7 +242,7 @@ void main() {
         expect(
           spans
               .where((span) => span.text?.contains('선택약1정') == true)
-              .every((span) => span.style?.color != const Color(0xFFB3261E)),
+              .every((span) => span.style?.color != AppColors.danger),
           isTrue,
         );
         if (count == 1) {
