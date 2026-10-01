@@ -135,7 +135,7 @@ class _EmptyMonthCard extends StatelessWidget {
           ),
           const SizedBox(height: 6),
           Text(
-            '약 먹기 전·후로 재면 날짜별로 여기에 모여요.',
+            '약 먹기 전·후로 측정하면 날짜별로 여기에 모여요.',
             textAlign: TextAlign.center,
             style: AppText.body(size: 18, color: AppColors.textSecondary),
           ),

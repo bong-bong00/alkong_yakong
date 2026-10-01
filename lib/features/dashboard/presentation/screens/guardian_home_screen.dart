@@ -17,7 +17,6 @@ import '../../../guardian/data/alert_repository.dart';
 import '../../../guardian/presentation/screens/care_family_screen.dart';
 import '../../../guardian/presentation/screens/care_patient_screen.dart';
 import '../../../guardian/presentation/screens/guardian_info_screen.dart';
-import '../../../guardian/presentation/screens/guardian_prescription_screen.dart';
 import '../../application/medication_history_provider.dart';
 import '../../../medication/application/medication_controller.dart';
 import '../../../medication/domain/medication_models.dart';
@@ -199,9 +198,11 @@ class GuardianStatusScreen extends ConsumerWidget {
           // ── 6. 당겨서 새로고침을 두지 않는다 ──
           // 내용이 화면에 들어오는데도 늘 끌리게 만들어야 해서, 스크롤할
           // 것이 없는데 화면이 몇 px씩 들썩였다.
+          // 단추를 뺀 만큼 한 화면에 들어온다. 글자를 크게 키운 기기에서만
+          // 넘치는 만큼 밀린다.
           Expanded(
             child: SingleChildScrollView(
-              padding: const EdgeInsets.fromLTRB(20, 16, 20, 16),
+              padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
@@ -271,18 +272,6 @@ class GuardianStatusScreen extends ConsumerWidget {
                     ),
                   ),
                 ],
-              ),
-            ),
-          ),
-          SafeArea(
-            top: false,
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
-              child: SeniorButton(
-                label: '처방전 대신 찍기',
-                icon: TablerIcons.camera,
-                minHeight: 70,
-                onPressed: () => openGuardianPrescription(context, patient),
               ),
             ),
           ),

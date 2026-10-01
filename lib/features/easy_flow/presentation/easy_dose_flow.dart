@@ -301,7 +301,7 @@ class _EasyDoseFlowState extends ConsumerState<EasyDoseFlow> {
       step: EasyDoseStep.time,
       lead: '${dose.slot.label} 약',
       title: '드실 시간이에요',
-      subtitle: '약 드시기 전에 심박부터 재요',
+      subtitle: '약 드시기 전에 심박부터 측정해요',
       body: [_MedicineCard(medicines: dose.medicines)],
       primary: _EasyAction(
         label: '복약 전 심박 측정',
@@ -310,7 +310,7 @@ class _EasyDoseFlowState extends ConsumerState<EasyDoseFlow> {
       ),
       secondaries: [
         _EasyAction(
-          label: '안 잴래요',
+          label: '측정 안 할래요',
           icon: Icons.skip_next_rounded,
           onPressed: () => _beginDose(dose.slot, EasyDoseStep.take),
         ),
@@ -333,7 +333,7 @@ class _EasyDoseFlowState extends ConsumerState<EasyDoseFlow> {
     return _EasyStepPage(
       step: EasyDoseStep.wear,
       lead: '심박 센서를',
-      title: '차 주세요',
+      title: '착용해 주세요',
       body: [
         SeniorCard(
           radius: 26,
@@ -341,10 +341,12 @@ class _EasyDoseFlowState extends ConsumerState<EasyDoseFlow> {
           child: const EasySensorWearIllustration(),
         ),
         const SizedBox(height: 12),
-        const _NumberedCard(lines: ['팔꿈치 위에 차요', '동그란 면이 살에 닿게', '밴드를 조금 조여요']),
+        const _NumberedCard(
+          lines: ['팔꿈치 위에 착용해요', '동그란 면이 살에 닿게', '밴드를 조금 조여요'],
+        ),
       ],
       primary: _EasyAction(
-        label: '다 찼어요',
+        label: '다 착용했어요',
         icon: Icons.check_rounded,
         onPressed: () {
           _goTo(EasyDoseStep.measureBefore);
@@ -382,7 +384,7 @@ class _EasyDoseFlowState extends ConsumerState<EasyDoseFlow> {
     ),
     secondaries: [
       _EasyAction(
-        label: '그만 재기',
+        label: '측정 그만하기',
         icon: Icons.close_rounded,
         onPressed: () => _stopMeasuring(next),
       ),
@@ -394,7 +396,7 @@ class _EasyDoseFlowState extends ConsumerState<EasyDoseFlow> {
     return _EasyStepPage(
       step: EasyDoseStep.beforeDone,
       lead: '먹기 전 심박',
-      title: '잘 쟀어요',
+      title: '잘 측정했어요',
       body: [if (_before != null) EasyHeartResult(value: _before!)],
       primary: _EasyAction(
         label: '이제 약 드시기',
@@ -449,7 +451,7 @@ class _EasyDoseFlowState extends ConsumerState<EasyDoseFlow> {
     return _EasyStepPage(
       step: EasyDoseStep.afterAsk,
       lead: '잘하셨어요',
-      title: '한 번 더 재요',
+      title: '한 번 더 측정해요',
       body: [
         SeniorCard(
           radius: 26,
@@ -475,7 +477,7 @@ class _EasyDoseFlowState extends ConsumerState<EasyDoseFlow> {
                       ),
                     ),
                     const SizedBox(height: 2),
-                    Text('센서는 그대로 차고 계세요', style: AppText.body(size: 20)),
+                    Text('센서는 그대로 착용하고 계세요', style: AppText.body(size: 20)),
                     const SizedBox(height: 8),
                     Text(
                       '복약 후 심박수를 기록해요. 약의 효과를 판정하는 검사는 아니에요.',
@@ -503,7 +505,7 @@ class _EasyDoseFlowState extends ConsumerState<EasyDoseFlow> {
           onPressed: _back,
         ),
         _EasyAction(
-          label: '안 잴래요',
+          label: '측정 안 할래요',
           icon: Icons.skip_next_rounded,
           onPressed: () => _goTo(EasyDoseStep.allDone),
         ),

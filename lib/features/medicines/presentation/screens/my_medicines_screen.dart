@@ -6,7 +6,6 @@ import 'package:go_router/go_router.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../core/widgets/recovery_view.dart';
-import '../../../../core/widgets/senior_button.dart';
 import '../../../../core/widgets/senior_card.dart';
 import '../../../../core/widgets/senior_header.dart';
 import '../../application/user_medicines_controller.dart';
@@ -99,38 +98,37 @@ class _MedicineList extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (items.isEmpty) {
-      return Padding(
-        padding: const EdgeInsets.fromLTRB(20, 24, 20, 28),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            SeniorCard(
-              padding: const EdgeInsets.all(24),
-              child: Column(
-                children: [
-                  const Icon(
-                    TablerIcons.pill,
-                    size: 42,
-                    color: AppColors.point,
-                  ),
-                  const SizedBox(height: 14),
-                  Text('등록된 약이 없어요', style: AppText.cardTitle(size: 22)),
-                  const SizedBox(height: 8),
-                  Text(
-                    '처방전 사진을 찍으면 약을 확인한 뒤 등록할 수 있어요.',
-                    textAlign: TextAlign.center,
-                    style: AppText.body(color: AppColors.textSecondary),
-                  ),
-                ],
-              ),
+      return ListView(
+        padding: const EdgeInsets.fromLTRB(16, 18, 16, 28),
+        children: [
+          if (asTab) ...[
+            Padding(
+              padding: const EdgeInsets.fromLTRB(6, 6, 6, 0),
+              child: Text('내 약', style: AppText.screenTitle(size: 28)),
             ),
-            const SizedBox(height: 16),
-            SeniorButton(
-              label: '처방전 등록하기',
-              onPressed: () => context.push('/prescription'),
-            ),
+            const SizedBox(height: 14),
           ],
-        ),
+          // 약이 없어도 처방전 넣기와 AI 약사로 가는 길은 둔다 —
+          // 약을 넣기 전에도 물어볼 것이 있다.
+          _actions(context),
+          const SizedBox(height: 18),
+          SeniorCard(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              children: [
+                const Icon(TablerIcons.pill, size: 42, color: AppColors.point),
+                const SizedBox(height: 14),
+                Text('등록된 약이 없어요', style: AppText.cardTitle(size: 22)),
+                const SizedBox(height: 8),
+                Text(
+                  '처방전 사진을 찍으면 약을 확인한 뒤 등록할 수 있어요.',
+                  textAlign: TextAlign.center,
+                  style: AppText.body(color: AppColors.textSecondary),
+                ),
+              ],
+            ),
+          ),
+        ],
       );
     }
 

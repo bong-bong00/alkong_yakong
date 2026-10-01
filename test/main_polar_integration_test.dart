@@ -79,7 +79,7 @@ void main() {
         await tester.pumpAndSettle();
         await tester.tap(find.text('복약 전 심박 측정'));
         await tester.pumpAndSettle();
-        await tester.tap(find.text('다 찼어요'));
+        await tester.tap(find.text('다 착용했어요'));
         await tester.pump();
         await tester.pump(const Duration(milliseconds: 400));
         expect(find.byType(MeasureScreen), findsOneWidget);
@@ -101,7 +101,7 @@ void main() {
         if (cancel) {
           await tester.tap(find.byType(SeniorBackButton));
           await tester.pumpAndSettle();
-          expect(find.text('차 주세요'), findsOneWidget);
+          expect(find.text('착용해 주세요'), findsOneWidget);
           expect(rig.api.requests, isEmpty);
         } else {
           await rig.widgetWindow(tester);
@@ -112,7 +112,7 @@ void main() {
           await tester.pumpAndSettle();
           expect(find.byType(SavedScreen), findsNothing);
           expect(find.byType(MeasureScreen), findsNothing);
-          expect(find.text('잘 쟀어요'), findsOneWidget);
+          expect(find.text('잘 측정했어요'), findsOneWidget);
         }
         expect(find.text('unexpected heart redirect'), findsNothing);
         expect(tester.takeException(), isNull);
@@ -146,7 +146,7 @@ void main() {
         await tester.pumpAndSettle();
         await tester.tap(find.text('복약 전 심박 측정'));
         await tester.pumpAndSettle();
-        await tester.tap(find.text('다 찼어요'));
+        await tester.tap(find.text('다 착용했어요'));
         await tester.pump(const Duration(milliseconds: 400));
         permission.complete(true);
         await tester.pump();
@@ -216,7 +216,7 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.text('복약 전 심박 측정'));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('다 찼어요'));
+      await tester.tap(find.text('다 착용했어요'));
       await tester.pump(const Duration(milliseconds: 400));
       await tester.pump();
       await rig.widgetWindow(tester);
@@ -253,12 +253,12 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.text('복약 전 심박 측정'));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('다 찼어요'));
+      await tester.tap(find.text('다 착용했어요'));
       await tester.pump(const Duration(milliseconds: 400));
       await tester.pump();
       await tester.tap(find.byType(SeniorBackButton));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('다 찼어요'));
+      await tester.tap(find.text('다 착용했어요'));
       await tester.pump(const Duration(milliseconds: 400));
       permission.complete(true);
       await tester.pump();

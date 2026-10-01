@@ -27,15 +27,15 @@ Future<WearChoice> showWearSensorSheet(BuildContext context) async {
   final choice = await SeniorSheet.show<WearChoice>(
     context: context,
     builder: (sheetContext) => SeniorSheet(
-      title: '심박 센서를 차고 계신가요?',
+      title: '심박 센서를 착용하고 계신가요?',
       body: const SeniorSheetBody([
-        '차고 계시면 약을 드신 뒤 ',
-        '심박수를 한 번 재드립니다.',
-        ' 안 차고 계셔도 복약은 그대로 기록돼요.',
+        '착용하고 계시면 약을 드신 뒤 ',
+        '심박수를 한 번 측정해 드립니다.',
+        ' 착용하지 않으셔도 복약은 그대로 기록돼요.',
       ]),
       actions: [
         SeniorButton(
-          label: '차고 있어요 · 재기',
+          label: '착용했어요 · 측정',
           icon: TablerIcons.activity_heartbeat,
           minHeight: 74,
           fontSize: 24,
@@ -44,7 +44,7 @@ Future<WearChoice> showWearSensorSheet(BuildContext context) async {
               Navigator.of(sheetContext).pop(WearChoice.wearingAndMeasure),
         ),
         SeniorButton(
-          label: '안 차고 있어요 · 복약만 기록',
+          label: '착용 안 했어요 · 복약만 기록',
           kind: SeniorButtonKind.secondary,
           minHeight: 66,
           fontSize: 20,

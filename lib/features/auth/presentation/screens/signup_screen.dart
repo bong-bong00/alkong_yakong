@@ -159,6 +159,16 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
     setState(() => _birth = picked);
   }
 
+  /// 적지 않고 지나간다. 검사를 거치지 않는 것만 [_next]와 다르다.
+  void _skip(List<_StepDef> steps) {
+    if (_step >= steps.length - 1) {
+      _submit();
+      return;
+    }
+    ScaffoldMessenger.of(context).hideCurrentSnackBar();
+    setState(() => _step++);
+  }
+
   void _next(List<_StepDef> steps) {
     final err = steps[_step].validate();
     if (err != null) {
@@ -187,7 +197,7 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
     return _StepDef(
       title: title,
       subtitle: subtitle,
-      validate: () => answer == null ? '있는지 없는지 골라주세요' : null,
+      validate: () => answer == null ? '해당하는 것을 골라주세요' : null,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -383,7 +393,7 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
       _StepDef(
         title: '어떤 분이신가요?',
         subtitle: '고르시면 여쭤보는 것이 달라져요.',
-        validate: () => _rolePicked ? null : '어떤 분인지 골라주세요',
+        validate: () => _rolePicked ? null : '어떤 분이신지 골라주세요',
         // 둘을 나란히 두면 칸이 좁아 설명이 두세 줄로 접힌다.
         // 위아래로 쌓아 한 줄씩 읽게 둔다.
         child: Column(
@@ -530,7 +540,23 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
       big(
         _StepDef(
           title: '키와 몸무게,\n혈액형을 알려주세요',
-          subtitle: '약 양을 정할 때 써요.',
+          // 이 세 가지는 내 정보와 가족 화면에 보여 줄 뿐, 약 양을 정하지
+          // 않는다. 하지 않는 일을 적어 두면 그것대로 믿게 된다.
+          subtitle: '지금 안 적으셔도 넘어갑니다.',
+          // "저장 후 다음"은 적은 것을 저장하겠다는 뜻이다. 하나도 안 적었으면
+          // 적어 달라고 말한다. 적지 않고 지나가려면 "넘어가기"가 있다.
+          validate: () =>
+              _height.text.trim().isEmpty &&
+                  _weight.text.trim().isEmpty &&
+                  _blood == null
+              ? '내용을 채워주세요. 지금 적고 싶지 않으시면 넘어가기를 눌러주세요'
+              : null,
+          // 넘어가면 적던 값은 비우고 지나간다.
+          onSkip: () => setState(() {
+            _height.clear();
+            _weight.clear();
+            _blood = null;
+          }),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
@@ -606,7 +632,7 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
         _StepDef(
           title: '담배를\n피우시나요?',
           subtitle: '함께 먹으면 안 좋은 약이 있어요.',
-          validate: () => _smoking == null ? '담배를 피우시는지 골라주세요' : null,
+          validate: () => _smoking == null ? '해당하는 것을 골라주세요' : null,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
@@ -626,7 +652,7 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
         _StepDef(
           title: '술은 얼마나\n드시나요?',
           subtitle: '술과 같이 먹으면 위험한 약이 있어요.',
-          validate: () => _drinking == null ? '술을 얼마나 드시는지 골라주세요' : null,
+          validate: () => _drinking == null ? '해당하는 것을 골라주세요' : null,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
@@ -639,6 +665,7 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
               const SizedBox(height: 12),
               _choice(
                 '가끔 마셔요',
+                sub: '한 달에 두세 번',
                 selected: _drinking == '가끔 마셔요',
                 onTap: () => setState(() => _drinking = '가끔 마셔요'),
               ),
@@ -759,7 +786,7 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
         _StepDef(
           title: '약을 놓치시면\n가족에게 알려드릴까요?',
           subtitle: '심박수가 빠를 때도 함께 알려드려요.',
-          validate: () => _guardianAnswer == null ? '알려드릴지 골라주세요' : null,
+          validate: () => _guardianAnswer == null ? '해당하는 것을 골라주세요' : null,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
@@ -1018,16 +1045,55 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  SeniorButton(
-                    label: isLast && _isSubmitting
-                        ? '가입 중...'
-                        : isLast
-                        ? '가입하기'
-                        : '다음',
-                    minHeight: 74,
-                    fontSize: 24,
-                    onPressed: _isSubmitting ? null : () => _next(steps),
-                  ),
+                  // 넘어가도 되는 단계에서는 "넘어가기"를 왼쪽에 작게 두고
+                  // 가는 단추를 오른쪽에 크게 둔다. 위아래로 쌓으면 둘 다
+                  // 같은 무게로 보여 어느 쪽이 보통 길인지 흐려진다.
+                  if (cur.skippable && !isLast)
+                    IntrinsicHeight(
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Expanded(
+                            flex: 2,
+                            child: SeniorButton(
+                              label: '넘어가기',
+                              kind: SeniorButtonKind.card,
+                              minHeight: 74,
+                              fontSize: 20,
+                              onPressed: _isSubmitting
+                                  ? null
+                                  : () {
+                                      cur.onSkip?.call();
+                                      _skip(steps);
+                                    },
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            flex: 3,
+                            child: SeniorButton(
+                              label: '저장 후 다음',
+                              minHeight: 74,
+                              fontSize: 22,
+                              onPressed: _isSubmitting
+                                  ? null
+                                  : () => _next(steps),
+                            ),
+                          ),
+                        ],
+                      ),
+                    )
+                  else
+                    SeniorButton(
+                      label: isLast && _isSubmitting
+                          ? '가입 중...'
+                          : isLast
+                          ? '가입하기'
+                          : '다음',
+                      minHeight: 74,
+                      fontSize: 24,
+                      onPressed: _isSubmitting ? null : () => _next(steps),
+                    ),
                 ],
               ),
             ),
@@ -1373,12 +1439,18 @@ class _StepDef {
   final String? Function() validate;
   final Widget child;
 
+  /// 적지 않고 지나가도 되는 단계. 아래에 "넘어가기"가 붙는다.
+  final VoidCallback? onSkip;
+
+  bool get skippable => onSkip != null;
+
   _StepDef({
     this.confirm,
     required this.title,
     this.subtitle,
     String? Function()? validate,
     required this.child,
+    this.onSkip,
   }) : validate = validate ?? (() => null);
 }
 

@@ -437,7 +437,7 @@ class _EmptyCard extends StatelessWidget {
           Text(
             viewingOther
                 ? '센서로 측정하고 나면 여기에 약 먹기 전·후 값이 남아요.'
-                : '약 드시기 전과 드신 뒤에 한 번씩 재면\n여기에 남아요.',
+                : '약 드시기 전과 드신 뒤에 한 번씩 측정하면\n여기에 남아요.',
             textAlign: TextAlign.center,
             style: AppText.body(size: 18, color: AppColors.textSecondary),
           ),
@@ -458,7 +458,7 @@ class _TodayCard extends StatelessWidget {
       if (data.today.before != null && data.beforeAt.isNotEmpty) data.beforeAt,
       if (data.today.after != null && data.afterAt.isNotEmpty) data.afterAt,
     ];
-    return parts.isEmpty ? null : '${parts.join(' · ')}에 쟀어요';
+    return parts.isEmpty ? null : '${parts.join(' · ')}에 측정했어요';
   }
 
   @override
@@ -511,7 +511,7 @@ class _TodayCard extends StatelessWidget {
                 borderRadius: BorderRadius.circular(16),
               ),
               child: Text(
-                '오늘은 아직 재지 않았어요',
+                '오늘은 아직 측정하지 않았어요',
                 style: AppText.label(size: 18.5, color: AppColors.textPrimary),
               ),
             )
@@ -665,7 +665,7 @@ class _ValueBox extends StatelessWidget {
   Widget build(BuildContext context) {
     final range = value == null ? null : _heartRateRange(value!);
     return Semantics(
-      label: value == null ? '$label 재지 못했어요' : '$label $value회, $range',
+      label: value == null ? '$label 측정하지 못했어요' : '$label $value회, $range',
       child: ExcludeSemantics(
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
@@ -764,13 +764,13 @@ class _SensorRow extends StatelessWidget {
     final String caption;
     if (sensor == null) {
       title = '폴라 센서';
-      caption = '눌러서 연결하고 차는 방법을 봐요';
+      caption = '눌러서 연결하고 착용하는 방법을 봐요';
     } else if (connected) {
       title = '폴라 센서 연결됨';
       caption = _connectedLine(sensor);
     } else {
       title = '폴라 센서 끊김';
-      caption = '센서를 차고 다시 연결해 주세요';
+      caption = '센서를 착용하고 다시 연결해 주세요';
     }
 
     return SeniorCard(

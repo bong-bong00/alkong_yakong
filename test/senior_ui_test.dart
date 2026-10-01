@@ -193,8 +193,8 @@ void main() {
     await tester.pumpAndSettle();
     // 기록보다 시트가 먼저다. 띠를 차고 계시면 심박수를 잴 기회이기 때문이다.
     expect(find.textContaining('심박 센서를'), findsOneWidget);
-    expect(find.text('차고 있어요 · 재기'), findsOneWidget);
-    expect(find.text('안 차고 있어요 · 복약만 기록'), findsOneWidget);
+    expect(find.text('착용했어요 · 측정'), findsOneWidget);
+    expect(find.text('착용 안 했어요 · 복약만 기록'), findsOneWidget);
     expect(find.text('그만두기'), findsOneWidget);
   });
 
@@ -227,7 +227,7 @@ void main() {
 
     await tester.tap(find.text('먹었어요'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('안 차고 있어요 · 복약만 기록'));
+    await tester.tap(find.text('착용 안 했어요 · 복약만 기록'));
     await tester.pumpAndSettle();
     if (find.text('그래도 먹었어요').evaluate().isNotEmpty) {
       await tester.tap(find.text('그래도 먹었어요'));
@@ -359,14 +359,14 @@ void _easyModeTests() {
     // 1걸음 → 2걸음: 가슴 띠 차는 방법을 먼저 보여 준다.
     await tester.tap(find.text('복약 전 심박 측정'));
     await tester.pumpAndSettle();
-    expect(find.text('차 주세요'), findsOneWidget);
+    expect(find.text('착용해 주세요'), findsOneWidget);
     expect(find.text('2 / 8'), findsOneWidget);
-    expect(find.text('팔꿈치 위에 차요'), findsOneWidget);
+    expect(find.text('팔꿈치 위에 착용해요'), findsOneWidget);
 
     // 첫 걸음의 "안 잴래요"를 고르면 재는 걸음을 건너뛴다.
     await tester.tap(find.text('뒤로'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('안 잴래요'));
+    await tester.tap(find.text('측정 안 할래요'));
     await tester.pumpAndSettle();
     expect(find.text('복약 완료하셨나요?'), findsOneWidget);
     expect(find.text('5 / 8'), findsOneWidget);
@@ -374,7 +374,12 @@ void _easyModeTests() {
     // 심박수를 안 쟀으면 먹은 뒤에 재자고 묻지 않는다.
     await tester.tap(find.text('먹었어요'));
     await tester.pumpAndSettle();
-    expect(find.text('한 번 더 재요'), findsNothing);
+    // 저녁 시간이 한참 지난 때에 돌리면 늦은 복약 시트가 먼저 뜬다.
+    if (find.text('그래도 먹었어요').evaluate().isNotEmpty) {
+      await tester.tap(find.text('그래도 먹었어요'));
+      await tester.pumpAndSettle();
+    }
+    expect(find.text('한 번 더 측정해요'), findsNothing);
     expect(find.text('다 드셨어요'), findsOneWidget);
     expect(find.text('복약 기록'), findsOneWidget);
   });
@@ -522,7 +527,7 @@ void _signupTests() {
     await tester.tap(find.text('다음'));
     await tester.pump();
     expect(find.byType(SnackBar), findsOneWidget);
-    expect(find.text('어떤 분인지 골라주세요'), findsOneWidget);
+    expect(find.text('어떤 분이신지 골라주세요'), findsOneWidget);
     // 오류가 떠도 화면은 그대로다 — 다음으로 넘어가지 않는다.
     expect(find.text('어떤 분이신가요?'), findsOneWidget);
   });
@@ -611,11 +616,14 @@ void _signupTests() {
     await tester.tap(find.text('다음'));
     await tester.pumpAndSettle();
 
-    // 4걸음 · 키·몸무게·혈액형.
+    // 4걸음 · 키·몸무게·혈액형. 안 적어도 넘어갈 수 있는 단계라
+    // 아래 단추가 "저장 후 다음"이고 그 아래 "넘어가기"가 붙는다.
     expect(find.text('혈액형'), findsOneWidget);
+    expect(find.text('넘어가기'), findsOneWidget);
     expect(tester.takeException(), isNull);
 
-    await tester.tap(find.text('다음'));
+    // 아무것도 안 적었으면 "넘어가기"로 지나간다.
+    await tester.tap(find.text('넘어가기'));
     await tester.pumpAndSettle();
 
     // 5걸음 · 임신 (여성일 때만 나온다). 네/아니요로 먼저 묻는다.

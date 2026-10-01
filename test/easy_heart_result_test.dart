@@ -375,7 +375,7 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    await tester.tap(find.text('안 잴래요'));
+    await tester.tap(find.text('측정 안 할래요'));
     await tester.pumpAndSettle();
     expect(find.text('5 / 8'), findsOneWidget);
     await tester.tap(find.text('먹었어요'));
@@ -401,7 +401,7 @@ void main() {
     expect(find.byType(EasySensorWearIllustration), findsOneWidget);
     expect(find.text('차는 모습 그림 자리'), findsNothing);
     expect(find.text('2 / 8'), findsOneWidget);
-    expect(find.text('다 찼어요'), findsOneWidget);
+    expect(find.text('다 착용했어요'), findsOneWidget);
     expect(find.text('뒤로'), findsOneWidget);
   });
 }
