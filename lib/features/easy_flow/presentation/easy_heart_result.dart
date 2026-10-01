@@ -179,7 +179,7 @@ class EasySensorWearIllustration extends StatelessWidget {
     crossAxisAlignment: CrossAxisAlignment.stretch,
     children: [
       Semantics(
-        label: '팔꿈치 위쪽에 빨간 띠와 검은 폴라 센서를 착용한 그림',
+        label: '손바닥이 보이는 팔의 팔꿈치 위쪽에 빨간 띠와 검은 폴라 센서를 착용한 그림',
         child: SizedBox(
           height: 165,
           child: CustomPaint(painter: _ArmBandPainter()),
@@ -237,17 +237,37 @@ class _ArmBandPainter extends CustomPainter {
     canvas.translate((size.width - 300 * scale) / 2, 0);
     canvas.scale(scale);
     final arm = Path()
-      ..moveTo(82, 12)
-      ..quadraticBezierTo(110, 3, 126, 22)
-      ..lineTo(128, 101)
-      ..quadraticBezierTo(127, 115, 144, 115)
-      ..lineTo(252, 113)
-      ..quadraticBezierTo(281, 111, 281, 133)
-      ..quadraticBezierTo(281, 155, 252, 155)
-      ..lineTo(113, 157)
-      ..quadraticBezierTo(69, 155, 69, 117)
-      ..lineTo(65, 37)
-      ..quadraticBezierTo(63, 20, 82, 12)
+      ..moveTo(28, 12)
+      ..quadraticBezierTo(54, 3, 82, 13)
+      ..lineTo(91, 95)
+      ..quadraticBezierTo(94, 103, 110, 104)
+      ..lineTo(208, 102)
+      // Palm and thumb identify the inner arm; the hand is not a rounded stump.
+      ..quadraticBezierTo(220, 94, 229, 84)
+      ..lineTo(242, 68)
+      ..quadraticBezierTo(251, 60, 253, 69)
+      ..quadraticBezierTo(255, 75, 242, 93)
+      ..lineTo(283, 89)
+      ..quadraticBezierTo(296, 88, 294, 97)
+      ..quadraticBezierTo(294, 101, 284, 103)
+      ..lineTo(252, 108)
+      ..lineTo(289, 107)
+      ..quadraticBezierTo(300, 108, 297, 116)
+      ..quadraticBezierTo(296, 120, 287, 120)
+      ..lineTo(254, 121)
+      ..lineTo(284, 126)
+      ..quadraticBezierTo(296, 127, 292, 135)
+      ..quadraticBezierTo(290, 139, 281, 137)
+      ..lineTo(250, 133)
+      ..lineTo(273, 142)
+      ..quadraticBezierTo(284, 146, 278, 152)
+      ..quadraticBezierTo(274, 155, 266, 152)
+      ..lineTo(236, 143)
+      ..quadraticBezierTo(221, 140, 211, 136)
+      ..lineTo(88, 150)
+      ..quadraticBezierTo(38, 156, 33, 119)
+      ..lineTo(22, 35)
+      ..quadraticBezierTo(20, 18, 28, 12)
       ..close();
     canvas.drawPath(arm, Paint()..color = const Color(0xFFF3D5C4));
     canvas.drawPath(
@@ -260,45 +280,73 @@ class _ArmBandPainter extends CustomPainter {
     // Band is on the upper arm, above the elbow, not near the hand/wrist.
     canvas.drawRRect(
       RRect.fromRectAndRadius(
-        const Rect.fromLTRB(63, 43, 129, 80),
+        const Rect.fromLTRB(25, 43, 90, 83),
         const Radius.circular(7),
       ),
-      Paint()..color = const Color(0xFFB83B4C),
+      Paint()..color = const Color(0xFF963747),
     );
     canvas.drawLine(
-      const Offset(77, 47),
-      const Offset(77, 76),
+      const Offset(35, 48),
+      const Offset(35, 78),
       Paint()
         ..color = const Color(0xFF852B3A)
         ..strokeWidth = 2,
     );
-    canvas.drawCircle(
-      const Offset(104, 61),
-      24,
-      Paint()..color = const Color(0xFF202427),
-    );
-    canvas.drawCircle(
-      const Offset(104, 61),
-      18,
-      Paint()..color = const Color(0xFF363C40),
-    );
-    // Outside face stays dark: the green optical LEDs are underneath.
+    // Rectangular front on the palm-facing upper arm. Optical LEDs face the skin.
     canvas.drawRRect(
       RRect.fromRectAndRadius(
-        const Rect.fromLTWH(96, 56, 16, 10),
-        const Radius.circular(5),
+        const Rect.fromLTRB(44, 39, 82, 86),
+        const Radius.circular(9),
       ),
-      Paint()..color = const Color(0xFFCBD0D2),
+      Paint()..color = const Color(0xFF202427),
     );
-    canvas.drawArc(
-      const Rect.fromLTWH(92, 111, 34, 24),
-      math.pi / 2,
-      math.pi / 2,
-      false,
-      Paint()
-        ..color = const Color(0xFFD4AB95)
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 2,
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(
+        const Rect.fromLTRB(49, 54, 77, 70),
+        const Radius.circular(6),
+      ),
+      Paint()..color = const Color(0xFF363C40),
+    );
+    final logo = TextPainter(
+      text: const TextSpan(
+        text: 'POLAR',
+        style: TextStyle(
+          color: Color(0xFFE8EBED),
+          fontSize: 7,
+          fontWeight: FontWeight.w700,
+        ),
+      ),
+      textDirection: TextDirection.ltr,
+    )..layout();
+    logo.paint(canvas, Offset(63 - logo.width / 2, 62 - logo.height / 2));
+    final crease = Paint()
+      ..color = const Color(0xFFD4AB95)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.6
+      ..strokeCap = StrokeCap.round;
+    canvas.drawPath(
+      Path()
+        ..moveTo(67, 114)
+        ..quadraticBezierTo(73, 103, 85, 98),
+      crease,
+    );
+    canvas.drawPath(
+      Path()
+        ..moveTo(214, 106)
+        ..quadraticBezierTo(218, 117, 214, 130),
+      crease,
+    );
+    canvas.drawPath(
+      Path()
+        ..moveTo(229, 107)
+        ..quadraticBezierTo(238, 111, 242, 98),
+      crease,
+    );
+    canvas.drawPath(
+      Path()
+        ..moveTo(231, 119)
+        ..quadraticBezierTo(238, 122, 242, 136),
+      crease,
     );
     canvas.restore();
   }

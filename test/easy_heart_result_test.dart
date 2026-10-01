@@ -231,7 +231,7 @@ void main() {
           ),
         );
         expect(
-          find.bySemanticsLabel('팔꿈치 위쪽에 빨간 띠와 검은 폴라 센서를 착용한 그림'),
+          find.bySemanticsLabel('손바닥이 보이는 팔의 팔꿈치 위쪽에 빨간 띠와 검은 폴라 센서를 착용한 그림'),
           findsOneWidget,
         );
         expect(
