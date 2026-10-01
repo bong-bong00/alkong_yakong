@@ -1,15 +1,10 @@
 import json
+from calendar import monthrange
 from datetime import date
 
 from fastapi import HTTPException
 
 from app.database import get_connection
-
-
-def _is_aspirin_fallback_name(*values: object) -> bool:
-    combined = " ".join(str(value or "") for value in values)
-    compact = combined.replace(" ", "").lower()
-    return "아스피린" in compact or "aspirin" in compact
 
 
 def get_dashboard(user_id: str, target_date: str | None = None) -> dict:
@@ -83,14 +78,7 @@ def get_dashboard(user_id: str, target_date: str | None = None) -> dict:
                 """,
                 (prescription_data["id"],),
             ).fetchall()
-            prescription_items = [
-                dict(item)
-                for item in items
-                if not _is_aspirin_fallback_name(
-                    item["ocr_drug_name"],
-                    item["medicine_name"],
-                )
-            ]
+            prescription_items = [dict(item) for item in items]
             if not prescription_items:
                 prescription_data = None
             else:
@@ -101,7 +89,7 @@ def get_dashboard(user_id: str, target_date: str | None = None) -> dict:
                 prescription_data["display_name"] = (
                     prescription_data["hospital_name"]
                     or prescription_data["pharmacy_name"]
-                    or "OCR 처방전"
+                    or "처방전"
                 )
                 prescription_data["registered_at"] = prescription_data["created_at"]
         unread_notifications = conn.execute(
@@ -126,8 +114,6 @@ def get_dashboard(user_id: str, target_date: str | None = None) -> dict:
         ).fetchall()
         schedule_data = []
         for row in schedules:
-            if _is_aspirin_fallback_name(row["product_name"], row["ingredient"]):
-                continue
             item = dict(row)
             item["schedule_id"] = item["id"]
             item["drug_name"] = item["product_name"]
@@ -185,3 +171,101 @@ def _json_list(value: str | None) -> list:
         return parsed if isinstance(parsed, list) else []
     except json.JSONDecodeError:
         return []
+
+
+_SLOT_LABEL = {
+    "MORNING": "아침",
+    "LUNCH": "점심",
+    "AFTERNOON": "점심",
+    "EVENING": "저녁",
+    "NIGHT": "저녁",
+}
+_WEEKDAYS = "월화수목금토일"
+
+
+def get_medication_calendar(user_id: str, year: int | None = None, month: int | None = None) -> dict:
+    """해당 달 medication_schedules만 본다. 스케줄 없는 날을 빠뜨린 날로 치지 않는다."""
+    today = date.today()
+    year = int(year or today.year)
+    month = int(month or today.month)
+    if month < 1 or month > 12:
+        raise HTTPException(status_code=422, detail="달 정보가 올바르지 않아요.")
+    first = date(year, month, 1)
+    last_day = monthrange(year, month)[1]
+    last = date(year, month, last_day)
+
+    conn = get_connection()
+    try:
+        if not conn.execute(
+            "SELECT 1 FROM users WHERE id = ?", (user_id,)
+        ).fetchone():
+            raise HTTPException(status_code=404, detail="사용자가 없습니다.")
+        rows = conn.execute(
+            """
+            SELECT ms.scheduled_date, ms.scheduled_time, ms.time_slot,
+                   COALESCE(ms.status, 'PENDING') AS status
+            FROM medication_schedules ms
+            JOIN user_medicines um ON um.id = ms.user_medicine_id
+            WHERE ms.user_id = ?
+              AND ms.scheduled_date >= ?
+              AND ms.scheduled_date <= ?
+              AND COALESCE(um.is_active, 1) = 1
+            ORDER BY ms.scheduled_date, ms.scheduled_time
+            """,
+            (user_id, first.isoformat(), last.isoformat()),
+        ).fetchall()
+    finally:
+        conn.close()
+
+    by_day: dict[int, list] = {}
+    for row in rows:
+        try:
+            day = date.fromisoformat(str(row["scheduled_date"])).day
+        except ValueError:
+            continue
+        by_day.setdefault(day, []).append(row)
+
+    days = []
+    missed = []
+    for day_n in range(1, last_day + 1):
+        current = date(year, month, day_n)
+        slots = by_day.get(day_n, [])
+        if current == today:
+            mark = "today"
+        elif not slots:
+            mark = "future"
+        elif current > today:
+            mark = "future"
+        else:
+            taken = all(str(row["status"] or "").upper() == "TAKEN" for row in slots)
+            mark = "done" if taken else "missed"
+        days.append({"day": day_n, "mark": mark})
+        if mark == "missed":
+            leftover = [
+                row
+                for row in slots
+                if str(row["status"] or "").upper() != "TAKEN"
+            ]
+            labels = []
+            for row in leftover:
+                slot = _SLOT_LABEL.get(str(row["time_slot"] or "").upper(), "")
+                if slot and slot not in labels:
+                    labels.append(slot)
+            detail = f"{'·'.join(labels)} 약" if labels else "약을 빠뜨렸어요"
+            if len(labels) == 1:
+                detail = f"{labels[0]} 약 한 번"
+            missed.append(
+                {
+                    "label": f"{month}월 {day_n}일 {_WEEKDAYS[current.weekday()]}",
+                    "detail": detail,
+                }
+            )
+
+    return {
+        "year": year,
+        "month": month,
+        "leading_blanks": first.weekday(),
+        "days": days,
+        "missed": missed,
+        "has_schedules": bool(rows),
+    }
