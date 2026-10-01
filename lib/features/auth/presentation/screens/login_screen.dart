@@ -16,7 +16,7 @@ import 'signup_screen.dart';
 /// 4i — 로그인 · 시작하기.
 ///
 /// 프로토타입대로 전화번호·비밀번호·시작하기만 둔다.
-/// 가족이 대신 만들어 드리는 길은 가입 화면 안에서 잇는다.
+/// 계정은 본인이 만든다 — 가족은 연결된 뒤 처방전만 대신 넣어 준다.
 class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key});
 
