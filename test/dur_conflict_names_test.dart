@@ -28,8 +28,9 @@ void main() {
     );
     await tester.pump();
 
-    expect(find.text('아디팜정'), findsWidgets);
-    expect(find.text('코다론정'), findsOneWidget);
+    // 이름은 한 문장 안에 붉게 들어간다 (명세서 29).
+    expect(find.textContaining('아디팜정'), findsWidgets);
+    expect(find.textContaining('코다론정'), findsWidgets);
     expect(find.textContaining('가려움 완화에 사용해요'), findsNothing);
     expect(find.textContaining('심장 박동을 조절해요'), findsNothing);
     expect(find.text('함께 먹으면 주의가 필요해요.'), findsOneWidget);

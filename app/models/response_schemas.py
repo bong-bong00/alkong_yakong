@@ -37,6 +37,8 @@ class UserCreateResponse(ApiResponse):
     diseases: list[str] = Field(default_factory=list)
     past_history: bool | None = None
     family_history: bool | None = None
+    past_illnesses: list[str] = Field(default_factory=list)
+    family_illnesses: list[str] = Field(default_factory=list)
 
 
 class UserResponse(UserCreateResponse):
@@ -296,6 +298,7 @@ class HeartRateResponse(ApiResponse):
     heart_rate_log_id: int
     bpm: int
     measured_at: str
+    measurement_context: str = "general"
     baseline: BaselineResponse | None = None
     abnormal_event: AbnormalEventSummaryResponse | None = None
 

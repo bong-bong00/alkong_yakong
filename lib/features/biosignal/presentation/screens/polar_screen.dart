@@ -57,17 +57,18 @@ class _PolarScreenState extends State<PolarScreen> {
   Widget build(BuildContext context) {
     final connected = _sensor.status == HeartSensorStatus.streaming;
     return Scaffold(
-      backgroundColor: AppColors.bg,
+      backgroundColor: AppColors.pageBg,
       body: Column(
         children: [
-          const SeniorBackHeader(title: '폴라 센서'),
+          // 상표 이름보다 무엇인지가 먼저다. 기기 이름은 카드 안에서 말한다.
+          const SeniorBackHeader(title: '심박 센서'),
           Expanded(
             child: SingleChildScrollView(
               padding: const EdgeInsets.fromLTRB(20, 16, 20, 28),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  _StatusCard(connected: connected),
+                  _StatusCard(connected: connected, sensor: _sensor),
                   const SizedBox(height: 12),
                   if (connected) ...[
                     _InfoCard(sensor: _sensor),
@@ -78,7 +79,10 @@ class _PolarScreenState extends State<PolarScreen> {
                       fontSize: 24,
                       onPressed: () => Navigator.of(context).push(
                         MaterialPageRoute(
-                          builder: (_) => MeasureScreen(sensor: _sensor),
+                          builder: (_) => MeasureScreen(
+                            sensor: _sensor,
+                            returnToPreviousScreen: true,
+                          ),
                         ),
                       ),
                     ),
@@ -95,7 +99,7 @@ class _PolarScreenState extends State<PolarScreen> {
                   SeniorCard(
                     padding: const EdgeInsets.symmetric(
                       horizontal: 20,
-                      vertical: 14,
+                      vertical: 18,
                     ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -105,9 +109,9 @@ class _PolarScreenState extends State<PolarScreen> {
                         const NumberedSteps(
                           boxed: false,
                           steps: [
-                            '센서 안쪽 두 군데를 물로 살짝 적셔주세요',
-                            '가슴 아래, 명치 높이에 맞춰 차세요',
-                            '약을 드시기 5분 전에 차 두시면 편해요',
+                            '팔꿈치 위, 팔뚝 안쪽에 차요',
+                            '동그란 면이 살에 닿게 돌려요',
+                            '밴드를 조금 조여 흔들리지 않게 해요',
                           ],
                         ),
                       ],
@@ -156,12 +160,19 @@ class _PolarScreenState extends State<PolarScreen> {
 /// 큰 원 안의 하트 — 연결됐는지를 색으로 말한다.
 class _StatusCard extends StatelessWidget {
   final bool connected;
-  const _StatusCard({required this.connected});
+  final HeartSensor sensor;
+  const _StatusCard({required this.connected, required this.sensor});
+
+  /// 명세서 59: 연결됐으면 기기 이름과 배터리만 적는다.
+  /// 배터리를 아직 못 받았으면 지어내지 않고 기기 이름만 적는다.
+  String get _deviceLine => sensor.battery == null
+      ? 'Polar Verity Sense'
+      : 'Polar Verity Sense · 배터리 ${sensor.battery}%';
 
   @override
   Widget build(BuildContext context) {
     return SeniorCard(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
       child: Column(
         children: [
           Container(
@@ -188,7 +199,7 @@ class _StatusCard extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           Text(
-            connected ? '센서를 차고 계시면 약 드신 뒤 심박수를 측정합니다' : '센서를 차고 아래 버튼을 눌러주세요',
+            connected ? _deviceLine : '센서를 차고 아래 버튼을 눌러주세요',
             textAlign: TextAlign.center,
             style: AppText.body(size: 18.5, color: AppColors.textSecondary),
           ),

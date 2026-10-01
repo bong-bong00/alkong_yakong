@@ -22,6 +22,7 @@ from app.services.medicine_detail_service import (
     get_medicine_detail_profile,
     ingredient_entries,
     treatment_use_items,
+    official_source_hash,
 )
 from app.services.medicine_merge import upsert_official_medicine
 from app.services.medicine_detail_providers import (
@@ -47,7 +48,7 @@ def _ingredient_highlight(
             continue
         for field in ("use_help", "role_explanation"):
             text = clean_ingredient_explanation(row.get(field))
-            if text and text in explanation:
+            if text and text != explanation.strip() and text in explanation:
                 return text
     return ""
 
@@ -192,7 +193,9 @@ def reviewed_detail_payload(cursor, medicine: dict[str, Any]) -> dict[str, Any]:
     """
     code = str(medicine.get("medicine_code") or "").strip()
     profile = get_medicine_detail_profile(cursor, code)
-    card = _get_latest_reviewed_card(cursor, code) if profile is None else None
+    card = None
+    if profile and profile.get("source_hash") != official_source_hash(medicine):
+        profile = {**profile, "status": "OUTDATED", "review_status": "UNREVIEWED"}
     status = str((profile or {}).get("status") or ("READY" if card else "PENDING"))
     if status not in {
         "READY",
@@ -256,6 +259,11 @@ def reviewed_detail_payload(cursor, medicine: dict[str, Any]) -> dict[str, Any]:
             all_approved_uses,
         )
     if stale:
+        reviewed = False
+        official_usage = str(medicine.get("usage") or "").strip()
+        key_cautions = []
+        side_effects = []
+        ask_doctor_when = []
         ingredient_explanation = ""
         approved_use_summary = ""
         approved_uses = []

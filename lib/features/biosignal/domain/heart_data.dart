@@ -1,22 +1,39 @@
 import 'package:flutter/foundation.dart';
 
+enum HeartMeasurementContext {
+  general('general', '평소 심박 측정'),
+  beforeMedication('before_medication', '복약 전 측정'),
+  afterMedication('after_medication', '복약 후 측정');
+
+  const HeartMeasurementContext(this.value, this.label);
+  final String value;
+  final String label;
+
+  static HeartMeasurementContext fromValue(Object? value) => values.firstWhere(
+    (context) => context.value == value,
+    orElse: () => general,
+  );
+}
+
 /// One stored measurement, independent of medication comparison pairs.
 @immutable
 class HeartReading {
   final int id;
   final int bpm;
   final DateTime measuredAt;
+  final HeartMeasurementContext measurementContext;
   const HeartReading({
     required this.id,
     required this.bpm,
     required this.measuredAt,
+    this.measurementContext = HeartMeasurementContext.general,
   });
 }
 
 /// 복약 **전·후 한 쌍**의 심박수.
 ///
-/// 이 앱은 심박수를 연속으로 재지 않는다. 폴라 가슴 띠로 약 먹기 전에 한 번,
-/// 먹은 뒤에 한 번, **하루 두 번만** 잰다. 그래서 값은 늘 쌍으로 다닌다.
+/// 사용자가 복약 전·후로 목적을 표시한 기록만 이 비교 자료에 들어간다.
+/// 일반 측정은 시각만으로 전·후를 추정하지 않는다.
 @immutable
 class HeartPair {
   /// 약 먹기 전 수치. 재지 못했으면 null.
@@ -76,6 +93,20 @@ class HeartData {
       final at = r.measuredAt.toLocal();
       return !at.isBefore(start) && at.isBefore(end);
     }).toList();
+  }
+
+  /// 서버가 정한 조회 기준일의 현지 날짜에 저장된 실제 측정 기록.
+  ///
+  /// 복약 전·후 요약과 별개로 `general` 기록도 오늘 카드에 보여 주기 위해
+  /// 원시 기록에서 고른다. 시각으로 측정 목적을 추정하지 않는다.
+  List<HeartReading> get todayReadings {
+    final now = periodDate ?? DateTime.now();
+    final start = DateTime(now.year, now.month, now.day);
+    final end = start.add(const Duration(days: 1));
+    return readings.where((reading) {
+      final at = reading.measuredAt.toLocal();
+      return !at.isBefore(start) && at.isBefore(end);
+    }).toList()..sort((a, b) => b.measuredAt.compareTo(a.measuredAt));
   }
 
   /// 오늘 잰 것.

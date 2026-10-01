@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -18,10 +19,10 @@ import '../../../medication/presentation/widgets/dose_flow_sheets.dart';
 import '../../../easy_flow/domain/easy_flow.dart';
 import '../../../easy_flow/presentation/easy_flow_shell.dart';
 import '../../../medication/presentation/widgets/dose_guard_sheets.dart';
+import '../../../profile/application/current_user_controller.dart';
 import 'package:go_router/go_router.dart';
 import '../../../medicines/application/family_medicine_inbox.dart';
 import '../../../medicines/application/user_medicines_controller.dart';
-import '../../../profile/application/current_user_controller.dart';
 
 /// 12 / 15 · 오늘 · 홈.
 ///
@@ -73,9 +74,6 @@ class PatientHomeScreen extends ConsumerStatefulWidget {
 }
 
 class _PatientHomeScreenState extends ConsumerState<PatientHomeScreen> {
-  /// 재알림을 미뤘을 때 상단에 뜨는 안내.
-  String? _snoozeNotice;
-
   /// 방금 기록한 시간대. 파란 띠로 알리고, X를 누르면 사라진다.
   DoseSlot? _recordedSlot;
 
@@ -118,6 +116,7 @@ class _PatientHomeScreenState extends ConsumerState<PatientHomeScreen> {
   /// 않는다. 처음 켠 기기는 장부가 비어 있어 전부 적어 두고 넘어간다 —
   /// 쓰던 약을 "방금 들어왔다"고 알리면 안 되기 때문이다.
   Future<void> _maybeTellArrived() async {
+    if (!mounted) return;
     final userId = ref.read(currentUserProvider).valueOrNull?.id ?? '';
     if (userId.isEmpty) return;
     final medicines = ref.read(userMedicinesProvider).valueOrNull;
@@ -143,8 +142,10 @@ class _PatientHomeScreenState extends ConsumerState<PatientHomeScreen> {
   }
 
   Future<void> _maybeAskRefill() async {
+    // 첫 프레임 뒤에 불린다. 그 사이 화면이 닫혔으면 ref를 만지면 안 된다.
+    if (!mounted) return;
     final controller = ref.read(medicationProvider.notifier);
-    if (!mounted || !controller.shouldAskRefill) return;
+    if (!controller.shouldAskRefill) return;
     controller.markRefillAsked();
 
     final today = ref.read(medicationProvider);
@@ -204,7 +205,6 @@ class _PatientHomeScreenState extends ConsumerState<PatientHomeScreen> {
     // 눌렀는지 놓친다. 대신 맨 위에 파란 띠로 알린다.
     setState(() {
       _recordedSlot = slot;
-      _snoozeNotice = null;
     });
     if (choice == WearChoice.wearingAndMeasure) {
       widget.onMeasure?.call(slot);
@@ -229,37 +229,8 @@ class _PatientHomeScreenState extends ConsumerState<PatientHomeScreen> {
 
   void _snooze(DoseSlot slot) {
     final until = ref.read(medicationProvider.notifier).snooze(slot);
-    setState(() => _snoozeNotice = '${DoseSlot.absoluteTime(until)}에 다시 알려드려요');
-  }
-
-  /// 오늘 화면의 본체 — 지금 드실 약 카드 한 장.
-  ///
-  /// 지난 복약은 카드 안 "오늘 다른 약"이 말해 준다. 시간 축 막대와 행을
-  /// 따로 쌓지 않는다 — 한 화면에 할 일 하나만 둔다.
-  Widget _doseCard(TodayMedication today, DoseEntry? next) {
-    if (next != null) {
-      return _NextDoseCard(
-        today: today,
-        dose: next,
-        onTake: () => _take(next.slot),
-        onSnooze: () => _snooze(next.slot),
-        onOpenDrug: widget.onOpenDrug,
-      );
-    }
-    return _AllDoneCard(
-      today: today,
-      onUndo: () => _undo(_recordedSlot ?? today.doses.last.slot),
-      onOpenDrug: widget.onOpenDrug,
-    );
-  }
-
-  /// 오늘 심박수를 잰 시간대. 여러 번 쟀으면 가장 나중 것을 쓴다.
-  static DoseEntry? _todayHeartCheck(TodayMedication today) {
-    DoseEntry? found;
-    for (final dose in today.doses) {
-      if (dose.heartCheck != null) found = dose;
-    }
-    return found;
+    if (!mounted) return;
+    showSeniorSnackbar(context, '${DoseSlot.absoluteTime(until)}에 다시 알려드려요');
   }
 
   @override
@@ -267,109 +238,577 @@ class _PatientHomeScreenState extends ConsumerState<PatientHomeScreen> {
     final today = ref.watch(medicationProvider);
     final next = today.nextDose;
     final now = DateTime.now();
+    final remaining = today.doses.where((dose) => !dose.taken).length;
 
-    return Column(
-      children: [
-        HomeTopBar(
-          userName: ref.watch(currentUserNameProvider),
-          date: now,
-          easyMode: widget.easyMode,
-          onOpenMenu: widget.onOpenMenu,
-        ),
-        Expanded(
-          child: SingleChildScrollView(
-            padding: EdgeInsets.fromLTRB(
-              20,
-              16,
-              20,
-              // 쉬운 모드의 하단 바가 마지막 카드를 가리지 않게 한다.
-              widget.easyMode ? kEasyBarScrollPadding : 28,
+    return Container(
+      color: AppColors.pageBg,
+      child: Column(
+        children: [
+          // 쉬운 화면에서는 쉘이 위에 걸음 표시와 "일반 화면으로"를 둔다.
+          // 여기서 또 머리를 그리면 두 줄이 겹친다.
+          if (!widget.easyMode)
+            HomeTopBar(
+              userName: ref.watch(currentUserNameProvider),
+              date: now,
+              easyMode: widget.easyMode,
+              onOpenMenu: widget.onOpenMenu,
             ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                if (_snoozeNotice != null) ...[
-                  _SnoozeNotice(text: _snoozeNotice!),
-                  const SizedBox(height: 12),
-                ],
-                // 상담과 오늘 잰 심박수는 약 카드 위에 둔다.
-                _TopShortcuts(
-                  heartCheck: _todayHeartCheck(today)?.heartCheck,
-                  heartSlotLabel: _todayHeartCheck(today)?.slot.label,
-                  heartRate: today.heartRate,
-                  onOpenChat: widget.onOpenChat,
-                  onOpenHeartbeat: widget.onOpenHeartbeat,
-                ),
-                const SizedBox(height: 12),
-                if (_recordedSlot != null) ...[
-                  _RecordedBanner(
-                    slot: _recordedSlot!,
-                    onClose: () => setState(() => _recordedSlot = null),
-                  ),
-                  const SizedBox(height: 12),
-                ],
-                if (today.doses.isEmpty)
-                  SeniorCard(
-                    padding: const EdgeInsets.all(22),
-                    child: Column(
-                      children: [
-                        Text(switch (today.fetchStatus) {
-                          MedicationFetchStatus.loading => '오늘 약을 불러오는 중이에요',
-                          MedicationFetchStatus.failed => '오늘 약을 불러오지 못했어요',
-                          MedicationFetchStatus.ready => '등록된 약이 없어요',
-                        }, style: AppText.cardTitle(size: 22)),
-                        const SizedBox(height: 8),
-                        Text(
-                          today.fetchStatus == MedicationFetchStatus.ready
-                              ? '처방전 사진을 찍으면 오늘 먹을 약을 알려드려요.'
-                              : today.fetchStatus ==
-                                    MedicationFetchStatus.failed
-                              ? '인터넷 연결을 확인하고 다시 시도해 주세요.'
-                              : '잠시만 기다려 주세요.',
-                          textAlign: TextAlign.center,
-                          style: AppText.body(color: AppColors.textSecondary),
+          Expanded(
+            child: LayoutBuilder(
+              builder: (context, box) {
+                final bottomPad = widget.easyMode
+                    ? kEasyBarScrollPadding
+                    : 28.0;
+                // 동그라미는 남는 자리를 다 쓴다. 제목·칩·타일이 차지하는
+                // 만큼을 빼고 남은 높이와 화면 너비 중 작은 쪽에 맞춘다.
+                // 글자를 키우면 그 셋도 함께 커지므로 배율을 태워 잰다.
+                // 글자를 키우면 한 화면에 다 못 담는다. 그때만 스크롤로
+                // 넘기고, 보통 크기에서는 남는 자리에 딱 맞춰 채운다.
+                // 작은 화면이나 키운 글씨에서는 한 화면에 다 못 담는다.
+                // 그때만 스크롤로 넘긴다.
+                final scrolls =
+                    MediaQuery.textScalerOf(context).scale(1) > 1.3 ||
+                    box.maxHeight < 560;
+                final body = Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    if (today.doses.isEmpty)
+                      SeniorCard(
+                        padding: const EdgeInsets.all(22),
+                        child: Column(
+                          children: [
+                            // 못 불러온 것을 "약이 없어요"로 말하지 않는다.
+                            Text(switch (today.fetchStatus) {
+                              MedicationFetchStatus.loading =>
+                                '오늘 약을 불러오는 중이에요',
+                              MedicationFetchStatus.failed => '오늘 약을 불러오지 못했어요',
+                              MedicationFetchStatus.ready => '등록된 약이 없어요',
+                            }, style: AppText.cardTitle(size: 22)),
+                            const SizedBox(height: 8),
+                            Text(
+                              switch (today.fetchStatus) {
+                                MedicationFetchStatus.loading => '잠시만 기다려 주세요.',
+                                MedicationFetchStatus.failed =>
+                                  '인터넷 연결을 확인하고 다시 시도해 주세요.',
+                                MedicationFetchStatus.ready =>
+                                  '처방전 사진을 찍으면 오늘 먹을 약을 알려드려요.',
+                              },
+                              textAlign: TextAlign.center,
+                              style: AppText.body(
+                                color: AppColors.textSecondary,
+                              ),
+                            ),
+                            if (today.fetchStatus !=
+                                MedicationFetchStatus.loading) ...[
+                              const SizedBox(height: 14),
+                              SeniorButton(
+                                label:
+                                    today.fetchStatus ==
+                                        MedicationFetchStatus.failed
+                                    ? '다시 시도'
+                                    : '처방전 등록하기',
+                                onPressed:
+                                    today.fetchStatus ==
+                                        MedicationFetchStatus.failed
+                                    ? () => ref
+                                          .read(medicationProvider.notifier)
+                                          .refreshFromServer()
+                                    : widget.onOpenPrescription,
+                              ),
+                            ],
+                          ],
                         ),
-                        if (today.fetchStatus !=
-                            MedicationFetchStatus.loading) ...[
-                          const SizedBox(height: 14),
-                          SeniorButton(
-                            label:
-                                today.fetchStatus ==
-                                    MedicationFetchStatus.failed
-                                ? '다시 시도'
-                                : '처방전 등록하기',
-                            onPressed:
-                                today.fetchStatus ==
-                                    MedicationFetchStatus.failed
-                                ? () => ref
-                                      .read(medicationProvider.notifier)
-                                      .refreshFromServer()
-                                : widget.onOpenPrescription,
-                          ),
-                        ],
+                      )
+                    else ...[
+                      // 오늘 할 일을 한 줄로 먼저 말한다.
+                      _TodayHeadline(remaining: remaining),
+                      const SizedBox(height: 18),
+                      _SlotChips(today: today, next: next),
+                      const SizedBox(height: 24),
+                      // 남는 세로 자리를 그대로 받아 그 안에 맞춘다.
+                      _Fill(
+                        scrolls: scrolls,
+                        child: _BigDoseButton(
+                          done: next == null,
+                          onTake: next == null ? null : () => _take(next.slot),
+                          onUndo: next != null
+                              ? null
+                              : () => _undo(
+                                  _recordedSlot ?? today.doses.last.slot,
+                                ),
+                        ),
+                      ),
+                      const SizedBox(height: 24),
+                      _HomeTiles(
+                        takenAt: next == null ? _lastTakenAt(today) : null,
+                        onSnooze: next == null
+                            ? null
+                            : () => _snooze(next.slot),
+                        onOpenMedicines: widget.onOpenMedicines,
+                      ),
+                      if (today.daysLeft != null) ...[
+                        const SizedBox(height: 16),
+                        _RefillRow(daysLeft: today.daysLeft!),
                       ],
-                    ),
-                  )
-                else
-                  _doseCard(today, next),
-                const SizedBox(height: 12),
-                // 바로가기는 접지 않는다. 한 번 더 눌러야 나오는 기능은
-                // 없는 것과 같다 — 어르신은 접힌 줄을 열어 보지 않는다.
-                _BottomShortcuts(
-                  onOpenMedicines: widget.onOpenMedicines,
-                  onOpenPrescription: widget.onOpenPrescription,
-                ),
-              ],
+                    ],
+                  ],
+                );
+                return Padding(
+                  padding: EdgeInsets.fromLTRB(20, 10, 20, bottomPad),
+                  child: scrolls ? SingleChildScrollView(child: body) : body,
+                );
+              },
             ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 오늘 마지막으로 약을 든 시각. 없으면 null.
+  static DateTime? _lastTakenAt(TodayMedication today) {
+    DateTime? found;
+    for (final dose in today.doses) {
+      final at = dose.takenAt;
+      if (at != null) found = at;
+    }
+    return found;
+  }
+}
+
+/// "오늘 드실 약이 1번 남았어요" — 다 드셨으면 "오늘 약을 다 드셨어요".
+class _TodayHeadline extends StatelessWidget {
+  final int remaining;
+
+  const _TodayHeadline({required this.remaining});
+
+  @override
+  Widget build(BuildContext context) {
+    final style = AppText.screenTitle(size: 28);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(6, 10, 6, 0),
+      child: remaining == 0
+          ? Text.rich(
+              TextSpan(
+                children: [
+                  TextSpan(
+                    text: '오늘 약을 ',
+                    style: style.copyWith(fontWeight: FontWeight.w500),
+                  ),
+                  TextSpan(text: '다 드셨어요', style: style),
+                ],
+              ),
+            )
+          : Text.rich(
+              TextSpan(
+                children: [
+                  TextSpan(
+                    text: '오늘 드실 약이 ',
+                    style: style.copyWith(fontWeight: FontWeight.w500),
+                  ),
+                  TextSpan(text: '$remaining번 남았어요', style: style),
+                ],
+              ),
+            ),
+    );
+  }
+}
+
+/// 아침·점심·저녁 세 칸. 드신 때는 흰 칩에 체크, 다음 때는 파란 칩,
+/// 약이 없는 때는 회색 칩에 "없음".
+class _SlotChips extends StatelessWidget {
+  final TodayMedication today;
+  final DoseEntry? next;
+
+  const _SlotChips({required this.today, required this.next});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        for (final slot in DoseSlot.values) ...[
+          Expanded(child: _chip(slot)),
+          if (slot != DoseSlot.values.last) const SizedBox(width: 12),
+        ],
+      ],
+    );
+  }
+
+  Widget _chip(DoseSlot slot) {
+    final dose = today.doses.where((d) => d.slot == slot).firstOrNull;
+    final isNext = next?.slot == slot;
+    final taken = dose?.taken ?? false;
+
+    final label = dose == null
+        ? '${slot.label} 없음'
+        : isNext
+        ? '${slot.label} ${_clock(slot)}'
+        : slot.label;
+    final background = dose == null
+        ? AppColors.neutralFill
+        : isNext
+        ? AppColors.pointFill
+        : AppColors.surface;
+    final foreground = dose == null
+        ? AppColors.textSecondary
+        : isNext
+        ? Colors.white
+        : AppColors.point;
+
+    return Semantics(
+      label: dose == null
+          ? label
+          : taken
+          ? '${slot.label} 드셨어요'
+          : label,
+      child: ExcludeSemantics(
+        child: Container(
+          constraints: const BoxConstraints(minHeight: 60),
+          alignment: Alignment.center,
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+          decoration: BoxDecoration(
+            color: background,
+            borderRadius: BorderRadius.circular(30),
+            // 흰 칩만 그림자로 띄운다. 채운 칩은 색이 이미 자리를 잡는다.
+            boxShadow: background == AppColors.surface ? kCardShadow : null,
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Flexible(
+                child: Text(
+                  label,
+                  textAlign: TextAlign.center,
+                  style: AppText.cardTitle(size: 19, color: foreground),
+                ),
+              ),
+              if (taken) ...[
+                const SizedBox(width: 4),
+                Icon(TablerIcons.check, size: 18, color: foreground),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// "6:00" — 칩 안에 들어가는 짧은 시각.
+  static String _clock(DoseSlot slot) {
+    final hour = slot.hour > 12 ? slot.hour - 12 : slot.hour;
+    return '$hour:00';
+  }
+}
+
+/// 남는 세로 자리를 차지하는 껍데기. 스크롤하는 화면에서는 아무것도
+/// 하지 않는다 — 스크롤 안에서는 "남는 자리"라는 것이 없다.
+class _Fill extends StatelessWidget {
+  final bool scrolls;
+  final Widget child;
+
+  const _Fill({required this.scrolls, required this.child});
+
+  @override
+  Widget build(BuildContext context) =>
+      scrolls ? child : Expanded(child: child);
+}
+
+/// 오늘 화면에서 제일 큰 것 하나. 드시기 전에는 파란 "먹었어요",
+/// 다 드신 뒤에는 흰 "취소하기"로 바뀐다.
+///
+/// 바깥의 연한 테는 심장이 뛰듯 두 번씩 커졌다 줄며 눈을 끈다.
+/// 어르신이 이 화면에서 누를 것이 하나뿐임을 몸으로 알리는 장치다.
+class _BigDoseButton extends StatefulWidget {
+  final bool done;
+  final VoidCallback? onTake;
+  final VoidCallback? onUndo;
+
+  const _BigDoseButton({required this.done, this.onTake, this.onUndo});
+
+  @override
+  State<_BigDoseButton> createState() => _BigDoseButtonState();
+}
+
+class _BigDoseButtonState extends State<_BigDoseButton>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _beat = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 1500),
+  );
+
+  /// 쿵-쿵 하고 두 번 뛴 뒤 쉰다. 한 번만 뛰면 기계가 깜빡이는 것 같고,
+  /// 쉬는 참이 없으면 화면이 계속 흔들려 글자를 읽기 어렵다.
+  late final Animation<double> _pulse = TweenSequence<double>([
+    TweenSequenceItem(
+      tween: Tween(
+        begin: 1.0,
+        end: 1.05,
+      ).chain(CurveTween(curve: Curves.easeOut)),
+      weight: 10,
+    ),
+    TweenSequenceItem(
+      tween: Tween(
+        begin: 1.05,
+        end: 1.0,
+      ).chain(CurveTween(curve: Curves.easeIn)),
+      weight: 10,
+    ),
+    TweenSequenceItem(
+      tween: Tween(
+        begin: 1.0,
+        end: 1.09,
+      ).chain(CurveTween(curve: Curves.easeOut)),
+      weight: 12,
+    ),
+    TweenSequenceItem(
+      tween: Tween(
+        begin: 1.09,
+        end: 1.0,
+      ).chain(CurveTween(curve: Curves.easeIn)),
+      weight: 16,
+    ),
+    TweenSequenceItem(tween: ConstantTween<double>(1.0), weight: 52),
+  ]).animate(_beat);
+
+  @override
+  void dispose() {
+    _beat.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final label = widget.done ? '취소하기' : '먹었어요';
+    final fill = widget.done ? AppColors.surface : AppColors.pointFill;
+    final ink = widget.done ? AppColors.textPrimary : Colors.white;
+    // 움직임을 꺼 둔 기기에서는 뛰지 않는다. 다 드신 뒤에도 멈춘다 —
+    // 누를 것이 없는데 눈을 끌 이유가 없다.
+    final beating = !widget.done && !MediaQuery.disableAnimationsOf(context);
+    if (beating) {
+      if (!_beat.isAnimating) _beat.repeat();
+    } else if (_beat.isAnimating) {
+      _beat.stop();
+      _beat.value = 0;
+    }
+
+    return LayoutBuilder(
+      builder: (context, box) {
+        // 받은 자리 안에 테까지 들어가야 한다. 가로·세로 중 좁은 쪽에
+        // 맞추되, 글자를 읽을 수 있는 크기 아래로는 줄이지 않는다.
+        // 가로는 양옆을 한 뼘씩 비워 둔다. 화면 폭을 꽉 채우면
+        // 동그라미가 벽에 낀 것처럼 답답해 보인다.
+        final room = math.min(
+          (box.maxWidth.isFinite ? box.maxWidth : 320) - 56,
+          box.maxHeight.isFinite ? box.maxHeight : 320,
+        );
+        final outer = room.clamp(180.0, 300.0).toDouble();
+        final ring = outer * 0.11;
+        final size = outer - ring * 2;
+        // 글자와 아이콘은 지름을 따라간다. 동그라미만 커지고 글자가
+        // 그대로면 가운데가 비어 보인다.
+        final labelSize = (size * 0.135).clamp(24.0, 34.0).toDouble();
+        final iconSize = (size * 0.24).clamp(44.0, 66.0).toDouble();
+        final labelStyle = AppText.cardTitle(size: labelSize, color: ink);
+
+        return Center(
+          child: Semantics(
+            button: true,
+            label: label,
+            child: GestureDetector(
+              onTap: widget.done ? widget.onUndo : widget.onTake,
+              child: ExcludeSemantics(
+                child: SizedBox(
+                  width: outer,
+                  height: outer,
+                  child: Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      AnimatedBuilder(
+                        animation: _pulse,
+                        builder: (context, child) => Transform.scale(
+                          scale: beating ? _pulse.value : 1.0,
+                          child: child,
+                        ),
+                        child: Container(
+                          width: outer,
+                          height: outer,
+                          decoration: const BoxDecoration(
+                            color: AppColors.pointRing,
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                      ),
+                      Container(
+                        width: size,
+                        height: size,
+                        alignment: Alignment.center,
+                        decoration: BoxDecoration(
+                          color: fill,
+                          shape: BoxShape.circle,
+                        ),
+                        // 동그라미 안에 드는 네모는 지름의 0.7배다. 글씨를
+                        // 키운 기기에서도 그 안에서 줄여 담아 넘치지 않게 한다.
+                        child: SizedBox(
+                          width: size * 0.72,
+                          height: size * 0.72,
+                          child: FittedBox(
+                            fit: BoxFit.scaleDown,
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  widget.done
+                                      ? TablerIcons.arrow_back_up
+                                      : TablerIcons.check,
+                                  size: iconSize,
+                                  color: ink,
+                                ),
+                                const SizedBox(height: 2),
+                                Text(label, style: labelStyle),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+/// 동그라미 아래 두 칸 — "30분 뒤"와 "약 보기".
+/// 다 드신 뒤에는 왼쪽이 드신 시각으로 바뀐다.
+class _HomeTiles extends StatelessWidget {
+  final DateTime? takenAt;
+  final VoidCallback? onSnooze;
+  final VoidCallback? onOpenMedicines;
+
+  const _HomeTiles({this.takenAt, this.onSnooze, this.onOpenMedicines});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Expanded(
+          child: takenAt == null
+              ? _tile(
+                  icon: TablerIcons.alarm_snooze,
+                  label: '30분 뒤',
+                  onTap: onSnooze,
+                )
+              : _tile(
+                  icon: TablerIcons.circle_check,
+                  label:
+                      '${TimeOfDay.fromDateTime(takenAt!).hour}:'
+                      '${takenAt!.minute.toString().padLeft(2, '0')}에 드셨어요',
+                  background: AppColors.pointTint,
+                  foreground: AppColors.point,
+                  fontSize: 17,
+                ),
+        ),
+        const SizedBox(width: 16),
+        Expanded(
+          child: _tile(
+            icon: TablerIcons.pill,
+            label: '약 보기',
+            onTap: onOpenMedicines,
           ),
         ),
       ],
     );
   }
+
+  Widget _tile({
+    required IconData icon,
+    required String label,
+    VoidCallback? onTap,
+    Color background = AppColors.surface,
+    Color foreground = AppColors.textPrimary,
+    double fontSize = 19,
+  }) {
+    return Semantics(
+      button: onTap != null,
+      label: label,
+      child: GestureDetector(
+        onTap: onTap,
+        child: ExcludeSemantics(
+          child: Container(
+            constraints: const BoxConstraints(minHeight: 100),
+            alignment: Alignment.center,
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+            decoration: BoxDecoration(
+              color: background,
+              borderRadius: BorderRadius.circular(18),
+              boxShadow: kCardShadow,
+            ),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(icon, size: 34, color: foreground),
+                const SizedBox(height: 6),
+                Flexible(
+                  child: Text(
+                    label,
+                    textAlign: TextAlign.center,
+                    style: AppText.cardTitle(size: fontSize, color: foreground),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }
 
-/// 날짜 칩 + 모드 배지 + 아바타.
-/// 오늘 화면 맨 위 띠 — 날짜·화면 모드·내 정보. 복약 완료 화면도 같이 쓴다.
+/// "처방약이 3일분 남았어요" 한 줄.
+class _RefillRow extends StatelessWidget {
+  final int daysLeft;
+
+  const _RefillRow({required this.daysLeft});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(22),
+        boxShadow: kCardShadow,
+      ),
+      child: Row(
+        children: [
+          const Icon(
+            TablerIcons.calendar_event,
+            size: 24,
+            color: AppColors.textSecondary,
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              '처방약이 $daysLeft일분 남았어요',
+              style: AppText.cardTitle(
+                size: 17.5,
+                color: AppColors.textBody,
+                weight: FontWeight.w700,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class HomeTopBar extends StatelessWidget {
   final String userName;
   final DateTime date;
@@ -384,703 +823,40 @@ class HomeTopBar extends StatelessWidget {
     this.onOpenMenu,
   });
 
+  static const _weekdays = ['월', '화', '수', '목', '금', '토', '일'];
+
   @override
   Widget build(BuildContext context) {
     return SeniorHeader(
+      background: AppColors.pageBg,
+      // 바탕과 머리가 같은 흰색이라 선만 남는다. 카드 그림자가 이미
+      // 본문을 가르므로 여기서 한 번 더 그을 이유가 없다.
+      borderColor: Colors.transparent,
       child: Row(
         children: [
-          Flexible(
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 9),
-              decoration: BoxDecoration(
-                color: AppColors.bg,
-                borderRadius: BorderRadius.circular(22),
-              ),
-              child: Wrap(
-                spacing: 8,
-                crossAxisAlignment: WrapCrossAlignment.center,
-                children: [
-                  Text(
-                    '${date.month}월 ${date.day}일',
-                    style: AppText.cardTitle(
-                      size: 21,
-                      color: AppColors.point,
-                      weight: FontWeight.w700,
-                    ),
-                  ),
-                  Text(
-                    '오늘',
-                    style: AppText.cardTitle(size: 21, weight: FontWeight.w700),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(width: 10),
-          const ModeBadge(),
-          const SizedBox(width: 10),
-          if (easyMode && onOpenMenu != null)
-            EasyMenuButton(onTap: onOpenMenu!)
-          else
-            InitialAvatar(name: userName, size: 52, background: AppColors.bg),
-        ],
-      ),
-    );
-  }
-}
-
-class _SnoozeNotice extends StatelessWidget {
-  final String text;
-  const _SnoozeNotice({required this.text});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-      decoration: BoxDecoration(
-        color: AppColors.pointTint,
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: Text(
-        text,
-        style: AppText.label(size: 18.5, color: AppColors.pointInk),
-      ),
-    );
-  }
-}
-
-/// 지금 드실 약 — 이 화면의 주인공.
-class _NextDoseCard extends StatelessWidget {
-  final TodayMedication today;
-  final DoseEntry dose;
-  final VoidCallback onTake;
-  final VoidCallback onSnooze;
-  final void Function(Medicine)? onOpenDrug;
-
-  const _NextDoseCard({
-    required this.today,
-    required this.dose,
-    required this.onTake,
-    required this.onSnooze,
-    required this.onOpenDrug,
-  });
-
-  int _dailyFrequency(Medicine medicine) =>
-      medicine.frequencyPerDay ??
-      today.doses
-          .where(
-            (entry) => entry.medicines.any(
-              (candidate) =>
-                  _medicineIdentity(candidate) == _medicineIdentity(medicine),
-            ),
-          )
-          .length;
-
-  @override
-  Widget build(BuildContext context) {
-    final others = today.doses.where((d) => d.slot != dose.slot).toList();
-    final daysLeft = today.daysLeft;
-    return SeniorCard(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          if (daysLeft != null) ...[
-            DaysLeftRow(daysLeft: daysLeft, phrase: today.daysLeftPhrase),
-            const SizedBox(height: 12),
-          ],
-          LabelValueRow(
-            label: Text(dose.slot.spokenTime, style: AppText.bigTime(size: 36)),
-            value: Text(
-              '눌러서 설명 보기',
-              textAlign: TextAlign.right,
-              style: AppText.label(size: 16.5, color: AppColors.textTertiary),
-            ),
-          ),
-          const SizedBox(height: 12),
-          for (int i = 0; i < dose.medicines.length; i++) ...[
-            if (i > 0) const SeniorDivider(),
-            _MedicineRow(
-              medicine: dose.medicines[i],
-              frequencyPerDay: _dailyFrequency(dose.medicines[i]),
-              onTap: onOpenDrug == null
-                  ? null
-                  : () => onOpenDrug!(dose.medicines[i]),
-            ),
-          ],
-          const SizedBox(height: 12),
-          SeniorButton(label: '먹었어요', onPressed: onTake),
-          const SizedBox(height: 10),
-          SeniorButton(
-            label: '30분 뒤에 다시 알려주기',
-            kind: SeniorButtonKind.secondary,
-            minHeight: 62,
-            fontSize: 20,
-            onPressed: onSnooze,
-          ),
-          if (others.isNotEmpty) ...[
-            const SizedBox(height: 12),
-            _OtherDosesBlock(doses: others),
-          ],
-        ],
-      ),
-    );
-  }
-}
-
-/// 약 한 줄 — 사진, 이름, 짧은 분류, 하루 횟수.
-class _MedicineRow extends StatelessWidget {
-  final Medicine medicine;
-  final int frequencyPerDay;
-  final VoidCallback? onTap;
-
-  const _MedicineRow({
-    required this.medicine,
-    required this.frequencyPerDay,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(14),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 12),
-        child: Row(
-          children: [
-            PillPhoto(size: 60),
-            const SizedBox(width: 14),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          medicine.displayName,
-                          style: AppText.cardTitle(size: 21),
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      Text(
-                        '하루 $frequencyPerDay회',
-                        style: AppText.cardTitle(
-                          size: 20,
-                          color: AppColors.point,
-                        ),
-                      ),
-                      if (onTap != null) ...[
-                        const SizedBox(width: 4),
-                        const SeniorChevron(),
-                      ],
-                    ],
-                  ),
-                  if (medicine.effect != null)
-                    Text(medicine.effect!, style: AppText.caption(size: 16.5)),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-/// 지금 시간대가 아닌 오늘 약. 먹었어요 단추는 두지 않는다.
-class _OtherDosesBlock extends StatelessWidget {
-  final List<DoseEntry> doses;
-  const _OtherDosesBlock({required this.doses});
-
-  List<_OtherMedicineSchedule> get _medicineSchedules {
-    final grouped = <String, _OtherMedicineSchedule>{};
-    for (final dose in doses) {
-      for (final medicine in dose.medicines) {
-        final key = _medicineIdentity(medicine);
-        final schedule = grouped.putIfAbsent(
-          key,
-          () => _OtherMedicineSchedule(medicine),
-        );
-        schedule.addDose(dose);
-      }
-    }
-    return grouped.values.toList(growable: false);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-      decoration: BoxDecoration(
-        color: AppColors.sunken,
-        borderRadius: BorderRadius.circular(16),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Text('오늘 다른 약', style: AppText.label(size: 17.5)),
-          const SizedBox(height: 10),
-          for (final schedule in _medicineSchedules)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 8),
-              child: Row(
-                children: [
-                  const PillPhoto(size: 38),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          schedule.medicine.displayName,
-                          style: AppText.label(
-                            size: 18,
-                            color: AppColors.textPrimary,
-                          ),
-                        ),
-                        if (schedule.medicine.effect != null)
-                          Text(
-                            schedule.medicine.effect!,
-                            style: AppText.caption(size: 16.5),
-                          ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Flexible(
-                    child: FittedBox(
-                      fit: BoxFit.scaleDown,
-                      alignment: Alignment.centerRight,
-                      child: Text(
-                        schedule.statusLabel,
-                        style: AppText.cardTitle(
-                          size: 16.5,
-                          color: schedule.allTaken
-                              ? AppColors.point
-                              : AppColors.textSecondary,
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-        ],
-      ),
-    );
-  }
-}
-
-String _medicineIdentity(Medicine medicine) {
-  final code = medicine.medicineCode?.trim() ?? '';
-  if (code.isNotEmpty) return 'code:$code';
-  final normalizedName = medicine.displayName
-      .replaceAll(RegExp(r'\s+'), '')
-      .toLowerCase();
-  return 'name:$normalizedName';
-}
-
-class _OtherMedicineSchedule {
-  final Medicine medicine;
-  final List<DoseEntry> _doses = [];
-
-  _OtherMedicineSchedule(this.medicine);
-
-  void addDose(DoseEntry dose) {
-    if (_doses.any((entry) => entry.slot == dose.slot)) return;
-    _doses.add(dose);
-  }
-
-  bool get allTaken => _doses.isNotEmpty && _doses.every((dose) => dose.taken);
-
-  String get statusLabel {
-    final taken = _doses.where((dose) => dose.taken).toList(growable: false);
-    final pending = _doses.where((dose) => !dose.taken).toList(growable: false);
-    String slots(List<DoseEntry> entries) =>
-        entries.map((entry) => entry.slot.label).join('·');
-
-    if (pending.isEmpty) return '${slots(taken)} ✓';
-    if (taken.isEmpty) return '${slots(pending)}에 있어요';
-    return '${slots(taken)} ✓ · ${slots(pending)} 예정';
-  }
-}
-
-/// 오늘 약을 다 드신 뒤의 카드.
-/// 방금 기록했다고 알리는 파란 띠 (프로토타입 18번).
-///
-/// 화면을 갈아 끼우지 않고 여기서 알린다. X를 누르면 사라진다.
-class _RecordedBanner extends StatelessWidget {
-  final DoseSlot slot;
-  final VoidCallback onClose;
-
-  const _RecordedBanner({required this.slot, required this.onClose});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
-      decoration: BoxDecoration(
-        color: AppColors.point,
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 48,
-            height: 48,
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-              color: AppColors.pointPressed,
-              shape: BoxShape.circle,
-            ),
-            child: Text(
-              '✓',
-              style: AppText.cardTitle(size: 22, color: Colors.white),
-            ),
-          ),
-          const SizedBox(width: 14),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
-                  '잘하셨어요',
-                  style: AppText.cardTitle(size: 22, color: Colors.white),
+                  '${date.month}월 ${date.day}일 ${_weekdays[date.weekday - 1]}요일',
+                  style: AppText.body(size: 17, color: AppColors.textSecondary),
                 ),
                 Text(
-                  '${slot.label} 약을 기록했어요',
-                  style: AppText.caption(
-                    size: 17,
-                    color: AppColors.onPointMuted,
-                  ),
+                  userName.trim().isEmpty ? '오늘' : '$userName 님',
+                  style: AppText.screenTitle(size: 21),
                 ),
               ],
             ),
           ),
           const SizedBox(width: 10),
-          Semantics(
-            button: true,
-            label: '알림 닫기',
-            child: ExcludeSemantics(
-              child: GestureDetector(
-                onTap: onClose,
-                child: Container(
-                  width: 48,
-                  height: 48,
-                  alignment: Alignment.center,
-                  decoration: BoxDecoration(
-                    color: AppColors.pointPressed,
-                    shape: BoxShape.circle,
-                  ),
-                  child: const Icon(
-                    Icons.close_rounded,
-                    size: 26,
-                    color: Colors.white,
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _AllDoneCard extends StatelessWidget {
-  final TodayMedication today;
-  final VoidCallback onUndo;
-  final void Function(Medicine medicine)? onOpenDrug;
-
-  const _AllDoneCard({
-    required this.today,
-    required this.onUndo,
-    required this.onOpenDrug,
-  });
-
-  /// 오늘 드신 약. 같은 약이 여러 번 나오면 한 번만 적는다.
-  List<Medicine> get _takenMedicines {
-    final seen = <String>{};
-    final medicines = <Medicine>[];
-    for (final dose in today.doses) {
-      if (!dose.taken) continue;
-      for (final medicine in dose.medicines) {
-        if (seen.add(medicine.displayName)) medicines.add(medicine);
-      }
-    }
-    return medicines;
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final daysLeft = today.daysLeft;
-    final medicines = _takenMedicines;
-    return SeniorCard(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Row(
-            children: [
-              Container(
-                width: 48,
-                height: 48,
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  color: AppColors.pointTint,
-                  borderRadius: BorderRadius.circular(24),
-                ),
-                child: Text(
-                  '✓',
-                  style: AppText.cardTitle(size: 22, color: AppColors.point),
-                ),
-              ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('오늘 약 다 드셨어요', style: AppText.cardTitle(size: 22)),
-                    Text(
-                      '다음 약은 내일 ${today.doses.first.slot.spokenTime}',
-                      style: AppText.caption(size: 17.5),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          if (daysLeft != null) ...[
-            DaysLeftRow(daysLeft: daysLeft, phrase: today.daysLeftPhrase),
-            const SizedBox(height: 12),
-          ],
-          SeniorButton(
-            label: '잘못 눌렀어요',
-            kind: SeniorButtonKind.neutral,
-            minHeight: 60,
-            fontSize: 19,
-            onPressed: onUndo,
-          ),
-          if (medicines.isNotEmpty) ...[
-            const SizedBox(height: 12),
-            Container(
-              padding: const EdgeInsets.fromLTRB(16, 14, 16, 6),
-              decoration: BoxDecoration(
-                color: AppColors.sunken,
-                borderRadius: BorderRadius.circular(16),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Text('오늘 드신 약 · 눌러서 설명 보기', style: AppText.caption(size: 16)),
-                  for (final medicine in medicines)
-                    _TakenMedicineRow(
-                      medicine: medicine,
-                      onTap: onOpenDrug == null
-                          ? null
-                          : () => onOpenDrug!(medicine),
-                    ),
-                ],
-              ),
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-}
-
-/// 오늘 드신 약 한 줄 — 사진, 이름, 무슨 약인지.
-class _TakenMedicineRow extends StatelessWidget {
-  final Medicine medicine;
-  final VoidCallback? onTap;
-
-  const _TakenMedicineRow({required this.medicine, required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    final category = (medicine.easyCategory ?? '').trim();
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(14),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 10),
-        child: Row(
-          children: [
-            const PillPhoto(size: 48),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    medicine.displayName,
-                    style: AppText.cardTitle(size: 19),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  if (category.isNotEmpty)
-                    Text(
-                      category,
-                      style: AppText.caption(size: 16),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                ],
-              ),
-            ),
-            if (onTap != null) ...[
-              const SizedBox(width: 8),
-              const SeniorChevron(),
-            ],
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-/// 때문이다. 나머지 기능은 [_BottomShortcuts]로 화면 아래에 둔다.
-class _TopShortcuts extends StatelessWidget {
-  /// 오늘 약 전후로 잰 심박수. 잰 적이 없으면 null.
-  final DoseHeartCheck? heartCheck;
-
-  /// 그 심박수를 잰 시간대 이름 — "아침 심박수"처럼 앞에 붙인다.
-  final String? heartSlotLabel;
-
-  /// 가장 최근 심박수. 전후 기록이 없을 때만 쓴다.
-  final int? heartRate;
-  final VoidCallback? onOpenChat;
-  final VoidCallback? onOpenHeartbeat;
-
-  const _TopShortcuts({
-    required this.heartCheck,
-    required this.heartSlotLabel,
-    required this.heartRate,
-    required this.onOpenChat,
-    required this.onOpenHeartbeat,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final check = heartCheck;
-    return IntrinsicHeight(
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Expanded(
-            child: _Shortcut(
-              icon: TablerIcons.message_circle_question,
-              label: 'AI 약사 상담',
-              onTap: onOpenChat,
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: _Shortcut(
-              icon: TablerIcons.heart,
-              label: check == null || heartSlotLabel == null
-                  ? '심박수'
-                  : '$heartSlotLabel 심박수',
-              trailing: check != null
-                  ? '${check.before} → ${check.after}'
-                  : (heartRate == null ? null : '$heartRate'),
-              onTap: onOpenHeartbeat,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-/// 화면 아래 바로가기 둘 — 약 목록과 처방전 넣기.
-class _BottomShortcuts extends StatelessWidget {
-  final VoidCallback? onOpenMedicines;
-  final VoidCallback? onOpenPrescription;
-
-  const _BottomShortcuts({
-    required this.onOpenMedicines,
-    required this.onOpenPrescription,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return IntrinsicHeight(
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Expanded(
-            child: _Shortcut(
-              icon: TablerIcons.pill,
-              label: '내 약 목록',
-              onTap: onOpenMedicines,
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: _Shortcut(
-              // Rx 기호는 처방전으로 읽히지 않고 깨진 글자처럼 보인다.
-              icon: TablerIcons.file_description,
-              label: '처방전 넣기',
-              onTap: onOpenPrescription,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _Shortcut extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final String? trailing;
-  final VoidCallback? onTap;
-
-  const _Shortcut({
-    required this.icon,
-    required this.label,
-    this.trailing,
-    this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return SeniorCard(
-      radius: 20,
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 15),
-      onTap: onTap,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            width: 40,
-            height: 40,
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-              color: AppColors.pointTint,
-              borderRadius: BorderRadius.circular(13),
-            ),
-            child: ExcludeSemantics(
-              child: Icon(icon, size: 26, color: AppColors.point),
-            ),
-          ),
-          const SizedBox(height: 10),
-          // 값은 이름 아래에 둔다. 한 줄에 나란히 두면 좁은 타일에서 잘린다.
-          Text(label, style: AppText.cardTitle(size: 19)),
-          if (trailing != null) ...[
-            const SizedBox(height: 4),
-            Text(
-              trailing!,
-              style: AppText.cardTitle(size: 21, color: AppColors.point),
-            ),
+          // 지금 어느 화면인지는 두 모드 모두에서 보여야 한다.
+          // 쉬운 화면에서는 그 옆에 메뉴 단추가 하나 더 붙는다.
+          const Flexible(child: ModeBadge()),
+          if (easyMode && onOpenMenu != null) ...[
+            const SizedBox(width: 10),
+            EasyMenuButton(onTap: onOpenMenu!),
           ],
         ],
       ),

@@ -37,8 +37,8 @@ def create_guardian(guardian: GuardianCreate):
             INSERT INTO guardians (
                 id, user_id, guardian_name, relationship, phone,
                 fcm_token, notification_enabled, guardian_user_id,
-                patient_relation, status, requested_by
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'ACCEPTED', 'PATIENT')
+                status, requested_by
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'ACCEPTED', 'PATIENT')
             """,
             (
                 guardian_id,
@@ -49,7 +49,6 @@ def create_guardian(guardian: GuardianCreate):
                 guardian.fcm_token,
                 int(guardian.notification_enabled),
                 account["id"] if account else None,
-                (guardian.patient_relation or "").strip() or None,
             ),
         )
         conn.commit()

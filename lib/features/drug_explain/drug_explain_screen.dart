@@ -561,7 +561,7 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
 
   Widget _buildKeywordBar() {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 4, 20, 0),
+      padding: const EdgeInsets.fromLTRB(20, 18, 20, 0),
       child: LayoutBuilder(
         builder: (context, constraints) => Scrollbar(
           child: SingleChildScrollView(
@@ -587,7 +587,7 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
                         size: 19,
                         color: selected ? Colors.white : AppColors.textBody,
                       ),
-                      backgroundColor: AppColors.surface,
+                      backgroundColor: AppColors.pageBg,
                       selectedColor: AppColors.point,
                       side: BorderSide(
                         color: selected
@@ -622,7 +622,7 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
         : _selectedMedicine?.trim();
 
     return Scaffold(
-      backgroundColor: AppColors.bg,
+      backgroundColor: AppColors.pageBg,
       body: SafeArea(
         child: Column(
           children: [
@@ -756,7 +756,7 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
                   ],
                   if (_isLoading) ...[
                     const SizedBox(height: 4),
-                    Text('AI 약사가 답을 쓰고 있어요…', style: AppText.caption(size: 18)),
+                    Text('답변을 작성하고 있어요', style: AppText.caption(size: 18)),
                   ],
                 ],
               ),
@@ -773,11 +773,8 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
                       constraints: const BoxConstraints(minHeight: 60),
                       decoration: BoxDecoration(
                         color: AppColors.surface,
-                        borderRadius: BorderRadius.circular(30),
-                        border: Border.all(
-                          color: AppColors.strongLine,
-                          width: 2,
-                        ),
+                        borderRadius: BorderRadius.circular(31),
+                        boxShadow: kCardShadow,
                       ),
                       padding: const EdgeInsets.symmetric(horizontal: 20),
                       child: TextField(

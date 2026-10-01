@@ -46,6 +46,7 @@ app.*.map.json
 /android/app/release
 
 alkongyakong.db
+alkongyakong.db-*
 mfds_drug_permission.db
 mfds_drug_permission.db-*
 easy_category_map.db

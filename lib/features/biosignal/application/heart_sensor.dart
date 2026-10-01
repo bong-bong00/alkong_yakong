@@ -7,6 +7,7 @@ import '../../../core/network/api_client.dart';
 import '../../../core/session/mvp_session.dart';
 import '../data/biosignal_dataset_collector.dart';
 import '../data/polar_service.dart';
+import '../domain/heart_data.dart';
 
 /// 센서가 지금 어떤 상태인지.
 ///
@@ -70,11 +71,17 @@ class HeartSensor extends ChangeNotifier {
   HeartSaveStatus _saveStatus = HeartSaveStatus.idle;
   int? _savedBpm;
   DateTime? _savedAt;
+  HeartMeasurementContext _measurementContext = HeartMeasurementContext.general;
+  HeartMeasurementContext _savedMeasurementContext =
+      HeartMeasurementContext.general;
   double? _changePercent;
 
   HeartSaveStatus get saveStatus => _saveStatus;
   int? get savedBpm => _savedBpm;
   DateTime? get savedAt => _savedAt;
+  HeartMeasurementContext get measurementContext => _measurementContext;
+  HeartMeasurementContext get savedMeasurementContext =>
+      _savedMeasurementContext;
   double? get changePercent => _changePercent;
   int get elapsedSeconds => _elapsedSeconds;
   bool get measuring =>
@@ -93,7 +100,10 @@ class HeartSensor extends ChangeNotifier {
   }
 
   /// A shared connection starts a fresh measurement without reconnecting BLE.
-  void beginMeasurement() {
+  void beginMeasurement({
+    HeartMeasurementContext measurementContext =
+        HeartMeasurementContext.general,
+  }) {
     if (_disposed) return;
     _session++;
     _stopMeasurement(clearBaseline: true);
@@ -102,6 +112,8 @@ class HeartSensor extends ChangeNotifier {
     _saveStatus = HeartSaveStatus.idle;
     _savedBpm = null;
     _savedAt = null;
+    _measurementContext = measurementContext;
+    _savedMeasurementContext = HeartMeasurementContext.general;
     _changePercent = null;
     if (_acceptSamples) _watchSignal();
     notifyListeners();
@@ -126,6 +138,7 @@ class HeartSensor extends ChangeNotifier {
   void endMeasurement() {
     _session++;
     _measurementActive = false;
+    _measurementContext = HeartMeasurementContext.general;
     _stopMeasurement(clearBaseline: true);
   }
 
@@ -156,11 +169,15 @@ class HeartSensor extends ChangeNotifier {
   }
 
   /// 센서를 찾아 붙고 심박 스트림을 연다.
-  Future<void> start({bool measure = true}) async {
+  Future<void> start({
+    bool measure = true,
+    HeartMeasurementContext measurementContext =
+        HeartMeasurementContext.general,
+  }) async {
     if (_disposed || _connecting) return;
     _connecting = true;
     _acceptSamples = false;
-    beginMeasurement();
+    beginMeasurement(measurementContext: measurementContext);
     _measurementActive = measure;
     final session = _session;
     _set(HeartSensorStatus.connecting);
@@ -333,6 +350,7 @@ class HeartSensor extends ChangeNotifier {
   /// 30초 평균만 서버로 올린다. 매 초 값을 올리면 기록이 잡음이 된다.
   Future<void> _sendAverageBpm(double average) async {
     final session = _session;
+    final measurementContext = _measurementContext;
     _saveStatus = HeartSaveStatus.saving;
     notifyListeners();
     final userId = MvpSession.userId.trim();
@@ -349,6 +367,7 @@ class HeartSensor extends ChangeNotifier {
           'bpm': average.round(),
           'device_id': _deviceId ?? PolarService.defaultDeviceId,
           'source': 'POLAR_30S_AVERAGE',
+          'measurement_context': measurementContext.value,
         },
       );
       if (_disposed || session != _session) return;
@@ -362,6 +381,7 @@ class HeartSensor extends ChangeNotifier {
           DateTime.tryParse(response['measured_at'] as String) != null) {
         _savedBpm = response['bpm'] as int;
         _savedAt = DateTime.parse(response['measured_at'] as String);
+        _savedMeasurementContext = measurementContext;
         _saveStatus = HeartSaveStatus.saved;
       } else {
         _saveStatus = HeartSaveStatus.unknown;
@@ -387,6 +407,7 @@ class HeartSensor extends ChangeNotifier {
   Future<void> stop() async {
     _session++;
     _measurementActive = false;
+    _measurementContext = HeartMeasurementContext.general;
     if (_saveStatus == HeartSaveStatus.saving) {
       _saveStatus = HeartSaveStatus.unknown;
     }

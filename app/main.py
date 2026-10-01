@@ -10,7 +10,6 @@ from app.core.config import (
     CLOVA_OCR_API_URL,
     CLOVA_OCR_ENABLED,
     CLOVA_OCR_SECRET_KEY,
-    DEMO_SEED_ENABLED,
 )
 from app.database import DB_PATH
 from app.routes import (
@@ -27,7 +26,6 @@ from app.routes import (
 )
 from init_db import initialize_database
 from app.services.pharmacist.easy_category_db import initialize_easy_category_map_db
-from app.services.seed_mvp_medicines import ensure_mvp_demo_medicines
 from app.services.pharmacist.retrieve import start_background_medicine_detail_refresh
 from app.services.dur_sync_service import start_background_dur_sync
 
@@ -36,10 +34,7 @@ from app.services.dur_sync_service import start_background_dur_sync
 async def lifespan(_: FastAPI):
     initialize_database()
     initialize_easy_category_map_db()
-    if DEMO_SEED_ENABLED:
-        ensure_mvp_demo_medicines()
-    # 로컬 개발 중에는 전체 DB 갱신 스레드가 OCR·목록 요청의 SQLite 쓰기와
-    # 경쟁하지 않게 한다. 운영 Render에서만 자동 동기화를 시작한다.
+    # Demo medicines are explicit test fixtures, never production startup data.
     if APP_ENV == "production":
         start_background_medicine_detail_refresh()
         start_background_dur_sync()

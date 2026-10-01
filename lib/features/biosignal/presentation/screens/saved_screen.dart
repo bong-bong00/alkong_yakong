@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import '../../../medication/application/medication_controller.dart';
 import 'package:flutter_tabler_icons/flutter_tabler_icons.dart';
 
@@ -8,6 +9,7 @@ import '../../../../core/widgets/senior_button.dart';
 import '../../../../core/widgets/senior_card.dart';
 import '../../../../core/widgets/senior_header.dart';
 import '../../domain/heart_time.dart';
+import '../../domain/heart_data.dart';
 
 /// 30 · 기록 저장.
 ///
@@ -26,9 +28,15 @@ class SavedScreen extends StatelessWidget {
 
   /// 저장한 시각. 없으면 화면을 여는 지금 시각을 쓴다.
   final DateTime? savedAt;
+  final HeartMeasurementContext measurementContext;
 
   /// 기록 탭으로 보내는 길. 없으면 버튼을 그리지 않는다.
   final VoidCallback? onOpenRecord;
+
+  /// 심박수 관리 화면에서 시작한 측정이면, 그 화면으로만 돌아간다.
+  /// 다른 진입 경로는 기존의 최상위 경로 복귀 동작을 유지한다.
+  final bool returnToPreviousScreen;
+  final Future<void> Function()? onConfirmed;
 
   const SavedScreen({
     super.key,
@@ -37,15 +45,43 @@ class SavedScreen extends StatelessWidget {
     this.fromAlert = false,
     this.doseSummary,
     this.savedAt,
+    this.measurementContext = HeartMeasurementContext.general,
     this.onOpenRecord,
+    this.returnToPreviousScreen = false,
+    this.onConfirmed,
   });
+
+  Future<void> _confirm(BuildContext context) async {
+    if (returnToPreviousScreen) {
+      final router = GoRouter.maybeOf(context);
+      if (router != null) {
+        // MaterialRoute와 GoRoute가 섞인 스택을 pop 횟수로 추측하지 않고,
+        // 심박수 관리 화면을 명시적인 복귀 대상으로 지정한다.
+        await onConfirmed?.call();
+        if (context.mounted) router.go('/biosignal');
+        return;
+      }
+    }
+    final navigator = Navigator.of(context);
+    if (navigator.canPop()) {
+      if (returnToPreviousScreen) {
+        navigator.pop(true);
+        return;
+      }
+      navigator.popUntil((route) => route.isFirst);
+      return;
+    }
+    // A replacement can leave this as the navigator's first route. In that
+    // case popUntil is a no-op; return to the real heart records route.
+    GoRouter.maybeOf(context)?.go('/biosignal');
+  }
 
   @override
   Widget build(BuildContext context) {
     final at = heartSavedTimeLabel(savedAt ?? DateTime.now());
     final doseSummary = this.doseSummary;
     return Scaffold(
-      backgroundColor: AppColors.bg,
+      backgroundColor: AppColors.pageBg,
       body: Column(
         children: [
           const SeniorBackHeader(title: '기록 저장'),
@@ -100,7 +136,8 @@ class SavedScreen extends StatelessWidget {
                   _SavedItem(
                     icon: TablerIcons.activity_heartbeat,
                     title: '심박수 기록',
-                    description: '$bpm회 / 분 · 서버에 저장된 심박수',
+                    description:
+                        '$bpm회 / 분 · ${measurementContext.label} · 서버에 저장된 심박수',
                   ),
                   const SizedBox(height: 12),
                   Container(
@@ -137,8 +174,7 @@ class SavedScreen extends StatelessWidget {
                     label: '확인했어요',
                     minHeight: 74,
                     fontSize: 24,
-                    onPressed: () =>
-                        Navigator.of(context).popUntil((r) => r.isFirst),
+                    onPressed: () => _confirm(context),
                   ),
                   if (onOpenRecord != null) ...[
                     const SizedBox(height: 12),
@@ -160,6 +196,23 @@ class SavedScreen extends StatelessWidget {
   }
 }
 
+/// GoRouter가 관리하는 저장 완료 경로에 전달하는 내부 화면 인자.
+class HeartSavedRouteArgs {
+  final int bpm;
+  final DateTime? savedAt;
+  final HeartMeasurementContext measurementContext;
+  final String guardianTitle;
+  final Future<void> Function()? onSaved;
+
+  const HeartSavedRouteArgs({
+    required this.bpm,
+    required this.savedAt,
+    required this.measurementContext,
+    required this.guardianTitle,
+    this.onSaved,
+  });
+}
+
 class _SavedItem extends StatelessWidget {
   final IconData icon;
   final String title;
@@ -174,7 +227,7 @@ class _SavedItem extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SeniorCard(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
       child: Row(
         children: [
           Container(

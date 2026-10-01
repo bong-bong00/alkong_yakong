@@ -47,15 +47,21 @@ def test_mvp_user_today_medicines_from_server():
     )
 
 
-def test_new_user_receives_codarone_for_each_today_slot():
-    data = get_today_medicines("new-demo-user")
-    assert [dose["slot"] for dose in data["doses"]] == [
-        "morning", "lunch", "dinner"
-    ]
-    assert all(
-        any(med["medicine_code"] == "200701021" for med in dose["medicines"])
-        for dose in data["doses"]
-    )
+@pytest.mark.parametrize("uid", ["new-demo-user", MVP_USER_ID])
+def test_new_user_remains_empty_after_repeated_queries(uid):
+    from app.services.user_medicines_service import get_user_medicines
+
+    for _ in range(2):
+        data = get_today_medicines(uid)
+        assert not data["has_server_medicines"]
+        assert not data["doses"]
+        assert get_user_medicines(uid)["medicines"] == []
+    conn = get_connection()
+    try:
+        assert conn.execute("SELECT COUNT(*) FROM user_medicines WHERE user_id = ?", (uid,)).fetchone()[0] == 0
+        assert conn.execute("SELECT COUNT(*) FROM medication_schedules WHERE user_id = ?", (uid,)).fetchone()[0] == 0
+    finally:
+        conn.close()
 
 
 def test_home_amount_uses_take_dose_not_name_milligrams():

@@ -331,7 +331,7 @@ class _PendingCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: AppColors.surface,
         borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: AppColors.strongLine, width: 2),
+        boxShadow: kCardShadow,
       ),
       child: Row(
         children: [

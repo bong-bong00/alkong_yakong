@@ -5,8 +5,16 @@ import 'package:alkong_yakong/core/widgets/senior_button.dart';
 import 'package:alkong_yakong/features/biosignal/application/heart_sensor.dart';
 import 'package:alkong_yakong/features/biosignal/data/biosignal_dataset_collector.dart';
 import 'package:alkong_yakong/features/biosignal/data/polar_service.dart';
+import 'package:alkong_yakong/features/biosignal/domain/heart_data.dart';
 import 'package:alkong_yakong/features/biosignal/presentation/screens/measure_screen.dart';
 import 'package:alkong_yakong/features/biosignal/presentation/screens/saved_screen.dart';
+import 'package:alkong_yakong/features/easy_flow/presentation/easy_dose_flow.dart';
+import 'package:alkong_yakong/features/medication/application/medication_controller.dart';
+import 'package:alkong_yakong/features/medication/domain/medication_models.dart';
+// ignore: depend_on_referenced_packages
+import 'package:http/testing.dart';
+// ignore: depend_on_referenced_packages
+import 'package:http/http.dart' as http;
 // Already supplied by flutter_test; do not change application dependencies.
 // ignore: depend_on_referenced_packages
 import 'package:fake_async/fake_async.dart';
@@ -155,8 +163,12 @@ class Rig {
     datasetCollector: NoDataset(),
     requestPermissions: () async => true,
   );
-  void start(FakeAsync clock) {
-    unawaited(sensor.start());
+  void start(
+    FakeAsync clock, {
+    HeartMeasurementContext measurementContext =
+        HeartMeasurementContext.general,
+  }) {
+    unawaited(sensor.start(measurementContext: measurementContext));
     clock.flushMicrotasks();
     expect(sensor.status, HeartSensorStatus.streaming);
   }
@@ -259,6 +271,7 @@ void main() {
         expect(r.api.requests.single['bpm'], 82);
         expect(r.api.paths.single, '/api/v1/biosignal/heart-rate');
         expect(r.api.requests.single['source'], 'POLAR_30S_AVERAGE');
+        expect(r.api.requests.single['measurement_context'], 'general');
         expect(r.sensor.changePercent, closeTo(35.833333, 0.0001));
         expect(r.sensor.saveStatus, HeartSaveStatus.saving);
         expect(r.sensor.savedBpm, isNull);
@@ -275,6 +288,30 @@ void main() {
       });
     },
   );
+
+  for (final context in [
+    HeartMeasurementContext.beforeMedication,
+    HeartMeasurementContext.afterMedication,
+  ]) {
+    test(
+      '${context.value} is frozen for one upload and next run is general',
+      () {
+        fakeAsync((clock) {
+          final r = Rig();
+          r.start(clock, measurementContext: context);
+          r.window(clock);
+          expect(r.api.requests.single['measurement_context'], context.value);
+          r.api.succeed(0);
+          clock.flushMicrotasks();
+          expect(r.sensor.savedMeasurementContext, context);
+          r.sensor.beginMeasurement();
+          expect(r.sensor.measurementContext, HeartMeasurementContext.general);
+          r.sensor.dispose();
+          clock.flushMicrotasks();
+        });
+      },
+    );
+  }
 
   for (final failure in [
     const ApiException('rejected', statusCode: 404),
@@ -471,12 +508,103 @@ void main() {
       button.onPressed!();
       await tester.pumpAndSettle();
       expect(find.byType(SavedScreen), findsOneWidget);
-      expect(find.text('82회 / 분 · 서버에 저장된 심박수'), findsOneWidget);
+      expect(find.text('82회 / 분 · 평소 심박 측정 · 서버에 저장된 심박수'), findsOneWidget);
       expect(find.text('보호자 자동 알림은 지원하지 않아요'), findsOneWidget);
       expect(r.api.requests, hasLength(1));
       await tester.pumpWidget(const SizedBox());
       r.sensor.dispose();
       await tester.pump();
     },
+  );
+
+  // 명세서 76~83. 재기 → 약 → 다시 재기 → 결과까지 한 바퀴.
+  testWidgets('쉬운 화면 한 바퀴는 잰 값으로 결과를 말한다', (tester) async {
+    final r = Rig();
+    await r.sensor.start();
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [medicationProvider.overrideWith(_PendingDinner.new)],
+        child: MaterialApp(
+          home: Scaffold(body: EasyDoseFlow(sensor: r.sensor)),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    // 1걸음 → 2걸음 → 재는 중.
+    await tester.tap(find.text('복약 전 심박 측정'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('다 찼어요'));
+    await tester.pump();
+    expect(find.text('3 / 8'), findsOneWidget);
+    expect(find.text('재고 있어요'), findsOneWidget);
+
+    // 센서가 값을 주고 서버가 받으면 4걸음으로 넘어간다.
+    await r.widgetWindow(tester);
+    r.api.succeed(0);
+    await tester.pump();
+    await tester.pump();
+    expect(find.text('잘 쟀어요'), findsOneWidget);
+    expect(find.text('82'), findsOneWidget);
+
+    // 5걸음: 약을 드시고 기록한다.
+    await tester.tap(find.text('이제 약 드시기'));
+    await tester.pumpAndSettle();
+    expect(find.text('복약 완료하셨나요?'), findsOneWidget);
+    await tester.tap(find.text('먹었어요'));
+    await tester.pumpAndSettle();
+
+    // 6걸음: 먹기 전을 쟀으니 한 번 더 재자고 묻는다.
+    expect(find.text('한 번 더 재요'), findsOneWidget);
+    expect(find.text('저녁 약 기록했어요'), findsOneWidget);
+
+    // 7걸음 → 8걸음: 먹은 후 값으로 결과를 말한다.
+    await tester.tap(find.text('복약 후 심박 측정'));
+    await tester.pump();
+    await r.widgetWindow(tester);
+    r.api.succeed(1);
+    await tester.pump();
+    await tester.pump();
+    expect(find.text('8 / 8'), findsOneWidget);
+    expect(find.text('평소와 비슷해요'), findsOneWidget);
+    expect(find.text('약이 잘 듣고 있어요'), findsOneWidget);
+
+    // 끝내면 오늘 다 했어요 (85).
+    await tester.tap(find.text('기록 끝내기'));
+    await tester.pumpAndSettle();
+    expect(find.text('다 드셨어요'), findsOneWidget);
+    expect(find.text('복약 기록'), findsOneWidget);
+
+    await tester.pumpWidget(const SizedBox());
+    r.sensor.dispose();
+    await tester.pump();
+  });
+}
+
+/// 저녁 약만 남은 하루. 서버에는 묻지 않는다.
+class _PendingDinner extends MedicationController {
+  _PendingDinner()
+    : super(
+        apiClient: ApiClient(
+          client: MockClient(
+            (_) async => http.Response(
+              '{}',
+              200,
+              headers: {'content-type': 'application/json'},
+            ),
+          ),
+        ),
+      );
+
+  @override
+  TodayMedication build() => const TodayMedication(
+    doses: [
+      DoseEntry(
+        slot: DoseSlot.dinner,
+        medicines: [Medicine(ingredient: '테스트정', amount: '1알', scheduleId: 18)],
+      ),
+    ],
+    guardianRelation: '가족',
+    guardianName: '테스트',
   );
 }

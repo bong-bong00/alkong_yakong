@@ -83,7 +83,7 @@ class _GuardianHomeScreenState extends ConsumerState<GuardianHomeScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.bg,
+      backgroundColor: AppColors.pageBg,
       body: IndexedStack(
         index: _index,
         children: [
@@ -176,7 +176,7 @@ class GuardianStatusScreen extends ConsumerWidget {
         const <DateTime, DayAdherence>{};
 
     return Scaffold(
-      backgroundColor: AppColors.bg,
+      backgroundColor: AppColors.pageBg,
       body: Column(
         children: [
           SeniorHeader(
@@ -427,7 +427,7 @@ class _GuardianAlertsTabState extends State<GuardianAlertsTab> {
     if (!mounted) return;
     // 못 읽으면 못 읽었다고 말한다. 예시 알림으로 갈아끼우지 않는다.
     setState(() {
-      _loaded = loaded == null ? null : loaded.where(_worthTelling).toList();
+      _loaded = loaded?.where(_worthTelling).toList();
       _failed = loaded == null;
     });
   }
@@ -517,7 +517,7 @@ class GuardianAlertsScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.bg,
+      backgroundColor: AppColors.pageBg,
       body: Column(
         children: [
           const SeniorBackHeader(title: '알림', alignStart: true),

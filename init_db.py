@@ -26,6 +26,8 @@ TABLE_DEFINITIONS = {
             diseases TEXT NOT NULL DEFAULT '[]',
             past_history INTEGER,
             family_history INTEGER,
+            past_illnesses TEXT NOT NULL DEFAULT '[]',
+            family_illnesses TEXT NOT NULL DEFAULT '[]',
             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
             updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
         )
@@ -252,6 +254,8 @@ TABLE_DEFINITIONS = {
             measured_at TEXT NOT NULL,
             device_id TEXT,
             source TEXT NOT NULL DEFAULT 'POLAR',
+            measurement_context TEXT NOT NULL DEFAULT 'general'
+                CHECK (measurement_context IN ('general', 'before_medication', 'after_medication')),
             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
         )
@@ -577,12 +581,29 @@ ADDITIVE_COLUMNS = {
         "diseases": "TEXT NOT NULL DEFAULT '[]'",
         "past_history": "INTEGER",
         "family_history": "INTEGER",
+        "past_illnesses": "TEXT NOT NULL DEFAULT '[]'",
+        "family_illnesses": "TEXT NOT NULL DEFAULT '[]'",
+    },
+    "heart_rate_logs": {
+        "measurement_context": "TEXT NOT NULL DEFAULT 'general' CHECK (measurement_context IN ('general', 'before_medication', 'after_medication'))",
     },
 }
 
 
 def _existing_columns(cursor: sqlite3.Cursor, table: str) -> set[str]:
     return {row[1] for row in cursor.execute(f"PRAGMA table_info({table})")}
+
+
+def ensure_additive_columns(cursor: sqlite3.Cursor) -> None:
+    """기존 행을 건드리지 않고 빠진 열만 더한다."""
+    for table, columns in ADDITIVE_COLUMNS.items():
+        existing = _existing_columns(cursor, table)
+        for column, definition in columns.items():
+            if existing and column not in existing:
+                cursor.execute(
+                    f"ALTER TABLE {table} ADD COLUMN {column} {definition}"
+                )
+                existing.add(column)
 
 
 _REVIEWED_HOME_EXPLANATIONS = {
@@ -860,13 +881,7 @@ def initialize_database() -> None:
         if _existing_columns(cursor, table):
             cursor.execute(f"ALTER TABLE {table} RENAME TO legacy_{table}_{suffix}")
 
-    for table, columns in ADDITIVE_COLUMNS.items():
-        existing = _existing_columns(cursor, table)
-        for column, definition in columns.items():
-            if existing and column not in existing:
-                cursor.execute(
-                    f"ALTER TABLE {table} ADD COLUMN {column} {definition}"
-                )
+    ensure_additive_columns(cursor)
 
     for table, definition in TABLE_DEFINITIONS.items():
         existing = _existing_columns(cursor, table)

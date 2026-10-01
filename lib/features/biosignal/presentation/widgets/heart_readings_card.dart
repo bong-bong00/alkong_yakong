@@ -27,14 +27,12 @@ class HeartReadingsCard extends StatelessWidget {
             '${DoseSlot.absoluteTime(reading.measuredAt.toLocal())} · ${reading.bpm}회/분',
             style: AppText.body(size: 18),
           ),
+          const SizedBox(height: 3),
+          Text(
+            reading.measurementContext.label,
+            style: AppText.caption(size: 16),
+          ),
         ],
-        const SizedBox(height: 12),
-        Text(
-          hasComparison
-              ? '복약 전·후 비교는 아래에서 따로 볼 수 있어요.'
-              : '기록은 저장되어 있지만 복약 전·후를 비교할 자료는 부족해요.',
-          style: AppText.body(size: 16),
-        ),
       ],
     ),
   );

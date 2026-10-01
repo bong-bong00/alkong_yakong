@@ -18,7 +18,7 @@ Future<EasyMenuResult?> showEasyMenuSheet(
   return SeniorSheet.show<EasyMenuResult>(
     context: context,
     builder: (sheetContext) => SeniorSheet(
-      title: '어디로 갈까요?',
+      title: '전체 메뉴',
       leading: Row(
         children: [
           InitialAvatar(
@@ -134,61 +134,4 @@ class _MenuTile extends StatelessWidget {
       ),
     );
   }
-}
-
-/// 42 · 건너뛰기 확인에서 무엇을 골랐는지.
-enum SkipChoice {
-  /// 먹었어요를 누르고 다음으로.
-  takeAndContinue,
-
-  /// 그냥 넘어간다.
-  skip,
-
-  /// 이 화면에 그대로 있는다.
-  stay,
-}
-
-/// 42 · 건너뛰기 확인.
-///
-/// 흐름을 따라 다음으로 가려는데 아직 약을 안 누르셨을 때 한 번 묻는다.
-/// **자동으로 "안 드셨어요"로 확정하지 않는다.**
-Future<SkipChoice> showSkipConfirmSheet(
-  BuildContext context, {
-  required String slotLabel,
-}) async {
-  final choice = await SeniorSheet.show<SkipChoice>(
-    context: context,
-    builder: (sheetContext) => SeniorSheet(
-      title: '$slotLabel 약을 아직 안 누르셨어요',
-      body: const SeniorSheetBody([
-        '약을 드셨으면 ',
-        '먹었어요',
-        '를 눌러 주세요. 아직 안 드셨으면 그냥 넘어가셔도 됩니다.',
-      ]),
-      actions: [
-        SeniorButton(
-          label: '먹었어요 · 다음으로',
-          minHeight: 68,
-          fontSize: 23,
-          onPressed: () =>
-              Navigator.of(sheetContext).pop(SkipChoice.takeAndContinue),
-        ),
-        SeniorButton(
-          label: '그냥 넘어갈게요',
-          kind: SeniorButtonKind.secondary,
-          minHeight: 60,
-          fontSize: 20,
-          onPressed: () => Navigator.of(sheetContext).pop(SkipChoice.skip),
-        ),
-        SeniorButton(
-          label: '이 화면에 그대로 있기',
-          kind: SeniorButtonKind.neutral,
-          minHeight: 62,
-          fontSize: 20,
-          onPressed: () => Navigator.of(sheetContext).pop(SkipChoice.stay),
-        ),
-      ],
-    ),
-  );
-  return choice ?? SkipChoice.stay;
 }

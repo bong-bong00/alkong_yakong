@@ -119,7 +119,7 @@ class _PharmacistChatScreenState extends ConsumerState<PharmacistChatScreen> {
     final showSuggestions = _messages.length == 1;
 
     return Scaffold(
-      backgroundColor: AppColors.bg,
+      backgroundColor: AppColors.pageBg,
       body: Column(
         children: [
           SeniorHeader(

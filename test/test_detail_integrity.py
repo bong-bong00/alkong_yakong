@@ -41,19 +41,19 @@ class DetailIntegrityTest(unittest.TestCase):
         self.assertEqual(detail._deduplicate_items(values + [' '+values[0]+' ']), values)
         self.assertEqual(detail._without_summary_duplicate(values, values[0]), values[1:])
 
-    def test_source_change_keeps_reviewed_payload_until_rebuild_merges(self):
+    def test_source_change_blocks_reviewed_payload_until_rebuilt(self):
         profile = self.review()
         self.assertEqual(profile['review_status'], 'REVIEWED')
         self.assertEqual(profile['ingredient_explanation'], '검토된 설명이에요.')
         self.assertEqual(self.db.execute('SELECT count(*) FROM ingredient_explanations').fetchone()[0], 0)
         self.db.execute("UPDATE medicines SET usage='5 mg' WHERE medicine_code='test-A'")
         payload = display.reviewed_detail_payload(self.db, self.medicine())
-        self.assertEqual(payload['explanation']['status'], 'READY')
-        self.assertEqual(payload['explanation']['ingredient_explanation'], '검토된 설명이에요.')
+        self.assertEqual(payload['explanation']['status'], 'OUTDATED')
+        self.assertEqual(payload['explanation']['ingredient_explanation'], '')
         result = detail.ensure_medicine_detail(self.db, 'test-A')
-        self.assertEqual(result['review_status'], 'REVIEWED')
-        self.assertEqual(self.db.execute('SELECT review_status FROM ai_explanation_cards').fetchone()[0], 'REVIEWED')
-        self.assertEqual(detail.ensure_medicine_detail(self.db, 'test-A')['ingredient_explanation'], '검토된 설명이에요.')
+        self.assertNotEqual(result['review_status'], 'REVIEWED')
+        self.assertEqual(self.db.execute('SELECT review_status FROM ai_explanation_cards').fetchone()[0], 'OUTDATED')
+        self.assertNotEqual(detail.ensure_medicine_detail(self.db, 'test-A')['ingredient_explanation'], '검토된 설명이에요.')
 
     def test_fingerprint_preserves_all_official_differences(self):
         original = self.medicine()
@@ -61,11 +61,11 @@ class DetailIntegrityTest(unittest.TestCase):
             with self.subTest(field=field):
                 self.assertNotEqual(detail.official_source_hash(original), detail.official_source_hash({**original, field: '다른 값'}))
 
-    def test_legacy_unbound_review_is_used_when_profile_missing(self):
+    def test_legacy_unbound_review_is_not_used_when_profile_missing(self):
         self.db.execute("INSERT INTO ai_explanation_cards(medicine_code, summary, review_status) VALUES ('test-A','과거 설명','REVIEWED')")
         payload = display.reviewed_detail_payload(self.db, self.medicine())
-        self.assertEqual(payload['explanation']['status'], 'READY')
-        self.assertEqual(payload['explanation']['short_explanation'], '과거 설명')
+        self.assertEqual(payload['explanation']['status'], 'PENDING')
+        self.assertNotEqual(payload['explanation']['short_explanation'], '과거 설명')
 
     def test_reviewed_lookup_uses_normalized_key_not_display_name(self):
         self.db.execute("INSERT INTO ingredient_explanations(normalized_key, ingredient_name, explanation, review_status, source_verified) VALUES ('합성성분','다른 성분','작용을 돕는 성분이에요.','REVIEWED',1)")

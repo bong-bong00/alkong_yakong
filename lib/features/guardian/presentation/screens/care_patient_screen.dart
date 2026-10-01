@@ -11,6 +11,15 @@ import '../../../medicines/application/user_medicines_controller.dart';
 import '../../../medicines/domain/user_medicine_models.dart';
 import '../../../profile/domain/user_profile.dart';
 
+String? illnessHistoryLabel(List<String> illnesses, bool? legacyFlag) {
+  if (illnesses.isNotEmpty) return illnesses.join(', ');
+  return switch (legacyFlag) {
+    true => '있으세요',
+    false => '없어요',
+    null => null,
+  };
+}
+
 /// 그 어르신의 몸 이야기를 가져온다. 못 가져오면 null.
 final carePatientProfileProvider = FutureProvider.family<UserProfile?, String>((
   ref,
@@ -66,13 +75,13 @@ class CarePatientScreen extends ConsumerWidget {
       final drinking = profile?.drinking;
       if (smoking == null && drinking == null) return null;
       return [
-        if (smoking != null) '담배 $smoking',
+        if (smoking != null) '담배 ${lifestyleLabel(smoking)}',
         if (drinking != null) '술 $drinking',
       ].join(' · ');
     }
 
     return Scaffold(
-      backgroundColor: AppColors.bg,
+      backgroundColor: AppColors.pageBg,
       body: Column(
         children: [
           SeniorBackHeader(title: patient.title, alignStart: true),
@@ -171,19 +180,17 @@ class CarePatientScreen extends ConsumerWidget {
                         const SeniorDivider(),
                         _FactRow(
                           label: '과거에 앓았던 병',
-                          value: switch (profile?.pastHistory) {
-                            true => '있으세요',
-                            false => '없으세요',
-                            null => null,
-                          },
+                          value: illnessHistoryLabel(
+                            profile?.pastIllnesses ?? const [],
+                            profile?.pastHistory,
+                          ),
                         ),
                         _FactRow(
                           label: '가족 병력',
-                          value: switch (profile?.familyHistory) {
-                            true => '있어요',
-                            false => '없어요',
-                            _ => null,
-                          },
+                          value: illnessHistoryLabel(
+                            profile?.familyIllnesses ?? const [],
+                            profile?.familyHistory,
+                          ),
                         ),
                         const SeniorDivider(),
                         _FactRow(label: '담배 · 술', value: habitLine()),

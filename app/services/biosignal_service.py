@@ -19,8 +19,8 @@ def save_heart_rate(request: HeartRateCreate) -> dict:
         cursor.execute(
             """
             INSERT INTO heart_rate_logs (
-                user_id, bpm, measured_at, device_id, source
-            ) VALUES (?, ?, ?, ?, ?)
+                user_id, bpm, measured_at, device_id, source, measurement_context
+            ) VALUES (?, ?, ?, ?, ?, ?)
             """,
             (
                 request.user_id,
@@ -28,6 +28,7 @@ def save_heart_rate(request: HeartRateCreate) -> dict:
                 measured_at,
                 request.device_id,
                 request.source,
+                request.measurement_context,
             ),
         )
         log_id = cursor.lastrowid
@@ -42,6 +43,7 @@ def save_heart_rate(request: HeartRateCreate) -> dict:
             "heart_rate_log_id": log_id,
             "bpm": request.bpm,
             "measured_at": response_time.isoformat() if response_time else measured_at,
+            "measurement_context": request.measurement_context,
             "baseline": dict(baseline) if baseline else None,
             "abnormal_event": None,
         }
@@ -70,12 +72,8 @@ def get_abnormal_events(user_id: str) -> list[dict]:
 
 # ── 심박수 요약 ────────────────────────────────────────────────
 #
-# 이 앱은 심박수를 연속으로 재지 않는다. 약 먹기 전에 한 번, 먹은 뒤에
-# 한 번. 그래서 값은 늘 쌍으로 다닌다. 아래 함수들이 heart_rate_logs 와
-# medication_logs 를 시각으로 맞춰 그 쌍을 만든다.
-
-# 복약 시각에서 이만큼 안쪽의 측정만 그 복약의 전·후로 본다.
-_PAIR_WINDOW_MINUTES = 90
+# 사용자가 복약 전·후로 표시한 심박 기록만 비교 자료로 묶는다.
+# 일반 측정은 저장·표시하되 시각만 보고 복약 전·후로 추정하지 않는다.
 
 _WEEKDAY_LABELS = ["월", "화", "수", "목", "금", "토", "일"]
 
@@ -93,22 +91,20 @@ def _parse(value: str) -> datetime | None:
     return None
 
 
-def _pair_for(taken_at: datetime, readings: list[tuple[datetime, int]]) -> dict:
-    """복약 한 번의 전·후 쌍.
+def _pair_for_date(readings: list[tuple[datetime, int, str]]) -> dict:
+    """사용자가 직접 표시한 복약 전·후 측정 한 쌍.
 
-    복약 시각 앞뒤 [_PAIR_WINDOW_MINUTES] 안에서 가장 가까운 측정을 고른다.
-    없으면 None 으로 둔다 — **없는 값을 지어내지 않는다.**
+    시각만 보고 목적을 추정하지 않는다. 같은 날 같은 목적을 여러 번 재면
+    가장 최근 기록을 대표로 둔다.
     """
-    window = timedelta(minutes=_PAIR_WINDOW_MINUTES)
     before = None
     after = None
-    for measured_at, bpm in readings:
-        delta = measured_at - taken_at
-        if -window <= delta < timedelta(0):
+    for measured_at, bpm, measurement_context in readings:
+        if measurement_context == "before_medication":
             if before is None or measured_at > before[0]:
                 before = (measured_at, bpm)
-        elif timedelta(0) <= delta <= window:
-            if after is None or measured_at < after[0]:
+        elif measurement_context == "after_medication":
+            if after is None or measured_at > after[0]:
                 after = (measured_at, bpm)
     return {
         "before": before[1] if before else None,
@@ -177,10 +173,10 @@ def get_heart_summary(
             # Broad lexical bound, then exact local-calendar filtering below.
             since = (now - timedelta(days=33)).date().isoformat()
 
-        readings: list[tuple[datetime, int]] = []
+        readings: list[tuple[datetime, int, str]] = []
         for row in cursor.execute(
             """
-            SELECT id, measured_at, bpm FROM heart_rate_logs
+            SELECT id, measured_at, bpm, measurement_context FROM heart_rate_logs
             WHERE user_id = ? AND measured_at >= ?
             ORDER BY measured_at
             """,
@@ -188,12 +184,14 @@ def get_heart_summary(
         ).fetchall():
             measured_at = parse(row["measured_at"])
             if measured_at:
-                readings.append((measured_at, int(row["bpm"])))
+                measurement_context = row["measurement_context"] or "general"
+                readings.append((measured_at, int(row["bpm"]), measurement_context))
                 if include_readings:
                     if first_day <= measured_at.date() <= now.date():
                         actual_readings.append({
                             "id": row["id"], "bpm": int(row["bpm"]),
                             "measured_at": measured_at.isoformat(),
+                            "measurement_context": measurement_context,
                         })
 
         takes: list[datetime] = []
@@ -211,14 +209,21 @@ def get_heart_summary(
     finally:
         conn.close()
 
+    readings_by_date: dict[str, list[tuple[datetime, int, str]]] = {}
+    for reading in readings:
+        readings_by_date.setdefault(reading[0].date().isoformat(), []).append(reading)
+
+    takes_by_date = {taken_at.date().isoformat(): taken_at for taken_at in takes}
     by_date: dict[str, dict] = {}
-    for taken_at in takes:
-        pair = _pair_for(taken_at, readings)
+    for key, dated_readings in readings_by_date.items():
+        pair = _pair_for_date(dated_readings)
         if pair["before"] is None and pair["after"] is None:
             continue
-        key = taken_at.date().isoformat()
-        # 하루에 여러 번 드셨으면 마지막 복약을 그날의 대표로 둔다.
-        by_date[key] = {**pair, "slot_label": _slot_label(taken_at)}
+        taken_at = takes_by_date.get(key)
+        by_date[key] = {
+            **pair,
+            "slot_label": _slot_label(taken_at) if taken_at else "복약",
+        }
 
     today_key = now.date().isoformat()
     today_pair = by_date.get(today_key, {})

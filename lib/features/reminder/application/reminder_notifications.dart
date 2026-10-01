@@ -54,7 +54,8 @@ abstract final class ReminderPlan {
 
   static List<PlannedReminder> forPrefs(AlarmPreferences prefs) {
     if (!prefs.autoAlarm) return const [];
-    final hours = prefs.hours;
+    // 꺼 둔 시각은 목록에는 남아 있지만 울리지 않는다.
+    final hours = prefs.ringingHours;
     return [
       for (int i = 0; i < hours.length; i++) _onTime(baseId + i, hours[i]),
       if (prefs.repeatOnce)

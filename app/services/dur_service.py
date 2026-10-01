@@ -8,7 +8,6 @@ from time import perf_counter
 
 from fastapi import HTTPException
 
-from app.core.kst import today_kst
 from app.database import get_connection
 from app.models.schemas import DurAnalyzeRequest
 from app.services.pharmacist.dur_why import (
@@ -90,7 +89,7 @@ def _age_from_birth_date(value: str | None) -> int | None:
         born = date.fromisoformat(value)
     except ValueError:
         return None
-    today = today_kst()
+    today = date.today()
     return today.year - born.year - ((today.month, today.day) < (born.month, born.day))
 
 
@@ -584,15 +583,8 @@ def analyze_dur_consultation(
     user_id: str,
     selected_medicine: dict,
     risk_types: set[str],
-    current_medicines: list[dict] | None = None,
 ) -> dict:
-    """Run an official DUR check without persisting user medication or results.
-
-    ``current_medicines`` is supplied by the medication-data Render.  A list
-    (including an empty list) must never be replaced with this server's
-    user_medicines rows; the two services have independent SQLite databases.
-    ``None`` remains only for older internal callers.
-    """
+    """Run an official DUR check without persisting user medication or results."""
     conn = get_connection()
     try:
         cursor = conn.cursor()
@@ -640,29 +632,13 @@ def analyze_dur_consultation(
         medicines = []
         active_medicine_count = 0
         if risk_types & pairwise_types:
-            if current_medicines is None:
-                # Compatibility for direct internal calls. HTTP chat requests
-                # always pass a list and therefore cannot read this DB's
-                # user medication rows by accident.
-                medicines.extend(
-                    dict(row)
-                    for row in _load_medicines(
-                        cursor,
-                        DurAnalyzeRequest(user_id=user_id, medicine_codes=[]),
-                    )
+            medicines.extend(
+                dict(row)
+                for row in _load_medicines(
+                    cursor,
+                    DurAnalyzeRequest(user_id=user_id, medicine_codes=[]),
                 )
-            else:
-                medicines.extend(
-                    {
-                        "medicine_code": str(item.get("medicine_code") or "").strip(),
-                        "product_name": str(item.get("product_name") or "").strip(),
-                        "ingredient": item.get("ingredient"),
-                    }
-                    for item in current_medicines
-                    if isinstance(item, dict)
-                    and str(item.get("medicine_code") or "").strip()
-                    and str(item.get("product_name") or "").strip()
-                )
+            )
             active_medicine_count = len(medicines)
         medicines.append(consultation_medicine)
         medicines = list(
@@ -789,6 +765,16 @@ def analyze_dur_consultation(
             _without_internal_match_fields(match)
             for match in relevant_matches
         ]
+        checked_types = set(risk_types)
+        if age is None:
+            checked_types.discard("연령금기")
+        if is_pregnant is None:
+            checked_types.discard("임부금기")
+        matched_types = {
+            str(match.get("type") or "").strip()
+            for match in matches
+            if str(match.get("type") or "").strip()
+        }
         logger.warning(
             "DUR consultation diagnostic risk_types=%s selected=true "
             "ingredient_usable=true ingredient_key_count=%d "
@@ -822,6 +808,19 @@ def analyze_dur_consultation(
             "items": matches,
             "scope": "consultation",
             "reason": None,
+            "checked_types": sorted(checked_types),
+            "zero_result_types": sorted(checked_types - matched_types),
+            "user_context": {
+                "age_known": age is not None,
+                "pregnancy_known": is_pregnant is not None,
+                "pregnancy_status": (
+                    "pregnant"
+                    if is_pregnant is True
+                    else "not_pregnant"
+                    if is_pregnant is False
+                    else "unknown"
+                ),
+            },
         }
     finally:
         conn.close()

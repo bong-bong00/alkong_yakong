@@ -5,6 +5,20 @@ import 'package:flutter/foundation.dart';
 /// 화면은 이 값을 읽기만 한다. 고칠 때는 [toJson]으로 보내고
 /// 서버가 돌려준 값으로 다시 그린다 — 화면에 적힌 글자가 저장된 값과
 /// 어긋나지 않게 하기 위해서다.
+/// 담배·술 값을 화면에 적는 짧은 말로 바꾼다.
+///
+/// 저장된 값은 가입 화면이 쓰는 옛말이라 "폈어요"처럼 과거형으로 읽힌다.
+/// 지금 피우시는 분이 고를 것이 없어 보이므로 화면에서는 현재형으로 적는다.
+String lifestyleLabel(String value) => switch (value.trim()) {
+  '안 폈어요' => '안 피움',
+  '폈어요' => '피움',
+  '끊었어요' => '끊음',
+  '안 마셔요' => '안 마심',
+  '가끔 마셔요' => '가끔 마심',
+  '자주 마셔요' => '자주 마심',
+  final other => other,
+};
+
 @immutable
 class UserProfile {
   final String id;
@@ -28,6 +42,8 @@ class UserProfile {
   final List<String> diseases;
   final bool? pastHistory;
   final bool? familyHistory;
+  final List<String> pastIllnesses;
+  final List<String> familyIllnesses;
 
   const UserProfile({
     required this.id,
@@ -47,6 +63,8 @@ class UserProfile {
     this.diseases = const [],
     this.pastHistory,
     this.familyHistory,
+    this.pastIllnesses = const [],
+    this.familyIllnesses = const [],
   });
 
   factory UserProfile.fromJson(Map<String, dynamic> json) {
@@ -68,6 +86,8 @@ class UserProfile {
       diseases: _texts(json['diseases']),
       pastHistory: _flag(json['past_history']),
       familyHistory: _flag(json['family_history']),
+      pastIllnesses: _texts(json['past_illnesses']),
+      familyIllnesses: _texts(json['family_illnesses']),
     );
   }
 
@@ -110,6 +130,8 @@ class UserProfile {
     'diseases': diseases,
     'past_history': pastHistory,
     'family_history': familyHistory,
+    'past_illnesses': pastIllnesses,
+    'family_illnesses': familyIllnesses,
   };
 
   /// 서버가 받는 날짜 모양 "1958-04-10".

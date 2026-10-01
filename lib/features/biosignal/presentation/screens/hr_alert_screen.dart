@@ -59,7 +59,7 @@ class _HrAlertScreenState extends State<HrAlertScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.bg,
+      backgroundColor: AppColors.pageBg,
       body: Column(
         children: [
           SeniorHeader(
@@ -97,7 +97,7 @@ class _HrAlertScreenState extends State<HrAlertScreen> {
                   SeniorCard(
                     padding: const EdgeInsets.symmetric(
                       horizontal: 20,
-                      vertical: 14,
+                      vertical: 18,
                     ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,

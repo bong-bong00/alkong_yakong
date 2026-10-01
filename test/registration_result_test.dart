@@ -173,9 +173,11 @@ void main() {
           await tester.pumpAndSettle();
           await tester.tap(find.text('합성 제품'));
           await tester.pumpAndSettle();
-          await tester.enterText(find.byType(TextField).last, '0.5정');
-          await tester.tap(find.text('1번'));
-          await tester.tap(find.text('3일'));
+          // 양·횟수·날수는 굴림판으로 고른다 (한 번만 골라 본다).
+          await tester.tap(find.text('한 번에 먹는 양'));
+          await tester.pumpAndSettle();
+          await tester.tap(find.text('확인'));
+          await tester.pumpAndSettle();
           // 드시는 때를 골라야 등록된다 — 시간을 지어내지 않는다.
           await tester.tap(find.text('아침'));
           await tester.pumpAndSettle();

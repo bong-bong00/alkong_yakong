@@ -2,11 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_tabler_icons/flutter_tabler_icons.dart';
 
-import '../../../../core/constants/app_colors.dart';
+import '../../../../core/constants/medicine_flow_colors.dart';
 import '../../../../core/mode/app_mode.dart';
-import '../../../../core/theme/app_typography.dart';
+import '../../../../core/theme/medicine_flow_typography.dart';
 import '../../../../core/widgets/recovery_view.dart';
-import '../../../../core/widgets/senior_card.dart';
+import '../../../../core/widgets/medicine_flow_card.dart';
 import '../../../../core/widgets/senior_header.dart';
 import '../../application/user_medicines_controller.dart';
 import '../../domain/display_policy.dart';

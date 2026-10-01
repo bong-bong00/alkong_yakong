@@ -146,7 +146,7 @@ class DetailPhase1Test(unittest.TestCase):
         self.stack.enter_context(patch.object(user_detail, '_latest_interaction_result', return_value=None))
         self.stack.enter_context(patch.object(user_detail, '_enrich_medicine_row', return_value={**self.medicine, 'amount': '0.5 mL'}))
         self.stack.enter_context(patch.object(user_detail, 'person_cautions_for_medicine', return_value=[]))
-        self.stack.enter_context(patch.object(user_detail, 'ensure_user_codarone_available'))
+        self.stack.enter_context(patch.object(user_detail, 'ensure_medication_user'))
         app = FastAPI()  # No production startup/DB initialization.
         app.include_router(drug_explain.router)
         app.include_router(users.router)

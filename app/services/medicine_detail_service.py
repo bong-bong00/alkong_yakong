@@ -36,7 +36,7 @@ _STRENGTH = re.compile(
     re.I,
 )
 _SPACE = re.compile(r"\s+")
-_HTML = re.compile(r"<[^>]+>")
+_HTML = re.compile(r"<\s*/?\s*[A-Za-z][^>]*>")
 _LEADING_MARK = re.compile(r"^(?:\d+[.)]|[가-하][.)]|[-•·※]+)\s*")
 PARSER_VERSION = "3.0"
 _BOILERPLATE_PURPOSES = (
@@ -262,8 +262,14 @@ def ensure_medicine_detail(cursor, medicine_code: str) -> dict[str, Any] | None:
     )
 
     try:
-        profile = _build_profile(cursor, medicine)
         existing_profile = get_medicine_detail_profile(cursor, code)
+        if not existing_profile or existing_profile.get("source_hash") != official_source_hash(medicine):
+            # Keep the old snapshot stored, but never merge its reviewed copy
+            # into a different official product snapshot.
+            cursor.execute("UPDATE ai_explanation_cards SET review_status='OUTDATED' WHERE medicine_code=? AND review_status='REVIEWED'", (code,))
+            cursor.execute("UPDATE medicines SET explanation_review_status='UNREVIEWED' WHERE medicine_code=?", (code,))
+            existing_profile = None
+        profile = _build_profile(cursor, medicine)
         candidate_quality = _profile_quality(profile)
         existing_quality = _profile_quality(existing_profile)
         # OUTDATED 프로필은 과거 원문 기준이므로 품질 점수가 더 높아도
@@ -490,17 +496,6 @@ def _build_profile(cursor, medicine: dict[str, Any]) -> dict[str, Any]:
     ).fetchone()
     card = dict(reviewed_card_row) if reviewed_card_row else None
 
-    if card and len(ingredients) == 1:
-        reviewed_text = str(card.get("ingredient_explanation") or "").strip()
-        if is_displayable_ingredient_explanation(reviewed_text):
-            _store_reviewed_ingredient(
-                cursor,
-                ingredients[0],
-                reviewed_text,
-                source=str(card.get("source") or "식약처 의약품 허가정보"),
-                generated_by=str(card.get("content_generated_by") or card.get("generated_by") or "manual"),
-            )
-
     ingredient_explanation = ""
     reviewed_by_key = find_reviewed_ingredient_explanations(cursor, ingredients)
     ingredient_provider_names: set[str] = set()
@@ -513,6 +508,9 @@ def _build_profile(cursor, medicine: dict[str, Any]) -> dict[str, Any]:
             ingredients,
             reviewed_by_key,
         )
+
+    if card and ingredients and is_displayable_ingredient_explanation(card.get("ingredient_explanation")):
+        ingredient_explanation = clean_ingredient_explanation(card["ingredient_explanation"])
 
     quality_flags: list[str] = []
     if card:
@@ -562,9 +560,7 @@ def _build_profile(cursor, medicine: dict[str, Any]) -> dict[str, Any]:
         str(medicine.get(key) or "").strip()
         for key in ("efficacy", "usage", "precautions", "ingredient")
     )
-    fully_reviewed = bool(card) or (
-        bool(ingredients) and len(reviewed_by_key) == len(ingredients)
-    )
+    fully_reviewed = bool(card)
     if fully_reviewed:
         status = "READY"
     elif quality_flags:
@@ -572,16 +568,6 @@ def _build_profile(cursor, medicine: dict[str, Any]) -> dict[str, Any]:
     else:
         status = "OFFICIAL_ONLY" if has_official else "PENDING"
     review_status = "REVIEWED" if fully_reviewed else "UNREVIEWED"
-    source_material = {
-        "medicine_code": code,
-        "ingredient": medicine.get("ingredient"),
-        "efficacy": medicine.get("efficacy"),
-        "usage": medicine.get("usage"),
-        "precautions": medicine.get("precautions"),
-        "reviewed_card_version": card.get("content_version") if card else None,
-        "ingredient_keys": [item["key"] for item in ingredients],
-        "parser_version": PARSER_VERSION,
-    }
     return {
         "status": status,
         "ingredient_keys": [item["key"] for item in ingredients],
@@ -609,9 +595,7 @@ def _build_profile(cursor, medicine: dict[str, Any]) -> dict[str, Any]:
             or ("ingredient-provider" if ingredient_provider_names else "official-parser")
         ),
         "quality_flags": quality_flags,
-        "source_hash": hashlib.sha256(
-            json.dumps(source_material, ensure_ascii=False, sort_keys=True).encode("utf-8")
-        ).hexdigest(),
+        "source_hash": official_source_hash(medicine),
     }
 
 
@@ -619,15 +603,15 @@ def _hydrate_from_local_permission(cursor, medicine: dict[str, Any]) -> dict[str
     """Fill missing official fields from the local MFDS mirror only."""
     try:
         from app.services.mfds_drug_permission.db import (
-            find_permission_product,
+            find_permission_product_by_item_seq,
             product_to_medicine,
         )
 
-        row = find_permission_product(str(medicine.get("product_name") or ""))
+        row = find_permission_product_by_item_seq(str(medicine.get("medicine_code") or ""))
         official = product_to_medicine(row) if row else {}
     except Exception:
         official = {}
-    if not official:
+    if not official or str(official.get("medicine_code") or "") != str(medicine.get("medicine_code") or ""):
         return medicine
 
     merged = dict(medicine)
@@ -902,10 +886,10 @@ def _deduplicate_items(values: list[str]) -> list[str]:
     keys: list[str] = []
     for raw in values:
         value = str(raw or "").strip()
-        key = _purpose_key(value)
+        key = value
         if not key:
             continue
-        if any(key == old or (len(key) >= 12 and key in old) for old in keys):
+        if key in keys:
             continue
         keys.append(key)
         result.append(value)
@@ -913,18 +897,24 @@ def _deduplicate_items(values: list[str]) -> list[str]:
 
 
 def _without_summary_duplicate(values: list[str], summary: str) -> list[str]:
-    summary_key = _purpose_key(summary)
+    summary_key = summary.strip()
     if not summary_key:
         return values
     return [
         value
         for value in values
-        if _purpose_key(value) != summary_key
-        and not (
-            len(_purpose_key(value)) >= 12
-            and _purpose_key(value) in summary_key
-        )
+        if value.strip() != summary_key
     ]
+
+
+def official_source_hash(medicine: dict[str, Any]) -> str:
+    material = {key: str(medicine.get(key) or "").strip() for key in (
+        "medicine_code", "product_name", "manufacturer", "ingredient",
+        "efficacy", "usage", "precautions",
+    )}
+    return "official-v1:" + hashlib.sha256(
+        json.dumps(material, ensure_ascii=False, sort_keys=True).encode("utf-8")
+    ).hexdigest()
 
 
 def _purpose_key(value: str) -> str:

@@ -356,7 +356,7 @@ class _ScheduleDaysScreenState extends ConsumerState<ScheduleDaysScreen> {
     final rowCount = (cells.length / 7).ceil();
 
     return Scaffold(
-      backgroundColor: AppColors.bg,
+      backgroundColor: AppColors.pageBg,
       body: Column(
         children: [
           const SeniorBackHeader(title: '약 있는 날'),
@@ -390,7 +390,7 @@ class _ScheduleDaysScreenState extends ConsumerState<ScheduleDaysScreen> {
                         SeniorCard(
                           padding: const EdgeInsets.symmetric(
                             horizontal: 16,
-                            vertical: 14,
+                            vertical: 18,
                           ),
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.stretch,
