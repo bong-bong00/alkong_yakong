@@ -84,6 +84,17 @@ class _MonthlyHeartScreenState extends State<MonthlyHeartScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
+                    // 잰 날이 없어도 달력은 그린다 — 며칠에 쟀는지를
+                    // 한눈에 보는 자리이기 때문이다.
+                    _MonthCalendarCard(
+                      month: _month,
+                      measured: {
+                        for (final reading in readings)
+                          if (reading.measuredAt.toLocal().month == _month)
+                            reading.measuredAt.toLocal().day,
+                      },
+                    ),
+                    const SizedBox(height: 12),
                     if (readings.isEmpty)
                       _EmptyMonthCard(month: _month)
                     else ...[
@@ -104,6 +115,130 @@ class _MonthlyHeartScreenState extends State<MonthlyHeartScreen> {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// 한 달 달력. 잰 날에 파란 동그라미를 둔다.
+class _MonthCalendarCard extends StatelessWidget {
+  final int month;
+
+  /// 측정한 날(일).
+  final Set<int> measured;
+
+  const _MonthCalendarCard({required this.month, required this.measured});
+
+  static const _weekdays = ['일', '월', '화', '수', '목', '금', '토'];
+
+  @override
+  Widget build(BuildContext context) {
+    final now = DateTime.now();
+    final first = DateTime(now.year, month, 1);
+    final days = DateUtils.getDaysInMonth(now.year, month);
+    // 일요일을 0으로 센다. DateTime은 월요일이 1, 일요일이 7이다.
+    final lead = first.weekday % 7;
+    final cells = lead + days;
+    final rows = (cells / 7).ceil();
+
+    return SeniorCard(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: const EdgeInsets.only(left: 4, bottom: 10),
+            child: Text('$month월', style: AppText.cardTitle(size: 21)),
+          ),
+          Row(
+            children: [
+              for (final name in _weekdays)
+                Expanded(
+                  child: Center(
+                    child: Text(
+                      name,
+                      style: AppText.caption(
+                        size: 15,
+                        color: AppColors.textTertiary,
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          for (int row = 0; row < rows; row++)
+            Row(
+              children: [
+                for (int col = 0; col < 7; col++)
+                  Expanded(
+                    child: _Cell(
+                      day: row * 7 + col - lead + 1,
+                      days: days,
+                      measured: measured,
+                      today: now.month == month ? now.day : null,
+                    ),
+                  ),
+              ],
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+/// 달력 한 칸.
+class _Cell extends StatelessWidget {
+  final int day;
+  final int days;
+  final Set<int> measured;
+  final int? today;
+
+  const _Cell({
+    required this.day,
+    required this.days,
+    required this.measured,
+    required this.today,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    if (day < 1 || day > days) return const SizedBox(height: 44);
+    final marked = measured.contains(day);
+    final isToday = day == today;
+
+    // 복약 달력과 같은 규칙 — 오늘은 검정, 기록이 있는 날은 연한 파랑,
+    // 나머지는 비워 둔다.
+    final Color background;
+    final Color ink;
+    if (isToday) {
+      background = AppColors.textPrimary;
+      ink = Colors.white;
+    } else if (marked) {
+      background = AppColors.pointTint;
+      ink = AppColors.pointBorder;
+    } else {
+      background = Colors.transparent;
+      ink = AppColors.chevron;
+    }
+
+    return Semantics(
+      label: ['$day일', if (isToday) '오늘', if (marked) '측정했어요'].join(' '),
+      child: ExcludeSemantics(
+        child: Container(
+          height: 44,
+          alignment: Alignment.center,
+          child: Container(
+            width: 34,
+            height: 34,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: background,
+              shape: BoxShape.circle,
+            ),
+            child: Text('$day', style: AppText.body(size: 17, color: ink)),
+          ),
+        ),
       ),
     );
   }

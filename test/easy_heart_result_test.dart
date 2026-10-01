@@ -101,7 +101,7 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      await tester.tap(find.text('측정 안 할래요'));
+      await tester.tap(find.text('안 할래요'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('먹었어요'));
       await tester.tap(find.text('먹었어요'));
@@ -186,7 +186,7 @@ void main() {
           ),
         );
         await tester.pumpAndSettle();
-        await tester.tap(find.text('측정 안 할래요'));
+        await tester.tap(find.text('안 할래요'));
         await tester.pumpAndSettle();
         expect(find.text('5 / 8'), findsOneWidget);
         await tester.tap(find.text('먹었어요'));
@@ -375,7 +375,7 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    await tester.tap(find.text('측정 안 할래요'));
+    await tester.tap(find.text('안 할래요'));
     await tester.pumpAndSettle();
     expect(find.text('5 / 8'), findsOneWidget);
     await tester.tap(find.text('먹었어요'));

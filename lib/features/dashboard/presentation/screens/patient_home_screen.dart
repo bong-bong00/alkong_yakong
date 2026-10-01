@@ -485,7 +485,7 @@ class _PatientHomeScreenState extends ConsumerState<PatientHomeScreen> {
                       const SizedBox(height: 8),
                       // 누를 수 있다는 것을 모르면 평생 못 누른다. 한 줄만 적는다.
                       Text(
-                        '칸을 누르면 약 드시는 시간을 바꿔요',
+                        '아침/점심/저녁을 누르면 복약 시간을 바꿔요',
                         textAlign: TextAlign.left,
                         style: AppText.caption(size: 16),
                       ),

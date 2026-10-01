@@ -43,9 +43,10 @@ void main() {
     await tester.pumpWidget(_wrap(const MyMedicinesScreen(asTab: true)));
     await tester.pumpAndSettle();
 
-    expect(find.text('메트포르민 500mg'), findsOneWidget);
-    expect(find.text('암로디핀 5mg'), findsOneWidget);
-    expect(find.text('아스피린 100mg'), findsOneWidget);
+    // 이름에는 용량을 적지 않는다 — 용량은 따로 적히는 자리가 있다.
+    expect(find.text('메트포르민'), findsOneWidget);
+    expect(find.text('암로디핀'), findsOneWidget);
+    expect(find.text('아스피린'), findsOneWidget);
     // 지난 약은 접혀 있다.
     await tester.scrollUntilVisible(
       find.text('이전에 사용한 약'),

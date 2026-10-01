@@ -270,6 +270,16 @@ class GuardianStatusScreen extends ConsumerWidget {
                         ),
                       ),
                     ),
+                    onPickDay: (status) => Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) => MonthCalendarScreen(
+                          patientUserId: patient.patientId,
+                          year: status.date.year,
+                          month: status.date.month,
+                          initialDay: status.date.day,
+                        ),
+                      ),
+                    ),
                   ),
                 ],
               ),

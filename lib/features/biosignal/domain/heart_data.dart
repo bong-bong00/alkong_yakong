@@ -9,6 +9,14 @@ enum HeartMeasurementContext {
   final String value;
   final String label;
 
+  /// 좁은 자리에 쓰는 이름. "측정 목적" 같은 제목 밑에서는 "측정"을
+  /// 또 적지 않는다 — 세 칸이 한 줄에 서야 고르기 쉽다.
+  String get shortLabel => switch (this) {
+    HeartMeasurementContext.general => '평소',
+    HeartMeasurementContext.beforeMedication => '복약 전',
+    HeartMeasurementContext.afterMedication => '복약 후',
+  };
+
   static HeartMeasurementContext fromValue(Object? value) => values.firstWhere(
     (context) => context.value == value,
     orElse: () => general,

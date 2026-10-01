@@ -35,6 +35,7 @@ abstract final class AppText {
 
   static const FontWeight _black = FontWeight.w900;
   static const FontWeight _bold = FontWeight.w700;
+  static const FontWeight _semibold = FontWeight.w600;
   static const FontWeight _medium = FontWeight.w500;
 
   static TextStyle _base({
@@ -103,27 +104,27 @@ abstract final class AppText {
     letterSpacingEm: -0.01,
   );
 
-  /// 카드 대제목 / 리스트 항목. 21–22px / 900.
+  /// 카드 대제목 / 리스트 항목. 21–22px / 700.
   ///
-  /// 시안은 카드 안 제목과 칸 이름을 모두 900에 자간 -0.02em으로 둔다.
-  /// 700에 자간 0으로 두면 같은 크기여도 가늘고 헐거워 보인다.
+  /// 900은 화면 제목·큰 숫자·주 단추에만 쓴다. 칸 이름까지 900으로 두면
+  /// 화면이 통째로 굵어져 정작 봐야 할 곳이 묻힌다.
   static TextStyle cardTitle({
     double size = 21,
     Color color = AppColors.textPrimary,
     FontWeight? weight,
   }) => _base(
     size: size,
-    weight: weight ?? _black,
+    weight: weight ?? _bold,
     height: 1.35,
     color: color,
     letterSpacingEm: -0.02,
   );
 
-  /// 섹션 제목. 19–20px / 700.
+  /// 섹션 제목. 19–20px / 600.
   static TextStyle section({
     double size = 19,
     Color color = AppColors.textPrimary,
-  }) => _base(size: size, weight: _bold, height: 1.35, color: color);
+  }) => _base(size: size, weight: _semibold, height: 1.35, color: color);
 
   /// 버튼 라벨. 23–25px / 900 (명세서 0장: 주 액션은 흰 글씨 900).
   static TextStyle button({double size = 24, Color color = Colors.white}) =>
@@ -136,12 +137,13 @@ abstract final class AppText {
     FontWeight? weight,
   }) => _base(size: size, weight: weight ?? _medium, height: 1.6, color: color);
 
-  /// 라벨. 18px / 700 — 입력 필드 라벨, 카드 안 작은 제목.
+  /// 라벨. 18px / 600 — 입력 필드 라벨, 카드 안 작은 제목.
   static TextStyle label({
     double size = 18,
     Color color = AppColors.textSecondary,
     FontWeight? weight,
-  }) => _base(size: size, weight: weight ?? _bold, height: 1.5, color: color);
+  }) =>
+      _base(size: size, weight: weight ?? _semibold, height: 1.5, color: color);
 
   /// 보조. 17–17.5px / 500. **이 아래로 내려가지 않는다.**
   static TextStyle caption({

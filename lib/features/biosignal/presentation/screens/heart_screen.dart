@@ -201,8 +201,17 @@ class _HeartScreenState extends State<HeartScreen> {
                 Row(
                   children: [
                     SeniorBackButton(
+                      // 쌓여서 열렸으면 그 자리로 돌아가고, 바꿔치워져
+                      // 열렸으면(돌아갈 자리가 없으면) 홈으로 간다.
                       onTap: widget.routeBasedMeasurement
-                          ? () => context.go('/')
+                          ? () {
+                              final router = GoRouter.maybeOf(context);
+                              if (router != null && router.canPop()) {
+                                router.pop();
+                              } else {
+                                context.go('/');
+                              }
+                            }
                           : null,
                     ),
                     const SizedBox(width: 14),
@@ -275,7 +284,7 @@ class _HeartScreenState extends State<HeartScreen> {
                           const SizedBox(height: 12),
                           SeniorSegmented(
                             labels: HeartMeasurementContext.values
-                                .map((context) => context.label)
+                                .map((context) => context.shortLabel)
                                 .toList(growable: false),
                             index: HeartMeasurementContext.values.indexOf(
                               _measurementContext,
@@ -452,13 +461,16 @@ class _TodayCard extends StatelessWidget {
   final HeartData data;
   const _TodayCard({required this.data});
 
-  /// 잰 쪽 시각만 잇는다. 둘 다 없으면 이 줄을 그리지 않는다.
+  /// 잰 시각만 짧게. 둘 다 없으면 이 줄을 그리지 않는다.
+  ///
+  /// "오후 5시 52분 · 오후 6시 40분에 측정했어요"는 숫자를 가린다.
+  /// 화살표 하나로 전·후를 잇는다.
   String? _measuredLine() {
     final parts = [
       if (data.today.before != null && data.beforeAt.isNotEmpty) data.beforeAt,
       if (data.today.after != null && data.afterAt.isNotEmpty) data.afterAt,
     ];
-    return parts.isEmpty ? null : '${parts.join(' · ')}에 측정했어요';
+    return parts.isEmpty ? null : '측정 ${parts.join(' → ')}';
   }
 
   @override
@@ -629,14 +641,11 @@ class _TodayCard extends StatelessWidget {
             const SizedBox(height: 10),
             Text(measuredLine, style: AppText.caption(size: 17)),
           ],
-          if (measuredToday) ...[
-            const SizedBox(height: 10),
-            Text('성인이 쉬고 있을 때의 일반적인 기준이에요.', style: AppText.caption(size: 16)),
-          ],
+          // 다짐글은 하나만 둔다. 셋을 쌓으면 아무것도 읽지 않는다.
           if (today.before != null && today.after != null) ...[
-            const SizedBox(height: 4),
+            const SizedBox(height: 6),
             Text(
-              '한 번의 비교만으로 약의 영향이라고 판단하기 어려워요.',
+              '한 번 비교로 약의 영향을 단정할 수는 없어요.',
               style: AppText.caption(size: 16),
             ),
           ],

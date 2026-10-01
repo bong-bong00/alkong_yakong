@@ -10,6 +10,7 @@ import '../../../dashboard/presentation/screens/patient_data.dart';
 import '../../../medicines/application/user_medicines_controller.dart';
 import '../../../medicines/domain/user_medicine_models.dart';
 import '../../../profile/domain/user_profile.dart';
+import '../../../medicines/domain/display_policy.dart';
 
 String? illnessHistoryLabel(List<String> illnesses, bool? legacyFlag) {
   if (illnesses.isNotEmpty) return illnesses.join(', ');
@@ -329,7 +330,10 @@ class _MedicineLine extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(medicine.displayName, style: AppText.cardTitle(size: 20)),
+          Text(
+            nameWithoutStrength(medicine.displayName),
+            style: AppText.cardTitle(size: 20),
+          ),
           if (medicine.amount.trim().isNotEmpty || slots.isNotEmpty) ...[
             const SizedBox(height: 4),
             Text(

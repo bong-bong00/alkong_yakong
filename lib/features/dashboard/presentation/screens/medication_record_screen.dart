@@ -9,6 +9,7 @@ import '../../../../core/widgets/senior_button.dart';
 import '../../../../core/widgets/senior_card.dart';
 import '../../../../core/widgets/senior_header.dart';
 import '../../../medication/application/medication_controller.dart';
+import '../../application/medication_calendar_provider.dart';
 import '../../application/medication_history_provider.dart';
 import '../widgets/day_dose_detail.dart';
 import '../../../medication/domain/medication_models.dart';
@@ -21,7 +22,7 @@ import 'month_calendar_screen.dart';
 ///
 /// 숫자는 크게, 설명은 말로. "복약률 94%"가 아니라
 /// "잘 지키고 계세요 · 94%"로 읽힌다.
-class MedicationRecordScreen extends ConsumerWidget {
+class MedicationRecordScreen extends ConsumerStatefulWidget {
   /// 보호자가 볼 때 환자 이름. 환자 본인은 null.
   final String? patientName;
 
@@ -43,7 +44,53 @@ class MedicationRecordScreen extends ConsumerWidget {
   });
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<MedicationRecordScreen> createState() =>
+      _MedicationRecordScreenState();
+}
+
+class _MedicationRecordScreenState
+    extends ConsumerState<MedicationRecordScreen> {
+  /// 한 주 칸에서 누른 날. 아무것도 안 눌렀으면 오늘이다.
+  DateTime? _picked;
+
+  /// 아래 칸이 보여줄 날.
+  DateTime get _detailDate => _picked ?? dateOnly(DateTime.now());
+
+  bool get _isToday => _detailDate == dateOnly(DateTime.now());
+
+  /// 그 날의 아침·점심·저녁. 오늘은 지금 상태를, 지난 날은 달력 기록을 쓴다.
+  List<DoseEntry> _detailDoses(TodayMedication today) {
+    if (_isToday) return today.doses;
+    final slots =
+        ref
+            .watch(
+              medicationMonthSlotsProvider(
+                MonthKey(
+                  _detailDate.year,
+                  _detailDate.month,
+                  widget.patientUserId,
+                ),
+              ),
+            )
+            .valueOrNull?[_detailDate.day] ??
+        const <String, bool>{};
+    return [
+      for (final slot in DoseSlot.values)
+        if (slots.containsKey(slot.label))
+          DoseEntry(
+            slot: slot,
+            medicines: const [],
+            taken: slots[slot.label] == true,
+          ),
+    ];
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final patientName = widget.patientName;
+    final patientUserId = widget.patientUserId;
+    final showBack = widget.showBack;
+    final onBackToToday = widget.onBackToToday;
     final patientId = patientUserId;
     // 본인은 이 전화기의 오늘 상태를, 보호자는 서버에 올라온 어르신 기록을 쓴다.
     final today = patientId == null
@@ -122,20 +169,26 @@ class MedicationRecordScreen extends ConsumerWidget {
                     ],
                     AdherenceWeekCard(
                       days: weekAdherenceStatuses(today, history),
+                      picked: _picked,
                       onOpenCalendar: () => Navigator.of(context).push(
                         MaterialPageRoute<void>(
                           builder: (_) =>
                               MonthCalendarScreen(patientUserId: patientId),
                         ),
                       ),
+                      // 화면을 옮기지 않는다 — 아래 칸만 그 날로 바뀐다.
+                      onPickDay: (status) =>
+                          setState(() => _picked = status.date),
                     ),
                     const SizedBox(height: 12),
                     // 오늘 하루를 시간대별로 한 장에 둔다. 날짜별 카드를 쌓는 대신
                     // 달력이 날짜를 맡고, 여기서는 오늘 상태만 본다.
                     DayDoseDetail(
                       dayLabel:
-                          '${DateTime.now().month}월 ${DateTime.now().day}일 오늘',
-                      doses: today.doses,
+                          '${_detailDate.month}월 ${_detailDate.day}일'
+                          '${_isToday ? ' 오늘' : ''}',
+                      date: _detailDate,
+                      doses: _detailDoses(today),
                       footnote: null,
                     ),
                     // 먹기 전과 후를 나란히 놓는 자리는 여기 하나다.
@@ -145,8 +198,10 @@ class MedicationRecordScreen extends ConsumerWidget {
                     const SizedBox(height: 12),
                     _TodayHeartCard(
                       check: heartCheck,
+                      // push로 쌓아 연다 — go()로 바꿔치우면 뒤로가기가
+                      // 돌아갈 자리를 잃어 앱이 꺼진다.
                       onTap: patientId == null
-                          ? () => context.go('/biosignal')
+                          ? () => context.push('/biosignal')
                           : null,
                     ),
                   ],
@@ -339,10 +394,18 @@ class AdherenceWeekCard extends StatelessWidget {
   /// 한 주에서 한 달로 넓혀 보기.
   final VoidCallback onOpenCalendar;
 
+  /// 날짜 하나를 눌렀을 때 — 아래 칸이 그 날로 바뀐다.
+  final ValueChanged<DayStatus>? onPickDay;
+
+  /// 지금 눌려 있는 날. 검은 테두리로 표시한다.
+  final DateTime? picked;
+
   const AdherenceWeekCard({
     super.key,
     required this.days,
     required this.onOpenCalendar,
+    this.onPickDay,
+    this.picked,
   });
 
   static const List<String> _labels = ['월', '화', '수', '목', '금', '토', '일'];
@@ -397,7 +460,12 @@ class AdherenceWeekCard extends StatelessWidget {
             children: [
               for (int i = 0; i < days.length; i++)
                 Expanded(
-                  child: _WeekDay(status: days[i], label: _labels[i]),
+                  child: _WeekDay(
+                    status: days[i],
+                    label: _labels[i],
+                    picked: picked == days[i].date,
+                    onTap: onPickDay == null ? null : () => onPickDay!(days[i]),
+                  ),
                 ),
             ],
           ),
@@ -411,7 +479,16 @@ class _WeekDay extends StatelessWidget {
   final DayStatus status;
   final String label;
 
-  const _WeekDay({required this.status, required this.label});
+  /// 지금 눌려 있는 날인지. 전체 달력과 같이 검은 테두리를 두른다.
+  final bool picked;
+  final VoidCallback? onTap;
+
+  const _WeekDay({
+    required this.status,
+    required this.label,
+    this.picked = false,
+    this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -434,60 +511,60 @@ class _WeekDay extends StatelessWidget {
     }
 
     return Semantics(
+      button: onTap != null,
       label:
           '${status.date.day}일 $label요일, '
           '${status.future
               ? '아직 오지 않은 날'
               : status.noRecord
               ? '기록 없음'
-              : '${status.total}번 중 ${status.taken}번'}',
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(
-            label,
-            style: status.isToday
-                ? AppText.cardTitle(size: 16)
-                : AppText.label(
-                    size: 16,
-                    color: status.future
-                        ? AppColors.chevron
-                        : AppColors.textSecondary,
+              : '${status.total}번 중 ${status.taken}번'}'
+          '${onTap == null ? '' : ', 눌러서 그날 보기'}',
+      child: GestureDetector(
+        onTap: onTap,
+        behavior: HitTestBehavior.opaque,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              label,
+              style: status.isToday
+                  ? AppText.cardTitle(size: 16)
+                  : AppText.label(
+                      size: 16,
+                      color: status.future
+                          ? AppColors.chevron
+                          : AppColors.textSecondary,
+                    ),
+            ),
+            const SizedBox(height: 8),
+            // 44가 제 크기지만, 좁은 화면에서는 받은 폭까지만 줄어든다.
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 44, maxHeight: 44),
+              child: AspectRatio(
+                aspectRatio: 1,
+                child: Container(
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: background,
+                    shape: BoxShape.circle,
+                    // 전체 달력과 같이, 누른 날은 검은 테두리로 짚는다.
+                    border: picked
+                        ? Border.all(color: AppColors.textPrimary, width: 2)
+                        : null,
                   ),
-          ),
-          const SizedBox(height: 8),
-          // 44가 제 크기지만, 좁은 화면에서는 받은 폭까지만 줄어든다.
-          ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 44, maxHeight: 44),
-            child: AspectRatio(
-              aspectRatio: 1,
-              child: Container(
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  color: background,
-                  shape: BoxShape.circle,
-                ),
-                child: FittedBox(
-                  fit: BoxFit.scaleDown,
-                  child: Text(
-                    '${status.date.day}',
-                    style: AppText.cardTitle(size: 19, color: ink),
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Text(
+                      '${status.date.day}',
+                      style: AppText.cardTitle(size: 19, color: ink),
+                    ),
                   ),
                 ),
               ),
             ),
-          ),
-          // 오늘 아래에는 짧은 파란 밑줄을 둔다.
-          const SizedBox(height: 6),
-          Container(
-            width: 26,
-            height: 3,
-            decoration: BoxDecoration(
-              color: status.isToday ? AppColors.pointFill : Colors.transparent,
-              borderRadius: BorderRadius.circular(2),
-            ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

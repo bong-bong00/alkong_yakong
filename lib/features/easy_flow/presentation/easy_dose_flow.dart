@@ -15,6 +15,7 @@ import '../../medication/domain/medication_models.dart';
 import '../../medication/presentation/widgets/dose_guard_sheets.dart';
 import '../../reminder/application/alarm_preferences.dart';
 import 'easy_heart_result.dart';
+import '../../medicines/domain/display_policy.dart';
 
 /// 쉬운 화면의 복약 한 바퀴 (명세서 76~85).
 ///
@@ -305,13 +306,11 @@ class _EasyDoseFlowState extends ConsumerState<EasyDoseFlow> {
       body: [_MedicineCard(medicines: dose.medicines)],
       primary: _EasyAction(
         label: '복약 전 심박 측정',
-        icon: Icons.favorite_rounded,
         onPressed: () => _beginDose(dose.slot, EasyDoseStep.wear),
       ),
       secondaries: [
         _EasyAction(
-          label: '측정 안 할래요',
-          icon: Icons.skip_next_rounded,
+          label: '안 할래요',
           onPressed: () => _beginDose(dose.slot, EasyDoseStep.take),
         ),
       ],
@@ -347,19 +346,12 @@ class _EasyDoseFlowState extends ConsumerState<EasyDoseFlow> {
       ],
       primary: _EasyAction(
         label: '다 착용했어요',
-        icon: Icons.check_rounded,
         onPressed: () {
           _goTo(EasyDoseStep.measureBefore);
           _startMeasuring(HeartMeasurementContext.beforeMedication);
         },
       ),
-      secondaries: [
-        _EasyAction(
-          label: '뒤로',
-          icon: Icons.arrow_back_rounded,
-          onPressed: _back,
-        ),
-      ],
+      secondaries: [_EasyAction(label: '뒤로', onPressed: _back)],
     );
   }
 
@@ -375,7 +367,6 @@ class _EasyDoseFlowState extends ConsumerState<EasyDoseFlow> {
     body: const [],
     primary: _EasyAction(
       label: '지금 측정',
-      icon: Icons.favorite_rounded,
       onPressed: () => _startMeasuring(
         step == EasyDoseStep.measureBefore
             ? HeartMeasurementContext.beforeMedication
@@ -383,11 +374,7 @@ class _EasyDoseFlowState extends ConsumerState<EasyDoseFlow> {
       ),
     ),
     secondaries: [
-      _EasyAction(
-        label: '측정 그만하기',
-        icon: Icons.close_rounded,
-        onPressed: () => _stopMeasuring(next),
-      ),
+      _EasyAction(label: '측정 그만하기', onPressed: () => _stopMeasuring(next)),
     ],
   );
 
@@ -400,16 +387,9 @@ class _EasyDoseFlowState extends ConsumerState<EasyDoseFlow> {
       body: [if (_before != null) EasyHeartResult(value: _before!)],
       primary: _EasyAction(
         label: '이제 약 드시기',
-        icon: Icons.medication_rounded,
         onPressed: () => _goTo(EasyDoseStep.take),
       ),
-      secondaries: [
-        _EasyAction(
-          label: '뒤로',
-          icon: Icons.arrow_back_rounded,
-          onPressed: _back,
-        ),
-      ],
+      secondaries: [_EasyAction(label: '뒤로', onPressed: _back)],
     );
   }
 
@@ -432,15 +412,10 @@ class _EasyDoseFlowState extends ConsumerState<EasyDoseFlow> {
             : _recordError != null
             ? '다시 저장하기'
             : '먹었어요',
-        icon: Icons.check_rounded,
         onPressed: _recording ? null : () => unawaited(_record(dose.slot)),
       ),
       secondaries: [
-        _EasyAction(
-          label: '뒤로',
-          icon: Icons.arrow_back_rounded,
-          onPressed: _recording ? null : _back,
-        ),
+        _EasyAction(label: '뒤로', onPressed: _recording ? null : _back),
       ],
     );
   }
@@ -492,21 +467,15 @@ class _EasyDoseFlowState extends ConsumerState<EasyDoseFlow> {
       ],
       primary: _EasyAction(
         label: '복약 후 심박 측정',
-        icon: Icons.favorite_rounded,
         onPressed: () {
           _goTo(EasyDoseStep.measureAfter);
           _startMeasuring(HeartMeasurementContext.afterMedication);
         },
       ),
       secondaries: [
+        _EasyAction(label: '뒤로', onPressed: _back),
         _EasyAction(
-          label: '뒤로',
-          icon: Icons.arrow_back_rounded,
-          onPressed: _back,
-        ),
-        _EasyAction(
-          label: '측정 안 할래요',
-          icon: Icons.skip_next_rounded,
+          label: '안 할래요',
           onPressed: () => _goTo(EasyDoseStep.allDone),
         ),
       ],
@@ -527,16 +496,9 @@ class _EasyDoseFlowState extends ConsumerState<EasyDoseFlow> {
       body: [EasyHeartResult(before: before, value: after)],
       primary: _EasyAction(
         label: '기록 끝내기',
-        icon: Icons.check_rounded,
         onPressed: () => _goTo(EasyDoseStep.allDone),
       ),
-      secondaries: [
-        _EasyAction(
-          label: '뒤로',
-          icon: Icons.arrow_back_rounded,
-          onPressed: _back,
-        ),
-      ],
+      secondaries: [_EasyAction(label: '뒤로', onPressed: _back)],
     );
   }
 
@@ -560,7 +522,6 @@ class _EasyDoseFlowState extends ConsumerState<EasyDoseFlow> {
           ? null
           : _EasyAction(
               label: '다시 불러오기',
-              icon: Icons.refresh_rounded,
               onPressed: () => unawaited(
                 ref.read(medicationProvider.notifier).refreshFromServer(),
               ),
@@ -749,43 +710,69 @@ class _EasyStepPage extends StatelessWidget {
         if (primary != null || secondaries.isNotEmpty)
           Padding(
             padding: const EdgeInsets.fromLTRB(18, 0, 18, 14),
-            child: Column(
+            child: _bottomButtons(),
+          ),
+      ],
+    );
+  }
+}
+
+/// 아래 단추 묶음.
+///
+/// 할 일 하나와 건너뛰는 길 하나뿐이면 좌우로 나란히 둔다 — 건너뛰는
+/// 쪽을 더 작게 왼쪽에 두어, 손이 큰 쪽(오른쪽)으로 가게 한다.
+extension on _EasyStepPage {
+  Widget _bottomButtons() {
+    final main = primary;
+    final side = secondaries;
+
+    Widget big(_EasyAction action) => SeniorButton(
+      label: action.label,
+      minHeight: 76,
+      fontSize: 23,
+      radius: 18,
+      elevated: true,
+      onPressed: action.onPressed,
+    );
+
+    Widget small(_EasyAction action) => SeniorButton(
+      label: action.label,
+      kind: SeniorButtonKind.card,
+      minHeight: 62,
+      fontSize: 19,
+      radius: 18,
+      onPressed: action.onPressed,
+    );
+
+    if (main != null && side.length == 1) {
+      return IntrinsicHeight(
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Expanded(flex: 2, child: small(side.first)),
+            const SizedBox(width: 10),
+            Expanded(flex: 3, child: big(main)),
+          ],
+        ),
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (main != null) ...[
+          big(main),
+          if (side.isNotEmpty) const SizedBox(height: 12),
+        ],
+        if (side.isNotEmpty)
+          IntrinsicHeight(
+            child: Row(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                if (primary case final _EasyAction action) ...[
-                  SeniorButton(
-                    label: action.label,
-                    icon: action.icon,
-                    minHeight: 76,
-                    fontSize: 24,
-                    radius: 18,
-                    elevated: true,
-                    onPressed: action.onPressed,
-                  ),
-                  if (secondaries.isNotEmpty) const SizedBox(height: 12),
+                for (int i = 0; i < side.length; i++) ...[
+                  if (i > 0) const SizedBox(width: 10),
+                  Expanded(child: small(side[i])),
                 ],
-                if (secondaries.isNotEmpty)
-                  IntrinsicHeight(
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        for (int i = 0; i < secondaries.length; i++) ...[
-                          if (i > 0) const SizedBox(width: 10),
-                          Expanded(
-                            child: SeniorButton(
-                              label: secondaries[i].label,
-                              icon: secondaries[i].icon,
-                              kind: SeniorButtonKind.card,
-                              minHeight: 62,
-                              fontSize: 20,
-                              radius: 18,
-                              onPressed: secondaries[i].onPressed,
-                            ),
-                          ),
-                        ],
-                      ],
-                    ),
-                  ),
               ],
             ),
           ),
@@ -797,14 +784,9 @@ class _EasyStepPage extends StatelessWidget {
 /// 버튼 하나에 필요한 것.
 class _EasyAction {
   final String label;
-  final IconData icon;
   final VoidCallback? onPressed;
 
-  const _EasyAction({
-    required this.label,
-    required this.icon,
-    required this.onPressed,
-  });
+  const _EasyAction({required this.label, required this.onPressed});
 }
 
 /// 여덟 걸음 표시 (명세서 76~84).
@@ -897,7 +879,10 @@ class _MedicineRow extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text(medicine.displayName, style: AppText.cardTitle(size: 21)),
+              Text(
+                nameWithoutStrength(medicine.displayName),
+                style: AppText.cardTitle(size: 21),
+              ),
               if (look.isNotEmpty) ...[
                 const SizedBox(height: 2),
                 Text(look, style: AppText.body(size: 17)),

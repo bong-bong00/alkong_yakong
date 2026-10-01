@@ -36,6 +36,7 @@ abstract final class AppText {
 
   static const FontWeight _black = FontWeight.w900;
   static const FontWeight _bold = FontWeight.w700;
+  static const FontWeight _semibold = FontWeight.w600;
   static const FontWeight _medium = FontWeight.w500;
 
   static TextStyle _base({
@@ -111,11 +112,11 @@ abstract final class AppText {
     FontWeight? weight,
   }) => _base(size: size, weight: weight ?? _bold, height: 1.4, color: color);
 
-  /// 섹션 제목. 19–20px / 700.
+  /// 섹션 제목. 19–20px / 600.
   static TextStyle section({
     double size = 19,
     Color color = AppColors.textPrimary,
-  }) => _base(size: size, weight: _bold, height: 1.35, color: color);
+  }) => _base(size: size, weight: _semibold, height: 1.35, color: color);
 
   /// 버튼 라벨. 23–25px / 700.
   static TextStyle button({double size = 24, Color color = Colors.white}) =>
@@ -128,12 +129,13 @@ abstract final class AppText {
     FontWeight? weight,
   }) => _base(size: size, weight: weight ?? _medium, height: 1.6, color: color);
 
-  /// 라벨. 18px / 700 — 입력 필드 라벨, 카드 안 작은 제목.
+  /// 라벨. 18px / 600 — 입력 필드 라벨, 카드 안 작은 제목.
   static TextStyle label({
     double size = 18,
     Color color = AppColors.textSecondary,
     FontWeight? weight,
-  }) => _base(size: size, weight: weight ?? _bold, height: 1.5, color: color);
+  }) =>
+      _base(size: size, weight: weight ?? _semibold, height: 1.5, color: color);
 
   /// 보조. 17–17.5px / 500. **이 아래로 내려가지 않는다.**
   static TextStyle caption({

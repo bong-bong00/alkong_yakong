@@ -366,7 +366,7 @@ void _easyModeTests() {
     // 첫 걸음의 "안 잴래요"를 고르면 재는 걸음을 건너뛴다.
     await tester.tap(find.text('뒤로'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('측정 안 할래요'));
+    await tester.tap(find.text('안 할래요'));
     await tester.pumpAndSettle();
     expect(find.text('복약 완료하셨나요?'), findsOneWidget);
     expect(find.text('5 / 8'), findsOneWidget);

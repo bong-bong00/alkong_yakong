@@ -10,6 +10,7 @@ import '../../../../core/widgets/senior_card.dart';
 import '../../../../core/widgets/senior_header.dart';
 import '../../application/user_medicines_controller.dart';
 import '../../domain/user_medicine_models.dart';
+import '../../domain/display_policy.dart';
 
 /// 내 약 — 활성 약 종류당 1행 (서버 `/medicines`).
 ///
@@ -246,37 +247,40 @@ class _GroupedMedicines extends StatelessWidget {
       children: [
         for (final type in MedicineUseType.values)
           if (medicines.any((medicine) => medicine.useType == type)) ...[
-            // 묶음 이름은 박스로 두르지 않는다 — 박스는 약에만 쓴다.
-            Padding(
-              padding: const EdgeInsets.fromLTRB(4, 2, 4, 10),
-              child: Row(
-                children: [
-                  Icon(
-                    switch (type) {
-                      MedicineUseType.eat => TablerIcons.pill,
-                      MedicineUseType.apply => Icons.back_hand_outlined,
-                      MedicineUseType.patch => Icons.healing_outlined,
-                      MedicineUseType.eye => Icons.visibility_outlined,
-                      MedicineUseType.unknown => Icons.help_outline,
-                      _ => Icons.medical_services_outlined,
-                    },
-                    color: AppColors.point,
-                    size: 23,
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(type.label, style: AppText.label(size: 19)),
-                  ),
-                  Text(
-                    '${medicines.where((medicine) => medicine.useType == type).length}가지',
-                    style: AppText.body(
-                      size: 17,
-                      color: AppColors.textSecondary,
+            // 지난 약은 들어오기 전에 이미 "먹는 약 2가지"를 보고 왔다.
+            // 같은 말을 또 적지 않는다.
+            if (!past)
+              // 묶음 이름은 박스로 두르지 않는다 — 박스는 약에만 쓴다.
+              Padding(
+                padding: const EdgeInsets.fromLTRB(4, 2, 4, 10),
+                child: Row(
+                  children: [
+                    Icon(
+                      switch (type) {
+                        MedicineUseType.eat => TablerIcons.pill,
+                        MedicineUseType.apply => Icons.back_hand_outlined,
+                        MedicineUseType.patch => Icons.healing_outlined,
+                        MedicineUseType.eye => Icons.visibility_outlined,
+                        MedicineUseType.unknown => Icons.help_outline,
+                        _ => Icons.medical_services_outlined,
+                      },
+                      color: AppColors.point,
+                      size: 23,
                     ),
-                  ),
-                ],
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(type.label, style: AppText.label(size: 19)),
+                    ),
+                    Text(
+                      '${medicines.where((medicine) => medicine.useType == type).length}가지',
+                      style: AppText.body(
+                        size: 17,
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
+                  ],
+                ),
               ),
-            ),
             for (final medicine in medicines.where(
               (medicine) => medicine.useType == type,
             )) ...[
@@ -323,7 +327,10 @@ class _MedicineCard extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  medicine.displayName,
+                  nameWithoutStrength(
+                    medicine.displayName,
+                    strength: medicine.ingredientStrength,
+                  ),
                   style: AppText.cardTitle(
                     size: 21,
                     color: past

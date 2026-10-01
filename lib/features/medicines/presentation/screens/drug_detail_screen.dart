@@ -120,26 +120,11 @@ class _DetailBody extends StatelessWidget {
       medicine.detailSpoken ?? medicine.ingredientExplanation;
 
   /// 이름에서 용량을 뗀다 — 바로 밑 주성분 줄에 또 적히기 때문이다.
-  /// "아스피린 100mg" → "아스피린".
-  static String _nameWithoutStrength(UserMedicine medicine) {
-    final name = medicine.displayName.trim();
-    final strength = medicine.ingredientStrength.trim();
-    if (strength.isNotEmpty &&
-        name.toLowerCase().endsWith(strength.toLowerCase())) {
-      final cut = name.substring(0, name.length - strength.length).trim();
-      if (cut.isNotEmpty) return cut;
-    }
-    final cut = name
-        .replaceFirst(
-          RegExp(
-            r'[\s·]*\d+(\.\d+)?\s*(mg|밀리그램|mcg|㎍|g|ml|㎖|iu|%)\s*$',
-            caseSensitive: false,
-          ),
-          '',
-        )
-        .trim();
-    return cut.isEmpty ? name : cut;
-  }
+  static String _nameWithoutStrength(UserMedicine medicine) =>
+      nameWithoutStrength(
+        medicine.displayName,
+        strength: medicine.ingredientStrength,
+      );
 
   /// 사람에게 해당하는 주의만 골라 세 개까지.
   List<String> get _cautions => <String>[
@@ -203,19 +188,10 @@ class _DetailBody extends StatelessWidget {
                     ),
                     if ((medicine.purposeLabel ?? '').trim().isNotEmpty) ...[
                       const SizedBox(height: 2),
+                      // 이름보다 한 단계 가볍게 — 이름이 주인공이다.
                       Text(
                         medicine.purposeLabel!,
-                        style: AppText.cardTitle(
-                          size: 19,
-                          color: AppColors.point,
-                        ),
-                      ),
-                    ],
-                    if (medicine.appearanceLine.isNotEmpty) ...[
-                      const SizedBox(height: 2),
-                      Text(
-                        medicine.appearanceLine,
-                        style: AppText.body(size: 17),
+                        style: AppText.label(size: 19, color: AppColors.point),
                       ),
                     ],
                   ],

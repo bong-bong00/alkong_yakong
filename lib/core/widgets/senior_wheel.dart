@@ -97,6 +97,65 @@ Future<int?> showSeniorClockWheel({
   );
 }
 
+/// 달을 고르는 창 — 왼쪽에 년, 오른쪽에 월.
+///
+/// 고른 달의 1일을 돌려준다. 그만두면 null.
+Future<DateTime?> showSeniorMonthWheel({
+  required BuildContext context,
+  String title = '어느 달을 볼까요?',
+  required int initialYear,
+  required int initialMonth,
+
+  /// 고를 수 있는 가장 이른 해. 그보다 앞선 기록은 없다.
+  int firstYear = 2024,
+}) {
+  // 올해까지만 고른다. 내년 기록은 아직 있을 수 없다.
+  final lastYear = DateTime.now().year;
+  final years = [for (int y = firstYear; y <= lastYear; y++) y];
+  var year = initialYear.clamp(firstYear, lastYear);
+  var month = initialMonth.clamp(1, 12);
+
+  return _showPickerSheet<DateTime>(
+    context: context,
+    title: title,
+    onConfirm: () => DateTime(year, month, 1),
+    builder: (_) => StatefulBuilder(
+      builder: (context, setSheetState) {
+        // 올해는 이번 달까지만 돈다. 아직 오지 않은 달의 기록은 없다.
+        final lastMonth = year == lastYear ? DateTime.now().month : 12;
+        if (month > lastMonth) month = lastMonth;
+        return Row(
+          children: [
+            Expanded(
+              flex: 3,
+              child: _Wheel(
+                count: years.length,
+                initialIndex: years.indexOf(year),
+                labelOf: (i) => '${years[i]}년',
+                onChanged: (i) {
+                  year = years[i];
+                  setSheetState(() {});
+                },
+              ),
+            ),
+            Expanded(
+              flex: 2,
+              child: _Wheel(
+                // 돌 수 있는 달 수가 바뀌면 칸을 새로 세운다.
+                key: ValueKey('month-$lastMonth'),
+                count: lastMonth,
+                initialIndex: month - 1,
+                labelOf: (i) => '${i + 1}월',
+                onChanged: (i) => month = i + 1,
+              ),
+            ),
+          ],
+        );
+      },
+    ),
+  );
+}
+
 /// 날짜를 고르는 창 — 년·월·일.
 ///
 /// 고른 날짜를 돌려준다. 그만두면 null.
@@ -203,6 +262,7 @@ class _Wheel extends StatelessWidget {
   final ValueChanged<int> onChanged;
 
   const _Wheel({
+    super.key,
     required this.count,
     required this.initialIndex,
     required this.labelOf,
