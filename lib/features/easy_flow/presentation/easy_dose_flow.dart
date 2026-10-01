@@ -14,6 +14,7 @@ import '../../medication/application/medication_controller.dart';
 import '../../medication/domain/medication_models.dart';
 import '../../medication/presentation/widgets/dose_guard_sheets.dart';
 import '../../reminder/application/alarm_preferences.dart';
+import 'easy_heart_result.dart';
 
 /// 쉬운 화면의 복약 한 바퀴 (명세서 76~85).
 ///
@@ -146,9 +147,8 @@ class _EasyDoseFlowState extends ConsumerState<EasyDoseFlow> {
     final sensor = _sensor ?? widget.sensor ?? HeartSensor();
     if (_sensor == null) _ownsSensor = widget.sensor == null;
     _sensor = sensor;
-    if (sensor.status != HeartSensorStatus.streaming) {
-      unawaited(sensor.start(measurementContext: measurementContext));
-    }
+    // 연결과 측정 초기화는 MeasureScreen 한 곳에서 수행한다.
+    // 여기서 start()를 먼저 호출하면 화면의 초기화가 진행 중 연결을 무효화한다.
     final confirmed = await Navigator.of(context).push<bool>(
       MaterialPageRoute(
         builder: (_) => MeasureScreen(
@@ -309,15 +309,7 @@ class _EasyDoseFlowState extends ConsumerState<EasyDoseFlow> {
         SeniorCard(
           radius: 26,
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
-          child: SizedBox(
-            height: 120,
-            child: Center(
-              child: Text(
-                '차는 모습 그림 자리',
-                style: AppText.label(size: 17, color: AppColors.textSecondary),
-              ),
-            ),
-          ),
+          child: const EasySensorWearIllustration(),
         ),
         const SizedBox(height: 12),
         const _NumberedCard(lines: ['팔꿈치 위에 차요', '동그란 면이 살에 닿게', '밴드를 조금 조여요']),
@@ -374,40 +366,7 @@ class _EasyDoseFlowState extends ConsumerState<EasyDoseFlow> {
       step: EasyDoseStep.beforeDone,
       lead: '먹기 전 심박',
       title: '잘 쟀어요',
-      body: [
-        SeniorCard(
-          radius: 26,
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 22),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              Text(
-                '먹기 전',
-                style: AppText.label(size: 18, color: AppColors.textSecondary),
-              ),
-              const SizedBox(height: 6),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Text('${_before ?? '–'}', style: AppText.hero(size: 64)),
-                  const SizedBox(width: 6),
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 8),
-                    child: Text(
-                      '회',
-                      style: AppText.cardTitle(
-                        size: 22,
-                        color: AppColors.textBody,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
-      ],
+      body: [if (_before != null) EasyHeartResult(value: _before!)],
       primary: _EasyAction(
         label: '이제 약 드시기',
         icon: Icons.medication_rounded,
@@ -478,6 +437,11 @@ class _EasyDoseFlowState extends ConsumerState<EasyDoseFlow> {
                     ),
                     const SizedBox(height: 2),
                     Text('센서는 그대로 차고 계세요', style: AppText.body(size: 20)),
+                    const SizedBox(height: 8),
+                    Text(
+                      '복약 후 심박수를 기록해요. 약의 효과를 판정하는 검사는 아니에요.',
+                      style: AppText.body(size: 18),
+                    ),
                   ],
                 ),
               ),
@@ -515,99 +479,23 @@ class _EasyDoseFlowState extends ConsumerState<EasyDoseFlow> {
     // 둘 중 하나라도 없으면 비교하지 않는다.
     if (before == null || after == null) return _allDone(today);
 
-    // 100회를 넘으면 빠른 쪽으로 말한다. 그 아래는 평소와 비슷하다고 본다.
-    final fast = after > 100;
-
     return _EasyStepPage(
       step: EasyDoseStep.result,
-      lead: fast ? '고장이 아니에요' : '심박수가',
-      title: fast ? '조금 빨라요' : '평소와 비슷해요',
-      body: [
-        SeniorCard(
-          radius: 26,
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
-          child: Row(
-            children: [
-              Expanded(
-                child: _ResultValue(
-                  label: '먹기 전',
-                  value: before,
-                  labelColor: AppColors.textSecondary,
-                  valueColor: AppColors.textTertiary,
-                ),
-              ),
-              const Padding(
-                padding: EdgeInsets.symmetric(horizontal: 6),
-                child: Icon(
-                  Icons.arrow_forward_rounded,
-                  size: 32,
-                  color: AppColors.strongLine,
-                ),
-              ),
-              Expanded(
-                child: _ResultValue(
-                  label: '먹은 후',
-                  value: after,
-                  labelColor: fast ? AppColors.danger : AppColors.point,
-                  valueColor: fast ? AppColors.danger : AppColors.point,
-                ),
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 12),
-        if (!fast)
-          SeniorCard(
-            radius: 26,
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
-            child: Text(
-              '약이 잘 듣고 있어요',
-              style: AppText.label(size: 19, color: AppColors.textPrimary),
-            ),
-          )
-        else ...[
-          const _NumberedCard(
-            lines: ['의자에 앉아 쉬세요', '물 한 잔 드세요', '10분 뒤에 다시 재요'],
-          ),
-          // 가족이 등록돼 있을 때만 알렸다고 말한다.
-          if (today.hasGuardian) ...[
-            const SizedBox(height: 12),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 15),
-              decoration: BoxDecoration(
-                color: AppColors.textPrimary,
-                borderRadius: BorderRadius.circular(18),
-              ),
-              child: Row(
-                children: [
-                  const Icon(Icons.send_rounded, size: 24, color: Colors.white),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Text(
-                      '${today.guardianTitle}께 자동으로 알렸어요',
-                      style: AppText.label(size: 18, color: Colors.white),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ],
-      ],
+      lead: '복약 전후 심박수',
+      title: '측정값을 비교해요',
+      body: [EasyHeartResult(before: before, value: after)],
       primary: _EasyAction(
-        label: fast ? '알겠어요' : '기록 끝내기',
+        label: '기록 끝내기',
         icon: Icons.check_rounded,
         onPressed: () => _goTo(EasyDoseStep.allDone),
       ),
-      secondaries: fast
-          ? const []
-          : [
-              _EasyAction(
-                label: '뒤로',
-                icon: Icons.arrow_back_rounded,
-                onPressed: _back,
-              ),
-            ],
+      secondaries: [
+        _EasyAction(
+          label: '뒤로',
+          icon: Icons.arrow_back_rounded,
+          onPressed: _back,
+        ),
+      ],
     );
   }
 
@@ -646,9 +534,24 @@ class _EasyDoseFlowState extends ConsumerState<EasyDoseFlow> {
         ? null
         : alarm.ringingHours.first;
 
+    final scheduled = today.doses
+        .where((dose) => dose.medicines.isNotEmpty)
+        .toList();
+    final allTaken =
+        today.fetchStatus == MedicationFetchStatus.ready &&
+        scheduled.isNotEmpty &&
+        scheduled.every((dose) => dose.taken);
     return _EasyStepPage(
-      lead: '오늘 약을',
-      title: '다 드셨어요',
+      lead: allTaken
+          ? '오늘 약을'
+          : _recordedSlot != null
+          ? '이번 복약을'
+          : '복약 기록을',
+      title: allTaken
+          ? '다 드셨어요'
+          : _recordedSlot != null
+          ? '기록했어요'
+          : '확인해 주세요',
       body: [
         SeniorCard(
           radius: 26,
@@ -678,7 +581,7 @@ class _EasyDoseFlowState extends ConsumerState<EasyDoseFlow> {
             ],
           ),
         ),
-        if (firstHour != null) ...[
+        if (allTaken && firstHour != null) ...[
           const SizedBox(height: 12),
           SeniorCard(
             radius: 26,
@@ -1016,39 +919,6 @@ class _NumberedCard extends StatelessWidget {
             ),
           ],
         ],
-      ),
-    );
-  }
-}
-
-/// 결과 값 한 쪽 (명세서 83·84).
-class _ResultValue extends StatelessWidget {
-  final String label;
-  final int value;
-  final Color labelColor;
-  final Color valueColor;
-
-  const _ResultValue({
-    required this.label,
-    required this.value,
-    required this.labelColor,
-    required this.valueColor,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Semantics(
-      label: '$label $value회',
-      child: ExcludeSemantics(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(label, style: AppText.label(size: 17, color: labelColor)),
-            const SizedBox(height: 4),
-            Text('$value', style: AppText.hero(size: 48, color: valueColor)),
-          ],
-        ),
       ),
     );
   }

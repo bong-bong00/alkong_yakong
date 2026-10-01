@@ -69,6 +69,7 @@ class FakePolar implements Polar {
   int searches = 0;
   int connections = 0;
   int disconnections = 0;
+  Stream<PolarDeviceInfo> Function()? searchOverride;
 
   @override
   Stream<PolarDeviceDisconnectedEvent> get deviceDisconnected =>
@@ -81,7 +82,7 @@ class FakePolar implements Polar {
   @override
   Stream<PolarDeviceInfo> searchForDevice() {
     searches++;
-    return Stream.value(device);
+    return TestStream(searchOverride?.call() ?? Stream.value(device));
   }
 
   @override
@@ -163,13 +164,15 @@ class NoDataset implements BiosignalDatasetCollector {
 }
 
 class Rig {
+  Rig({this.requestPermissions});
+  final Future<bool> Function()? requestPermissions;
   final sdk = FakePolar();
   final api = FakeApi();
   late final sensor = HeartSensor(
     polar: PolarService(polar: sdk),
     apiClient: api,
     datasetCollector: NoDataset(),
-    requestPermissions: () async => true,
+    requestPermissions: requestPermissions ?? () async => true,
   );
   void start(
     FakeAsync clock, {
@@ -267,7 +270,7 @@ void main() {
   }
 
   for (final duringBaseline in [true, false]) {
-    test('explicit zero HR immediately cancels: baseline=$duringBaseline', () {
+    test('sustained zero HR cancels after grace: baseline=$duringBaseline', () {
       fakeAsync((clock) {
         final r = Rig();
         r.start(clock);
@@ -275,6 +278,9 @@ void main() {
         r.sdk.sample(62, contactStatusSupported: false);
         clock.flushMicrotasks();
         r.sdk.sample(0, contactStatusSupported: false);
+        clock.flushMicrotasks();
+        expect(r.sensor.status, HeartSensorStatus.streaming);
+        clock.elapse(const Duration(milliseconds: 1500));
         clock.flushMicrotasks();
         expect(r.sensor.status, HeartSensorStatus.failed);
         expect(r.sensor.bpm, isNull);
@@ -316,7 +322,7 @@ void main() {
     });
   });
 
-  testWidgets('zero HR displays recovery without the three-second wait', (
+  testWidgets('sustained zero HR displays recovery after short grace', (
     tester,
   ) async {
     final r = Rig();
@@ -330,8 +336,13 @@ void main() {
     await tester.pump();
     r.sdk.sample(0, contactStatusSupported: false);
     await tester.pump();
+    expect(find.text('다시 연결하기'), findsNothing);
+    await tester.pump(const Duration(milliseconds: 1500));
     await tester.pump();
     expect(find.text('다시 연결하기'), findsOneWidget);
+    expect(find.text('자동 연락은 지원하지 않아요'), findsNothing);
+    expect(find.text('알리기'), findsNothing);
+    expect(find.text('약 알림은 그대로 와요'), findsOneWidget);
     expect(find.text('폴라 센서로 재고 있어요'), findsNothing);
     expect(r.api.requests, isEmpty);
     await tester.pumpWidget(const SizedBox());
@@ -346,7 +357,9 @@ void main() {
       r.baseline(clock);
       r.sdk.sample(62, contactStatus: false);
       clock.flushMicrotasks();
-
+      expect(r.sensor.status, HeartSensorStatus.streaming);
+      clock.elapse(const Duration(milliseconds: 1500));
+      clock.flushMicrotasks();
       expect(r.sensor.status, HeartSensorStatus.failed);
       expect(r.sensor.bpm, isNull);
       clock.elapse(const Duration(minutes: 1));
@@ -600,6 +613,7 @@ void main() {
     );
     r.sdk.sample(62, contactStatus: false);
     await tester.pump();
+    await tester.pump(const Duration(milliseconds: 1500));
     await tester.pump();
 
     expect(find.text('지금은 심장 박동을\n재지 못하고 있어요'), findsOneWidget);

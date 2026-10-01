@@ -51,6 +51,16 @@ class _FakeHeartRepository extends HeartRepository {
 
 /// 붙어 있다고만 말하고 배터리·측정값은 아직 안 준 센서.
 class _StreamingSensor extends HeartSensor {
+  int startCalls = 0;
+  @override
+  Future<void> start({
+    bool measure = true,
+    HeartMeasurementContext measurementContext =
+        HeartMeasurementContext.general,
+  }) async {
+    startCalls++;
+  }
+
   @override
   HeartSensorStatus get status => HeartSensorStatus.streaming;
 }
@@ -673,15 +683,15 @@ void _sensorTests() {
     child: MaterialApp(theme: AppTheme.build(), home: child),
   );
 
-  testWidgets('밖에서 센서를 넣어 주면 화면이 따로 붙지 않는다 (27)', (tester) async {
-    // 넣어 준 센서는 start()를 부르지 않았으므로 idle 그대로다.
-    final sensor = HeartSensor();
+  testWidgets('이미 연결된 공유 센서는 재연결 없이 측정을 시작한다 (27)', (tester) async {
+    final sensor = _StreamingSensor();
     addTearDown(sensor.dispose);
 
     await tester.pumpWidget(wrap(MeasureScreen(sensor: sensor)));
 
-    expect(sensor.status, HeartSensorStatus.idle);
-    expect(find.text('폴라 센서를 찾고 있어요'), findsOneWidget);
+    expect(sensor.status, HeartSensorStatus.streaming);
+    expect(sensor.startCalls, 0);
+    expect(sensor.measurementContext, HeartMeasurementContext.general);
   });
 
   testWidgets('센서가 아직 값을 못 줘도 화면은 그려진다 (27)', (tester) async {

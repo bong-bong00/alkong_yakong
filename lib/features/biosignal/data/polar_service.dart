@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:polar/polar.dart';
 
 double? averageValidHeartRates(Iterable<int> samples) {
@@ -44,6 +45,8 @@ class PolarService {
   StreamSubscription<dynamic>? _disconnectSubscription;
   int _streamGeneration = 0;
   Timer? _averageTimer;
+  Timer? _invalidSignalTimer;
+  static const _invalidSignalGrace = Duration(milliseconds: 1500);
   bool _isAverageMonitoring = false;
   bool _isDisposed = false;
   bool _acceptBpmEvents = false;
@@ -66,22 +69,71 @@ class PolarService {
     required String targetName,
     required String targetDeviceId,
     Duration timeout = const Duration(seconds: 20),
+    bool allowNameFallback = true,
   }) async {
     debugPrint('[POLAR_SERVICE] search start');
+    final found = Completer<PolarDeviceInfo>();
+    StreamSubscription<PolarDeviceInfo>? subscription;
+    Timer? timer;
+    var seenCount = 0;
+    var matchingCount = 0;
     try {
-      final device = await _polar
-          .searchForDevice()
-          .firstWhere(
-            (device) =>
-                device.name == targetName || device.deviceId == targetDeviceId,
-          )
-          .timeout(timeout);
+      subscription = _polar.searchForDevice().listen(
+        (device) {
+          seenCount++;
+          final name = device.name.trim();
+          final matchesName =
+              name == targetName ||
+              (targetName == 'Polar Verity Sense' &&
+                  (name == 'Polar Sense' ||
+                      name.startsWith('Polar Sense ') ||
+                      name.startsWith('Polar Verity Sense ')));
+          final matches =
+              device.deviceId == targetDeviceId ||
+              (allowNameFallback && matchesName);
+          if (!matches) return;
+          matchingCount++;
+          if (device.isConnectable && !found.isCompleted) {
+            found.complete(device);
+          }
+        },
+        onError: (Object error, StackTrace stack) {
+          if (!found.isCompleted) found.completeError(error, stack);
+        },
+        onDone: () {
+          if (!found.isCompleted) {
+            found.completeError(StateError('search ended without target'));
+          }
+        },
+      );
+      timer = Timer(timeout, () {
+        if (!found.isCompleted) {
+          found.completeError(
+            TimeoutException('device search timed out', timeout),
+          );
+        }
+      });
+      final device = await found.future;
       debugPrint('[POLAR_SERVICE] device found');
       return device.deviceId;
     } catch (error) {
-      debugPrint('[POLAR_SERVICE] search failed');
+      final category = error is TimeoutException
+          ? 'timeout'
+          : error is PlatformException
+          ? 'native_scan_error'
+          : error is StateError
+          ? 'no_target'
+          : 'scan_error';
+      debugPrint(
+        '[POLAR_SERVICE] search failed category=$category '
+        'error_type=${error.runtimeType} seen_count=$seenCount '
+        'matching_count=$matchingCount',
+      );
       _emitError(error);
       rethrow;
+    } finally {
+      timer?.cancel();
+      await subscription?.cancel();
     }
   }
 
@@ -174,18 +226,20 @@ class PolarService {
                 );
               }
               if (sample.contactStatusSupported && !sample.contactStatus) {
-                _invalidateMeasurement('skin contact lost');
+                _waitForSignalRecovery('skin contact lost');
                 continue;
               }
               final bpm = sample.hr;
               if (bpm <= 0) {
                 // Initial zero is not a successful measurement. Once HR was
-                // acquired, an explicit invalid value must not wait for silence.
+                // acquired, confirm persistent invalidity with a short grace.
                 if (_hasValidHeartRate) {
-                  _invalidateMeasurement('heart rate signal invalid');
+                  _waitForSignalRecovery('heart rate signal invalid');
                 }
                 continue;
               }
+              _invalidSignalTimer?.cancel();
+              _invalidSignalTimer = null;
               _hasValidHeartRate = true;
               if (_isAverageMonitoring) {
                 _bpmSamples.add(bpm);
@@ -223,6 +277,8 @@ class PolarService {
 
   Future<void> stopStreaming() async {
     _streamGeneration++;
+    _invalidSignalTimer?.cancel();
+    _invalidSignalTimer = null;
     debugPrint('[POLAR_SERVICE] stopStreaming requested');
     _acceptBpmEvents = false;
     _hasValidHeartRate = false;
@@ -280,6 +336,24 @@ class PolarService {
     _bpmSamples.clear();
     _emitMeasurementReset();
     _emitError(StateError(reason));
+  }
+
+  void _waitForSignalRecovery(String reason) {
+    if (_invalidSignalTimer != null) return;
+    // Do not save or display stale readings during the grace interval.
+    _averageTimer?.cancel();
+    _averageTimer = null;
+    _isAverageMonitoring = false;
+    _bpmSamples.clear();
+    _emitMeasurementReset();
+    final generation = _streamGeneration;
+    _invalidSignalTimer = Timer(_invalidSignalGrace, () {
+      _invalidSignalTimer = null;
+      if (_isDisposed || generation != _streamGeneration || !_acceptBpmEvents) {
+        return;
+      }
+      _invalidateMeasurement(reason);
+    });
   }
 
   Future<void> dispose() async {

@@ -110,10 +110,20 @@ class _MeasureScreenState extends State<MeasureScreen> {
   void initState() {
     super.initState();
     _sensor.addListener(_onSensor);
-    if (_ownsSensor) {
-      unawaited(_sensor.start(measurementContext: widget.measurementContext));
-    } else {
+    unawaited(_prepareMeasurement());
+  }
+
+  Future<void> _prepareMeasurement() async {
+    // 공유 센서의 연결 중에는 세션을 초기화하지 않는다. 취소 후 재진입도
+    // 이전 연결 시도의 정리가 끝나면 현재 화면에서 새로 시작한다.
+    if (_sensor.connectionInProgress) {
+      await _sensor.connectionSettled;
+      if (!mounted) return;
+    }
+    if (_sensor.status == HeartSensorStatus.streaming) {
       _sensor.beginMeasurement(measurementContext: widget.measurementContext);
+    } else {
+      await _sensor.start(measurementContext: widget.measurementContext);
     }
   }
 
@@ -122,12 +132,20 @@ class _MeasureScreenState extends State<MeasureScreen> {
     if (_live) {
       _sensor.beginMeasurement(measurementContext: widget.measurementContext);
     } else {
-      unawaited(_sensor.start(measurementContext: widget.measurementContext));
+      unawaited(_prepareMeasurement());
     }
   }
 
   void _onSensor() {
-    if (mounted) setState(() {});
+    if (!mounted) return;
+    if (widget.returnToCaller && _done && !_openingSaved) {
+      _openingSaved = true;
+      // 쉬운 흐름은 저장 성공을 확인한 뒤 해당 단계의 결과로 바로 돌아간다.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) Navigator.of(context).pop(true);
+      });
+    }
+    setState(() {});
   }
 
   @override
@@ -160,9 +178,6 @@ class _MeasureScreenState extends State<MeasureScreen> {
       onAction: _restart,
       stillWorksTitle: '약 알림은 그대로 와요',
       stillWorksBody: '센서가 끊겨도 복약 알림에는 영향이 없어요.',
-      helperText: '자동 연락은 지원하지 않아요',
-      // 어르신 화면에서 밖으로 전화를 걸지 않는다.
-      onCallHelper: () => showSeniorSnackbar(context, '필요하면 보호자에게 직접 연락해 주세요.'),
       footnote: _sensor.lastReadAt == null
           ? null
           : '마지막으로 잰 시각 · 오늘 '
