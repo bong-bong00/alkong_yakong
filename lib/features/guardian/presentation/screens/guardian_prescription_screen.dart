@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../core/widgets/senior_card.dart';
+import '../../../../core/widgets/senior_feedback.dart';
 import '../../../../core/widgets/senior_header.dart';
 import '../../../dashboard/presentation/screens/patient_data.dart';
 import '../../../prescription/presentation/screens/prescription_screen.dart';
@@ -19,7 +20,11 @@ Future<void> openGuardianPrescription(
       builder: (_) => PrescriptionScreen(
         onBehalfOf: patient.title,
         onBehalfOfUserId: patient.patientId,
-        onCompleted: (_) => Navigator.of(context).maybePop(),
+        onCompleted: (_) {
+          Navigator.of(context).maybePop();
+          if (!context.mounted) return;
+          showSeniorSnackbar(context, '${patient.title} 님께 약을 넣어드렸어요');
+        },
       ),
     ),
   );

@@ -12,6 +12,7 @@ import '../../../../core/widgets/senior_header.dart';
 import '../../../dashboard/presentation/screens/patient_data.dart';
 import '../../application/guardians_provider.dart';
 import '../../data/guardian_repository.dart';
+import 'guardian_prescription_screen.dart';
 
 /// 36 · 보호자 · 돌보는 분 목록.
 ///
@@ -102,6 +103,22 @@ class CareFamilyScreen extends ConsumerWidget {
                   ),
                 if (needAttention.isNotEmpty) ...[
                   _AttentionBanner(patients: needAttention),
+                  const SizedBox(height: 12),
+                ],
+                if (patients.isNotEmpty) ...[
+                  // 처방전을 대신 넣어 주는 길. 연결된 분만 고를 수 있다.
+                  SeniorButton(
+                    label: '처방전 대신 찍기',
+                    icon: TablerIcons.camera,
+                    kind: SeniorButtonKind.card,
+                    minHeight: 64,
+                    fontSize: 20,
+                    onPressed: () => Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) => const GuardianPickPatientScreen(),
+                      ),
+                    ),
+                  ),
                   const SizedBox(height: 12),
                 ],
                 for (int i = 0; i < patients.length; i++) ...[
