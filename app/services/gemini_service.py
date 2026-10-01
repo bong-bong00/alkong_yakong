@@ -1178,16 +1178,6 @@ def _generate_chat_response(
     intent: str | None = None,
 ) -> str:
     from app.services.pharmacist.conversation import dialogue_prompt, record_evidence
-    # Personal-health guidance is isolated from ordinary precautions and DUR.
-    if intent == "health_precautions":
-        from app.services.pharmacist.health_precautions import generate_health_reply
-
-        return generate_health_reply(
-            message, user_id=user_id, selected_medicine=selected_medicine,
-            selected_medicines=selected_medicines,
-            temporary_medicines=temporary_medicines,
-        )
-
     from app.services.chat_context_service import (
         DUR_TYPES_BY_INTENT,
         AMBIGUOUS_QUESTION_REPLY,
@@ -1207,13 +1197,27 @@ def _generate_chat_response(
     if general_reply := general_conversation_reply(message):
         return general_reply
 
+    has_medicine_context = bool(selected_medicine or selected_medicines)
+    question_scope = classify_question_scope(
+        message, has_medicine_context=has_medicine_context,
+    )
+    if question_scope == "unrelated":
+        return UNRELATED_QUESTION_REPLY
+    if intent is None and question_scope == "ambiguous":
+        return AMBIGUOUS_QUESTION_REPLY
+
+    # Personal-health guidance remains isolated, after the topic guard.
+    if intent == "health_precautions":
+        from app.services.pharmacist.health_precautions import generate_health_reply
+
+        return generate_health_reply(
+            message, user_id=user_id, selected_medicine=selected_medicine,
+            selected_medicines=selected_medicines,
+            temporary_medicines=temporary_medicines,
+        )
+
     general_medication_question = False
-    if selected_medicine is None and intent is None:
-        question_scope = classify_question_scope(message)
-        if question_scope == "unrelated":
-            return UNRELATED_QUESTION_REPLY
-        if question_scope == "ambiguous":
-            return AMBIGUOUS_QUESTION_REPLY
+    if not has_medicine_context and intent is None:
         if question_scope == "needs_medicine":
             return MEDICINE_SELECTION_REQUIRED_REPLY
         general_medication_question = question_scope == "general_medication"

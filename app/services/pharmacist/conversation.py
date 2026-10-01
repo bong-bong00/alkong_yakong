@@ -55,6 +55,10 @@ def record_evidence(official=(), *, dur=False):
 
 def resolve_followup(message, intent, history, selected_medicine, selected_medicines):
     """Resolve explicit ordinals/pronouns conservatively; all identities are re-fetched later."""
+    from app.services.chat_context_service import classify_question_scope, UNRELATED_QUESTION_REPLY
+    # Check the original text before adding a medicine name or asking which drug.
+    if classify_question_scope(message) == "unrelated":
+        return message, intent, selected_medicine, selected_medicines, UNRELATED_QUESTION_REPLY
     if intent is not None or not history:
         return message, intent, selected_medicine, selected_medicines, None
     last_answer = next((h for h in reversed(history) if h["role"] == "assistant"), None)
