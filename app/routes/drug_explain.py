@@ -33,7 +33,11 @@ def chat_with_pharmacist(request: DrugExplainChatRequest):
         ],
         intent=request.intent,
     )
-    return {"reply": reply}
+    highlights = []
+    if request.intent == "health_precautions":
+        from app.services.pharmacist.health_precautions import health_highlight_terms
+        highlights = health_highlight_terms(request.user_id, reply)
+    return {"reply": reply, "health_highlight_terms": highlights}
 
 
 @router.get("/drugs/search", response_model=DrugSearchResponse)

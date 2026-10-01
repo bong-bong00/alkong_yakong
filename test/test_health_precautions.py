@@ -16,6 +16,24 @@ MEDICINE = {"medicine_code": "123456789", "product_name": "확인약정"}
 SECOND = {"medicine_code": "987654321", "product_name": "다른약정"}
 
 
+def test_health_highlights_use_saved_facts_and_lifestyle_aliases(context):
+    terms = health.health_highlight_terms(
+        "health-user", "고혈압이 있으면 주의하세요. 술과 알코올을 피하세요. "
+        "흡연 및 담배, 니코틴에 주의하세요. 페니실린 알레르기에 주의하세요. "
+        "당뇨 환자에 대한 안내도 있어요.",
+    )
+    assert {"고혈압", "술", "알코올", "흡연", "담배", "니코틴", "페니실린", "알레르기"} <= set(terms)
+    assert "당뇨" not in terms  # Family history is not the user's diagnosis.
+
+
+def test_health_highlights_do_not_emphasize_missing_information(context):
+    assert health.health_highlight_terms(
+        "health-user", "알레르기나 흡연·음주 정보를 확인할 수 없어 설명하기 어려워요.",
+    ) == []
+    assert health.health_highlight_terms("missing", "음주에 주의하세요.") == []
+    assert "술" not in health.health_highlight_terms("health-user", "수술 전에 상담하세요.")
+
+
 @pytest.fixture
 def context(tmp_path, monkeypatch):
     path = tmp_path / "health.db"
@@ -172,6 +190,7 @@ def test_http_contract_accepts_intent_and_health_read_is_nonmutating(context, mo
     assert DrugExplainChatRequest(**body).intent == "health_precautions"
     result = TestClient(api).post("/api/v1/drug-explain/chat", json=body)
     assert result.status_code == 200 and "고혈압" in result.json()["reply"]
+    assert set(result.json()["health_highlight_terms"]) == {"고혈압", "음주"}
     assert context.read_bytes() == before
 
 

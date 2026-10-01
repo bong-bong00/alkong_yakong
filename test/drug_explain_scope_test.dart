@@ -53,7 +53,10 @@ void main() {
         final client = MockClient((request) async {
           if (request.method == 'POST') {
             sent = jsonDecode(request.body) as Map<String, dynamic>;
-            return response({'reply': '등록한 건강 정보와 공식 주의사항을 확인했어요.'});
+            return response({
+              'reply': '선택약1정: 고혈압과 알코올, 술에 주의하세요. 수술은 별도 안내예요.',
+              'health_highlight_terms': ['고혈압', '알코올', '술'],
+            });
           }
           return response({
             'medicines': [
@@ -105,6 +108,30 @@ void main() {
         expect(sent!['user_id'], 'scope-user');
         expect(sent!['message'], contains('흡연과 음주'));
         expect(sent!.containsKey('health_profile'), isFalse);
+        final answer = tester.widget<Text>(
+          find.byWidgetPredicate(
+            (widget) =>
+                widget is Text &&
+                widget.textSpan?.toPlainText() ==
+                    '선택약1정: 고혈압과 알코올, 술에 주의하세요. 수술은 별도 안내예요.',
+          ),
+        );
+        final spans = (answer.textSpan! as TextSpan).children!
+            .whereType<TextSpan>();
+        final emphasized = spans
+            .where(
+              (span) =>
+                  span.style?.color == const Color(0xFFB3261E) &&
+                  span.style?.fontWeight == FontWeight.w700,
+            )
+            .map((span) => span.text);
+        expect(emphasized, ['고혈압', '알코올', '술']);
+        expect(
+          spans
+              .where((span) => span.text?.contains('선택약1정') == true)
+              .every((span) => span.style?.color != const Color(0xFFB3261E)),
+          isTrue,
+        );
         if (count == 1) {
           expect(sent!['selected_medicine']['medicine_code'], '123456781');
         } else if (count == 2) {

@@ -233,6 +233,7 @@ class DurDiagnoseResponse(ApiResponse):
 
 class ChatResponse(ApiResponse):
     reply: str
+    health_highlight_terms: list[str] = Field(default_factory=list)
 
 
 class MedicineResponse(ApiResponse):

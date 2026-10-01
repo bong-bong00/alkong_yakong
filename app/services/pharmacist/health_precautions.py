@@ -134,6 +134,26 @@ def _mentions(text: str, term: str) -> bool:
     return _compact(term) in _compact(text)
 
 
+def health_highlight_terms(user_id: str, reply: str) -> list[str]:
+    """Presentation only: match saved personal facts, never infer new conditions."""
+    profile = load_health_profile(user_id)
+    if profile is None:
+        return []
+    terms = _health_terms(profile)
+    if profile["allergies"]:
+        terms += ["알레르기", "과민반응"]
+    if any("당뇨" in term for term in terms):
+        terms += ["당뇨", "당뇨병"]
+    # Missing-information messages and unrelated family history are not warnings.
+    sentences = re.split(r"(?<=[.!?。])\s+|\n+", reply)
+    warnings = [sentence for sentence in sentences if not re.search(
+        r"확인(?:하지|되지|할 수).*(?:못|않)|정보.*(?:없어|없음)|안내.*찾지 못|가족력|가족의", sentence,
+    )]
+    return sorted({term for term in terms if term and any(
+        _mentions(sentence, term) for sentence in warnings
+    )}, key=lambda term: (-len(term), term))
+
+
 def _allergy_matches(profile, medicine) -> list[str]:
     from app.services.pharmacist.ingredient import clean_ingredient_text, normalize_ingredient
 

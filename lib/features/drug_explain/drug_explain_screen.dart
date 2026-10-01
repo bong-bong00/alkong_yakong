@@ -635,6 +635,13 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
           'isMe': false,
           'text': _plainAiReply(reply),
           'officialProductNames': officialProductNames,
+          'isHealthReply': intent == 'health_precautions',
+          'healthHighlightTerms': intent == 'health_precautions'
+              ? (data['health_highlight_terms'] as List?)
+                        ?.whereType<String>()
+                        .toList(growable: false) ??
+                    const <String>[]
+              : const <String>[],
         });
       });
     } on ApiException {
@@ -836,6 +843,12 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
                     _ChatBubble(
                       text: message['text'] as String,
                       isMe: message['isMe'] as bool,
+                      isHealthReply: message['isHealthReply'] == true,
+                      healthHighlightTerms:
+                          (message['healthHighlightTerms'] as List?)
+                              ?.whereType<String>()
+                              .toList(growable: false) ??
+                          const [],
                       officialProductNames:
                           (message['officialProductNames'] as List?)
                               ?.whereType<String>()
@@ -1323,11 +1336,15 @@ class _ChatBubble extends StatelessWidget {
   final bool isMe;
   final String text;
   final List<String> officialProductNames;
+  final bool isHealthReply;
+  final List<String> healthHighlightTerms;
 
   const _ChatBubble({
     required this.isMe,
     required this.text,
     this.officialProductNames = const [],
+    this.isHealthReply = false,
+    this.healthHighlightTerms = const [],
   });
 
   @override
@@ -1363,11 +1380,19 @@ class _ChatBubble extends StatelessWidget {
                 TextSpan(
                   children: _officialProductNameSpans(
                     text,
-                    isMe ? const [] : officialProductNames,
+                    isMe
+                        ? const []
+                        : isHealthReply
+                        ? healthHighlightTerms
+                        : officialProductNames,
                     AppText.body(
                       size: 20,
                       color: isMe ? Colors.white : AppColors.textPrimary,
                     ),
+                    emphasisColor: isHealthReply
+                        ? const Color(0xFFB3261E)
+                        : AppColors.detailEmphasis,
+                    healthWarningsOnly: isHealthReply,
                   ),
                 ),
               ),
@@ -1383,8 +1408,10 @@ class _ChatBubble extends StatelessWidget {
 List<TextSpan> _officialProductNameSpans(
   String text,
   List<String> officialProductNames,
-  TextStyle baseStyle,
-) {
+  TextStyle baseStyle, {
+  Color emphasisColor = AppColors.detailEmphasis,
+  bool healthWarningsOnly = false,
+}) {
   final names =
       officialProductNames
           .map((name) => name.trim())
@@ -1401,7 +1428,8 @@ List<TextSpan> _officialProductNameSpans(
     for (final name in names) {
       var start = text.indexOf(name, cursor);
       while (start >= 0 &&
-          !_hasOfficialProductNameBoundary(text, start, name)) {
+          (!_hasOfficialProductNameBoundary(text, start, name) ||
+              (healthWarningsOnly && !_isHealthWarningSentence(text, start)))) {
         start = text.indexOf(name, start + 1);
       }
       if (start < 0) continue;
@@ -1430,7 +1458,7 @@ List<TextSpan> _officialProductNameSpans(
       TextSpan(
         text: text.substring(match.start, match.end),
         style: baseStyle.copyWith(
-          color: AppColors.detailEmphasis,
+          color: emphasisColor,
           fontWeight: FontWeight.w700,
         ),
       ),
@@ -1441,6 +1469,23 @@ List<TextSpan> _officialProductNameSpans(
     spans.add(TextSpan(text: text.substring(cursor), style: baseStyle));
   }
   return spans;
+}
+
+bool _isHealthWarningSentence(String text, int start) {
+  final delimiters = RegExp(r'[.!?。\n]');
+  var sentenceStart = 0;
+  var sentenceEnd = text.length;
+  for (final match in delimiters.allMatches(text)) {
+    if (match.start < start) {
+      sentenceStart = match.end;
+    } else {
+      sentenceEnd = match.start;
+      break;
+    }
+  }
+  return !RegExp(
+    r'확인(?:하지|되지|할 수).*(?:못|않)|정보.*(?:없어|없음)|안내.*찾지 못|가족력|가족의',
+  ).hasMatch(text.substring(sentenceStart, sentenceEnd));
 }
 
 bool _hasOfficialProductNameBoundary(String text, int start, String name) {
