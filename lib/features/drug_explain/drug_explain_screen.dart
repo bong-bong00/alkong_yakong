@@ -77,7 +77,15 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
     },
   ];
 
-  /// 약을 선택한 뒤 여섯 가지 질문 중 필요한 것을 고른다.
+  static const Map<String, String> _healthPrompt = {
+    'label': '내 건강 상태에서 주의할 점은?',
+    'prompt':
+        '내 건강 상태에서 이 약을 먹을 때 주의할 점은? 등록한 질환, 과거력, 알레르기, 흡연과 음주 정보를 참고해 선택 범위의 약을 확인해 주세요.',
+    'display': '내 건강 상태에서 주의할 점은?',
+    'intent': 'health_precautions',
+  };
+
+  /// 약을 선택한 뒤 필요한 질문을 고른다.
   static const List<Map<String, String>> _keywordPrompts = [
     {
       'label': '어디에 쓰는 약인가요?',
@@ -110,6 +118,7 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
       'prompt': '임신 중에 이 약을 사용할 때 조심할 점이 있나요?',
       'intent': 'pregnancy',
     },
+    _healthPrompt,
   ];
 
   static const List<Map<String, String>> _allMedicinePrompts = [
@@ -137,6 +146,7 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
       'display': '약마다 주의할 점은요?',
       'intent': 'precautions',
     },
+    _healthPrompt,
   ];
 
   static const List<Map<String, String>> _selectedMedicinePrompts = [
@@ -164,6 +174,7 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
       'display': '약마다 주의할 점은요?',
       'intent': 'precautions',
     },
+    _healthPrompt,
   ];
 
   @override

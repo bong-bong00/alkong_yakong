@@ -215,6 +215,7 @@ class DrugExplainChatRequest(BaseModel):
             "efficacy",
             "dosage",
             "precautions",
+            "health_precautions",
             "side_effects",
             "combination",
             "age",

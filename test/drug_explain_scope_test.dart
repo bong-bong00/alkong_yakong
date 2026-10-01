@@ -41,6 +41,88 @@ void main() {
 
   setUp(() => MvpSession.userId = 'scope-user');
 
+  for (final count in [0, 1, 2]) {
+    testWidgets(
+      '건강 질문 버튼은 ${count == 0 ? '약 전체' : '$count개 선택'} 범위와 전용 intent를 보낸다',
+      (tester) async {
+        Map<String, dynamic>? sent;
+        if (count == 0) {
+          await tester.binding.setSurfaceSize(const Size(320, 900));
+          addTearDown(() => tester.binding.setSurfaceSize(null));
+        }
+        final client = MockClient((request) async {
+          if (request.method == 'POST') {
+            sent = jsonDecode(request.body) as Map<String, dynamic>;
+            return response({'reply': '등록한 건강 정보와 공식 주의사항을 확인했어요.'});
+          }
+          return response({
+            'medicines': [
+              for (final index in [1, 2, 3])
+                {
+                  'medicine_code': '12345678$index',
+                  'product_name': '선택약$index정',
+                  'official_product_name': '선택약$index정',
+                  'status': 'active',
+                },
+            ],
+          });
+        });
+        await tester.pumpWidget(
+          MaterialApp(
+            builder: count == 0
+                ? (context, child) => MediaQuery(
+                    data: MediaQuery.of(
+                      context,
+                    ).copyWith(textScaler: const TextScaler.linear(2)),
+                    child: child!,
+                  )
+                : null,
+            home: DrugExplainScreen(
+              apiClient: ApiClient(client: client),
+              medicationApiClient: ApiClient(client: client),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        await pick(tester, count == 0 ? '약 전체' : '약 이름 선택');
+        if (count > 0) {
+          for (var index = 1; index <= count; index++) {
+            await tester.tap(
+              find.byKey(ValueKey('medicine-selection-선택약$index정')),
+            );
+          }
+          await tester.pumpAndSettle();
+          await tester.tap(find.text('$count개 선택'));
+          await tester.pumpAndSettle();
+        }
+        final button = find.widgetWithText(ChoiceChip, '내 건강 상태에서 주의할 점은?');
+        await tester.ensureVisible(button);
+        await tester.pumpAndSettle();
+        await tester.tap(button);
+        await tester.pumpAndSettle();
+        expect(sent, isNotNull);
+        expect(sent!['intent'], 'health_precautions');
+        expect(sent!['user_id'], 'scope-user');
+        expect(sent!['message'], contains('흡연과 음주'));
+        expect(sent!.containsKey('health_profile'), isFalse);
+        if (count == 1) {
+          expect(sent!['selected_medicine']['medicine_code'], '123456781');
+        } else if (count == 2) {
+          expect(
+            (sent!['selected_medicines'] as List).map(
+              (m) => m['medicine_code'],
+            ),
+            ['123456781', '123456782'],
+          );
+        } else {
+          expect(sent!.containsKey('selected_medicine'), isFalse);
+          expect(sent!.containsKey('selected_medicines'), isFalse);
+        }
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+
   testWidgets('복수 선택은 선택한 두 약만 전달한다', (tester) async {
     Map<String, dynamic>? sent;
     final client = MockClient((request) async {

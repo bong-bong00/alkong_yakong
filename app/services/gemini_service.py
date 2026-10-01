@@ -1177,6 +1177,16 @@ def _generate_chat_response(
     temporary_medicines: list[dict[str, Any]] | None = None,
     intent: str | None = None,
 ) -> str:
+    # Personal-health guidance is isolated from ordinary precautions and DUR.
+    if intent == "health_precautions":
+        from app.services.pharmacist.health_precautions import generate_health_reply
+
+        return generate_health_reply(
+            message, user_id=user_id, selected_medicine=selected_medicine,
+            selected_medicines=selected_medicines,
+            temporary_medicines=temporary_medicines,
+        )
+
     from app.services.chat_context_service import (
         DUR_TYPES_BY_INTENT,
         AMBIGUOUS_QUESTION_REPLY,
