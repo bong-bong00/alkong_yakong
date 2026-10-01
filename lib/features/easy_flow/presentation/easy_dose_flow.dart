@@ -95,6 +95,9 @@ class _EasyDoseFlowState extends ConsumerState<EasyDoseFlow> {
 
   /// 이 바퀴에서 기록한 시간대. 되돌릴 때 쓴다.
   DoseSlot? _recordedSlot;
+  DoseSlot? _flowSlot;
+  bool _recording = false;
+  String? _recordError;
 
   HeartSensor? _sensor;
   bool _ownsSensor = false;
@@ -123,7 +126,7 @@ class _EasyDoseFlowState extends ConsumerState<EasyDoseFlow> {
   }
 
   void _back() {
-    if (_history.isEmpty) return;
+    if (_recording || _history.isEmpty) return;
     final previous = _history.removeLast();
     // 재던 중으로 되돌아가면 처음부터 다시 잰다.
     setState(() => _step = previous);
@@ -188,30 +191,44 @@ class _EasyDoseFlowState extends ConsumerState<EasyDoseFlow> {
   // ── 복약 기록 ──────────────────────────────────────────
 
   Future<void> _record(DoseSlot slot) async {
-    final controller = ref.read(medicationProvider.notifier);
-    final outcome = await controller.take(slot);
-    if (!mounted) return;
+    if (_recording) return;
+    setState(() {
+      _recording = true;
+      _recordError = null;
+    });
+    try {
+      final controller = ref.read(medicationProvider.notifier);
+      final outcome = await controller.take(slot);
+      if (!mounted) return;
 
-    switch (outcome) {
-      case DoseCheckOutcome.alreadyTaken:
-        await showDuplicateDoseSheet(
-          context: context,
-          dose: ref.read(medicationProvider).doseOf(slot),
-          onUndo: () => controller.undo(slot),
-        );
-        return;
-      case DoseCheckOutcome.tooLate:
-        final proceed = await showLateDoseSheet(context: context, slot: slot);
-        if (!proceed || !mounted) return;
-        await controller.takeAnyway(slot);
-        if (!mounted) return;
-      case DoseCheckOutcome.recorded:
-        break;
+      switch (outcome) {
+        case DoseCheckOutcome.alreadyTaken:
+          await showDuplicateDoseSheet(
+            context: context,
+            dose: ref.read(medicationProvider).doseOf(slot),
+            onUndo: () => controller.undo(slot),
+          );
+          return;
+        case DoseCheckOutcome.tooLate:
+          // 5/8 confirms a dose already taken; it is not advice to take one now.
+          // Keep duplicate detection above, but don't block recording a late dose.
+          await controller.takeAnyway(slot);
+          if (!mounted) return;
+        case DoseCheckOutcome.recorded:
+          break;
+      }
+
+      setState(() => _recordedSlot = slot);
+      // 센서를 차고 재 뒀으면 먹은 뒤에도 한 번 잰다. 안 쟀으면 묻지 않는다.
+      _goTo(_before == null ? EasyDoseStep.allDone : EasyDoseStep.afterAsk);
+    } catch (_) {
+      if (!mounted) return;
+      setState(
+        () => _recordError = '저장 여부를 확인하지 못했어요.\n인터넷 연결을 확인하고 다시 눌러 주세요.',
+      );
+    } finally {
+      if (mounted) setState(() => _recording = false);
     }
-
-    setState(() => _recordedSlot = slot);
-    // 센서를 차고 재 뒀으면 먹은 뒤에도 한 번 잰다. 안 쟀으면 묻지 않는다.
-    _goTo(_before == null ? EasyDoseStep.allDone : EasyDoseStep.afterAsk);
   }
 
   void _undoRecord() {
@@ -260,7 +277,9 @@ class _EasyDoseFlowState extends ConsumerState<EasyDoseFlow> {
       case EasyDoseStep.beforeDone:
         return _beforeDone();
       case EasyDoseStep.take:
-        return _take(next ?? dose);
+        return _take(
+          _flowSlot == null ? (next ?? dose) : today.doseOf(_flowSlot!),
+        );
       case EasyDoseStep.afterAsk:
         return _afterAsk();
       case EasyDoseStep.measureAfter:
@@ -287,16 +306,26 @@ class _EasyDoseFlowState extends ConsumerState<EasyDoseFlow> {
       primary: _EasyAction(
         label: '복약 전 심박 측정',
         icon: Icons.favorite_rounded,
-        onPressed: () => _goTo(EasyDoseStep.wear),
+        onPressed: () => _beginDose(dose.slot, EasyDoseStep.wear),
       ),
       secondaries: [
         _EasyAction(
           label: '측정 안 할래요',
           icon: Icons.skip_next_rounded,
-          onPressed: () => _goTo(EasyDoseStep.take),
+          onPressed: () => _beginDose(dose.slot, EasyDoseStep.take),
         ),
       ],
     );
+  }
+
+  /// Freeze the current dose slot when leaving step 1.
+  void _beginDose(DoseSlot slot, EasyDoseStep next) {
+    _flowSlot = slot;
+    _before = null;
+    _after = null;
+    _recordedSlot = null;
+    _recordError = null;
+    _goTo(next);
   }
 
   /// 77 · 심박 센서를 차 주세요.
@@ -390,17 +419,27 @@ class _EasyDoseFlowState extends ConsumerState<EasyDoseFlow> {
       step: EasyDoseStep.take,
       lead: '이 약을 드시고',
       title: '복약 완료하셨나요?',
-      body: [_MedicineCard(medicines: dose.medicines)],
+      body: [
+        _MedicineCard(medicines: dose.medicines),
+        if (_recordError != null) ...[
+          const SizedBox(height: 12),
+          Text(_recordError!, style: AppText.body(size: 18)),
+        ],
+      ],
       primary: _EasyAction(
-        label: '먹었어요',
+        label: _recording
+            ? '기록 중…'
+            : _recordError != null
+            ? '다시 저장하기'
+            : '먹었어요',
         icon: Icons.check_rounded,
-        onPressed: () => unawaited(_record(dose.slot)),
+        onPressed: _recording ? null : () => unawaited(_record(dose.slot)),
       ),
       secondaries: [
         _EasyAction(
           label: '뒤로',
           icon: Icons.arrow_back_rounded,
-          onPressed: _back,
+          onPressed: _recording ? null : _back,
         ),
       ],
     );

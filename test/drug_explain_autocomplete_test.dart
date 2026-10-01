@@ -9,8 +9,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
+  setUp(() => SharedPreferences.setMockInitialValues({}));
   http.Response jsonResponse(Object body, {int statusCode = 200}) {
     return http.Response(
       jsonEncode(body),
@@ -49,7 +51,18 @@ void main() {
   Widget appWith(http.Client client, {http.Client? medicationClient}) {
     return MaterialApp(
       home: DrugExplainScreen(
-        apiClient: ApiClient(baseUrl: 'https://team.test', client: client),
+        apiClient: ApiClient(
+          baseUrl: 'https://team.test',
+          client: MockClient((request) async {
+            if (request.url.path.endsWith('/cache-context')) {
+              return jsonResponse({'verified': false});
+            }
+            final forwarded = http.Request(request.method, request.url)
+              ..headers.addAll(request.headers)
+              ..bodyBytes = request.bodyBytes;
+            return client.send(forwarded).then(http.Response.fromStream);
+          }),
+        ),
         medicationApiClient: ApiClient(
           baseUrl: 'https://medication.test',
           client: medicationClient ?? legacyMedicationClient(client),

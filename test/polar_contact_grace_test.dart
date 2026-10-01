@@ -13,7 +13,7 @@ void main() {
         rig.baseline(clock);
         rig.sdk.sample(zero ? 0 : 62, contactStatus: zero);
         clock.flushMicrotasks();
-        clock.elapse(const Duration(milliseconds: 1400));
+        clock.elapse(const Duration(milliseconds: 1900));
         expect(rig.sensor.status, HeartSensorStatus.streaming);
         expect(rig.sensor.bpm, isNull);
         expect(rig.api.requests, isEmpty);
@@ -39,10 +39,12 @@ void main() {
       final rig = Rig();
       rig.start(clock);
       rig.baseline(clock);
-      for (var i = 0; i < 3; i++) {
+      for (var i = 0; i < 4; i++) {
         rig.sdk.sample(62, contactStatus: false);
         clock.flushMicrotasks();
-        clock.elapse(const Duration(milliseconds: 500));
+        clock.elapse(const Duration(milliseconds: 499));
+        expect(rig.sensor.status, HeartSensorStatus.streaming);
+        clock.elapse(const Duration(milliseconds: 1));
       }
       clock.flushMicrotasks();
       expect(rig.sensor.status, HeartSensorStatus.failed);

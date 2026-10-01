@@ -280,7 +280,7 @@ void main() {
         r.sdk.sample(0, contactStatusSupported: false);
         clock.flushMicrotasks();
         expect(r.sensor.status, HeartSensorStatus.streaming);
-        clock.elapse(const Duration(milliseconds: 1500));
+        clock.elapse(const Duration(seconds: 2));
         clock.flushMicrotasks();
         expect(r.sensor.status, HeartSensorStatus.failed);
         expect(r.sensor.bpm, isNull);
@@ -337,7 +337,7 @@ void main() {
     r.sdk.sample(0, contactStatusSupported: false);
     await tester.pump();
     expect(find.text('다시 연결하기'), findsNothing);
-    await tester.pump(const Duration(milliseconds: 1500));
+    await tester.pump(const Duration(seconds: 2));
     await tester.pump();
     expect(find.text('다시 연결하기'), findsOneWidget);
     expect(find.text('자동 연락은 지원하지 않아요'), findsNothing);
@@ -358,7 +358,7 @@ void main() {
       r.sdk.sample(62, contactStatus: false);
       clock.flushMicrotasks();
       expect(r.sensor.status, HeartSensorStatus.streaming);
-      clock.elapse(const Duration(milliseconds: 1500));
+      clock.elapse(const Duration(seconds: 2));
       clock.flushMicrotasks();
       expect(r.sensor.status, HeartSensorStatus.failed);
       expect(r.sensor.bpm, isNull);
@@ -613,7 +613,7 @@ void main() {
     );
     r.sdk.sample(62, contactStatus: false);
     await tester.pump();
-    await tester.pump(const Duration(milliseconds: 1500));
+    await tester.pump(const Duration(seconds: 2));
     await tester.pump();
 
     expect(find.text('지금은 심장 박동을\n측정하지 못하고 있어요'), findsOneWidget);

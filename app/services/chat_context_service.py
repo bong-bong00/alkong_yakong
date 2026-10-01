@@ -70,8 +70,8 @@ MEDICINE_SELECTION_REQUIRED_REPLY = (
 )
 
 
-def classify_question_scope(message: str) -> str:
-    """Classify an unselected free-text question before any medicine lookup."""
+def classify_question_scope(message: str, *, has_medicine_context: bool = False) -> str:
+    """Classify free text without treating selection alone as a medicine question."""
     normalized = "".join(str(message or "").lower().split())
     if not normalized:
         return "ambiguous"
@@ -117,11 +117,18 @@ def classify_question_scope(message: str) -> str:
             "영화",
             "음악",
         )
-        return (
-            "unrelated"
-            if any(term in normalized for term in unrelated_terms)
-            else "ambiguous"
+        if any(term in normalized for term in unrelated_terms):
+            return "unrelated"
+        # Short, relevant questions may omit the selected medicine's name.
+        contextual_terms = (
+            "술", "음주", "알코올", "커피", "카페인", "음식", "우유", "자몽",
+            "효과", "효능", "주의", "조심", "먹", "사용", "임신", "임부",
+            "알레르기", "흡연", "건강", "질환", "병력", "당뇨", "고혈압",
+            "졸림", "어지", "두통", "증상", "요약", "짧게", "간단히", "쉽게",
         )
+        if has_medicine_context and any(term in normalized for term in contextual_terms):
+            return "medicine_specific"
+        return "ambiguous"
 
     if any(term in normalized for term in ("깜빡", "잊었", "놓쳐", "보관", "저장")):
         return "general_medication"

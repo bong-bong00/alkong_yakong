@@ -46,7 +46,7 @@ class PolarService {
   int _streamGeneration = 0;
   Timer? _averageTimer;
   Timer? _invalidSignalTimer;
-  static const _invalidSignalGrace = Duration(milliseconds: 1500);
+  static const _invalidSignalGrace = Duration(seconds: 2);
   bool _isAverageMonitoring = false;
   bool _isDisposed = false;
   bool _acceptBpmEvents = false;
