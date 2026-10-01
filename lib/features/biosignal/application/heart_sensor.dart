@@ -66,7 +66,7 @@ class HeartSensor extends ChangeNotifier {
   Timer? _progressTimer;
   Timer? _signalTimer;
   // Transport silence tolerance, not a medical BPM threshold.
-  static const Duration _signalTimeout = Duration(seconds: 10);
+  static const Duration _signalTimeout = Duration(seconds: 3);
   int _elapsedSeconds = 0;
   HeartSaveStatus _saveStatus = HeartSaveStatus.idle;
   int? _savedBpm;

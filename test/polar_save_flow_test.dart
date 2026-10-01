@@ -182,33 +182,33 @@ class Rig {
   }
 
   void baseline(FakeAsync clock) {
-    for (var i = 0; i < 3; i++) {
+    for (var i = 0; i < 15; i++) {
       sdk.sample(60);
       clock.flushMicrotasks();
-      clock.elapse(const Duration(seconds: 5));
+      clock.elapse(const Duration(seconds: 1));
     }
   }
 
   void window(FakeAsync clock) {
     baseline(clock);
-    for (var i = 0; i < 6; i++) {
+    for (var i = 0; i < 30; i++) {
       sdk.sample(81);
       sdk.sample(82);
       clock.flushMicrotasks();
-      clock.elapse(const Duration(seconds: 5));
+      clock.elapse(const Duration(seconds: 1));
     }
   }
 
   Future<void> widgetWindow(WidgetTester tester) async {
-    for (var i = 0; i < 9; i++) {
-      if (i < 3) {
+    for (var i = 0; i < 45; i++) {
+      if (i < 15) {
         sdk.sample(60);
       } else {
         sdk.sample(81);
         sdk.sample(82);
       }
       await tester.pump();
-      await tester.pump(const Duration(seconds: 5));
+      await tester.pump(const Duration(seconds: 1));
     }
   }
 }
@@ -247,7 +247,9 @@ void main() {
           if (!duringBaseline) r.baseline(clock);
           r.sdk.sample(80);
           clock.flushMicrotasks();
-          clock.elapse(const Duration(seconds: 10));
+          clock.elapse(const Duration(milliseconds: 2999));
+          expect(r.sensor.status, HeartSensorStatus.streaming);
+          clock.elapse(const Duration(milliseconds: 1));
           expect(r.sensor.status, HeartSensorStatus.failed);
           expect(r.sensor.bpm, isNull);
           clock.elapse(const Duration(minutes: 1));
