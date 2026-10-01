@@ -208,6 +208,42 @@ void main() {
     (widget) =>
         widget is Text && widget.data?.replaceAll('\u2060', '') == value,
   );
+  for (final scale in [1.0, 2.0]) {
+    testWidgets(
+      'red upper-arm band and green underside fit narrow screen $scale',
+      (tester) async {
+        tester.view.physicalSize = const Size(320, 900);
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.reset);
+        await tester.pumpWidget(
+          MaterialApp(
+            home: Scaffold(
+              body: SingleChildScrollView(
+                child: MediaQuery(
+                  data: MediaQueryData(textScaler: TextScaler.linear(scale)),
+                  child: const Padding(
+                    padding: EdgeInsets.all(38),
+                    child: EasySensorWearIllustration(),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+        expect(
+          find.bySemanticsLabel('팔꿈치 위쪽에 빨간 띠와 검은 폴라 센서를 착용한 그림'),
+          findsOneWidget,
+        );
+        expect(
+          find.bySemanticsLabel('전원이 켜진 센서 뒷면의 초록빛 확대 그림'),
+          findsOneWidget,
+        );
+        expect(readable('팔꿈치 위에 착용'), findsOneWidget);
+        expect(readable('초록빛이 나오는 면을 피부에 붙여 주세요.'), findsOneWidget);
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
   test('adult resting range boundaries and factual differences', () {
     expect(easyHeartRange(59), '느린 심박수');
     expect(easyHeartRange(60), '정상 심박수');

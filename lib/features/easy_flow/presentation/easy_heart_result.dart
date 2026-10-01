@@ -175,51 +175,170 @@ class EasyHeartResult extends StatelessWidget {
 class EasySensorWearIllustration extends StatelessWidget {
   const EasySensorWearIllustration({super.key});
   @override
-  Widget build(BuildContext context) => Semantics(
-    label: '팔꿈치 위쪽 팔에 센서 밴드를 착용한 그림',
-    child: SizedBox(
-      height: 150,
-      child: CustomPaint(painter: _ArmBandPainter()),
-    ),
+  Widget build(BuildContext context) => Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      Semantics(
+        label: '팔꿈치 위쪽에 빨간 띠와 검은 폴라 센서를 착용한 그림',
+        child: SizedBox(
+          height: 165,
+          child: CustomPaint(painter: _ArmBandPainter()),
+        ),
+      ),
+      _ResultText(
+        '팔꿈치 위에 착용',
+        align: TextAlign.center,
+        style: AppText.label(size: 18),
+      ),
+      const SizedBox(height: 16),
+      Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: const Color(0xFFF5F7F5),
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: Row(
+          children: [
+            Semantics(
+              label: '전원이 켜진 센서 뒷면의 초록빛 확대 그림',
+              child: const SizedBox(
+                width: 72,
+                height: 72,
+                child: CustomPaint(painter: _SensorBackPainter()),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _ResultText('센서 뒷면', style: AppText.label(size: 17)),
+                  const SizedBox(height: 4),
+                  _ResultText(
+                    '초록빛이 나오는 면을 피부에 붙여 주세요.',
+                    style: AppText.body(size: 16),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    ],
   );
 }
 
 class _ArmBandPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
-    final arm = Paint()..color = AppColors.pointRing;
-    final left = size.width * .25;
-    final right = size.width * .75;
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(
-        Rect.fromLTRB(left, 28, right, 120),
-        const Radius.circular(35),
-      ),
+    // Fixed illustration coordinates scale together, without stretching the sensor.
+    final scale = math.min(size.width / 300, size.height / 165);
+    canvas.save();
+    canvas.translate((size.width - 300 * scale) / 2, 0);
+    canvas.scale(scale);
+    final arm = Path()
+      ..moveTo(82, 12)
+      ..quadraticBezierTo(110, 3, 126, 22)
+      ..lineTo(128, 101)
+      ..quadraticBezierTo(127, 115, 144, 115)
+      ..lineTo(252, 113)
+      ..quadraticBezierTo(281, 111, 281, 133)
+      ..quadraticBezierTo(281, 155, 252, 155)
+      ..lineTo(113, 157)
+      ..quadraticBezierTo(69, 155, 69, 117)
+      ..lineTo(65, 37)
+      ..quadraticBezierTo(63, 20, 82, 12)
+      ..close();
+    canvas.drawPath(arm, Paint()..color = const Color(0xFFF3D5C4));
+    canvas.drawPath(
       arm,
-    );
-    canvas.drawLine(
-      Offset(size.width * .65, 30),
-      Offset(size.width * .65, 118),
       Paint()
-        ..color = AppColors.textTertiary
+        ..color = const Color(0xFFD4AB95)
+        ..style = PaintingStyle.stroke
         ..strokeWidth = 2,
     );
+    // Band is on the upper arm, above the elbow, not near the hand/wrist.
     canvas.drawRRect(
       RRect.fromRectAndRadius(
-        Rect.fromLTRB(size.width * .39, 22, size.width * .52, 126),
-        const Radius.circular(12),
+        const Rect.fromLTRB(63, 43, 129, 80),
+        const Radius.circular(7),
       ),
-      Paint()..color = AppColors.point,
+      Paint()..color = const Color(0xFFB83B4C),
+    );
+    canvas.drawLine(
+      const Offset(77, 47),
+      const Offset(77, 76),
+      Paint()
+        ..color = const Color(0xFF852B3A)
+        ..strokeWidth = 2,
     );
     canvas.drawCircle(
-      Offset(size.width * .455, 72),
-      23,
-      Paint()..color = AppColors.textPrimary,
+      const Offset(104, 61),
+      24,
+      Paint()..color = const Color(0xFF202427),
     );
     canvas.drawCircle(
-      Offset(size.width * .455, 72),
-      12,
-      Paint()..color = AppColors.surface,
+      const Offset(104, 61),
+      18,
+      Paint()..color = const Color(0xFF363C40),
+    );
+    // Outside face stays dark: the green optical LEDs are underneath.
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(
+        const Rect.fromLTWH(96, 56, 16, 10),
+        const Radius.circular(5),
+      ),
+      Paint()..color = const Color(0xFFCBD0D2),
+    );
+    canvas.drawArc(
+      const Rect.fromLTWH(92, 111, 34, 24),
+      math.pi / 2,
+      math.pi / 2,
+      false,
+      Paint()
+        ..color = const Color(0xFFD4AB95)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2,
+    );
+    canvas.restore();
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+}
+
+class _SensorBackPainter extends CustomPainter {
+  const _SensorBackPainter();
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final center = Offset(size.width / 2, size.height / 2);
+    final radius = math.min(size.width, size.height) / 2;
+    canvas.drawCircle(center, radius, Paint()..color = const Color(0xFF202427));
+    canvas.drawCircle(
+      center,
+      radius * .74,
+      Paint()..color = const Color(0xFF303A34),
+    );
+    canvas.drawCircle(
+      center,
+      radius * .60,
+      Paint()..color = const Color(0x4435E879),
+    );
+    for (var index = 0; index < 6; index++) {
+      final angle = index * math.pi / 3;
+      final led =
+          center + Offset(math.cos(angle), math.sin(angle)) * (radius * .45);
+      canvas.drawCircle(
+        led,
+        radius * .10,
+        Paint()..color = const Color(0xFF57FF91),
+      );
+    }
+    canvas.drawCircle(
+      center,
+      radius * .24,
+      Paint()..color = const Color(0xFF17271D),
     );
   }
 
