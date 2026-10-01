@@ -607,6 +607,17 @@ void main() {
         findsOneWidget,
       );
       expect(
+        find.descendant(of: todayCard, matching: find.text('일반 범위')),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: todayCard,
+          matching: find.text('성인이 쉬고 있을 때의 일반적인 기준이에요.'),
+        ),
+        findsOneWidget,
+      );
+      expect(
         find.descendant(
           of: todayCard,
           matching: find.text(DoseSlot.absoluteTime(measuredAt)),
@@ -617,6 +628,81 @@ void main() {
         find.descendant(of: todayCard, matching: find.text('오늘은 아직 재지 않았어요')),
         findsNothing,
       );
+    },
+  );
+
+  testWidgets(
+    'today medication comparison shows ranges, difference, and caveat',
+    (tester) async {
+      tester.view.physicalSize = const Size(320, 700);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final now = DateTime.now();
+      final repository = HeartRepository(
+        apiClient: ApiClient(
+          client: MockClient(
+            (_) async => http.Response(
+              jsonEncode({
+                'today': {'before': 54, 'after': 64},
+                'today_slot_label': '복약',
+                'before_at': '16:00',
+                'after_at': '16:01',
+                'week': [],
+                'month': [],
+                'period_date':
+                    '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}',
+                'readings': [],
+              }),
+              200,
+              headers: {'content-type': 'application/json'},
+            ),
+          ),
+        ),
+      );
+
+      await tester.pumpWidget(
+        MediaQuery(
+          data: const MediaQueryData(textScaler: TextScaler.linear(1.3)),
+          child: wrap(HeartScreen(repository: repository)),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final todayCard = find.ancestor(
+        of: find.text('오늘 측정'),
+        matching: find.byType(SeniorCard),
+      );
+      expect(
+        find.descendant(of: todayCard, matching: find.text('느린 범위')),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(of: todayCard, matching: find.text('일반 범위')),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: todayCard,
+          matching: find.text('약 먹은 후 10회/분 높았어요'),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: todayCard,
+          matching: find.text('성인이 쉬고 있을 때의 일반적인 기준이에요.'),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: todayCard,
+          matching: find.text('한 번의 비교만으로 약의 영향이라고 판단하기 어려워요.'),
+        ),
+        findsOneWidget,
+      );
+      expect(tester.takeException(), isNull);
     },
   );
 

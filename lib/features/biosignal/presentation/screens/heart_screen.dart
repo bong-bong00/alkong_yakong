@@ -575,6 +575,8 @@ class _TodayCard extends StatelessWidget {
                           '${reading.bpm}회/분',
                           style: AppText.emphasis(size: 24),
                         ),
+                        const SizedBox(height: 4),
+                        _HeartRateRangeLabel(value: reading.bpm),
                       ],
                     ),
                   ),
@@ -609,10 +611,10 @@ class _TodayCard extends StatelessWidget {
                   Expanded(
                     child: Text(
                       drop > 0
-                          ? '$drop회 낮아졌어요'
+                          ? '약 먹은 후 $drop회/분 낮았어요'
                           : drop < 0
-                          ? '${-drop}회 높아졌어요'
-                          : '먹기 전과 같은 수치예요',
+                          ? '약 먹은 후 ${-drop}회/분 높았어요'
+                          : '약 먹기 전과 같은 수치예요',
                       style: AppText.label(
                         size: 18.5,
                         color: AppColors.textPrimary,
@@ -626,6 +628,17 @@ class _TodayCard extends StatelessWidget {
           if (measuredLine != null) ...[
             const SizedBox(height: 10),
             Text(measuredLine, style: AppText.caption(size: 17)),
+          ],
+          if (measuredToday) ...[
+            const SizedBox(height: 10),
+            Text('성인이 쉬고 있을 때의 일반적인 기준이에요.', style: AppText.caption(size: 16)),
+          ],
+          if (today.before != null && today.after != null) ...[
+            const SizedBox(height: 4),
+            Text(
+              '한 번의 비교만으로 약의 영향이라고 판단하기 어려워요.',
+              style: AppText.caption(size: 16),
+            ),
           ],
         ],
       ),
@@ -650,8 +663,9 @@ class _ValueBox extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final range = value == null ? null : _heartRateRange(value!);
     return Semantics(
-      label: value == null ? '$label 재지 못했어요' : '$label $value회',
+      label: value == null ? '$label 재지 못했어요' : '$label $value회, $range',
       child: ExcludeSemantics(
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
@@ -669,12 +683,56 @@ class _ValueBox extends StatelessWidget {
                 value?.toString() ?? '–',
                 style: AppText.hero(size: 44, color: valueColor),
               ),
+              if (value != null) ...[
+                const SizedBox(height: 5),
+                _HeartRateRangeLabel(
+                  value: value!,
+                  color: valueColor,
+                  background: AppColors.surface,
+                ),
+              ],
             ],
           ),
         ),
       ),
     );
   }
+}
+
+class _HeartRateRangeLabel extends StatelessWidget {
+  final int value;
+  final Color? color;
+  final Color? background;
+
+  const _HeartRateRangeLabel({
+    required this.value,
+    this.color,
+    this.background,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
+      decoration: BoxDecoration(
+        color: background ?? AppColors.pointTint,
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        _heartRateRange(value),
+        style: AppText.caption(
+          size: 16,
+          color: color ?? AppColors.textSecondary,
+        ),
+      ),
+    );
+  }
+}
+
+String _heartRateRange(int bpm) {
+  if (bpm < 60) return '느린 범위';
+  if (bpm <= 100) return '일반 범위';
+  return '빠른 범위';
 }
 
 /// 센서 상태 한 줄.
