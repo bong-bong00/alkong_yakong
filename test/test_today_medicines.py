@@ -47,6 +47,32 @@ def test_mvp_user_today_medicines_from_server():
     )
 
 
+def test_stored_product_photo_reaches_home_and_my_medicines():
+    from app.services.user_medicines_service import get_user_medicines
+
+    ensure_mvp_demo_medicines()
+    image_url = "https://example.org/official-pill.png"
+    conn = get_connection()
+    try:
+        conn.execute(
+            "UPDATE medicines SET image_url = ? WHERE medicine_code IN "
+            "(SELECT medicine_code FROM user_medicines WHERE user_id = ?)",
+            (image_url, MVP_USER_ID),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    home_items = [
+        medicine for dose in get_today_medicines(MVP_USER_ID)["doses"]
+        for medicine in dose["medicines"]
+    ]
+    assert home_items
+    assert all(item["image_url"] == image_url for item in home_items)
+    my_items = get_user_medicines(MVP_USER_ID)["medicines"]
+    assert my_items
+    assert all(item["image_url"] == image_url for item in my_items)
+
+
 @pytest.mark.parametrize("uid", ["new-demo-user", MVP_USER_ID])
 def test_new_user_remains_empty_after_repeated_queries(uid):
     from app.services.user_medicines_service import get_user_medicines

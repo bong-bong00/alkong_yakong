@@ -412,17 +412,32 @@ class LabelValueRow extends StatelessWidget {
   }
 }
 
-/// 약 사진 자리 (명세서 45). #F2F2F6 동그라미 안에 "사진" 한 마디.
+/// 공식 낱알 사진. 사진이 없거나 로딩에 실패하면 기존 "사진" 자리를 유지.
 /// 테두리는 두르지 않는다.
 ///
 /// 홈 카드와 내 약 목록이 **같은 생김새**를 써야 같은 약으로 읽힌다.
 class PillPhoto extends StatelessWidget {
   final double size;
+  final String? imageUrl;
 
-  const PillPhoto({super.key, required this.size});
+  const PillPhoto({super.key, required this.size, this.imageUrl});
 
   @override
   Widget build(BuildContext context) {
+    final url = imageUrl?.trim() ?? '';
+    final uri = Uri.tryParse(url);
+    final hasImage =
+        uri != null &&
+        (uri.scheme == 'https' || uri.scheme == 'http') &&
+        uri.host.isNotEmpty;
+    final placeholder = Text(
+      '사진',
+      style: AppText.caption(
+        size: 13,
+        color: AppColors.textTertiary,
+        weight: FontWeight.w700,
+      ),
+    );
     return ExcludeSemantics(
       child: Container(
         width: size,
@@ -432,14 +447,19 @@ class PillPhoto extends StatelessWidget {
           color: AppColors.bg,
           shape: BoxShape.circle,
         ),
-        child: Text(
-          '사진',
-          style: AppText.caption(
-            size: 13,
-            color: AppColors.textTertiary,
-            weight: FontWeight.w700,
-          ),
-        ),
+        child: hasImage
+            ? ClipOval(
+                child: Image.network(
+                  url,
+                  width: size,
+                  height: size,
+                  fit: BoxFit.contain,
+                  errorBuilder: (_, error, stackTrace) => placeholder,
+                  loadingBuilder: (_, child, progress) =>
+                      progress == null ? child : placeholder,
+                ),
+              )
+            : placeholder,
       ),
     );
   }

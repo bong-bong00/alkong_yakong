@@ -263,7 +263,7 @@ class _MedicineCard extends StatelessWidget {
       child: Row(
         children: [
           // 홈 카드와 같은 생김새여야 같은 약으로 읽힌다.
-          const PillPhoto(size: 56),
+          PillPhoto(size: 56, imageUrl: medicine.imageUrl),
           const SizedBox(width: 14),
           Expanded(
             child: Text(

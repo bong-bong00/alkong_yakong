@@ -139,6 +139,7 @@ class MedicationController extends Notifier<TodayMedication> {
                 ingredientSummary: m['ingredient_summary']?.toString(),
                 ingredientStrength: m['ingredient_strength']?.toString(),
                 amount: m['amount']?.toString() ?? '',
+                imageUrl: m['image_url']?.toString(),
                 easyCategory: card.spoken,
                 purposeLabel: card.purposeLabel,
                 shortExplanation: card.spoken,

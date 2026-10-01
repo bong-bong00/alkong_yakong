@@ -55,6 +55,9 @@ class Medicine {
   /// "1알".
   final String amount;
 
+  /// 공식 제품 코드에 연결된 식약처 낱알 이미지 주소.
+  final String? imageUrl;
+
   /// 생김새 — "흰색 동그란 알약".
   /// 3a는 약 사진을 쓰지 않으므로 화면에 크게 띄우지 않고,
   /// 음성 안내([5d])와 스크린리더 설명에만 쓴다.
@@ -87,6 +90,7 @@ class Medicine {
   const Medicine({
     required this.ingredient,
     required this.amount,
+    this.imageUrl,
     this.ingredientName,
     this.ingredientSummary,
     this.ingredientStrength,
@@ -106,6 +110,12 @@ class Medicine {
     return cardSpokenOf(shortExplanation) ??
         cardSpokenOf(easyCategory) ??
         cardSpokenOf(efficacy);
+  }
+
+  /// 처방 횟수만 표시한다. 1회 복용량이나 시간대 개수로 추측하지 않는다.
+  String get frequencyLabel {
+    final frequency = frequencyPerDay;
+    return frequency != null && frequency > 0 ? '하루 $frequency회' : '횟수 확인 필요';
   }
 
   /// 화면에 보여 줄 약 이름. 허가명에서 중복 주성분 괄호만 숨긴다.

@@ -969,7 +969,7 @@ class _MedicineRow extends StatelessWidget {
     final look = medicine.appearance?.trim() ?? '';
     return Row(
       children: [
-        const PillPhoto(size: 56),
+        PillPhoto(size: 56, imageUrl: medicine.imageUrl),
         const SizedBox(width: 14),
         Expanded(
           child: Column(
@@ -986,7 +986,7 @@ class _MedicineRow extends StatelessWidget {
         ),
         const SizedBox(width: 10),
         Text(
-          medicine.amount,
+          medicine.frequencyLabel,
           style: AppText.cardTitle(size: 22, color: AppColors.point),
         ),
       ],

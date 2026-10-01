@@ -28,6 +28,7 @@ class UserMedicine {
   final String interactionPairLabel;
   final List<String> interactionConflictNames;
   final String amount;
+  final String? imageUrl;
   final String? purposeLabel;
   final String? shortExplanation;
   final String? detailExplanation;
@@ -74,6 +75,7 @@ class UserMedicine {
     this.interactionPairLabel = '',
     this.interactionConflictNames = const [],
     required this.amount,
+    this.imageUrl,
     this.purposeLabel,
     this.shortExplanation,
     this.detailExplanation,
@@ -137,6 +139,7 @@ class UserMedicine {
       interactionPairLabel: json['interaction_pair_label']?.toString() ?? '',
       interactionConflictNames: _stringList(json['interaction_conflict_names']),
       amount: json['amount']?.toString() ?? '',
+      imageUrl: json['image_url']?.toString(),
       purposeLabel: card.purposeLabel,
       shortExplanation: card.spoken,
       // 상세 첫 문장은 홈 목록용 짧은 분류를 재사용하지 않는다.

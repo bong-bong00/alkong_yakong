@@ -196,7 +196,10 @@ def _interaction_for_medicine(
 
 def _usage_select(conn) -> str:
     medicine_cols = {row[1] for row in conn.execute("PRAGMA table_info(medicines)")}
-    return ", m.usage" if "usage" in medicine_cols else ""
+    return "".join(
+        f", m.{column}" for column in ("usage", "image_url")
+        if column in medicine_cols
+    )
 
 
 def _active_medicine_rows(conn, user_id: str) -> list[dict[str, Any]]:
