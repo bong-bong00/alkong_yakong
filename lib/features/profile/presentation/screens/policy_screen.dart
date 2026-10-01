@@ -32,7 +32,6 @@ class PolicyScreen extends StatelessWidget {
             child: ListView(
               padding: const EdgeInsets.fromLTRB(20, 16, 20, 28),
               children: [
-                const _DraftBanner(),
                 const SizedBox(height: 12),
                 SeniorCard(
                   padding: const EdgeInsets.symmetric(
@@ -68,35 +67,6 @@ class PolicyScreen extends StatelessWidget {
             ),
           ),
         ],
-      ),
-    );
-  }
-}
-
-class _DraftBanner extends StatelessWidget {
-  const _DraftBanner();
-
-  @override
-  Widget build(BuildContext context) {
-    return Semantics(
-      container: true,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
-        decoration: BoxDecoration(
-          color: AppColors.dangerBg,
-          borderRadius: BorderRadius.circular(16),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Text(
-              '초안 · 법률 검토 전',
-              style: AppText.cardTitle(size: 22, color: AppColors.danger),
-            ),
-            const SizedBox(height: 6),
-            Text(kDraftNotice, style: AppText.body(size: 18)),
-          ],
-        ),
       ),
     );
   }

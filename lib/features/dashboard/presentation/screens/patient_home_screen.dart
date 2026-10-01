@@ -12,6 +12,9 @@ import '../../../../core/widgets/senior_button.dart';
 import '../../../../core/widgets/senior_card.dart';
 import '../../../../core/widgets/senior_feedback.dart';
 import '../../../../core/widgets/senior_header.dart';
+import '../../../../core/network/api_client.dart';
+import '../../../guardian/application/guardians_provider.dart';
+import '../../../guardian/data/guardian_repository.dart';
 import '../../../medication/application/medication_controller.dart';
 import '../../../reminder/application/reminder_notifications.dart';
 import '../../../medication/domain/medication_models.dart';
@@ -84,6 +87,8 @@ class _PatientHomeScreenState extends ConsumerState<PatientHomeScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) => _maybeAskRefill());
     // 가족이 대신 넣어 준 약이 있으면 홈에 들어서자마자 알린다.
     WidgetsBinding.instance.addPostFrameCallback((_) => _maybeTellArrived());
+    // 보호자가 함께 보기를 청했으면 수락할지 물어본다.
+    WidgetsBinding.instance.addPostFrameCallback((_) => _maybeAskGuardian());
     ReminderNotifications.pendingAction.addListener(_onNotificationAction);
     WidgetsBinding.instance.addPostFrameCallback(
       (_) => _onNotificationAction(),
@@ -108,6 +113,62 @@ class _PatientHomeScreenState extends ConsumerState<PatientHomeScreen> {
     } else if (action == ReminderNotifications.snoozeActionId) {
       _snooze(next.slot);
     }
+  }
+
+  /// 이번에 띄운 연결 요청. 같은 요청을 다시 묻지 않는다.
+  final Set<String> _askedLinks = <String>{};
+
+  /// 보호자가 청한 연결을 홈에서 한 번 물어본다.
+  ///
+  /// 내가 수락해야 열린다 — 묻지 않고 더해 두면 누가 내 약을 보는지
+  /// 모른 채 열리게 된다.
+  Future<void> _maybeAskGuardian() async {
+    if (!mounted) return;
+    // 못 읽으면 묻지 않는다. 연결 요청은 다음에 들어올 때 다시 본다.
+    final List<GuardianContact> guardians;
+    try {
+      guardians = await ref.read(guardiansProvider.future);
+    } catch (_) {
+      return;
+    }
+    if (!mounted) return;
+    final waiting = guardians.where((g) => g.awaitsMyAnswer).toList();
+    if (waiting.isEmpty) return;
+    final invite = waiting.first;
+    if (!_askedLinks.add(invite.id)) return;
+
+    final accept = await showSeniorYesNoDialog(
+      context: context,
+      title: '${invite.label} 님이\n함께 보기를 청했어요',
+      message:
+          '수락하면 약 드신 것과 심박수를 함께 봅니다. '
+          '나중에 내 정보 → 가족에서 끊을 수 있어요.',
+      yesLabel: '네, 함께 볼게요',
+      noLabel: '아니요',
+    );
+    if (!mounted) return;
+
+    final repository = GuardianRepository();
+    try {
+      if (accept) {
+        await repository.accept(invite.id);
+      } else {
+        await repository.remove(invite.id);
+      }
+    } on ApiException catch (error) {
+      if (!mounted) return;
+      showSeniorSnackbar(context, error.message, error: true);
+      return;
+    }
+    if (!mounted) return;
+    ref.invalidate(guardiansProvider);
+    unawaited(ref.read(medicationProvider.notifier).refreshFromServer());
+    showSeniorSnackbar(
+      context,
+      accept
+          ? '${invite.name} 님이 이제 함께 볼 수 있어요'
+          : '${invite.name} 님의 요청을 거절했어요',
+    );
   }
 
   /// 장부에 없는 약 — 내가 넣지 않았는데 들어와 있는 약을 알린다.

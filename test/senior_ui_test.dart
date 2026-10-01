@@ -374,6 +374,11 @@ void _easyModeTests() {
     // 심박수를 안 쟀으면 먹은 뒤에 재자고 묻지 않는다.
     await tester.tap(find.text('먹었어요'));
     await tester.pumpAndSettle();
+    // 저녁 시간이 한참 지난 때에 돌리면 늦은 복약 시트가 먼저 뜬다.
+    if (find.text('그래도 먹었어요').evaluate().isNotEmpty) {
+      await tester.tap(find.text('그래도 먹었어요'));
+      await tester.pumpAndSettle();
+    }
     expect(find.text('한 번 더 재요'), findsNothing);
     expect(find.text('다 드셨어요'), findsOneWidget);
     expect(find.text('복약 기록'), findsOneWidget);

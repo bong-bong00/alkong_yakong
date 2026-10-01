@@ -1,9 +1,12 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import '../../../medication/application/medication_controller.dart';
 import 'package:flutter_tabler_icons/flutter_tabler_icons.dart';
 
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
+import '../widgets/family_request_sheet.dart';
 import '../../../../core/widgets/senior_button.dart';
 import '../../../../core/widgets/senior_card.dart';
 import '../../../../core/widgets/senior_header.dart';
@@ -112,6 +115,15 @@ class _AddMedicineScreenState extends State<AddMedicineScreen> {
                               label: '가족에게',
                               onTap: () {
                                 setState(() => _asked = true);
+                                unawaited(
+                                  showFamilyRequestSheet(
+                                    context,
+                                    guardianTitle: resolveGuardianTitle(
+                                      context,
+                                      widget.guardianTitle,
+                                    ),
+                                  ),
+                                );
                                 widget.onPick(AddMedicineMethod.family);
                               },
                             ),

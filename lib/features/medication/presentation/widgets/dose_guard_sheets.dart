@@ -196,21 +196,17 @@ Future<bool> showLateDoseSheet({
       children: [
         Text('${slot.label} 약 시간이\n한참 지났어요', style: AppText.emphasis(size: 27)),
         const SizedBox(height: 14),
-        Text(
-          '지금 드시면 다음 약과 너무 가까워질 수 있어요. '
-          '약사님께 먼저 여쭤보시면 좋아요.',
-          style: AppText.body(),
-        ),
+        Text('지금 드시면 다음 약과 너무 가까워질 수 있어요.', style: AppText.body()),
         const SizedBox(height: 14),
         SeniorButton(
-          label: '약사님께 물어보기',
+          label: '그래도 먹었어요',
           fontSize: 23,
-          onPressed: () => Navigator.of(context).pop(false),
+          onPressed: () => Navigator.of(context).pop(true),
         ),
         SeniorTextButton(
-          label: '그래도 먹었어요',
+          label: '아직 안 먹었어요',
           fontSize: 18.5,
-          onPressed: () => Navigator.of(context).pop(true),
+          onPressed: () => Navigator.of(context).pop(false),
         ),
       ],
     ),
