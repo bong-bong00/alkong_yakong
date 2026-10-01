@@ -101,7 +101,7 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      await tester.tap(find.text('안 잴래요'));
+      await tester.tap(find.text('측정 안 할래요'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('먹었어요'));
       await tester.tap(find.text('먹었어요'));
@@ -145,7 +145,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('복약 전 심박 측정'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('다 찼어요'));
+    await tester.tap(find.text('다 착용했어요'));
     await tester.pump(const Duration(milliseconds: 400));
     await tester.pump();
     await rig.widgetWindow(tester);
@@ -186,7 +186,7 @@ void main() {
           ),
         );
         await tester.pumpAndSettle();
-        await tester.tap(find.text('안 잴래요'));
+        await tester.tap(find.text('측정 안 할래요'));
         await tester.pumpAndSettle();
         expect(find.text('5 / 8'), findsOneWidget);
         await tester.tap(find.text('먹었어요'));
