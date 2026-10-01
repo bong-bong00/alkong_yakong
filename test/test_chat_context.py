@@ -1707,6 +1707,56 @@ class ChatContextTest(unittest.TestCase):
                 self.assertIn("모두 확인하지 못했어요", reply)
                 self.assertNotIn("정보를 찾지 못했어요. 이것만으로", reply)
 
+    def test_consultation_request_retains_partial_warning_in_actual_reply_path(self):
+        from app.services import medication_feature_dur_client as remote_dur
+
+        selected = {"medicine_code": "100", "product_name": "공식허가약정"}
+        verified = {**selected, "ingredient": "공식성분 100mg"}
+        condition = "1~2 mg 사용 시 금지. 65세 이상은 예외 조건을 확인하세요."
+        match = {
+            "type": "병용금기", "reason": condition,
+            "medicine_names_a": ["공식허가약정"],
+            "medicine_names_b": ["두번째약정"],
+        }
+        def response(payload):
+            result = MagicMock()
+            result.json.return_value = payload
+            return result
+
+        for names in (["공식허가약정", "두번째약정"], ["공식허가약정"]):
+            with (
+                self.subTest(names=names),
+                patch.object(gemini_service, "GEMINI_API_KEY", "configured"),
+                patch("google.genai.Client"),
+                patch("app.services.external_api_service.fetch_e_drug_info", return_value=None),
+                patch.object(gemini_service, "_with_official_permission_ingredient", return_value=verified),
+                patch.object(gemini_service, "_generate_content_with_retry",
+                             return_value=SimpleNamespace(parsed={"drug_names": []})),
+                patch.object(remote_dur, "MEDICATION_FEATURE_BASE_URL", "https://med.example"),
+                patch.object(remote_dur.requests, "get", return_value=response({"medicines": [
+                    {"medicine_code": "100", "product_name": "공식허가약정", "status": "active"},
+                    {"medicine_code": "200", "product_name": "두번째약정", "status": "active"},
+                ]})),
+                patch.object(remote_dur.requests, "post", return_value=response({
+                    "assessment_status": "RISK_FOUND", "analysis_complete": False,
+                    "incomplete": True, "incomplete_types": ["병용금기"],
+                    "has_risk": True, "matches": [match], "medicine_names": names,
+                })) as post,
+            ):
+                reply = gemini_service.generate_chat_response(
+                    "같이 먹어도 괜찮나요?", user_id="U1",
+                    selected_medicine=selected, intent="combination",
+                )
+            self.assertEqual(post.call_args.kwargs["json"]["analysis_purpose"], "consultation")
+            self.assertEqual(post.call_args.kwargs["json"]["medicine_codes"], ["100", "200"])
+            self.assertIn(condition, reply)
+            self.assertIn("공식허가약정", reply)
+            self.assertIn("두번째약정", reply)
+            self.assertIn("모두 확인하지 못했어요", reply)
+            self.assertIn("복용 전 의사나 약사와 상담해 주세요", reply)
+            self.assertLess(reply.index(condition), reply.index("모두 확인하지 못했어요"))
+            self.assertNotIn("조합은 확인되지 않았어요", reply)
+
     def test_duplicate_dur_failure_is_not_reported_as_zero_match(self):
         selected = {"medicine_code": "202400001", "product_name": "공식허가약정"}
         with (

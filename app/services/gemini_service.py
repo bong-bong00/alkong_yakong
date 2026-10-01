@@ -715,6 +715,32 @@ def _dur_context_unavailable_reply(
     return f"{message} 복용 전 의사나 약사와 상담해 주세요."
 
 
+def _partial_dur_warning_reply(items: list[dict[str, Any]], notice: str) -> str:
+    """Keep server-confirmed warnings verbatim even when other checks failed."""
+    labels = {
+        "병용금기": "함께 사용하면 안 되는 조합",
+        "중복성분": "같은 성분의 중복",
+        "효능군중복": "비슷한 효과의 약 중복",
+    }
+    warnings = []
+    for item in items:
+        names = list(dict.fromkeys(
+            str(name).strip()
+            for key in ("medicine_names_a", "medicine_names_b")
+            for name in item.get(key) or []
+            if str(name).strip()
+        ))
+        label = labels.get(item.get("type"), "확인된 주의사항")
+        heading = f"{', '.join(names)}: {label}" if names else label
+        details = list(dict.fromkeys(
+            str(item[key]).strip()
+            for key in ("reason", "official_reason")
+            if item.get(key)
+        ))
+        warnings.append(f"{heading}. {' '.join(details)}".strip())
+    return "\n".join([*warnings, notice])
+
+
 def _dur_context_unavailable_message(
     intents: set[str],
     status: str,
@@ -1510,12 +1536,15 @@ def generate_chat_response(
                     )
                 )
             ):
-                return _dur_context_unavailable_reply(
+                notice = _dur_context_unavailable_reply(
                     intents,
                     dur_result.get("status") or "missing",
                     dur_result.get("reason"),
                     all_medicines=all_medicines_question,
                 )
+                if dur_result.get("status") == "incomplete" and dur_result.get("items"):
+                    return _partial_dur_warning_reply(dur_result["items"], notice)
+                return notice
             if (
                 safety_question
                 and dur_result["status"] == "current"

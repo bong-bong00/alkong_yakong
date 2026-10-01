@@ -73,6 +73,7 @@ class MedicationFeatureDurClientTest(unittest.TestCase):
                 "user_id": "user-1",
                 "medicine_codes": ["100"],
                 "medicine_names_by_code": {"100": "등록약정"},
+                "analysis_purpose": "consultation",
             },
         )
 
@@ -236,8 +237,9 @@ class MedicationFeatureDurClientTest(unittest.TestCase):
             result = self.call()
 
         self.assertEqual(result["status"], "incomplete")
-        self.assertEqual(result["items"], [])
-        self.assertIsNone(result["has_risk"])
+        self.assertEqual(result["items"], [match])
+        self.assertTrue(result["has_risk"])
+        self.assertEqual(result["zero_result_types"], [])
 
     def test_timeout_http_and_malformed_are_not_safe(self):
         failures = [
@@ -262,6 +264,53 @@ class MedicationFeatureDurClientTest(unittest.TestCase):
             result = self.call()
         self.assertEqual(result["status"], "malformed")
         self.assertIsNone(result["has_risk"])
+
+    def test_duplicate_zero_is_complete_when_only_pair_reference_is_incomplete(self):
+        with (
+            patch.object(remote_dur, "MEDICATION_FEATURE_BASE_URL", "https://med.example"),
+            patch.object(remote_dur.requests, "get", return_value=self.response(self.medicines())),
+            patch.object(remote_dur.requests, "post", return_value=self.response({
+                "assessment_status": "INCOMPLETE",
+                "analysis_complete": False,
+                "incomplete": True,
+                "incomplete_types": ["병용금기", "효능군중복"],
+                "has_risk": False,
+                "matches": [],
+                "medicine_names": ["등록약정"],
+            })),
+        ):
+            result = remote_dur.load_remote_combination_context(
+                user_id="user-1", selected_medicine=None,
+                requested_types={"중복성분"},
+            )
+        self.assertEqual(result["status"], "current")
+        self.assertFalse(result["has_risk"])
+        self.assertEqual(result["zero_result_types"], ["중복성분"])
+
+    def test_missing_scope_preserves_confirmed_warning_not_zero(self):
+        match = {"type": "병용금기", "reason": "1~2 mg 조건에서 금지"}
+        with (
+            patch.object(remote_dur, "MEDICATION_FEATURE_BASE_URL", "https://med.example"),
+            patch.object(remote_dur.requests, "get", return_value=self.response(self.medicines())),
+            patch.object(remote_dur.requests, "post", return_value=self.response({
+                "assessment_status": "RISK_FOUND",
+                "analysis_complete": False,
+                "incomplete": True,
+                "incomplete_types": ["병용금기"],
+                "has_risk": True,
+                "matches": [match],
+                "medicine_names": ["등록약정"],
+            })),
+        ):
+            result = remote_dur.load_remote_combination_context(
+                user_id="user-1", selected_medicine=None,
+                additional_medicines=[{"medicine_code": "200", "product_name": "임시약정"}],
+            )
+        self.assertEqual(result["status"], "incomplete")
+        self.assertEqual(result["reason"], "medicine_analysis_scope_incomplete")
+        self.assertEqual(result["items"], [match])
+        self.assertTrue(result["has_risk"])
+        self.assertEqual(result["zero_result_types"], [])
 
     def test_dur_analysis_timeout_is_not_zero_result(self):
         with (
@@ -336,6 +385,7 @@ class MedicationFeatureDurClientTest(unittest.TestCase):
                     "100": "OCR등록약정",
                     "200": "손입력약정",
                 },
+                "analysis_purpose": "consultation",
             },
         )
 
@@ -381,6 +431,7 @@ class MedicationFeatureDurClientTest(unittest.TestCase):
                     "101": "첫째약정",
                     "202": "둘째약정",
                 },
+                "analysis_purpose": "consultation",
             },
         )
 
@@ -442,6 +493,7 @@ class MedicationFeatureDurClientTest(unittest.TestCase):
                     "100": "등록약정",
                     "200": "화면임시약정",
                 },
+                "analysis_purpose": "consultation",
             },
         )
 

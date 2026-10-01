@@ -180,6 +180,7 @@ def load_remote_combination_context(
                 "user_id": uid,
                 "medicine_codes": requested_codes,
                 "medicine_names_by_code": names_by_code,
+                "analysis_purpose": "consultation",
             },
             timeout=MEDICATION_FEATURE_TIMEOUT_SECONDS,
         )
@@ -213,6 +214,12 @@ def load_remote_combination_context(
     ):
         return _malformed()
 
+    if assessment == "SAFE" and (has_risk or matches):
+        return _malformed()
+    if assessment == "RISK_FOUND" and not has_risk:
+        return _malformed()
+    items = [dict(item) for item in matches if item.get("type") in checked_types]
+
     analyzed_names = payload.get("medicine_names")
     scope_complete = isinstance(analyzed_names, list) and {
         _compact_name(name) for name in names_by_code.values()
@@ -227,9 +234,10 @@ def load_remote_combination_context(
     if not scope_complete:
         return {
             "status": "incomplete",
-            "items": [],
-            "has_risk": None,
+            "items": items,
+            "has_risk": True if items else None,
             "reason": "medicine_analysis_scope_incomplete",
+            "zero_result_types": [],
         }
 
     incomplete_type_set = set(incomplete_types or [])
@@ -259,26 +267,18 @@ def load_remote_combination_context(
     if globally_incomplete and (incomplete_types is None or relevant_incomplete):
         return {
             "status": "incomplete",
-            "items": [],
-            "has_risk": None,
+            "items": items,
+            "has_risk": True if items else None,
             "reason": "dur_analysis_incomplete",
+            "zero_result_types": [],
         }
 
-    items = [
-        dict(item)
-        for item in matches
-        if item.get("type") in checked_types
-    ]
     matched_types = {
         str(item.get("type") or "").strip()
         for item in items
         if str(item.get("type") or "").strip()
     }
     combination_has_risk = bool(items)
-    if assessment == "SAFE" and (has_risk or matches):
-        return _malformed()
-    if assessment == "RISK_FOUND" and not has_risk:
-        return _malformed()
     return {
         "status": "current",
         "items": items,
