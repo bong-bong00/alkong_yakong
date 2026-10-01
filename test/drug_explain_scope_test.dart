@@ -45,6 +45,58 @@ void main() {
     SharedPreferences.setMockInitialValues({});
   });
 
+  testWidgets('같은 빠른 질문은 로컬 재사용, 최신 조회 실패는 이전 답변 표시', (tester) async {
+    var calls = 0;
+    var offline = false;
+    final client = MockClient((request) async {
+      if (request.url.path.endsWith('/cache-context')) {
+        return response({'verified': true, 'fingerprint': 'health-v1'});
+      }
+      if (request.method == 'POST') {
+        calls++;
+        if (offline) throw http.ClientException('offline');
+        return response({
+          'reply': '공식 안내를 확인했어요.',
+          'sources': ['식약처'],
+        });
+      }
+      return response({
+        'medicines': [
+          {
+            'medicine_code': '202400001',
+            'product_name': '약정',
+            'official_product_name': '약정',
+            'status': 'active',
+          },
+        ],
+      });
+    });
+    await tester.pumpWidget(
+      MaterialApp(
+        home: DrugExplainScreen(
+          apiClient: ApiClient(client: client),
+          medicationApiClient: ApiClient(client: client),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await pick(tester, '약 전체');
+    await tester.tap(find.text('제가 먹는 약 알려주세요').last);
+    await tester.pumpAndSettle();
+    expect(calls, 1);
+    await tester.tap(find.text('제가 먹는 약 알려주세요').last);
+    await tester.pumpAndSettle();
+    expect(calls, 1);
+    expect(find.textContaining('저장된 답변 ·'), findsOneWidget);
+    offline = true;
+    await tester.ensureVisible(find.text('최신 정보 확인'));
+    await tester.tap(find.text('최신 정보 확인'));
+    await tester.pumpAndSettle();
+    expect(calls, 2);
+    expect(find.textContaining('현재 약·건강정보는 다시 확인하지 않았어요.'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('최근 대화 전달과 출처 표시, 약 범위 변경 시 문맥 초기화', (tester) async {
     final requests = <Map<String, dynamic>>[];
     final client = MockClient((request) async {

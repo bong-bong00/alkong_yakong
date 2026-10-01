@@ -55,6 +55,12 @@ def search_official_drugs(
     return search_drug_candidates(query)
 
 
+@router.get("/drug-explain/cache-context")
+def pharmacist_cache_context(user_id: str = Query(..., min_length=1, max_length=100)):
+    from app.services.pharmacist.cache_context import health_cache_context
+    return health_cache_context(user_id)
+
+
 # 검토된 상세 카드만 읽는다. 화면 요청 중 외부 API·Gemini를 호출하지 않는다.
 @router.get("/drug-explain/{medicine_code}", response_model=DrugExplanationResponse)
 def explain_drug(

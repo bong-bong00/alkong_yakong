@@ -44,6 +44,47 @@ void main() {
     },
   );
 
+  testWidgets('chat hint and entered text are vertically centered', (
+    tester,
+  ) async {
+    final api = ApiClient(
+      client: MockClient(
+        (_) async => http.Response(
+          jsonEncode({'medicines': []}),
+          200,
+          headers: {'content-type': 'application/json; charset=utf-8'},
+        ),
+      ),
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        home: DrugExplainScreen(apiClient: api, medicationApiClient: api),
+      ),
+    );
+    await tester.pumpAndSettle();
+    final input = find.byKey(const ValueKey('pharmacist-chat-input'));
+    final field = find.descendant(of: input, matching: find.byType(TextField));
+    expect(
+      tester.widget<TextField>(field).textAlignVertical,
+      TextAlignVertical.center,
+    );
+    expect(
+      tester.getRect(find.text('여기에 물어보세요')).center.dy,
+      closeTo(tester.getRect(input).center.dy, 1),
+    );
+    await tester.enterText(field, '주의할 점은?');
+    await tester.pump();
+    final editable = find.descendant(
+      of: input,
+      matching: find.byType(EditableText),
+    );
+    expect(
+      tester.getRect(editable).center.dy,
+      closeTo(tester.getRect(input).center.dy, 1),
+    );
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('save, reopen, preview sources and continue with history', (
     tester,
   ) async {

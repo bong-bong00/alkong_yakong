@@ -15,6 +15,7 @@ import '../../core/polar_pharmacist_ui/widgets/senior_sheet.dart';
 import '../../core/polar_pharmacist_ui/widgets/senior_wheel.dart';
 import '../medicines/domain/display_policy.dart';
 import 'conversation_store.dart';
+import 'answer_cache.dart';
 
 class DrugExplainScreen extends StatefulWidget {
   final ApiClient? apiClient;
@@ -55,6 +56,37 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
   final _conversationStore = PharmacistConversationStore();
   late final String _conversationUserId = MvpSession.userId;
   String? _conversationId;
+  final _answerCache = PharmacistAnswerCache();
+  String? _healthFingerprint;
+  String? _medicineFingerprint;
+  DateTime? _contextVerifiedAt;
+
+  Future<void> _refreshCacheContext() async {
+    _healthFingerprint = null;
+    _contextVerifiedAt = null;
+    try {
+      final result = await _apiClient.get(
+        '/api/v1/drug-explain/cache-context?user_id=${Uri.encodeComponent(_conversationUserId)}',
+      );
+      if (result is Map &&
+          result['verified'] == true &&
+          result['fingerprint'] is String) {
+        _healthFingerprint = result['fingerprint'] as String;
+        _contextVerifiedAt = DateTime.now();
+      }
+    } catch (_) {
+      // Unknown health state permits historical viewing, never automatic reuse.
+    }
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && !_isLoading) {
+      _medicineFingerprint = null;
+      unawaited(_loadMedicines());
+      unawaited(_refreshCacheContext());
+    }
+  }
 
   Future<void> _saveConversation() async {
     final messages = _messages
@@ -302,7 +334,10 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
       'isMe': false,
       'text': '안녕하세요, 선생님! 약에 대해 궁금한 것을 편하게 물어보세요.\n어려운 말은 쉬운 말로 바꿔서 알려드릴게요.',
     });
-    WidgetsBinding.instance.addPostFrameCallback((_) => _loadMedicines());
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      unawaited(_loadMedicines());
+      unawaited(_refreshCacheContext());
+    });
   }
 
   @override
@@ -351,6 +386,7 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
   }
 
   Future<void> _loadMedicines() async {
+    _medicineFingerprint = null;
     final names = <String>[];
     final officialMedicines = <String, _DrugSearchCandidate>{};
     final ambiguousNames = <String>{};
@@ -460,6 +496,9 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
       if (medicines is! List) {
         throw const FormatException('medicines must be a list');
       }
+      final rows = medicines.map(PharmacistAnswerCache.canonical).toList()
+        ..sort();
+      _medicineFingerprint = PharmacistAnswerCache.canonical(rows);
       // 성공한 약 데이터 Render 조회가 OCR 임시 목록을 대체하도록 한다.
       names.clear();
       officialMedicines.clear();
@@ -663,6 +702,7 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
     String? message,
     String? displayMessage,
     String? intent,
+    bool forceRefresh = false,
   }) async {
     if (_isLoading) return;
 
@@ -726,7 +766,14 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
     if (message == null) _chatController.clear();
     _scrollToBottom();
 
+    Map<String, dynamic>? historicalAnswer;
     try {
+      if (forceRefresh ||
+          (_contextVerifiedAt != null &&
+              DateTime.now().difference(_contextVerifiedAt!) >=
+                  const Duration(minutes: 5))) {
+        await Future.wait([_loadMedicines(), _refreshCacheContext()]);
+      }
       final officialProductNames = _selectedMedicines.isNotEmpty
           ? _selectedMedicines
                 .map((name) => _officialMedicinesByName[name]?.itemName)
@@ -780,12 +827,55 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
             )
             .toList(growable: false);
       }
-      final response = await _apiClient.post(
-        '/api/v1/drug-explain/chat', // 가상의 챗봇 엔드포인트
-        body: body,
+      final requestKey = PharmacistAnswerCache.canonical({
+        ...body,
+        'scope': _isAllMedicinesSelected ? 'all' : 'selection',
+        'recent_history':
+            message == null || isFollowup || pendingQuestion != null
+            ? recentHistory
+            : [],
+      });
+      historicalAnswer = await _answerCache.find(
+        _conversationUserId,
+        requestKey,
       );
-
+      final contextFresh =
+          _contextVerifiedAt != null &&
+          DateTime.now().difference(_contextVerifiedAt!) <
+              const Duration(minutes: 5);
+      final cacheContext =
+          _healthFingerprint != null &&
+              _medicineFingerprint != null &&
+              contextFresh
+          ? PharmacistAnswerCache.canonical([
+              _healthFingerprint,
+              _medicineFingerprint,
+            ])
+          : null;
+      final saved = !forceRefresh && cacheContext != null
+          ? await _answerCache.find(
+              _conversationUserId,
+              requestKey,
+              context: cacheContext,
+              maxAge: const Duration(minutes: 15),
+            )
+          : null;
+      final response =
+          saved?['response'] ??
+          await _apiClient.post('/api/v1/drug-explain/chat', body: body);
       final data = Map<String, dynamic>.from(response as Map);
+      if (saved == null) {
+        try {
+          await _answerCache.save(
+            _conversationUserId,
+            requestKey,
+            cacheContext ?? 'unverified',
+            data,
+          );
+        } catch (_) {
+          /* Storage failure must not discard a received answer. */
+        }
+      }
       final reply = data['reply']?.toString() ?? '응답을 받아오지 못했습니다.';
       final asksForMedicine = reply.contains('물어볼 약을 선택하거나 제품명·성분명을 알려주세요');
       final generalCoffeeQuestion = _isGeneralCoffeeMedicineQuestion(text);
@@ -809,6 +899,11 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
           'isMe': false,
           'createdAt': DateTime.now().toIso8601String(),
           'text': _plainAiReply(reply),
+          if (saved != null)
+            'cacheNotice':
+                '저장된 답변 · ${_conversationDate(saved['savedAt'].toString())}',
+          if (saved != null) 'refreshQuestion': text,
+          if (saved != null) 'refreshIntent': intent,
           'sources':
               (data['sources'] as List?)?.whereType<String>().toList(
                 growable: false,
@@ -827,12 +922,24 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
               : const <String>[],
         });
       });
-    } on ApiException {
+    } on ApiException catch (error) {
       if (!mounted) return;
       setState(() {
+        final unavailable =
+            error.statusCode == null ||
+            error.statusCode == 408 ||
+            (error.statusCode ?? 0) >= 500;
+        final old = unavailable ? historicalAnswer : null;
+        final response = old?['response'] as Map?;
         _messages.add({
           'isMe': false,
-          'text': _chatFailureMessage,
+          'text': response?['reply'] == null
+              ? _chatFailureMessage
+              : _plainAiReply(response!['reply'].toString()),
+          if (old != null)
+            'cacheNotice':
+                '연결을 확인하지 못해 이전 답변을 보여드려요.\n${_conversationDate(old['savedAt'].toString())} 저장 · 현재 약·건강정보는 다시 확인하지 않았어요.',
+          if (response != null) 'sources': response['sources'] ?? [],
           'createdAt': DateTime.now().toIso8601String(),
         });
       });
@@ -1055,6 +1162,11 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
                     ScrollViewKeyboardDismissBehavior.onDrag,
                 children: [
                   for (final message in _messages) ...[
+                    if (message['cacheNotice'] != null)
+                      Text(
+                        message['cacheNotice'].toString(),
+                        style: AppText.caption(size: 14),
+                      ),
                     _ChatBubble(
                       text: message['text'] as String,
                       isMe: message['isMe'] as bool,
@@ -1075,6 +1187,17 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
                               .toList(growable: false) ??
                           const [],
                     ),
+                    if (message['refreshQuestion'] != null)
+                      TextButton(
+                        onPressed: _isLoading
+                            ? null
+                            : () => _sendMessage(
+                                message: message['refreshQuestion'].toString(),
+                                intent: message['refreshIntent'] as String?,
+                                forceRefresh: true,
+                              ),
+                        child: const Text('최신 정보 확인'),
+                      ),
                     const SizedBox(height: 12),
                   ],
                   if (_isLoadingMedicines) ...[
@@ -1134,7 +1257,9 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
                 children: [
                   Expanded(
                     child: Container(
+                      key: const ValueKey('pharmacist-chat-input'),
                       constraints: const BoxConstraints(minHeight: 60),
+                      alignment: Alignment.center,
                       decoration: BoxDecoration(
                         color: AppColors.surface,
                         borderRadius: BorderRadius.circular(30),
@@ -1147,6 +1272,7 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
                       child: TextField(
                         controller: _chatController,
                         focusNode: _chatFocusNode,
+                        textAlignVertical: TextAlignVertical.center,
                         textInputAction: TextInputAction.send,
                         onSubmitted: (_) => _sendMessage(),
                         style: AppText.body(size: 20),
@@ -1158,6 +1284,9 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
                           ),
                           border: InputBorder.none,
                           isDense: true,
+                          contentPadding: const EdgeInsets.symmetric(
+                            vertical: 12,
+                          ),
                         ),
                       ),
                     ),
@@ -1698,6 +1827,11 @@ class _PreviousConversationScreen extends StatelessWidget {
                 ),
                 const SizedBox(height: 16),
                 for (final message in record['messages'] as List) ...[
+                  if (message['cacheNotice'] != null)
+                    Text(
+                      message['cacheNotice'].toString(),
+                      style: AppText.caption(size: 14),
+                    ),
                   Text(
                     _conversationDate(
                       message['createdAt'] ?? record['updatedAt'],
