@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_tabler_icons/flutter_tabler_icons.dart';
 
@@ -33,6 +35,7 @@ class _PolarScreenState extends State<PolarScreen> {
   late final HeartSensor _sensor = widget.sensor ?? HeartSensor();
 
   bool _searching = false;
+  bool _sensorUpdatePending = false;
 
   @override
   void initState() {
@@ -41,7 +44,13 @@ class _PolarScreenState extends State<PolarScreen> {
   }
 
   void _onSensor() {
-    if (mounted) setState(() {});
+    // 공유 센서가 측정 화면을 여는 도중 알림을 보내도 build 중 갱신하지 않는다.
+    if (_sensorUpdatePending) return;
+    _sensorUpdatePending = true;
+    scheduleMicrotask(() {
+      _sensorUpdatePending = false;
+      if (mounted) setState(() {});
+    });
   }
 
   @override

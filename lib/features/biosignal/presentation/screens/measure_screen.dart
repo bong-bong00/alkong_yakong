@@ -87,6 +87,13 @@ class _MeasureScreenState extends State<MeasureScreen> {
       _sensor.status == HeartSensorStatus.failed;
 
   Future<void> _leaveMeasurement() async {
+    // 폴라 화면에서 Navigator.push로 연 측정 화면은 먼저 닫는다.
+    // 현재 GoRouter 주소로 go하면 그 위의 측정 화면이 남을 수 있다.
+    final navigator = Navigator.of(context);
+    if (navigator.canPop()) {
+      await navigator.maybePop();
+      return;
+    }
     final router = widget.returnToPreviousScreen
         ? GoRouter.maybeOf(context)
         : null;
@@ -94,7 +101,7 @@ class _MeasureScreenState extends State<MeasureScreen> {
       router.go('/biosignal');
       return;
     }
-    await Navigator.of(context).maybePop();
+    await navigator.maybePop();
   }
 
   @override

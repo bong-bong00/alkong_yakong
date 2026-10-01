@@ -14,6 +14,7 @@ import 'package:alkong_yakong/features/biosignal/domain/heart_time.dart';
 import 'package:alkong_yakong/features/biosignal/presentation/screens/heart_screen.dart';
 import 'package:alkong_yakong/features/biosignal/presentation/screens/measure_screen.dart';
 import 'package:alkong_yakong/features/biosignal/presentation/screens/monthly_heart_screen.dart';
+import 'package:alkong_yakong/features/biosignal/presentation/screens/polar_screen.dart';
 import 'package:alkong_yakong/features/biosignal/presentation/screens/saved_screen.dart';
 import 'package:alkong_yakong/features/medication/domain/medication_models.dart';
 import 'package:flutter/material.dart';
@@ -1030,6 +1031,71 @@ void main() {
       await tester.pump();
     },
   );
+
+  for (final useBack in [false, true]) {
+    testWidgets(
+      'Polar search measurement exits with back=$useBack under GoRouter',
+      (tester) async {
+        final rig = Rig();
+        final router = GoRouter(
+          initialLocation: '/biosignal',
+          routes: [
+            GoRoute(
+              path: '/biosignal',
+              builder: (context, _) => Scaffold(
+                body: TextButton(
+                  onPressed: () => Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (_) => PolarScreen(sensor: rig.sensor),
+                    ),
+                  ),
+                  child: const Text('센서 화면 열기'),
+                ),
+              ),
+            ),
+          ],
+        );
+        addTearDown(router.dispose);
+        await tester.pumpWidget(
+          ProviderScope(child: MaterialApp.router(routerConfig: router)),
+        );
+        await tester.tap(find.text('센서 화면 열기'));
+        await tester.pumpAndSettle();
+        await tester.ensureVisible(find.text('기기 찾기'));
+        await tester.tap(find.text('기기 찾기'));
+        await tester.pumpAndSettle();
+        expect(rig.sdk.searches, 1);
+        await tester.ensureVisible(find.text('지금 측정'));
+        await tester.tap(find.text('지금 측정'));
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 400));
+        rig.sdk.sample(62);
+        await tester.pump();
+        expect(find.byType(MeasureScreen), findsOneWidget);
+        if (useBack) {
+          await tester.tap(
+            find.descendant(
+              of: find.byType(MeasureScreen),
+              matching: find.byType(SeniorBackButton),
+            ),
+          );
+        } else {
+          await tester.ensureVisible(find.text('그만두기'));
+          await tester.tap(find.text('그만두기'));
+        }
+        await tester.pumpAndSettle();
+        expect(find.byType(MeasureScreen), findsNothing);
+        expect(find.byType(PolarScreen), findsOneWidget);
+        expect(rig.sensor.measuring, isFalse);
+        expect(rig.api.requests, isEmpty);
+        await tester.pump(const Duration(seconds: 50));
+        expect(rig.api.requests, isEmpty);
+        await tester.pumpWidget(const SizedBox());
+        rig.sensor.dispose();
+        await tester.pump();
+      },
+    );
+  }
 
   testWidgets('real GoRouter cancellation returns to heart without saving', (
     tester,
