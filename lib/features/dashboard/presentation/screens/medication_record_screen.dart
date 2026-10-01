@@ -242,7 +242,7 @@ class _TodayHeartCard extends StatelessWidget {
                   )
                 else
                   Text(
-                    '오늘은 아직 재지 않았어요',
+                    '오늘은 아직 측정하지 않았어요',
                     style: AppText.label(
                       size: 17,
                       color: AppColors.textSecondary,

@@ -112,7 +112,7 @@ class _PolarScreenState extends State<PolarScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        Text('차는 방법', style: AppText.cardTitle(size: 20)),
+                        Text('착용하는 방법', style: AppText.cardTitle(size: 20)),
                         const SizedBox(height: 14),
                         const NumberedSteps(
                           boxed: false,
@@ -200,7 +200,9 @@ class _StatusCard extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           Text(
-            connected ? '센서를 차고 계시면 약 드신 뒤 심박수를 측정합니다' : '센서를 차고 아래 버튼을 눌러주세요',
+            connected
+                ? '센서를 착용하고 계시면 약 드신 뒤 심박수를 측정합니다'
+                : '센서를 착용하고 아래 버튼을 눌러주세요',
             textAlign: TextAlign.center,
             style: AppText.body(size: 18.5, color: AppColors.textSecondary),
           ),

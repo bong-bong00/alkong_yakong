@@ -101,12 +101,8 @@ class CareFamilyScreen extends ConsumerWidget {
                         '아직 연결된 어르신이 없어요. 정보 → 돌보는 분 관리에서 '
                         '어르신 전화번호로 연결을 요청해 주세요.',
                   ),
-                if (needAttention.isNotEmpty) ...[
-                  _AttentionBanner(patients: needAttention),
-                  const SizedBox(height: 12),
-                ],
                 if (patients.isNotEmpty) ...[
-                  // 처방전을 대신 넣어 주는 길. 연결된 분만 고를 수 있다.
+                  // 처방전을 대신 넣어 주는 길. 누르면 어느 분인지 고른다.
                   SeniorButton(
                     label: '처방전 대신 찍기',
                     icon: TablerIcons.camera,
@@ -233,36 +229,6 @@ class _InfoCard extends StatelessWidget {
   }
 }
 
-/// 먼저 확인할 분. 색이 아니라 **이름**을 앞세운다.
-class _AttentionBanner extends StatelessWidget {
-  final List<CarePatient> patients;
-
-  const _AttentionBanner({required this.patients});
-
-  @override
-  Widget build(BuildContext context) {
-    return AccentCard(
-      accent: AppColors.danger,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Text(
-            '먼저 확인할 분',
-            style: AppText.cardTitle(size: 18, color: AppColors.danger),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            patients
-                .map((p) => p.relation.isEmpty ? p.name : p.relation)
-                .join(', '),
-            style: AppText.cardTitle(size: 20),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 class _PatientCard extends StatelessWidget {
   final CarePatient patient;
   final VoidCallback onTap;
@@ -303,7 +269,30 @@ class _PatientCard extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(patient.title, style: AppText.cardTitle(size: 21)),
+                    Row(
+                      children: [
+                        Flexible(
+                          child: Text(
+                            patient.title,
+                            style: AppText.cardTitle(size: 21),
+                          ),
+                        ),
+                        if (patient.needsAttention) ...[
+                          const SizedBox(width: 8),
+                          const SeniorBadge(
+                            label: '확인 필요',
+                            background: AppColors.dangerBg,
+                            foreground: AppColors.danger,
+                            radius: 10,
+                            fontSize: 15,
+                            padding: EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 5,
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
                     Text(
                       '오늘 복약 ${patient.takenCount} / ${patient.totalCount}'
                       '${patient.heartRate == null ? '' : ' · 심박수 ${patient.heartRate}'}',
@@ -320,10 +309,20 @@ class _PatientCard extends StatelessWidget {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
             decoration: BoxDecoration(
-              color: AppColors.sunken,
+              color: patient.needsAttention
+                  ? AppColors.dangerBg
+                  : AppColors.sunken,
               borderRadius: BorderRadius.circular(14),
             ),
-            child: Text(_status, style: AppText.label(size: 18)),
+            child: Text(
+              _status,
+              style: AppText.label(
+                size: 18,
+                color: patient.needsAttention
+                    ? AppColors.danger
+                    : AppColors.textBody,
+              ),
+            ),
           ),
         ],
       ),

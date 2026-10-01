@@ -14,7 +14,7 @@ import 'senior_card.dart';
 ///
 /// 인터넷 없음 · 처방전 인식 실패 · 로그인 실패 · 서버 오류에 모두 이 패턴을 쓴다.
 class RecoveryView extends StatelessWidget {
-  /// ① 무슨 일인지. "지금은 심장 박동을\n재지 못하고 있어요"
+  /// ① 무슨 일인지. "지금은 심장 박동을\n측정하지 못하고 있어요"
   final String title;
 
   /// ② 안심 문장의 앞부분.

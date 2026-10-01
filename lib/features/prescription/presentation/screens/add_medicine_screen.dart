@@ -7,7 +7,6 @@ import 'package:flutter_tabler_icons/flutter_tabler_icons.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../widgets/family_request_sheet.dart';
-import '../../../../core/widgets/senior_button.dart';
 import '../../../../core/widgets/senior_card.dart';
 import '../../../../core/widgets/senior_header.dart';
 
@@ -139,7 +138,6 @@ class _AddMedicineScreenState extends State<AddMedicineScreen> {
                         context,
                         widget.guardianTitle,
                       ),
-                      onGoHome: widget.onGoHome,
                     ),
                   ],
                 ],
@@ -276,9 +274,8 @@ class _SmallWay extends StatelessWidget {
 /// 어르신은 아무것도 더 하지 않아도 된다.
 class _AskedCard extends StatelessWidget {
   final String guardianTitle;
-  final VoidCallback? onGoHome;
 
-  const _AskedCard({required this.guardianTitle, this.onGoHome});
+  const _AskedCard({required this.guardianTitle});
 
   @override
   Widget build(BuildContext context) {
@@ -323,14 +320,6 @@ class _AskedCard extends StatelessWidget {
                 ),
               ),
             ],
-          ),
-          const SizedBox(height: 14),
-          SeniorButton(
-            label: '오늘 화면으로 가기',
-            kind: SeniorButtonKind.secondary,
-            minHeight: 66,
-            fontSize: 21,
-            onPressed: onGoHome ?? () => Navigator.of(context).maybePop(),
           ),
         ],
       ),

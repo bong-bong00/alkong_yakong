@@ -8,8 +8,7 @@ import '../../domain/app_documents.dart';
 
 /// 이용약관 · 개인정보처리방침처럼 긴 문서를 읽는 화면.
 ///
-/// 아직 법률 검토 전 초안이므로, 맨 위에 그 사실을 **붉은 테두리 상자로** 크게 둔다.
-/// 작은 회색 글씨로 숨기면 확정된 약관으로 오해한다.
+/// 쉬운 말 요약을 먼저 읽고, 그 아래에 조문을 둔다.
 class PolicyScreen extends StatelessWidget {
   final AppDocument document;
 
@@ -32,24 +31,6 @@ class PolicyScreen extends StatelessWidget {
             child: ListView(
               padding: const EdgeInsets.fromLTRB(20, 16, 20, 28),
               children: [
-                const SizedBox(height: 12),
-                SeniorCard(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 22,
-                    vertical: 16,
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      Text(document.summary, style: AppText.body()),
-                      const SizedBox(height: 12),
-                      const SeniorDivider(),
-                      const SizedBox(height: 12),
-                      for (final line in document.meta)
-                        Text(line, style: AppText.label(size: 18)),
-                    ],
-                  ),
-                ),
                 // 쉬운 말 요약을 먼저 읽게 한다 (프로토타입 49번).
                 for (final section in document.plain) ...[
                   const SizedBox(height: 12),

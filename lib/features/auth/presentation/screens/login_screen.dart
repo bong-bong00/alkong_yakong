@@ -112,7 +112,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
               SeniorButton(
                 label: _loggingIn ? '들어가는 중...' : '시작하기',
-                icon: Icons.play_arrow_rounded,
                 minHeight: 74,
                 fontSize: 25,
                 onPressed: _loggingIn ? null : _login,

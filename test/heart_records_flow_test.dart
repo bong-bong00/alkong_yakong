@@ -626,7 +626,7 @@ void main() {
         findsOneWidget,
       );
       expect(
-        find.descendant(of: todayCard, matching: find.text('오늘은 아직 재지 않았어요')),
+        find.descendant(of: todayCard, matching: find.text('오늘은 아직 측정하지 않았어요')),
         findsNothing,
       );
     },
@@ -734,7 +734,7 @@ void main() {
 
       expect(find.text('평소 심박 측정'), findsWidgets);
       expect(find.text('74회/분'), findsOneWidget);
-      expect(find.text('오늘은 아직 재지 않았어요'), findsNothing);
+      expect(find.text('오늘은 아직 측정하지 않았어요'), findsNothing);
     },
   );
 
