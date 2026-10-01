@@ -14,6 +14,7 @@ import '../../core/polar_pharmacist_ui/widgets/senior_header.dart';
 import '../../core/polar_pharmacist_ui/widgets/senior_sheet.dart';
 import '../../core/polar_pharmacist_ui/widgets/senior_wheel.dart';
 import '../medicines/domain/display_policy.dart';
+import 'conversation_store.dart';
 
 class DrugExplainScreen extends StatefulWidget {
   final ApiClient? apiClient;
@@ -51,6 +52,115 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
   final List<String> _medicines = [];
   final List<Map<String, dynamic>> _messages = [];
   int _conversationStart = 0;
+  final _conversationStore = PharmacistConversationStore();
+  late final String _conversationUserId = MvpSession.userId;
+  String? _conversationId;
+
+  Future<void> _saveConversation() async {
+    final messages = _messages
+        .skip(_conversationStart)
+        .where((message) => message['createdAt'] != null)
+        .toList();
+    if (!messages.any((message) => message['isMe'] == true)) return;
+    _conversationId ??= DateTime.now().microsecondsSinceEpoch.toString();
+    final title = _isAllMedicinesSelected
+        ? '약 전체'
+        : _selectedMedicines.isEmpty
+        ? '일반 질문'
+        : _selectedMedicines.join(', ');
+    await _conversationStore.save(_conversationUserId, {
+      'id': _conversationId,
+      'title': title,
+      'updatedAt': DateTime.now().toIso8601String(),
+      'messages': messages,
+      'allMedicines': _isAllMedicinesSelected,
+      'pendingQuestion': _pendingGeneralQuestion,
+      'selected': _selectedMedicines
+          .map(
+            (name) => {
+              'name': name,
+              'product_name': _officialMedicinesByName[name]?.itemName ?? name,
+              'medicine_code': _officialMedicinesByName[name]?.itemSeq,
+            },
+          )
+          .toList(),
+      'temporary': _temporaryMedicinesByCode.values
+          .map(
+            (medicine) => {
+              'item_name': medicine.itemName,
+              'item_seq': medicine.itemSeq,
+            },
+          )
+          .toList(),
+    });
+  }
+
+  Future<void> _openPreviousConversations() async {
+    if (_isLoading || _isLoadingMedicines) return;
+    try {
+      final records = await _conversationStore.load(_conversationUserId);
+      if (!mounted) return;
+      final conversation = await Navigator.of(context)
+          .push<Map<String, dynamic>>(
+            MaterialPageRoute(
+              builder: (_) => _PreviousConversationsScreen(records: records),
+            ),
+          );
+      if (!mounted || conversation == null) return;
+      setState(() {
+        _messages
+          ..clear()
+          ..addAll(
+            (conversation['messages'] as List).map(
+              (item) => Map<String, dynamic>.from(item as Map),
+            ),
+          );
+        _conversationStart = 0;
+        _conversationId = conversation['id'] as String;
+        _isAllMedicinesSelected = conversation['allMedicines'] == true;
+        _selectedMedicines.clear();
+        // Keep current registered medicines. Old search selections are not registered.
+        for (final candidate in _temporaryMedicinesByCode.values) {
+          if (!_registeredMedicineCodes.contains(candidate.itemSeq)) {
+            _medicines.remove(candidate.itemName);
+            _officialMedicinesByName.remove(candidate.itemName);
+          }
+        }
+        _temporaryMedicinesByCode.clear();
+        for (final item in conversation['temporary'] as List? ?? []) {
+          final candidate = _DrugSearchCandidate.fromJson(
+            Map<String, dynamic>.from(item as Map),
+          );
+          if (candidate.itemSeq != null) {
+            _temporaryMedicinesByCode[candidate.itemSeq!] = candidate;
+          }
+          _officialMedicinesByName[candidate.itemName] = candidate;
+          if (!_medicines.contains(candidate.itemName)) {
+            _medicines.add(candidate.itemName);
+          }
+        }
+        for (final item in conversation['selected'] as List? ?? []) {
+          final name = item['name'] as String;
+          _selectedMedicines.add(name);
+          _officialMedicinesByName[name] = _DrugSearchCandidate(
+            itemName: item['product_name'] as String,
+            itemSeq: item['medicine_code'] as String?,
+          );
+          if (!_medicines.contains(name)) _medicines.add(name);
+        }
+        _pendingGeneralQuestion = conversation['pendingQuestion'] as String?;
+        _selectedKeyword = null;
+        _chatController.clear();
+      });
+      _scrollToBottom();
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('이전 대화를 불러오지 못했어요. 다시 시도해 주세요.')),
+        );
+      }
+    }
+  }
 
   String? get _selectedMedicine =>
       _selectedMedicines.length == 1 ? _selectedMedicines.single : null;
@@ -451,6 +561,7 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
     setState(() {
       _selectedMedicines.clear();
       _conversationStart = _messages.length;
+      _conversationId = null;
       _isAllMedicinesSelected = isAllMedicines;
       _pendingGeneralQuestion = null;
       _selectedKeyword = null;
@@ -475,6 +586,7 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
     if (result.searchOther) {
       setState(() {
         _conversationStart = _messages.length;
+        _conversationId = null;
         _selectedMedicines
           ..clear()
           ..addAll(result.medicines);
@@ -488,6 +600,7 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
         ..clear()
         ..addAll(result.medicines);
       _conversationStart = _messages.length;
+      _conversationId = null;
       _isAllMedicinesSelected = false;
       _pendingGeneralQuestion = null;
       _selectedKeyword = null;
@@ -523,6 +636,7 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
       }
       _officialMedicinesByName[medicine.itemName] = medicine;
       _conversationStart = _messages.length;
+      _conversationId = null;
       if (!addToSelection) _selectedMedicines.clear();
       if (!_selectedMedicines.contains(medicine.itemName)) {
         _selectedMedicines.add(medicine.itemName);
@@ -596,6 +710,7 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
     setState(() {
       _messages.add({
         'isMe': true,
+        'createdAt': DateTime.now().toIso8601String(),
         'text': displayMessage ?? text,
         'contextText': requestText,
         'intent': intent,
@@ -692,6 +807,7 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
         }
         _messages.add({
           'isMe': false,
+          'createdAt': DateTime.now().toIso8601String(),
           'text': _plainAiReply(reply),
           'sources':
               (data['sources'] as List?)?.whereType<String>().toList(
@@ -714,14 +830,31 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
     } on ApiException {
       if (!mounted) return;
       setState(() {
-        _messages.add({'isMe': false, 'text': _chatFailureMessage});
+        _messages.add({
+          'isMe': false,
+          'text': _chatFailureMessage,
+          'createdAt': DateTime.now().toIso8601String(),
+        });
       });
     } catch (error) {
       if (!mounted) return;
       setState(() {
-        _messages.add({'isMe': false, 'text': '통신 중 문제가 발생했습니다.\n다시 시도해주세요.'});
+        _messages.add({
+          'isMe': false,
+          'text': '통신 중 문제가 발생했습니다.\n다시 시도해주세요.',
+          'createdAt': DateTime.now().toIso8601String(),
+        });
       });
     } finally {
+      try {
+        await _saveConversation();
+      } catch (_) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('답변은 받았지만 대화를 저장하지 못했어요.')),
+          );
+        }
+      }
       if (mounted) {
         setState(() => _isLoading = false);
         _scrollToBottom();
@@ -808,6 +941,13 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
   @override
   Widget build(BuildContext context) {
     // 아직 아무것도 안 물어봤을 때만 예시 질문을 보여준다.
+    final largeText = MediaQuery.textScalerOf(context).scale(16) > 24;
+    final historyButton = TextButton(
+      onPressed: _isLoading || _isLoadingMedicines
+          ? null
+          : _openPreviousConversations,
+      child: const Text('이전 대화', style: TextStyle(fontSize: 16)),
+    );
     final showSuggestions =
         _messages.length <= 1 && _selectedMedicines.length == 1;
     final subject = _selectedMedicine?.trim();
@@ -831,18 +971,26 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
-                          '무엇이든 물어보세요',
-                          style: AppText.screenTitle(size: 24),
+                        FittedBox(
+                          fit: BoxFit.scaleDown,
+                          alignment: Alignment.centerLeft,
+                          child: Text(
+                            '무엇이든 물어보세요',
+                            style: AppText.screenTitle(size: 24),
+                          ),
                         ),
                         const SizedBox(height: 2),
-                        Text(
-                          '약 이야기를 쉬운 말로 알려드려요',
-                          style: AppText.caption(size: 16.5),
-                        ),
+                        if (largeText)
+                          historyButton
+                        else
+                          Text(
+                            '약 이야기를 쉬운 말로 알려드려요',
+                            style: AppText.caption(size: 16.5),
+                          ),
                       ],
                     ),
                   ),
+                  if (!largeText) historyButton,
                 ],
               ),
             ),
@@ -1446,6 +1594,149 @@ class _DrugSearchCandidate {
       itemSeq: optionalText(json['item_seq']),
     );
   }
+}
+
+String _conversationDate(dynamic value) {
+  final date = DateTime.tryParse(value?.toString() ?? '')?.toLocal();
+  if (date == null) return '';
+  String two(int number) => number.toString().padLeft(2, '0');
+  return '${date.year}.${two(date.month)}.${two(date.day)} ${two(date.hour)}:${two(date.minute)}';
+}
+
+class _PreviousConversationsScreen extends StatelessWidget {
+  final List<Map<String, dynamic>> records;
+  const _PreviousConversationsScreen({required this.records});
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    backgroundColor: AppColors.bg,
+    body: SafeArea(
+      child: Column(
+        children: [
+          const SeniorBackHeader(title: '이전 대화'),
+          Expanded(
+            child: records.isEmpty
+                ? Center(
+                    child: Text(
+                      '아직 저장된 대화가 없어요.',
+                      style: AppText.caption(size: 18),
+                    ),
+                  )
+                : ListView.separated(
+                    padding: const EdgeInsets.all(20),
+                    itemCount: records.length,
+                    separatorBuilder: (_, _) => const SizedBox(height: 14),
+                    itemBuilder: (context, index) {
+                      final record = records[index];
+                      final messages = record['messages'] as List;
+                      final first = messages.firstWhere(
+                        (item) => item['isMe'] == true,
+                      );
+                      return SeniorCard(
+                        onTap: () async {
+                          final resume = await Navigator.of(context).push<bool>(
+                            MaterialPageRoute(
+                              builder: (_) =>
+                                  _PreviousConversationScreen(record: record),
+                            ),
+                          );
+                          if (resume == true && context.mounted) {
+                            Navigator.of(context).pop(record);
+                          }
+                        },
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              record['title'] as String,
+                              style: AppText.cardTitle(size: 21),
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              _conversationDate(record['updatedAt']),
+                              style: AppText.caption(size: 16),
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              first['text'] as String,
+                              style: AppText.label(size: 18),
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
+          ),
+        ],
+      ),
+    ),
+  );
+}
+
+class _PreviousConversationScreen extends StatelessWidget {
+  final Map<String, dynamic> record;
+  const _PreviousConversationScreen({required this.record});
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    backgroundColor: AppColors.bg,
+    body: SafeArea(
+      child: Column(
+        children: [
+          const SeniorBackHeader(title: '이전 대화'),
+          Expanded(
+            child: ListView(
+              padding: const EdgeInsets.all(20),
+              children: [
+                Text(
+                  record['title'] as String,
+                  style: AppText.cardTitle(size: 21),
+                ),
+                const SizedBox(height: 16),
+                for (final message in record['messages'] as List) ...[
+                  Text(
+                    _conversationDate(
+                      message['createdAt'] ?? record['updatedAt'],
+                    ),
+                    style: AppText.caption(size: 14),
+                  ),
+                  const SizedBox(height: 6),
+                  _ChatBubble(
+                    text: message['text'] as String,
+                    isMe: message['isMe'] == true,
+                    sources: (message['sources'] as List? ?? [])
+                        .whereType<String>()
+                        .toList(),
+                    isHealthReply: message['isHealthReply'] == true,
+                    healthHighlightTerms:
+                        (message['healthHighlightTerms'] as List? ?? [])
+                            .whereType<String>()
+                            .toList(),
+                    officialProductNames:
+                        (message['officialProductNames'] as List? ?? [])
+                            .whereType<String>()
+                            .toList(),
+                  ),
+                  const SizedBox(height: 12),
+                ],
+              ],
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.all(20),
+            child: SeniorButton(
+              label: '이어서 대화하기',
+              onPressed: () => Navigator.of(context).pop(true),
+            ),
+          ),
+        ],
+      ),
+    ),
+  );
 }
 
 class _ChatBubble extends StatelessWidget {

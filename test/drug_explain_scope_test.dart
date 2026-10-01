@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
   http.Response response(Object value) => http.Response(
@@ -39,7 +40,10 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  setUp(() => MvpSession.userId = 'scope-user');
+  setUp(() {
+    MvpSession.userId = 'scope-user';
+    SharedPreferences.setMockInitialValues({});
+  });
 
   testWidgets('최근 대화 전달과 출처 표시, 약 범위 변경 시 문맥 초기화', (tester) async {
     final requests = <Map<String, dynamic>>[];
