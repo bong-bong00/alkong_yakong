@@ -4,6 +4,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:alkong_yakong/core/theme/app_theme.dart';
+import 'package:alkong_yakong/core/constants/app_colors.dart';
+import 'package:alkong_yakong/core/widgets/senior_card.dart';
 import 'package:alkong_yakong/features/medicines/application/user_medicines_controller.dart';
 import 'package:alkong_yakong/features/medicines/presentation/screens/my_medicines_screen.dart';
 
@@ -20,6 +22,11 @@ class _GroupedFixture extends UserMedicinesController {
         'product_name': entry.value,
         'status': 'active',
         'use_route_type': entry.key,
+        'interaction_status': switch (entry.key) {
+          'eat' => 'risk_found',
+          'apply' => 'none',
+          _ => 'check_needed',
+        },
       }),
   ];
 }
@@ -51,6 +58,14 @@ void main() {
       expect(find.text(label), findsOneWidget);
     }
     expect(find.text('붙이는 약'), findsNothing);
+    expect(find.text('[충돌]'), findsOneWidget);
+    for (final name in ['테스트정', '테스트액', '미확인약']) {
+      final card = tester.widget<SeniorCard>(
+        find.ancestor(of: find.text(name), matching: find.byType(SeniorCard)),
+      );
+      expect(card.borderColor, name == '테스트정' ? AppColors.danger : isNull);
+      if (name == '테스트정') expect(card.borderWidth, 3);
+    }
     expect(tester.takeException(), isNull);
   });
   test('서버의 사용 구분을 그대로 사용하고 unknown을 먹는 약으로 바꾸지 않는다', () {

@@ -309,8 +309,10 @@ class _MedicineCard extends StatelessWidget {
   }
 
   Widget _body(BuildContext context) {
+    final hasConflict = !past && medicine.interactionStatus == 'risk_found';
     return SeniorCard(
       radius: 26,
+      borderColor: hasConflict ? AppColors.danger : null,
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       onTap: () => context.push('/medicines/${medicine.medicineCode}'),
       child: Row(
@@ -319,14 +321,28 @@ class _MedicineCard extends StatelessWidget {
           PillPhoto(size: 56, imageUrl: medicine.imageUrl),
           const SizedBox(width: 14),
           Expanded(
-            child: Text(
-              medicine.displayName,
-              style: AppText.cardTitle(
-                size: 21,
-                color: past ? AppColors.textTertiary : AppColors.textPrimary,
-              ),
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  medicine.displayName,
+                  style: AppText.cardTitle(
+                    size: 21,
+                    color: past
+                        ? AppColors.textTertiary
+                        : AppColors.textPrimary,
+                  ),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                if (hasConflict) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    '[충돌]',
+                    style: AppText.label(size: 18, color: AppColors.danger),
+                  ),
+                ],
+              ],
             ),
           ),
           const SizedBox(width: 10),
