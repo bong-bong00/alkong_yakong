@@ -5,6 +5,7 @@ import 'package:flutter_tabler_icons/flutter_tabler_icons.dart';
 import '../constants/app_colors.dart';
 import '../theme/app_typography.dart';
 import 'senior_button.dart';
+import 'senior_card.dart';
 import 'senior_sheet.dart';
 
 /// 예 / 아니요를 세로로 묻는 상태 안내창.
@@ -253,6 +254,10 @@ class SeniorField extends StatelessWidget {
   /// 오류가 있으면 테두리가 붉어진다.
   final bool hasError;
 
+  /// 흰 카드 안에 놓이는 칸. 흰 면 위에 흰 면은 보이지 않으므로
+  /// #F0F1F5로 채운다 (명세서 28·62).
+  final bool onCard;
+
   const SeniorField({
     super.key,
     required this.controller,
@@ -266,6 +271,7 @@ class SeniorField extends StatelessWidget {
     this.onSubmitted,
     this.textInputAction,
     this.hasError = false,
+    this.onCard = false,
   });
 
   @override
@@ -280,13 +286,15 @@ class SeniorField extends StatelessWidget {
         ],
         Container(
           constraints: const BoxConstraints(minHeight: 66),
+          // 명세서 04: 적는 칸은 흰 면에 카드 그림자다. 테두리는 없다.
+          // 틀린 값일 때만 붉은 테로 짚어 준다.
           decoration: BoxDecoration(
-            color: AppColors.sunken,
+            color: onCard ? AppColors.sunken : AppColors.surface,
             borderRadius: BorderRadius.circular(16),
-            border: Border.all(
-              color: hasError ? AppColors.danger : AppColors.strongLine,
-              width: 2,
-            ),
+            border: hasError
+                ? Border.all(color: AppColors.danger, width: 2)
+                : null,
+            boxShadow: onCard ? null : kCardShadow,
           ),
           padding: EdgeInsets.only(left: 20, right: suffix == null ? 20 : 6),
           child: Row(

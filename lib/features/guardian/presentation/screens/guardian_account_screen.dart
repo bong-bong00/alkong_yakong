@@ -28,7 +28,7 @@ class GuardianAccountScreen extends ConsumerWidget {
     );
 
     return Scaffold(
-      backgroundColor: AppColors.bg,
+      backgroundColor: AppColors.pageBg,
       body: Column(
         children: [
           const SeniorBackHeader(title: '내 계정', alignStart: true),

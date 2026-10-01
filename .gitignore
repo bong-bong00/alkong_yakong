@@ -46,6 +46,7 @@ app.*.map.json
 /android/app/release
 
 alkongyakong.db
+alkongyakong.db-*
 mfds_drug_permission.db
 mfds_drug_permission.db-*
 easy_category_map.db
@@ -59,3 +60,7 @@ all_code2.txt
 # Flutter가 빌드할 때마다 새로 만드는 임시 폴더.
 # 커밋해 두면 윈도우에서 링크를 못 만들어 flutter run이 그대로 멈춘다.
 **/flutter/ephemeral/
+
+# 로컬 OCR 검증 사진과 생성 결과는 저장소에 올리지 않는다.
+/image/testimg(0929)/
+/ocr_eval_*/

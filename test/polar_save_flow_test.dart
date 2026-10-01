@@ -1,7 +1,7 @@
 import 'dart:async';
 
 import 'package:alkong_yakong/core/network/api_client.dart';
-import 'package:alkong_yakong/core/widgets/senior_button.dart';
+import 'package:alkong_yakong/core/polar_pharmacist_ui/widgets/senior_button.dart';
 import 'package:alkong_yakong/features/biosignal/application/heart_sensor.dart';
 import 'package:alkong_yakong/features/biosignal/data/biosignal_dataset_collector.dart';
 import 'package:alkong_yakong/features/biosignal/data/polar_service.dart';

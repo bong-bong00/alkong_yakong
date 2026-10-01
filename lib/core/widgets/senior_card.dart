@@ -1,11 +1,30 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_tabler_icons/flutter_tabler_icons.dart';
 
 import '../constants/app_colors.dart';
 import '../theme/app_typography.dart';
 
-/// 카드. **그림자를 쓰지 않는다** — 배경색([AppColors.bg]) 대비로 분리한다.
+/// 카드. 화면 배경이 흰색이라 색 대비로는 경계가 서지 않는다.
+/// 은은한 그림자 하나로 바닥에서 띄운다 — 테두리를 두르면 칸이
+/// 촘촘해 보이고, 주의를 뜻하는 색 테두리와 헷갈린다.
 /// 강조가 필요한 카드만 3px 포인트/위험색 테두리를 두른다.
+
+/// 카드 그림자. 명세서 0장이 준 두 겹을 그대로 쓴다.
+/// CSS `0 1px 2px rgba(17,17,20,.05), 0 2px 8px rgba(17,17,20,.04)`.
+const List<BoxShadow> kCardShadow = [
+  BoxShadow(color: AppColors.cardShadow, offset: Offset(0, 1), blurRadius: 1),
+  BoxShadow(
+    color: AppColors.cardShadowWide,
+    offset: Offset(0, 2),
+    blurRadius: 6,
+  ),
+];
+
+/// 파란 면으로 채운 칸에만 쓰는 그림자. 같은 파랑을 옅게 깔아
+/// 그 칸이 한 단계 앞에 있다고 말한다 (시안 `rgba(31,66,229,.28)`).
+const List<BoxShadow> kAccentShadow = [
+  BoxShadow(color: AppColors.pointShadow, offset: Offset(0, 4), blurRadius: 14),
+];
+
 /// 색 카드가 뒤에 한 장 더 깔린 카드.
 ///
 /// 왼쪽으로 조금 삐져나온 둥근 네모가 "여기부터 보라"고 말한다.
@@ -36,6 +55,7 @@ class AccentCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: accent,
         borderRadius: BorderRadius.circular(radius),
+        boxShadow: kCardShadow,
       ),
       padding: EdgeInsets.only(left: peek),
       child: Container(
@@ -82,6 +102,7 @@ class SeniorCard extends StatelessWidget {
         border: borderColor == null
             ? null
             : Border.all(color: borderColor!, width: borderWidth),
+        boxShadow: kCardShadow,
       ),
       child: child,
     );
@@ -391,31 +412,54 @@ class LabelValueRow extends StatelessWidget {
   }
 }
 
-/// 약 사진 자리. 사진이 붙기 전까지는 알약 아이콘으로 둔다.
+/// 공식 낱알 사진. 사진이 없거나 로딩에 실패하면 기존 "사진" 자리를 유지.
+/// 테두리는 두르지 않는다.
 ///
 /// 홈 카드와 내 약 목록이 **같은 생김새**를 써야 같은 약으로 읽힌다.
 class PillPhoto extends StatelessWidget {
   final double size;
+  final String? imageUrl;
 
-  const PillPhoto({super.key, required this.size});
+  const PillPhoto({super.key, required this.size, this.imageUrl});
 
   @override
   Widget build(BuildContext context) {
+    final url = imageUrl?.trim() ?? '';
+    final uri = Uri.tryParse(url);
+    final hasImage =
+        uri != null &&
+        (uri.scheme == 'https' || uri.scheme == 'http') &&
+        uri.host.isNotEmpty;
+    final placeholder = Text(
+      '사진',
+      style: AppText.caption(
+        size: 13,
+        color: AppColors.textTertiary,
+        weight: FontWeight.w700,
+      ),
+    );
     return ExcludeSemantics(
       child: Container(
         width: size,
         height: size,
         alignment: Alignment.center,
-        decoration: BoxDecoration(
+        decoration: const BoxDecoration(
           color: AppColors.bg,
           shape: BoxShape.circle,
-          border: Border.all(color: AppColors.border, width: 2),
         ),
-        child: Icon(
-          TablerIcons.pill,
-          size: size * 0.45,
-          color: AppColors.inactive,
-        ),
+        child: hasImage
+            ? ClipOval(
+                child: Image.network(
+                  url,
+                  width: size,
+                  height: size,
+                  fit: BoxFit.contain,
+                  errorBuilder: (_, error, stackTrace) => placeholder,
+                  loadingBuilder: (_, child, progress) =>
+                      progress == null ? child : placeholder,
+                ),
+              )
+            : placeholder,
       ),
     );
   }

@@ -26,7 +26,7 @@ class MedicineArrivedScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.bg,
+      backgroundColor: AppColors.pageBg,
       body: Column(
         children: [
           const SeniorTitleHeader(title: '약이 들어왔어요'),
@@ -115,7 +115,7 @@ class MedicineArrivedScreen extends StatelessWidget {
           SafeArea(
             top: false,
             child: Padding(
-              padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
+              padding: const EdgeInsets.fromLTRB(20, 18, 20, 12),
               child: Column(
                 children: [
                   SeniorButton(

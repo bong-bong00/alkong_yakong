@@ -439,11 +439,13 @@ class MedicationFeatureDurClientTest(unittest.TestCase):
         request = DurAnalyzeRequest(
             user_id="user-1",
             medicine_codes=["100", "200"],
+            medicine_names_by_code={"100": "첫째약정", "200": "둘째약정"},
+            analysis_purpose="consultation",
         )
         with patch.object(dur_analysis, "analyze_dur", return_value={}) as analyze:
             dur_analysis.analyze(request)
 
-        analyze.assert_called_once_with(request, refresh=True)
+        analyze.assert_called_once_with(request, persist=False, refresh=True)
 
     def test_registered_medicine_screen_keeps_stored_reference_path(self):
         request = DurAnalyzeRequest(user_id="user-1")

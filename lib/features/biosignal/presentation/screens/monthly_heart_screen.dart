@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_tabler_icons/flutter_tabler_icons.dart';
 
-import '../../../../core/constants/app_colors.dart';
-import '../../../../core/theme/app_typography.dart';
-import '../../../../core/widgets/senior_card.dart';
-import '../../../../core/widgets/senior_feedback.dart';
-import '../../../../core/widgets/senior_header.dart';
+import '../../../../core/polar_pharmacist_ui/constants/app_colors.dart';
+import '../../../../core/polar_pharmacist_ui/theme/app_typography.dart';
+import '../../../../core/polar_pharmacist_ui/widgets/senior_card.dart';
+import '../../../../core/polar_pharmacist_ui/widgets/senior_feedback.dart';
+import '../../../../core/polar_pharmacist_ui/widgets/senior_header.dart';
 import '../../domain/heart_data.dart';
 import '../widgets/heart_readings_card.dart';
 

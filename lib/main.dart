@@ -1,7 +1,10 @@
-import 'demo_guardian.dart';
+import 'dart:async';
+
+import 'dev_mock.dart';
 import 'features/guardian/presentation/screens/guardian_prescription_screen.dart';
 import 'features/prescription/presentation/screens/medicine_arrived_screen.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -36,10 +39,7 @@ final _router = GoRouter(
   initialLocation: '/login',
   redirect: (context, state) {
     final publicRoute =
-        state.matchedLocation == '/login' ||
-        state.matchedLocation == '/signup' ||
-        // 화면 확인용 임시 통로. 확인이 끝나면 지운다.
-        state.matchedLocation == '/demo-guardian';
+        state.matchedLocation == '/login' || state.matchedLocation == '/signup';
     if (!AuthSession.isLoggedIn) return publicRoute ? null : '/login';
     return publicRoute ? '/' : null;
   },
@@ -49,7 +49,8 @@ final _router = GoRouter(
     GoRoute(path: '/', builder: (context, state) => const RoleShell()),
     GoRoute(
       path: '/guardian',
-      builder: (context, state) => const GuardianHomeScreen(),
+      builder: (context, state) =>
+          GuardianHomeScreen(alertsRepository: mockAlertRepository()),
     ),
     GoRoute(
       path: '/first-run',
@@ -80,10 +81,6 @@ final _router = GoRouter(
       },
     ),
     // 화면 확인용 임시 경로. 확인이 끝나면 지운다.
-    GoRoute(
-      path: '/demo-guardian',
-      builder: (context, state) => const DemoGuardianScreen(),
-    ),
     GoRoute(
       path: '/prescription',
       builder: (context, state) => const PrescriptionScreen(),
@@ -124,8 +121,10 @@ final _router = GoRouter(
     ),
     GoRoute(
       path: '/biosignal',
-      builder: (context, state) =>
-          const HeartScreen(routeBasedMeasurement: true),
+      builder: (context, state) => HeartScreen(
+        routeBasedMeasurement: true,
+        repository: mockHeartRepository(),
+      ),
       routes: [
         GoRoute(
           path: 'measure',
@@ -176,27 +175,75 @@ final _router = GoRouter(
   ],
 );
 
-void main() async {
+void main() {
   WidgetsFlutterBinding.ensureInitialized();
+  // 어르신이 폰을 눕혀 쥐어도 화면이 돌지 않는다.
+  unawaited(
+    SystemChrome.setPreferredOrientations([
+      DeviceOrientation.portraitUp,
+      DeviceOrientation.portraitDown,
+    ]),
+  );
+  // 가짜 데이터는 개발 빌드에서만 깔린다. 배포 빌드에서는 빈 목록이다.
+  final container = ProviderContainer(overrides: devMockOverrides());
+  final sessionReady = _restoreSession(container);
+  // 알림 초기화는 화면·로그인 확인을 기다리게 하지 않는다.
+  final remindersReady = ReminderNotifications.instance.initialize().catchError(
+    (_) {},
+  );
+  unawaited(
+    _warmAlarmPreferences(container, sessionReady, remindersReady).catchError(
+      (Object error) => debugPrint(
+        '[STARTUP_DIAG] alarm_prepare_failed=${error.runtimeType}',
+      ),
+    ),
+  );
+  runApp(
+    UncontrolledProviderScope(
+      container: container,
+      child: _StartupGate(sessionReady: sessionReady),
+    ),
+  );
+}
+
+Future<void> _restoreSession(ProviderContainer container) async {
+  final timer = Stopwatch()..start();
   final restoredUser = await restorePersistedSession(UserRepository());
-  try {
-    await ReminderNotifications.instance.initialize();
-  } catch (_) {
-    // 알림을 못 켜도 앱은 떠야 한다.
-  }
-  final container = ProviderContainer();
   if (restoredUser != null) {
     container.read(userRoleProvider.notifier).state = restoredUser.isGuardian
         ? UserRole.guardian
         : UserRole.patient;
   }
-  // 알림 설정을 미리 읽어 두어야 내 정보 화면을 열지 않아도 약 시간 알림이 예약된다.
+  debugPrint('[STARTUP_DIAG] session_restore_ms=${timer.elapsedMilliseconds}');
+}
+
+Future<void> _warmAlarmPreferences(
+  ProviderContainer container,
+  Future<void> sessionReady,
+  Future<void> remindersReady,
+) async {
+  await Future.wait([sessionReady, remindersReady]);
+  // 사용자 확인과 플러그인 준비가 끝난 뒤에만 알림을 예약한다.
   container.read(alarmPreferencesProvider);
-  runApp(
-    UncontrolledProviderScope(
-      container: container,
-      child: const AlkongYakongApp(),
-    ),
+}
+
+class _StartupGate extends StatelessWidget {
+  final Future<void> sessionReady;
+
+  const _StartupGate({required this.sessionReady});
+
+  @override
+  Widget build(BuildContext context) => FutureBuilder<void>(
+    future: sessionReady,
+    builder: (context, snapshot) {
+      if (snapshot.connectionState == ConnectionState.done) {
+        return const AlkongYakongApp();
+      }
+      return const MaterialApp(
+        debugShowCheckedModeBanner: false,
+        home: Scaffold(body: Center(child: CircularProgressIndicator())),
+      );
+    },
   );
 }
 
@@ -226,7 +273,9 @@ class RoleShell extends ConsumerWidget {
     final role = ref.watch(userRoleProvider);
     return switch (role) {
       UserRole.patient => const HomeScreen(),
-      UserRole.guardian => const GuardianHomeScreen(),
+      UserRole.guardian => GuardianHomeScreen(
+        alertsRepository: mockAlertRepository(),
+      ),
     };
   }
 }

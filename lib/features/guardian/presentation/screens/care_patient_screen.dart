@@ -75,13 +75,13 @@ class CarePatientScreen extends ConsumerWidget {
       final drinking = profile?.drinking;
       if (smoking == null && drinking == null) return null;
       return [
-        if (smoking != null) '담배 $smoking',
+        if (smoking != null) '담배 ${lifestyleLabel(smoking)}',
         if (drinking != null) '술 $drinking',
       ].join(' · ');
     }
 
     return Scaffold(
-      backgroundColor: AppColors.bg,
+      backgroundColor: AppColors.pageBg,
       body: Column(
         children: [
           SeniorBackHeader(title: patient.title, alignStart: true),

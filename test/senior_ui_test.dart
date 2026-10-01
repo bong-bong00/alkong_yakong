@@ -123,7 +123,10 @@ void main() {
       child: MaterialApp(
         theme: AppTheme.build(),
         home: MediaQuery(
-          data: MediaQueryData(textScaler: TextScaler.linear(textScale)),
+          data: MediaQueryData(
+            textScaler: TextScaler.linear(textScale),
+            disableAnimations: true,
+          ),
           child: Scaffold(body: child),
         ),
       ),
@@ -180,7 +183,7 @@ void main() {
     await tester.pumpAndSettle();
     // 기록보다 시트가 먼저다. 띠를 차고 계시면 심박수를 잴 기회이기 때문이다.
     expect(find.textContaining('심박 센서를'), findsOneWidget);
-    expect(find.text('차고 있어요 · 측정'), findsOneWidget);
+    expect(find.text('차고 있어요 · 재기'), findsOneWidget);
     expect(find.text('안 차고 있어요 · 복약만 기록'), findsOneWidget);
     expect(find.text('그만두기'), findsOneWidget);
   });
@@ -294,25 +297,7 @@ void main() {
 // ════════════════════════════════════════════════════════════════
 
 void _easyModeTests() {
-  testWidgets('쉬운 모드는 탭 대신 "다음 한 걸음" 버튼 하나를 쓴다 (40)', (tester) async {
-    SharedPreferences.setMockInitialValues({});
-    await tester.pumpWidget(
-      ProviderScope(
-        overrides: [appModeProvider.overrideWith((ref) => _EasyMode())],
-        child: MaterialApp(theme: AppTheme.build(), home: const HomeScreen()),
-      ),
-    );
-    await tester.pump();
-
-    expect(find.byType(SeniorBottomNav), findsNothing);
-    expect(find.text(kEasyFlow.first.nextLabel), findsOneWidget);
-    // 아바타 자리가 메뉴 버튼으로 바뀐다.
-    expect(find.text('메뉴'), findsOneWidget);
-    // 모드 배지는 파랑으로 차 있다.
-    expect(find.text('쉬운 화면'), findsOneWidget);
-  });
-
-  testWidgets('약을 안 눌렀는데 넘어가려 하면 한 번 묻는다 (42)', (tester) async {
+  testWidgets('쉬운 모드는 탭 대신 걸음 하나씩 지나간다 (명세서 76)', (tester) async {
     SharedPreferences.setMockInitialValues({});
     await tester.pumpWidget(
       ProviderScope(
@@ -320,19 +305,68 @@ void _easyModeTests() {
           appModeProvider.overrideWith((ref) => _EasyMode()),
           medicationProvider.overrideWith(_SeniorTestMedicationController.new),
         ],
-        child: MaterialApp(theme: AppTheme.build(), home: const HomeScreen()),
+        child: MaterialApp(
+          theme: AppTheme.build(),
+          home: const MediaQuery(
+            data: MediaQueryData(disableAnimations: true),
+            child: HomeScreen(),
+          ),
+        ),
       ),
     );
     await tester.pump();
 
-    await tester.tap(find.text(kEasyFlow.first.nextLabel));
-    await tester.pumpAndSettle();
+    expect(find.byType(SeniorBottomNav), findsNothing);
+    // 첫 걸음의 주 버튼 (명세서 76).
+    expect(find.text('복약 전 심박 측정'), findsOneWidget);
+    // 아바타 자리가 메뉴 버튼으로 바뀐다.
+    expect(find.text('메뉴'), findsOneWidget);
+    // 시안대로 나가는 길을 이름으로 적는다. 지금이 쉬운 화면이라는 것은
+    // 걸음 표시와 이 단추가 함께 말한다.
+    expect(find.text('일반 화면으로'), findsOneWidget);
+    expect(find.text('1 / 8'), findsOneWidget);
+  });
 
-    // 자동으로 "안 드셨어요"로 확정하지 않는다.
-    expect(find.textContaining('아직 안 누르셨어요'), findsOneWidget);
-    expect(find.text('먹었어요 · 다음으로'), findsOneWidget);
-    expect(find.text('그냥 넘어갈게요'), findsOneWidget);
-    expect(find.text('이 화면에 그대로 있기'), findsOneWidget);
+  testWidgets('복약 한 바퀴는 재기 → 약 → 다시 재기 순서로 간다 (명세서 76~81)', (tester) async {
+    SharedPreferences.setMockInitialValues({});
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          appModeProvider.overrideWith((ref) => _EasyMode()),
+          medicationProvider.overrideWith(_SeniorTestMedicationController.new),
+        ],
+        child: MaterialApp(
+          theme: AppTheme.build(),
+          home: const MediaQuery(
+            data: MediaQueryData(disableAnimations: true),
+            child: HomeScreen(),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    // 1걸음 → 2걸음: 가슴 띠 차는 방법을 먼저 보여 준다.
+    await tester.tap(find.text('복약 전 심박 측정'));
+    await tester.pumpAndSettle();
+    expect(find.text('차 주세요'), findsOneWidget);
+    expect(find.text('2 / 8'), findsOneWidget);
+    expect(find.text('팔꿈치 위에 차요'), findsOneWidget);
+
+    // 첫 걸음의 "안 잴래요"를 고르면 재는 걸음을 건너뛴다.
+    await tester.tap(find.text('뒤로'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('안 잴래요'));
+    await tester.pumpAndSettle();
+    expect(find.text('복약 완료하셨나요?'), findsOneWidget);
+    expect(find.text('5 / 8'), findsOneWidget);
+
+    // 심박수를 안 쟀으면 먹은 뒤에 재자고 묻지 않는다.
+    await tester.tap(find.text('먹었어요'));
+    await tester.pumpAndSettle();
+    expect(find.text('한 번 더 재요'), findsNothing);
+    expect(find.text('다 드셨어요'), findsOneWidget);
+    expect(find.text('복약 기록'), findsOneWidget);
   });
 
   test('쉬운 모드가 부르는 화면은 모두 일반 모드에도 있는 화면이다', () {
@@ -349,10 +383,12 @@ void _easyModeTests() {
     }
   });
 
-  test('측정 중에는 하단 바를 숨긴다', () {
+  test('스스로 흐름을 이끄는 화면에서는 하단 바를 숨긴다', () {
     // 자기 흐름을 끝까지 마쳐야 하는 화면에서는 "다음"이 방해가 된다.
     expect(showsEasyBar(EasyScreen.measure), isFalse);
-    expect(showsEasyBar(EasyScreen.today), isTrue);
+    // 오늘 화면은 명세서 76~85의 걸음을 스스로 이끈다.
+    expect(showsEasyBar(EasyScreen.today), isFalse);
+    expect(showsEasyBar(EasyScreen.record), isTrue);
   });
 
   test('메뉴에서 갈 수 있는 곳이 흐름보다 넓다', () {
@@ -430,6 +466,9 @@ void _forbiddenFeatureTests() {
     for (final file in dartFiles()) {
       final path = file.path.replaceAll(r'\', '/');
       if (path.endsWith('core/widgets/senior_feedback.dart')) continue;
+      if (path.endsWith('polar_pharmacist_ui/widgets/senior_feedback.dart')) {
+        continue;
+      }
       final text = file.readAsStringSync();
       expect(
         text.contains('showSnackBar('),
@@ -517,8 +556,9 @@ void _signupTests() {
   testWidgets('보호자는 건강 질문을 받지 않는다', (tester) async {
     await tester.pumpWidget(wrap(const SignupScreen()));
     // 보호자는 남의 복약을 지켜볼 뿐이라 자기 지병을 물을 이유가 없다.
-    await tester.tap(find.text('돌보는 가족(보호자)'));
+    await tester.tap(find.text('돌보는 가족'));
     await tester.pump();
+    // 역할 · 기본 정보 · 약관, 세 걸음이 전부다.
     expect(find.text('1 / 3'), findsOneWidget);
   });
 
@@ -528,27 +568,30 @@ void _signupTests() {
         child: MaterialApp(
           theme: AppTheme.build(),
           home: MediaQuery(
-            data: const MediaQueryData(textScaler: TextScaler.linear(2.0)),
+            data: const MediaQueryData(
+              textScaler: TextScaler.linear(2.0),
+              disableAnimations: true,
+            ),
             child: const SignupScreen(),
           ),
         ),
       ),
     );
 
-    // 0단계 · 역할
+    // 1걸음 · 역할
     await tester.tap(find.text('약을 드시는 분'));
     await tester.pump();
     await tester.tap(find.text('다음'));
     await tester.pumpAndSettle();
 
-    // 1단계 · 기본 정보
+    // 2걸음 · 기본 정보
     await tester.enterText(find.byType(TextField).at(0), '김복자');
     await tester.enterText(find.byType(TextField).at(1), '01012345678');
     await tester.enterText(find.byType(TextField).at(2), 'abc123');
     await tester.tap(find.text('다음'));
     await tester.pumpAndSettle();
 
-    // 2단계 · 생년월일과 성별
+    // 3걸음 · 생년월일과 성별
     await tester.tap(find.text('생년월일'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('확인'));
@@ -558,15 +601,17 @@ void _signupTests() {
     await tester.tap(find.text('다음'));
     await tester.pumpAndSettle();
 
-    // 3단계 · 키·몸무게·혈액형.
+    // 4걸음 · 키·몸무게·혈액형.
     expect(find.text('혈액형'), findsOneWidget);
     expect(tester.takeException(), isNull);
 
     await tester.tap(find.text('다음'));
     await tester.pumpAndSettle();
 
-    // 4단계 · 임신 (여성일 때만 나온다)
-    expect(find.text('젖을 먹이고 있어요'), findsOneWidget);
+    // 5걸음 · 임신 (여성일 때만 나온다). 네/아니요로 먼저 묻는다.
+    expect(find.text('지금 임신 중이거나\n젖을 먹이고 계신가요?'), findsOneWidget);
+    expect(find.text('네'), findsOneWidget);
+    expect(find.text('아니요'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
@@ -578,12 +623,13 @@ void _signupTests() {
     for (final question in [
       "title: '키와 몸무게,",
       "title: '지금 임신 중이거나",
-      "title: '담배와 술은",
-      "title: '약물 알레르기가",
-      "title: '지금 앓고 있는",
-      "title: '과거에 앓았던 병이",
-      "title: '가족이 앓은 병이",
-      "title: '보호자 연락처를",
+      "title: '담배를",
+      "title: '술은 얼마나",
+      "title: '약을 먹고 두드러기가 나거나",
+      "title: '지금 치료받고 있는",
+      "title: '예전에 크게",
+      "title: '부모님이나 형제가",
+      "title: '약을 놓치시면",
     ]) {
       expect(source.contains(question), isTrue, reason: '$question 단계가 없다');
     }
@@ -700,7 +746,7 @@ void _sensorTests() {
     await tester.tap(find.text('다시 불러오기'));
     await tester.pump();
     await tester.pump();
-    expect(find.text('오늘 측정'), findsOneWidget);
+    expect(find.text('약 먹기 전'), findsOneWidget);
     expect(find.text('78'), findsOneWidget);
     expect(find.text('72'), findsOneWidget);
   });
@@ -711,7 +757,7 @@ void _sensorTests() {
     );
     await tester.pump();
     expect(find.text('아직 측정 기록이 없어요'), findsOneWidget);
-    expect(find.text('오늘 측정'), findsNothing);
+    expect(find.text('먹기 전'), findsNothing);
   });
 
   testWidgets('보호자가 어르신 id로 열면 그 기록을 읽고 재기 버튼은 없다 (24)', (tester) async {
@@ -721,7 +767,7 @@ void _sensorTests() {
     );
     await tester.pump();
     expect(repository.lastUserId, 'patient-1');
-    expect(find.text('지금 측정'), findsNothing);
+    expect(find.text('지금 재기'), findsNothing);
   });
 
   test('측정 전에는 최저·최고 값을 지어내지 않는다', () {
@@ -805,7 +851,10 @@ void _backButtonTests() {
     child: MaterialApp(
       theme: AppTheme.build(),
       home: MediaQuery(
-        data: MediaQueryData(textScaler: TextScaler.linear(textScale)),
+        data: MediaQueryData(
+          textScaler: TextScaler.linear(textScale),
+          disableAnimations: true,
+        ),
         child: child,
       ),
     ),
@@ -878,11 +927,16 @@ void _backButtonTests() {
 
 /// B장 — 홈은 시간 축이다.
 void _homeTimelineTests() {
+  /// 오늘 홈의 동그라미는 심장처럼 계속 뛴다. 켜 둔 채로는
+  /// `pumpAndSettle`이 끝나지 않으므로 테스트에서는 움직임을 끈다.
   Widget home({required List<DoseEntry> doses}) => ProviderScope(
     overrides: [medicationProvider.overrideWith(() => _FixedMedication(doses))],
     child: MaterialApp(
       theme: AppTheme.build(),
-      home: const Scaffold(body: PatientHomeScreen()),
+      home: const MediaQuery(
+        data: MediaQueryData(disableAnimations: true),
+        child: Scaffold(body: PatientHomeScreen()),
+      ),
     ),
   );
 
@@ -961,7 +1015,9 @@ void _homeTimelineTests() {
     expect(find.text('아침 심박수'), findsNothing);
   });
 
-  testWidgets('잰 시간대에는 전·후가 함께 보인다', (tester) async {
+  testWidgets('오늘 홈은 심박수를 싣지 않는다', (tester) async {
+    // 시안의 오늘 홈에는 심박 수치가 없다. 한 화면에서 두 가지를 말하면
+    // 무엇을 해야 하는지가 흐려진다 — 심박은 심박수 화면에서 본다.
     await tester.pumpWidget(
       home(
         doses: [
@@ -979,8 +1035,8 @@ void _homeTimelineTests() {
       ),
     );
     await tester.pump();
-    expect(find.text('아침 심박수'), findsOneWidget);
-    expect(find.textContaining('78 → 72'), findsOneWidget);
+    expect(find.text('아침 심박수'), findsNothing);
+    expect(find.textContaining('78 → 72'), findsNothing);
   });
 
   test('심박수 문구는 빠른 쪽을 먼저 말한다', () {
@@ -1008,7 +1064,7 @@ void _homeTimelineTests() {
     expect(same.phrase, '평소와 비슷');
   });
 
-  testWidgets('이미 드신 약은 "오늘 다른 약"에 이름으로 남는다', (tester) async {
+  testWidgets('드신 때와 아직인 때를 때 칩으로 말한다', (tester) async {
     await tester.pumpWidget(
       home(
         doses: const [
@@ -1029,13 +1085,17 @@ void _homeTimelineTests() {
     );
     await tester.pump();
 
-    // 지난 복약을 행으로 쌓지 않고, 지금 카드 안에서 한 번만 말한다.
-    expect(find.text('오늘 다른 약'), findsOneWidget);
-    expect(find.text('메트포르민'), findsOneWidget);
-    expect(find.text('아스피린'), findsOneWidget);
+    // 약이 없는 때는 "없음"으로, 드실 차례는 시각까지 적는다.
+    expect(find.text('아침 없음'), findsOneWidget);
+    expect(find.text('점심'), findsOneWidget);
+    expect(find.text('저녁 6:00'), findsOneWidget);
+
+    // 약 이름은 홈에 늘어놓지 않는다 — "약 보기"에서 본다.
+    expect(find.text('메트포르민'), findsNothing);
+    expect(find.text('약 보기'), findsOneWidget);
   });
 
-  testWidgets('아직 오지 않은 약은 오늘 다른 약에 이름만 남긴다', (tester) async {
+  testWidgets('아직 드시지 않았으면 큰 단추가 "먹었어요"다', (tester) async {
     await tester.pumpWidget(
       home(
         doses: const [
@@ -1052,10 +1112,9 @@ void _homeTimelineTests() {
     );
     await tester.pump();
 
-    expect(find.text('아침정'), findsOneWidget);
-    expect(find.text('저녁정'), findsOneWidget);
-    expect(find.text('저녁에 있어요'), findsOneWidget);
+    expect(find.textContaining('2번 남았어요'), findsOneWidget);
     expect(find.text('먹었어요'), findsOneWidget);
+    expect(find.text('30분 뒤'), findsOneWidget);
   });
 
   test('접고 펴는 버튼에 화살표 장식을 붙이지 않는다', () {
@@ -1239,13 +1298,14 @@ void _recordTimelineTests() {
 
     expect(find.text('3월 2일'), findsOneWidget);
     // 지난 날이므로 아직 오지 않은 때가 아니라 빠뜨린 것으로 읽는다.
-    expect(find.text('드셨어요'), findsOneWidget);
-    expect(find.text('못 드셨어요'), findsOneWidget);
+    // 칸에는 때 이름과 시각만 적히므로(명세서 43) 상태는 낭독 글로 확인한다.
+    expect(find.bySemanticsLabel(RegExp('아침 드셨어요')), findsOneWidget);
+    expect(find.bySemanticsLabel(RegExp('저녁 못 드셨어요')), findsOneWidget);
 
     await tester.tap(find.text('1'));
     await tester.pump();
     expect(find.text('3월 1일'), findsOneWidget);
-    expect(find.text('드셨어요'), findsNWidgets(2));
+    expect(find.bySemanticsLabel(RegExp('^(아침|저녁) 드셨어요')), findsNWidgets(2));
   });
 }
 
@@ -1270,11 +1330,13 @@ void _medicinesByTimeTests() {
     final source = File(
       'lib/features/medicines/presentation/screens/my_medicines_screen.dart',
     ).readAsStringSync();
-    expect(source.contains('약을 누르면 설명이 나와요'), isTrue);
-    // 홈과 같은 사진 자리를 쓴다. 다른 모양이면 다른 약으로 읽힌다.
-    expect(source.contains('PillPhoto(size: 56)'), isTrue);
+    // 시안 38은 "지금 드시는 약" 옆에 이 말을 붙여 둔다.
+    expect(source.contains('누르면 설명이 나와요'), isTrue);
+    // 약마다 같은 사진 자리를 쓴다. 다른 모양이면 다른 약으로 읽힌다.
+    // 크기는 화면마다 다를 수 있으므로 같은 위젯을 쓰는지만 본다.
+    expect(source.contains('PillPhoto(size:'), isTrue);
     // 지금 안 드시는 약은 줄 하나로 접어 둔다.
-    expect(source.contains('이전에 등록한 약'), isTrue);
+    expect(source.contains('이전에 사용한 약'), isTrue);
   });
 }
 
@@ -1283,6 +1345,23 @@ void _confirmPreviewTests() {
   final confirm = File(
     'lib/features/prescription/presentation/screens/prescription_screen.dart',
   ).readAsStringSync();
+
+  test('OCR 확인 및 수정 화면은 서버가 준 회 단위를 유지한다', () {
+    final display = confirm.substring(
+      confirm.indexOf('static String _takeAmountLabel('),
+      confirm.indexOf('static String? _seniorExplanation('),
+    );
+    expect(display.contains("'회' => '회'"), isTrue);
+    expect(display.contains('알|정|캡슐|포|개|회|mL'), isTrue);
+    final edit = confirm.substring(
+      confirm.indexOf('static String? _editableDoseUnit('),
+    );
+    expect(edit.contains("'회' => '회'"), isTrue);
+    expect(
+      confirm.contains('알|정|캡슐|포|개|회|mL|ml|방울|T|TAB|C|CAP|PKG|EA)?'),
+      isTrue,
+    );
+  });
 
   test('OCR 확인 화면은 원문 이름과 공식 품목 식별자를 구분한다', () {
     // 화면에는 구구절절 적지 않는다(프로토타입 78). 다만 사진에서 읽은
@@ -1358,6 +1437,11 @@ void _colorTokenTests() {
       // 정의한 파일 자신이 위반으로 잡힌다.
       final path = file.path.replaceAll(r'\', '/');
       if (path.endsWith('core/constants/app_colors.dart')) continue;
+      if (path.endsWith('polar_pharmacist_ui/constants/app_colors.dart')) {
+        continue;
+      }
+      // OCR·약 자세히는 합의된 이전 화면 색 토큰을 따로 유지한다.
+      if (path.endsWith('core/constants/medicine_flow_colors.dart')) continue;
       if (path.endsWith(
         'features/prescription/presentation/screens/prescription_screen.dart',
       )) {

@@ -414,7 +414,7 @@ class _ProfileEditScreenState extends ConsumerState<ProfileEditScreen> {
       body: SafeArea(
         child: Column(
           children: [
-            const SeniorBackHeader(title: '내 정보 고치기'),
+            const SeniorBackHeader(title: '내 정보 수정'),
             Expanded(
               child: _original == null ? _buildLoading() : _buildForm(accent),
             ),
@@ -484,29 +484,20 @@ class _ProfileEditScreenState extends ConsumerState<ProfileEditScreen> {
                       ? '아직 안 고르셨어요'
                       : '${birth.year}년 ${birth.month}월 ${birth.day}일',
                   empty: birth == null,
+                  icon: Icons.calendar_month_rounded,
                   onTap: _pickBirth,
                 ),
                 const SizedBox(height: 18),
                 Text('성별', style: AppText.label(size: 18)),
                 const SizedBox(height: 8),
-                Row(
-                  children: [
-                    Expanded(
-                      child: _ChoiceBox(
-                        label: '여자',
-                        selected: _gender == 'F',
-                        onTap: () => setState(() => _gender = 'F'),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: _ChoiceBox(
-                        label: '남자',
-                        selected: _gender == 'M',
-                        onTap: () => setState(() => _gender = 'M'),
-                      ),
-                    ),
-                  ],
+                _PickRow(
+                  value: switch (_gender) {
+                    'F' => '여자',
+                    'M' => '남자',
+                    _ => '아직 안 고르셨어요',
+                  },
+                  empty: _gender != 'F' && _gender != 'M',
+                  onTap: _pickGender,
                 ),
               ],
             ),
@@ -591,7 +582,7 @@ class _ProfileEditScreenState extends ConsumerState<ProfileEditScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('키 / 몸무게', style: AppText.label(size: 18)),
+                  Text('키 (cm) · 몸무게 (kg)', style: AppText.label(size: 18)),
                   const SizedBox(height: 8),
                   Row(
                     children: [
@@ -627,20 +618,18 @@ class _ProfileEditScreenState extends ConsumerState<ProfileEditScreen> {
                   const SizedBox(height: 18),
                   Text('담배', style: AppText.label(size: 18)),
                   const SizedBox(height: 8),
-                  Row(
-                    children: [
-                      for (int i = 0; i < _smokingOptions.length; i++) ...[
-                        if (i > 0) const SizedBox(width: 10),
-                        Expanded(
-                          child: _ChoiceBox(
-                            label: _smokingOptions[i],
-                            selected: _smoking == _smokingOptions[i],
-                            onTap: () =>
-                                setState(() => _smoking = _smokingOptions[i]),
-                          ),
-                        ),
-                      ],
-                    ],
+                  _ChoiceRow(
+                    options: _smokingOptions,
+                    selected: _smoking,
+                    onPick: (value) => setState(() => _smoking = value),
+                  ),
+                  const SizedBox(height: 18),
+                  Text('술', style: AppText.label(size: 18)),
+                  const SizedBox(height: 8),
+                  _ChoiceRow(
+                    options: _drinkingOptions,
+                    selected: _drinking,
+                    onPick: (value) => setState(() => _drinking = value),
                   ),
                   const SizedBox(height: 18),
                   Text('약물 알레르기', style: AppText.label(size: 18)),
@@ -674,6 +663,18 @@ class _ProfileEditScreenState extends ConsumerState<ProfileEditScreen> {
     );
   }
 
+  Future<void> _pickGender() async {
+    const options = ['여자', '남자'];
+    final picked = await showSeniorWheel(
+      context: context,
+      title: '성별을 고르세요',
+      options: options,
+      selectedIndex: _gender == 'M' ? 1 : 0,
+    );
+    if (picked == null) return;
+    setState(() => _gender = picked == 1 ? 'M' : 'F');
+  }
+
   /// 혈액형은 여덟 가지뿐이다. 칸을 여덟 개 깔지 않고 굴려서 고른다.
   Future<void> _pickBlood() async {
     final at = _bloodOptions.indexOf(_blood ?? '');
@@ -701,57 +702,43 @@ const List<String> _bloodOptions = [
 
 const List<String> _smokingOptions = ['안 폈어요', '폈어요', '끊었어요'];
 
-/// 눌러서 고르는 줄 — 값은 왼쪽, "고르기"는 오른쪽 (프로토타입 43번).
-class _PickRow extends StatelessWidget {
-  final String value;
-  final bool empty;
-  final VoidCallback onTap;
+const List<String> _drinkingOptions = ['안 마셔요', '가끔 마셔요', '자주 마셔요'];
 
-  const _PickRow({
-    required this.value,
-    required this.onTap,
-    this.empty = false,
+/// 보기가 셋뿐인 물음 — 한 줄에 네모 칸으로 늘어놓는다 (명세서 62).
+class _ChoiceRow extends StatelessWidget {
+  final List<String> options;
+  final String? selected;
+  final ValueChanged<String> onPick;
+
+  const _ChoiceRow({
+    required this.options,
+    required this.selected,
+    required this.onPick,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Semantics(
-      button: true,
-      label: '$value · 고르기',
-      child: ExcludeSemantics(
-        child: GestureDetector(
-          onTap: onTap,
-          child: Container(
-            constraints: const BoxConstraints(minHeight: 66),
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
-            decoration: BoxDecoration(
-              color: AppColors.sunken,
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: AppColors.strongLine, width: 2),
+    return IntrinsicHeight(
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          for (int i = 0; i < options.length; i++) ...[
+            if (i > 0) const SizedBox(width: 10),
+            Expanded(
+              child: _ChoiceBox(
+                label: lifestyleLabel(options[i]),
+                selected: selected == options[i],
+                onTap: () => onPick(options[i]),
+              ),
             ),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    value,
-                    style: AppText.label(
-                      size: 21,
-                      color: empty ? AppColors.chevron : AppColors.textPrimary,
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Text('고르기', style: AppText.label(size: 17)),
-              ],
-            ),
-          ),
-        ),
+          ],
+        ],
       ),
     );
   }
 }
 
-/// 둘·셋 중 하나를 고르는 칸. 고른 것만 파란 테두리·파란 글씨다.
+/// 하나를 고르는 네모 칸. 고른 것만 파랗게 채운다 (명세서 62).
 class _ChoiceBox extends StatelessWidget {
   final String label;
   final bool selected;
@@ -768,27 +755,25 @@ class _ChoiceBox extends StatelessWidget {
     return Semantics(
       button: true,
       selected: selected,
+      label: label,
       child: ExcludeSemantics(
         child: GestureDetector(
           onTap: onTap,
           child: Container(
             constraints: const BoxConstraints(minHeight: 64),
             alignment: Alignment.center,
-            padding: const EdgeInsets.symmetric(horizontal: 6),
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 12),
             decoration: BoxDecoration(
-              color: selected ? AppColors.pointTint : AppColors.surface,
+              color: selected ? AppColors.pointFill : AppColors.surface,
               borderRadius: BorderRadius.circular(16),
-              border: Border.all(
-                color: selected ? AppColors.point : AppColors.strongLine,
-                width: 2,
-              ),
+              boxShadow: selected ? null : kCardShadow,
             ),
             child: Text(
               label,
               textAlign: TextAlign.center,
               style: AppText.cardTitle(
                 size: 19,
-                color: selected ? AppColors.point : AppColors.textPrimary,
+                color: selected ? Colors.white : AppColors.textPrimary,
               ),
             ),
           ),
@@ -798,7 +783,60 @@ class _ChoiceBox extends StatelessWidget {
   }
 }
 
-/// 고른 것은 칩으로 남고, "+ 더 넣기"로 더한다 (프로토타입 44번).
+/// 눌러서 고르는 줄 — 값은 왼쪽, "고르기"는 오른쪽 (프로토타입 43번).
+class _PickRow extends StatelessWidget {
+  final String value;
+  final bool empty;
+  final VoidCallback onTap;
+
+  /// 오른쪽 끝 아이콘. 굴림판은 아래 꺾쇠, 날짜만 달력이다.
+  final IconData icon;
+
+  const _PickRow({
+    required this.value,
+    required this.onTap,
+    this.empty = false,
+    this.icon = Icons.expand_more_rounded,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      button: true,
+      label: '$value · 고르기',
+      child: ExcludeSemantics(
+        child: GestureDetector(
+          onTap: onTap,
+          child: Container(
+            constraints: const BoxConstraints(minHeight: 66),
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+            decoration: BoxDecoration(
+              color: AppColors.surface,
+              borderRadius: BorderRadius.circular(16),
+              boxShadow: kCardShadow,
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    value,
+                    style: AppText.cardTitle(
+                      size: 21,
+                      color: empty ? AppColors.chevron : AppColors.textPrimary,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Icon(icon, size: 26, color: AppColors.textTertiary),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _ChipEditor extends StatelessWidget {
   final Set<String> items;
   final VoidCallback onAdd;
@@ -830,22 +868,24 @@ class _ChipEditor extends StatelessWidget {
                     vertical: 10,
                   ),
                   decoration: BoxDecoration(
-                    color: AppColors.pointTint,
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: AppColors.point, width: 2),
+                    color: AppColors.pointRing,
+                    borderRadius: BorderRadius.circular(12),
                   ),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Text(
                         item,
-                        style: AppText.label(size: 18, color: AppColors.point),
+                        style: AppText.cardTitle(
+                          size: 18,
+                          color: AppColors.pointBorder,
+                        ),
                       ),
                       const SizedBox(width: 8),
                       const Icon(
                         Icons.close_rounded,
-                        size: 22,
-                        color: AppColors.point,
+                        size: 20,
+                        color: AppColors.pointBorder,
                       ),
                     ],
                   ),
@@ -865,11 +905,21 @@ class _ChipEditor extends StatelessWidget {
                   vertical: 10,
                 ),
                 decoration: BoxDecoration(
-                  color: AppColors.surface,
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: AppColors.strongLine, width: 2),
+                  color: AppColors.sunken,
+                  borderRadius: BorderRadius.circular(12),
                 ),
-                child: Text('+ 더 넣기', style: AppText.label(size: 18)),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(
+                      Icons.add_rounded,
+                      size: 22,
+                      color: AppColors.textPrimary,
+                    ),
+                    const SizedBox(width: 6),
+                    Text('더 넣기', style: AppText.cardTitle(size: 18)),
+                  ],
+                ),
               ),
             ),
           ),

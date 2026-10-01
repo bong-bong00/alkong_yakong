@@ -25,7 +25,9 @@ class HeartbeatWiringTest(unittest.TestCase):
     def test_new_route_and_screens_share_one_sensor(self):
         route_source = Path("lib/main.dart").read_text(encoding="utf-8")
         measure_source = self.MEASURE.read_text(encoding="utf-8")
-        self.assertIn("builder: (context, state) => const HeartScreen()", route_source)
+        self.assertIn("builder: (context, state) => HeartScreen(", route_source)
+        self.assertIn("routeBasedMeasurement: true", route_source)
+        self.assertIn("sensor: args is HeartMeasureRouteArgs ? args.sensor : null", route_source)
         self.assertIn("HeartSensor", measure_source)
         self.assertNotIn("_polar.startHrStreaming", measure_source)
 

@@ -86,7 +86,7 @@ abstract final class AppText {
   }) => _base(
     size: size,
     weight: _black,
-    height: 1.35,
+    height: 1.3,
     color: color,
     letterSpacingEm: -0.01,
   );
@@ -103,12 +103,21 @@ abstract final class AppText {
     letterSpacingEm: -0.01,
   );
 
-  /// 카드 대제목 / 리스트 항목. 21–22px / 700.
+  /// 카드 대제목 / 리스트 항목. 21–22px / 900.
+  ///
+  /// 시안은 카드 안 제목과 칸 이름을 모두 900에 자간 -0.02em으로 둔다.
+  /// 700에 자간 0으로 두면 같은 크기여도 가늘고 헐거워 보인다.
   static TextStyle cardTitle({
     double size = 21,
     Color color = AppColors.textPrimary,
     FontWeight? weight,
-  }) => _base(size: size, weight: weight ?? _bold, height: 1.4, color: color);
+  }) => _base(
+    size: size,
+    weight: weight ?? _black,
+    height: 1.35,
+    color: color,
+    letterSpacingEm: -0.02,
+  );
 
   /// 섹션 제목. 19–20px / 700.
   static TextStyle section({
@@ -116,9 +125,9 @@ abstract final class AppText {
     Color color = AppColors.textPrimary,
   }) => _base(size: size, weight: _bold, height: 1.35, color: color);
 
-  /// 버튼 라벨. 23–25px / 700.
+  /// 버튼 라벨. 23–25px / 900 (명세서 0장: 주 액션은 흰 글씨 900).
   static TextStyle button({double size = 24, Color color = Colors.white}) =>
-      _base(size: size, weight: _bold, height: 1, color: color);
+      _base(size: size, weight: _black, height: 1, color: color);
 
   /// 본문. 18.5~19px / 500. 강조가 필요하면 [weight]로 700까지 올린다.
   static TextStyle body({
@@ -144,7 +153,7 @@ abstract final class AppText {
 
   /// 탭 라벨. 16px, 활성 900 / 비활성 700.
   static TextStyle tab({required bool active}) => _base(
-    size: 16,
+    size: 18,
     weight: active ? _black : _bold,
     height: 1,
     color: active ? AppColors.point : AppColors.inactiveLabel,

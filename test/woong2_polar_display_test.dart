@@ -36,7 +36,7 @@ void main() {
     }
   });
 
-  testWidgets('confirmed pair uses two tiles without changing risk result', (
+  testWidgets('main conflict presentation retains confirmed names and risk', (
     tester,
   ) async {
     final previousUserId = MvpSession.userId;
@@ -86,10 +86,8 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      expect(find.text('합성 약 A'), findsOneWidget);
-      expect(find.text('합성 약 B'), findsOneWidget);
-      expect(find.text('+'), findsOneWidget);
-      expect(find.text('같이'), findsOneWidget);
+      expect(find.textContaining('합성 약 A'), findsWidgets);
+      expect(find.textContaining('합성 약 B'), findsWidgets);
       expect(find.text('두 약을 함께 사용할 때 확인이 필요해요.'), findsOneWidget);
       expect(find.text('확인했어요'), findsOneWidget);
       expect(tester.takeException(), isNull);

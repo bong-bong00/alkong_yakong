@@ -148,6 +148,7 @@ class DurAnalyzeRequest(BaseModel):
     user_id: str
     medicine_codes: List[str] = Field(default_factory=list)
     medicine_names_by_code: dict[str, str] = Field(default_factory=dict)
+    analysis_purpose: Literal["medication", "consultation"] = "medication"
     is_pregnant: Optional[bool] = None
 
 

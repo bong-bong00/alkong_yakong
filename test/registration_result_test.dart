@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:alkong_yakong/core/network/api_client.dart';
 import 'package:alkong_yakong/core/session/mvp_session.dart';
 import 'package:alkong_yakong/features/medication/application/medication_controller.dart';
+import 'package:alkong_yakong/features/medication/domain/medication_models.dart';
 import 'package:alkong_yakong/features/prescription/domain/registration_result.dart';
 import 'package:alkong_yakong/features/prescription/presentation/screens/manual_medicine_screen.dart';
 import 'package:flutter/material.dart';
@@ -11,6 +12,32 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
 void main() {
+  test('사용자 ID가 없으면 빈 경로로 오늘 약을 요청하지 않는다', () async {
+    final previousUserId = MvpSession.userId;
+    MvpSession.userId = '';
+    addTearDown(() => MvpSession.userId = previousUserId);
+    var requests = 0;
+    final client = MockClient((request) async {
+      requests++;
+      return http.Response('{}', 200);
+    });
+    final container = ProviderContainer(
+      overrides: [
+        medicationProvider.overrideWith(
+          () => MedicationController(apiClient: ApiClient(client: client)),
+        ),
+      ],
+    );
+    addTearDown(container.dispose);
+
+    await container.read(medicationProvider.notifier).refreshFromServer();
+    expect(requests, 0);
+    expect(
+      container.read(medicationProvider).fetchStatus,
+      MedicationFetchStatus.failed,
+    );
+  });
+
   final complete = <String, dynamic>{
     'analysis_complete': true,
     'assessment_status': 'SAFE',
@@ -76,7 +103,11 @@ void main() {
         controller.refreshFromServer(throwOnError: true),
         throwsA(isA<ApiException>()),
       );
-      expect(container.read(medicationProvider), same(before));
+      expect(container.read(medicationProvider).doses, before.doses);
+      expect(
+        container.read(medicationProvider).fetchStatus,
+        MedicationFetchStatus.failed,
+      );
       expect(posts, 0);
     },
   );
@@ -142,9 +173,11 @@ void main() {
           await tester.pumpAndSettle();
           await tester.tap(find.text('합성 제품'));
           await tester.pumpAndSettle();
-          await tester.enterText(find.byType(TextField).last, '0.5정');
-          await tester.tap(find.text('1번'));
-          await tester.tap(find.text('3일'));
+          // 양·횟수·날수는 굴림판으로 고른다 (한 번만 골라 본다).
+          await tester.tap(find.text('한 번에 먹는 양'));
+          await tester.pumpAndSettle();
+          await tester.tap(find.text('확인'));
+          await tester.pumpAndSettle();
           // 드시는 때를 골라야 등록된다 — 시간을 지어내지 않는다.
           await tester.tap(find.text('아침'));
           await tester.pumpAndSettle();

@@ -1,13 +1,13 @@
 import 'dart:async';
 import 'dart:convert';
 
-import 'package:alkong_yakong/core/constants/app_colors.dart';
+import 'package:alkong_yakong/core/polar_pharmacist_ui/constants/app_colors.dart';
 import 'package:alkong_yakong/core/network/api_client.dart';
 import 'package:alkong_yakong/core/theme/app_theme.dart';
-import 'package:alkong_yakong/core/widgets/senior_button.dart';
-import 'package:alkong_yakong/core/widgets/senior_card.dart';
-import 'package:alkong_yakong/core/widgets/senior_feedback.dart';
-import 'package:alkong_yakong/core/widgets/senior_header.dart';
+import 'package:alkong_yakong/core/polar_pharmacist_ui/widgets/senior_button.dart';
+import 'package:alkong_yakong/core/polar_pharmacist_ui/widgets/senior_card.dart';
+import 'package:alkong_yakong/core/polar_pharmacist_ui/widgets/senior_feedback.dart';
+import 'package:alkong_yakong/core/polar_pharmacist_ui/widgets/senior_header.dart';
 import 'package:alkong_yakong/features/biosignal/data/heart_repository.dart';
 import 'package:alkong_yakong/features/biosignal/domain/heart_data.dart';
 import 'package:alkong_yakong/features/biosignal/domain/heart_time.dart';

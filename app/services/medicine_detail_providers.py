@@ -20,11 +20,16 @@ _COMPLETE_ENDING = re.compile(
 )
 _HIDDEN_COPY = ("준비 중", "준비중", "확인 중", "확인중")
 _MAX_SENTENCE_CHARS = 180
+_SOURCE_PREAMBLE = re.compile(
+    r"(?:공식\s*허가정보|식약처\s*정보|공식\s*자료)"
+    r"(?:에\s*따라|에\s*따르면|를\s*바탕으로)\s*"
+)
 
 
 def clean_ingredient_explanation(value: Any) -> str:
-    """Normalize display copy without clipping a sentence."""
-    return _SPACE.sub(" ", str(value or "")).strip()
+    """Normalize copy and leave source attribution to the source card."""
+    text = _SOURCE_PREAMBLE.sub("", str(value or ""))
+    return _SPACE.sub(" ", text).strip()
 
 
 def is_displayable_ingredient_explanation(value: Any) -> bool:
@@ -63,22 +68,28 @@ class LocalReviewedIngredientProvider:
     ) -> dict[str, dict[str, Any]]:
         result: dict[str, dict[str, Any]] = {}
         for ingredient in ingredients:
+            canonical_key = ingredient["key"]
+            try:
+                alias = cursor.execute(
+                    "SELECT canonical_key FROM ingredient_aliases WHERE alias_key=?",
+                    (ingredient["key"],),
+                ).fetchone()
+                if alias and alias["canonical_key"]:
+                    canonical_key = str(alias["canonical_key"])
+            except Exception:
+                pass
             row = cursor.execute(
                 """
-                SELECT ingredient_name, explanation, role_explanation, use_help,
+                SELECT explanation, role_explanation, use_help,
                        role_group, group_explanation,
                        source, source_verified, content_version
                 FROM ingredient_explanations
                 WHERE normalized_key=? AND review_status='REVIEWED'
                   AND source_verified=1
                 """,
-                (ingredient["key"],),
+                (canonical_key,),
             ).fetchone()
-            # A reuse key (which may omit strength) is not identity evidence.
-            # Require the reviewed official ingredient name as well; no aliases.
-            if (row and str(row["ingredient_name"]).strip().casefold()
-                    == ingredient["name"].strip().casefold()
-                    and is_displayable_ingredient_explanation(row["explanation"])):
+            if row and is_displayable_ingredient_explanation(row["explanation"]):
                 result[ingredient["key"]] = dict(row)
         return result
 

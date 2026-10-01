@@ -181,12 +181,8 @@ class _RelationChip extends StatelessWidget {
             alignment: Alignment.center,
             padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
             decoration: BoxDecoration(
-              color: selected ? AppColors.point : AppColors.bg,
+              color: selected ? AppColors.pointFill : AppColors.sunken,
               borderRadius: BorderRadius.circular(26),
-              border: Border.all(
-                color: selected ? AppColors.pointBorder : AppColors.border,
-                width: 2,
-              ),
             ),
             child: Text(
               label,

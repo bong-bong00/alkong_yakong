@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -5,6 +7,7 @@ import '../../../../core/constants/app_colors.dart';
 import '../../../../core/network/api_client.dart';
 import '../../../../core/network/api_config.dart';
 import '../../../../core/session/mvp_session.dart';
+import '../../../../dev_mock.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../core/widgets/senior_card.dart';
 import '../../../../core/widgets/senior_header.dart';
@@ -158,6 +161,15 @@ class _MonthCalendarScreenState extends ConsumerState<MonthCalendarScreen> {
   }
 
   Future<void> _load() async {
+    // 화면 확인용 가짜 달. dev_mock.dart 와 함께 지운다.
+    if (mockData) {
+      setState(() {
+        _days = mockCalendarDays(_year, _month);
+        _hasSchedules = true;
+        _loading = false;
+      });
+      return;
+    }
     try {
       final rawUserId = widget.patientUserId?.trim().isNotEmpty == true
           ? widget.patientUserId!.trim()
@@ -212,11 +224,22 @@ class _MonthCalendarScreenState extends ConsumerState<MonthCalendarScreen> {
     }
   }
 
-  int get _doneCount => _days.where((d) => d.mark == DayMark.done).length;
-
-  int get _scheduledPastCount => _days
-      .where((d) => d.mark == DayMark.done || d.mark == DayMark.missed)
-      .length;
+  /// 한 달 앞뒤로 옮긴다. 누른 날과 이번 달 기록은 새로 읽는다.
+  void _shiftMonth(int step) {
+    final moved = DateTime(_year, _month + step, 1);
+    setState(() {
+      _year = moved.year;
+      _month = moved.month;
+      _leadingBlanks = moved.weekday - 1;
+      if (_leadingBlanks < 0) _leadingBlanks = 6;
+      _days = _emptyMonth(_year, _month);
+      _missed = const [];
+      _pickedDay = null;
+      _hasSchedules = false;
+      _loading = true;
+    });
+    unawaited(_load());
+  }
 
   /// 아래 카드가 보여줄 날. 아무것도 안 눌렀으면 오늘이다.
   DateTime get _detailDate {
@@ -267,15 +290,13 @@ class _MonthCalendarScreenState extends ConsumerState<MonthCalendarScreen> {
       ..._days,
     ];
     final rowCount = (cells.length / 7).ceil();
-    final summary = !_hasSchedules && _scheduledPastCount == 0
-        ? '이달 복용 칸이 아직 없어요'
-        : '$_scheduledPastCount일 중 $_doneCount일 다 드셨어요';
+    // 셈은 짧게 적고, 무엇을 센 것인지는 아래 범례가 맡는다.
 
     return Scaffold(
-      backgroundColor: AppColors.bg,
+      backgroundColor: AppColors.pageBg,
       body: Column(
         children: [
-          SeniorBackHeader(title: '$_month월 달력'),
+          const SeniorBackHeader(title: '전체 달력'),
           Expanded(
             child: _loading
                 ? const Center(
@@ -301,18 +322,44 @@ class _MonthCalendarScreenState extends ConsumerState<MonthCalendarScreen> {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.stretch,
                             children: [
-                              LabelValueRow(
-                                label: Text(
-                                  '$_month월',
-                                  style: AppText.cardTitle(size: 21),
-                                ),
-                                value: Text(
-                                  summary,
-                                  style: AppText.label(
-                                    size: 17.5,
-                                    color: AppColors.textTertiary,
+                              // 달 이름 한 줄과 앞뒤로 옮기는 두 단추.
+                              // 글자를 키운 기기에서는 줄이 접히지 않고
+                              // 글자 크기가 줄어든다.
+                              Row(
+                                children: [
+                                  Flexible(
+                                    child: FittedBox(
+                                      fit: BoxFit.scaleDown,
+                                      alignment: Alignment.centerLeft,
+                                      child: Text(
+                                        '$_year년 $_month월',
+                                        maxLines: 1,
+                                        style: AppText.cardTitle(size: 21),
+                                      ),
+                                    ),
                                   ),
-                                ),
+                                  const SizedBox(width: 10),
+                                  Flexible(
+                                    child: FittedBox(
+                                      fit: BoxFit.scaleDown,
+                                      alignment: Alignment.centerRight,
+                                      child: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          _MonthStep(
+                                            label: '이전 달',
+                                            onTap: () => _shiftMonth(-1),
+                                          ),
+                                          const SizedBox(width: 6),
+                                          _MonthStep(
+                                            label: '다음 달',
+                                            onTap: () => _shiftMonth(1),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                ],
                               ),
                               const SizedBox(height: 14),
                               Row(
@@ -387,6 +434,37 @@ class _MonthCalendarScreenState extends ConsumerState<MonthCalendarScreen> {
   }
 }
 
+/// 달을 앞뒤로 옮기는 작은 단추 (명세서 48의 "이전 달"·"다음 달").
+class _MonthStep extends StatelessWidget {
+  final String label;
+  final VoidCallback onTap;
+
+  const _MonthStep({required this.label, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      button: true,
+      label: label,
+      child: ExcludeSemantics(
+        child: GestureDetector(
+          onTap: onTap,
+          child: Container(
+            constraints: const BoxConstraints(minHeight: 44),
+            alignment: Alignment.center,
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            decoration: BoxDecoration(
+              color: AppColors.sunken,
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: Text(label, style: AppText.label(size: 16)),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _DayCell extends StatelessWidget {
   final CalendarDay day;
   final bool picked;
@@ -396,85 +474,66 @@ class _DayCell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // 칸은 테두리 없는 동그라미다. 드셨는지는 아래 시간대 칸이 ✓·✗로
+    // 말하고, 여기서는 색과 범례로만 구분한다.
     late final Color background;
     late final Color ink;
-    late final String mark;
     late final String spoken;
-    BoxBorder? border;
 
     switch (day.mark) {
       case DayMark.done:
-        // 옅은 톤은 회색으로 읽힌다. 다 드신 날은 한눈에 파랗게 보여야 한다.
-        background = AppColors.timelineRing;
+        background = AppColors.calendarDone;
         ink = AppColors.pointBorder;
-        mark = '✓';
         spoken = '다 드신 날';
       case DayMark.missed:
-        background = AppColors.dangerBg;
-        ink = AppColors.danger;
-        border = Border.all(color: AppColors.danger, width: 2);
-        mark = '✕';
+        background = AppColors.calendarMissed;
+        ink = AppColors.calendarMissedInk;
         spoken = '빠뜨린 날';
       case DayMark.today:
-        background = AppColors.point;
+        background = AppColors.textPrimary;
         ink = Colors.white;
-        border = Border.all(color: AppColors.pointBorder, width: 2);
-        mark = '오늘';
         spoken = '오늘';
       case DayMark.future:
-        background = AppColors.sunken;
-        ink = AppColors.inactive;
-        mark = '·';
+        background = Colors.transparent;
+        ink = AppColors.chevron;
         spoken = '아직 오지 않은 날';
       case DayMark.noRecord:
-        background = AppColors.sunken;
-        ink = AppColors.inactive;
-        mark = '-';
+        background = Colors.transparent;
+        ink = AppColors.chevron;
         spoken = '기록 없는 날';
-    }
-
-    // 누른 칸은 파란 테두리로 표시한다. 색만 바꾸면 어떤 날을 보고 있는지
-    // 아래 카드와 이어지지 않는다.
-    if (picked) {
-      border = Border.all(color: AppColors.point, width: 3);
     }
 
     return Semantics(
       label: '${day.day}일 $spoken',
       button: onTap != null,
+      selected: picked,
       child: GestureDetector(
         onTap: onTap,
         child: ExcludeSemantics(
           child: Container(
+            // 손가락이 짚을 자리는 동그라미보다 넓게 둔다.
             constraints: const BoxConstraints(minHeight: 54),
             alignment: Alignment.center,
-            padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 2),
-            decoration: BoxDecoration(
-              color: background,
-              borderRadius: BorderRadius.circular(14),
-              border: border,
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Text(
-                  '${day.day}',
-                  style: AppText.cardTitle(
-                    size: 18,
-                    color: ink,
-                  ).copyWith(height: 1),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  mark,
-                  textAlign: TextAlign.center,
-                  style: AppText.cardTitle(
-                    size: 15,
-                    color: ink,
-                  ).copyWith(height: 1),
-                ),
-              ],
+            color: Colors.transparent,
+            child: Container(
+              width: 42,
+              height: 42,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: background,
+                shape: BoxShape.circle,
+                // 보고 있는 하루만 옅은 테로 짚어 준다.
+                border: picked
+                    ? Border.all(color: AppColors.pointBorder, width: 2)
+                    : null,
+              ),
+              child: Text(
+                '${day.day}',
+                style: AppText.cardTitle(
+                  size: 18,
+                  color: ink,
+                ).copyWith(height: 1),
+              ),
             ),
           ),
         ),
@@ -492,21 +551,9 @@ class _Legend extends StatelessWidget {
       spacing: 14,
       runSpacing: 10,
       children: [
-        _LegendItem(
-          color: AppColors.timelineRing,
-          border: null,
-          label: '다 드신 날',
-        ),
-        _LegendItem(
-          color: AppColors.dangerBg,
-          border: Border.all(color: AppColors.danger, width: 2),
-          label: '빠뜨린 날',
-        ),
-        _LegendItem(
-          color: AppColors.point,
-          border: Border.all(color: AppColors.pointBorder, width: 2),
-          label: '오늘',
-        ),
+        _LegendItem(color: AppColors.calendarDone, label: '다 드심'),
+        _LegendItem(color: AppColors.calendarMissed, label: '놓침'),
+        _LegendItem(color: AppColors.textPrimary, label: '오늘'),
       ],
     );
   }
@@ -514,14 +561,9 @@ class _Legend extends StatelessWidget {
 
 class _LegendItem extends StatelessWidget {
   final Color color;
-  final BoxBorder? border;
   final String label;
 
-  const _LegendItem({
-    required this.color,
-    required this.border,
-    required this.label,
-  });
+  const _LegendItem({required this.color, required this.label});
 
   @override
   Widget build(BuildContext context) {
@@ -529,19 +571,12 @@ class _LegendItem extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       children: [
         Container(
-          width: 20,
-          height: 20,
-          decoration: BoxDecoration(
-            color: color,
-            borderRadius: BorderRadius.circular(6),
-            border: border,
-          ),
+          width: 18,
+          height: 18,
+          decoration: BoxDecoration(color: color, shape: BoxShape.circle),
         ),
-        const SizedBox(width: 7),
-        Text(
-          label,
-          style: AppText.label(size: 16.5, color: AppColors.textSecondary),
-        ),
+        const SizedBox(width: 8),
+        Text(label, style: AppText.label(size: 17, color: AppColors.textBody)),
       ],
     );
   }

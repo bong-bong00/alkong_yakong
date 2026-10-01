@@ -49,7 +49,6 @@ class _DurAnalysisScreenState extends ConsumerState<DurAnalysisScreen> {
   bool _incomplete = false;
   String _assessmentStatus = 'INCOMPLETE';
   List<Map<String, dynamic>> _matches = const [];
-  Set<String> _incompleteTypes = const {};
 
   @override
   void initState() {
@@ -106,10 +105,6 @@ class _DurAnalysisScreenState extends ConsumerState<DurAnalysisScreen> {
               .map((m) => Map<String, dynamic>.from(m))
               .toList()
         : <Map<String, dynamic>>[];
-    final incompleteTypesRaw = response['incomplete_types'];
-    final incompleteTypes = incompleteTypesRaw is List
-        ? incompleteTypesRaw.map((e) => e.toString()).toSet()
-        : <String>{};
     final incomplete = !registrationDurComplete(response);
 
     void assign() {
@@ -119,7 +114,6 @@ class _DurAnalysisScreenState extends ConsumerState<DurAnalysisScreen> {
           ? 'INCOMPLETE'
           : response['assessment_status']?.toString() ??
                 (parsedMatches.isNotEmpty ? 'RISK_FOUND' : 'SAFE');
-      _incompleteTypes = incompleteTypes;
       _loading = false;
       _failed = false;
     }
@@ -174,19 +168,8 @@ class _DurAnalysisScreenState extends ConsumerState<DurAnalysisScreen> {
     ];
   }
 
-  String get _footerNote {
-    final hasAge = _matches.any((m) => (m['type'] ?? '') == '연령금기');
-    final hasPregnancy = _matches.any((m) => (m['type'] ?? '') == '임부금기');
-    if (hasAge || hasPregnancy) {
-      return '나이·임신 관련 주의는 따로 확인해 주세요.';
-    }
-    if (_incomplete ||
-        _incompleteTypes.contains('연령금기') ||
-        _incompleteTypes.contains('임부금기')) {
-      return '나이·임신 항목은 이번엔 못 봤어요.';
-    }
-    return '';
-  }
+  /// 명세서 29에는 꼬리말이 없다. 확인하지 못한 항목은 칸 안에서 말한다.
+  String get _footerNote => '';
 
   /// 약 설명 줄에서 부를 이름. 부딪히는 약이 있으면 그 약을 먼저 부른다.
   String get _askName {
@@ -208,7 +191,7 @@ class _DurAnalysisScreenState extends ConsumerState<DurAnalysisScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.bg,
+      backgroundColor: AppColors.pageBg,
       body: Column(
         children: [
           const SeniorBackHeader(title: '약 함께먹기 주의'),
@@ -269,26 +252,21 @@ class _DurAnalysisScreenState extends ConsumerState<DurAnalysisScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
-            decoration: BoxDecoration(
-              color: pairs.isNotEmpty
-                  ? AppColors.dangerBorder.withValues(alpha: 0.25)
-                  : AppColors.pointTint,
-              borderRadius: BorderRadius.circular(20),
-            ),
-            child: Text(
-              pairs.isNotEmpty
-                  ? '같이 먹으면 안 되는 약이 있어요'
-                  : (_incomplete
-                        ? '약은 등록됐지만 함께먹기 확인을 마치지 못했어요.'
-                        : '확인한 범위에서 약끼리 함께먹기 주의 항목은 없어요.'),
-              style: AppText.cardTitle(
-                color: pairs.isNotEmpty ? AppColors.danger : AppColors.point,
+          // 부딪히는 약이 있으면 아래 칸이 그 자체로 말한다.
+          // 없을 때만 한 줄로 알린다.
+          if (pairs.isEmpty) ...[
+            SeniorCard(
+              radius: 26,
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
+              child: Text(
+                _incomplete
+                    ? '약은 등록됐지만 함께먹기 확인을 마치지 못했어요.'
+                    : '확인한 범위에서 함께먹기 주의 항목은 없어요.',
+                style: AppText.label(size: 19, color: AppColors.textPrimary),
               ),
             ),
-          ),
-          const SizedBox(height: 14),
+            const SizedBox(height: 14),
+          ],
           for (final match in pairs) ...[
             _ConflictCard(match: match),
             const SizedBox(height: 12),
@@ -328,19 +306,12 @@ class _DurAnalysisScreenState extends ConsumerState<DurAnalysisScreen> {
               onPressed: _afterConfirm,
             ),
           ],
-          const SizedBox(height: 16),
-          SeniorButton(
-            label: '$_guardianTitle에게 알리기',
-            kind: SeniorButtonKind.outline,
-            minHeight: 64,
-            fontSize: 21,
-            onPressed: _callGuardian,
-          ),
         ],
       ),
     );
   }
 
+  /// 회복 화면에서 "도움 청하기"를 누를 때 (명세서 58).
   void _callGuardian() {
     showSeniorSnackbar(context, '$_guardianTitle에게 알려드렸어요');
   }
@@ -388,52 +359,48 @@ class _ConflictCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const Align(
-            alignment: Alignment.centerLeft,
-            child: SeniorBadge(
-              label: '꼭 확인하세요',
-              background: AppColors.danger,
-              foreground: Colors.white,
-              radius: 10,
-              fontSize: 17,
-              padding: EdgeInsets.symmetric(horizontal: 13, vertical: 6),
-            ),
-          ),
-          const SizedBox(height: 14),
-          _PairRow(medicines: medicines),
-          if (why.isNotEmpty) ...[
-            const SizedBox(height: 14),
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
-              decoration: BoxDecoration(
-                color: AppColors.dangerBg,
-                borderRadius: BorderRadius.circular(16),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+          // 시안 22 — 무엇과 무엇이 부딪히는지를 한 문장으로 먼저 말한다.
+          // 배지로 "꼭 확인하세요"라고만 하면 무엇을 확인할지가 아래로 밀린다.
+          if (medicines.length >= 2)
+            Text.rich(
+              TextSpan(
                 children: [
-                  Text(
-                    _whyHeadline(why),
-                    style: AppText.cardTitle(size: 20, color: AppColors.danger),
+                  TextSpan(
+                    text: medicines[0].name,
+                    style: AppText.cardTitle(size: 22, color: AppColors.danger),
                   ),
-                  if (_whyDetail(why).isNotEmpty) ...[
-                    const SizedBox(height: 6),
-                    Text(
-                      _whyDetail(why),
-                      style: AppText.body(size: 18, color: AppColors.textBody),
-                    ),
-                  ],
+                  TextSpan(text: '과 ', style: AppText.cardTitle(size: 22)),
+                  TextSpan(
+                    text: medicines[1].name,
+                    style: AppText.cardTitle(size: 22, color: AppColors.danger),
+                  ),
+                  TextSpan(
+                    text: '은 함께 드시는 건 주의해 주세요',
+                    style: AppText.cardTitle(size: 22),
+                  ),
                 ],
               ),
+            )
+          else
+            Text(
+              '함께 드실 때 주의가 필요해요',
+              style: AppText.cardTitle(size: 22, color: AppColors.danger),
             ),
+          if (why.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            Text(
+              _whyHeadline(why),
+              style: AppText.label(size: 19, color: AppColors.textPrimary),
+            ),
+            if (_whyDetail(why).isNotEmpty) ...[
+              const SizedBox(height: 6),
+              Text(_whyDetail(why), style: AppText.body(size: 19)),
+            ],
           ],
-          const SizedBox(height: 14),
-          Text('약국이나 병원에 한 번 확인해 주세요.', style: AppText.emphasis(size: 19)),
           if (source.isNotEmpty) ...[
-            const SizedBox(height: 8),
+            const SizedBox(height: 12),
             // 출처는 참고용이다. 본문보다 눈에 덜 띄게 둔다.
-            Text(source, style: AppText.caption(size: 15)),
+            Text(source, style: AppText.caption(size: 17)),
           ],
         ],
       ),
@@ -443,8 +410,6 @@ class _ConflictCard extends StatelessWidget {
   static List<_NamedMedicine> pairMedicines(Map<String, dynamic> match) {
     final namesA = _namesOf(match['medicine_names_a']);
     final namesB = _namesOf(match['medicine_names_b']);
-    final lineA = (match['easy_line_a'] ?? '').toString().trim();
-    final lineB = (match['easy_line_b'] ?? '').toString().trim();
     final uniqueA = namesA.isEmpty ? '' : namesA.first;
     var uniqueB = namesB.isEmpty ? '' : namesB.first;
     if (uniqueB.isEmpty || uniqueB == uniqueA) {
@@ -454,17 +419,14 @@ class _ConflictCard extends StatelessWidget {
         if (!unique.contains(name)) unique.add(name);
       }
       if (unique.length >= 2) {
-        return [
-          _NamedMedicine(unique[0], lineA),
-          _NamedMedicine(unique[1], lineB),
-        ];
+        return [_NamedMedicine(unique[0]), _NamedMedicine(unique[1])];
       }
       if (unique.length == 1) {
-        return [_NamedMedicine(unique[0], lineA)];
+        return [_NamedMedicine(unique[0])];
       }
       return const [];
     }
-    return [_NamedMedicine(uniqueA, lineA), _NamedMedicine(uniqueB, lineB)];
+    return [_NamedMedicine(uniqueA), _NamedMedicine(uniqueB)];
   }
 
   static List<String> _namesOf(dynamic raw) {
@@ -544,116 +506,7 @@ class _ConflictCard extends StatelessWidget {
   }
 }
 
-/// 부딪히는 약을 나란히 놓는다. 사이의 "+ 같이"가 무슨 일인지 말해 준다.
-class _PairRow extends StatelessWidget {
-  final List<_NamedMedicine> medicines;
-
-  const _PairRow({required this.medicines});
-
-  @override
-  Widget build(BuildContext context) {
-    if (medicines.isEmpty) return const SizedBox.shrink();
-    if (medicines.length == 1) return _MedicineTile(medicine: medicines.first);
-
-    // 셋 이상이면 가로로 밀어 넣지 않고 아래로 쌓는다.
-    if (medicines.length > 2) {
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          for (int i = 0; i < medicines.length; i++) ...[
-            if (i > 0)
-              const Padding(
-                padding: EdgeInsets.symmetric(vertical: 8),
-                child: _PlusMark(),
-              ),
-            _MedicineTile(medicine: medicines[i]),
-          ],
-        ],
-      );
-    }
-
-    return IntrinsicHeight(
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Expanded(child: _MedicineTile(medicine: medicines[0])),
-          const Padding(
-            padding: EdgeInsets.symmetric(horizontal: 10),
-            child: Center(child: _PlusMark()),
-          ),
-          Expanded(child: _MedicineTile(medicine: medicines[1])),
-        ],
-      ),
-    );
-  }
-}
-
-class _PlusMark extends StatelessWidget {
-  const _PlusMark();
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Text('+', style: AppText.emphasis(size: 22, color: AppColors.danger)),
-        Text('같이', style: AppText.caption(size: 15)),
-      ],
-    );
-  }
-}
-
-/// 약 한 장. 이름 아래에 무슨 약인지 한 줄.
-class _MedicineTile extends StatelessWidget {
-  final _NamedMedicine medicine;
-
-  const _MedicineTile({required this.medicine});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: AppColors.border, width: 2),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Text(medicine.name, style: AppText.cardTitle(size: 19)),
-          if (medicine.roleLine.isNotEmpty) ...[
-            const SizedBox(height: 4),
-            Text(
-              medicine.roleLine,
-              style: AppText.caption(size: 16),
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-}
-
 class _NamedMedicine {
   final String name;
-  final String easyLine;
-
-  const _NamedMedicine(this.name, this.easyLine);
-
-  /// 이름 아래에 붙일 한 줄. 카드가 이름을 이미 말했으니 "○○은"은 덜어낸다.
-  String get roleLine {
-    var text = easyLine.trim();
-    for (final particle in const ['은 ', '는 ']) {
-      final prefix = '$name$particle';
-      if (text.startsWith(prefix)) {
-        text = text.substring(prefix.length).trim();
-        break;
-      }
-    }
-    return text;
-  }
+  const _NamedMedicine(this.name);
 }

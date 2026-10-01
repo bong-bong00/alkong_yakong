@@ -36,7 +36,8 @@ class SeniorHeader extends StatelessWidget {
       child: SafeArea(
         bottom: false,
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(18, 12, 18, 14),
+          // 상태바와 머리띠가 붙어 보이지 않게 위를 넉넉히 둔다.
+          padding: const EdgeInsets.fromLTRB(18, 16, 18, 14),
           // 상단바는 화면마다 높이가 달라지지 않는다. 제목 한 줄짜리와
           // 아바타가 붙은 것이 서로 다른 높이로 서면, 탭을 옮길 때마다
           // 바가 들썩여 같은 앱이 아닌 것처럼 보인다. 52는 이 앱에서

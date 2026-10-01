@@ -292,9 +292,15 @@ void main() {
         final expanded = tester.widget<ExpansionTile>(
           find.byType(ExpansionTile),
         );
-        final texts = expanded.children
-            .whereType<Align>()
-            .map((a) => (a.child! as Text).data)
+        final texts = tester
+            .widgetList<Text>(
+              find.descendant(
+                of: find.byWidget(expanded),
+                matching: find.byType(Text),
+              ),
+            )
+            .map((text) => text.data)
+            .where((text) => text?.startsWith('· ') ?? false)
             .toList();
         expect(texts, entries.skip(1).map((e) => '· $e').toList());
       } finally {

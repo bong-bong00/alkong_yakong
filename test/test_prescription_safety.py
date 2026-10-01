@@ -88,6 +88,61 @@ def test_missing_duration_never_creates_a_default_one_day_range():
     ]
 
 
+def test_liquid_confirm_amount_is_once_not_a_pill():
+    assert (
+        _validated_confirm_dosage(
+            _item(dosage="1.00", unit=None, dosage_form="액제", drug_name="프레벨액"),
+            "프레벨액0.25%",
+        )
+        == "1회"
+    )
+
+
+def test_permission_usage_marks_topical_liquid_as_once(monkeypatch):
+    monkeypatch.setattr(
+        prescription_service,
+        "find_permission_product_by_item_seq",
+        lambda _code: {
+            "chart": "맑고 투명한 액",
+            "usage_text": "1일 1~2회 환부에 얇게 바른다.",
+        },
+    )
+
+    dosage_form = prescription_service._preview_dosage_form(
+        "200401147",
+        "프레벨액0.25%(프레드니카르베이트)",
+        None,
+    )
+    preview = OCRMedicineItem(drug_name="프레벨액0.25%", dosage="1.00")
+
+    assert dosage_form == "외용제"
+    assert prescription_service._preview_take_fields(
+        preview,
+        dosage_form=dosage_form,
+    ) == ("1", "회", True)
+
+
+def test_permission_lookup_does_not_guess_unknown_liquid_units(monkeypatch):
+    monkeypatch.setattr(
+        prescription_service,
+        "find_permission_product_by_item_seq",
+        lambda _code: {"chart": "흰색 원형 정제", "usage_text": ""},
+    )
+
+    dosage_form = prescription_service._preview_dosage_form(
+        "TEST-UNKNOWN",
+        "제품명",
+        None,
+    )
+    preview = OCRMedicineItem(drug_name="제품명", dosage="1.00")
+
+    assert dosage_form == ""
+    assert prescription_service._preview_take_fields(
+        preview,
+        dosage_form=dosage_form,
+    ) == ("1", None, False)
+
+
 def test_prescription_expiry_never_extends_confirmed_duration():
     assert _schedule_dates("2026-09-09", "2026-12-31", 2) == [
         date(2026, 9, 9),
@@ -290,7 +345,7 @@ def test_confirm_attaches_schedules_for_frequency_and_duration():
         _cleanup_schedule_user(user_id, medicine_code)
 
 
-def test_confirm_does_not_invent_schedule_without_duration():
+def test_confirm_creates_today_only_when_duration_is_missing():
     user_id = "test-schedule-no-days"
     medicine_code = "TEST-SCHEDULE-NO-DAYS"
     _seed_schedule_user(user_id, medicine_code)
@@ -310,7 +365,8 @@ def test_confirm_does_not_invent_schedule_without_duration():
             )
         )
         assert result["registered"] is True
-        assert result["schedule_count"] == 0
+        # 하루 3회면 오늘 아침·점심·저녁 세 칸이다. 7일로 늘리지 않는다.
+        assert result["schedule_count"] == 3
     finally:
         _cleanup_schedule_user(user_id, medicine_code)
 

@@ -16,15 +16,46 @@ class AlarmPreferences {
   /// 들어온 그대로의 시각 목록. 읽을 때는 [hours]로 정리해서 쓴다.
   final List<int> _rawHours;
 
+  /// 목록에는 남기되 이번엔 울리지 않을 시각.
+  ///
+  /// 지우는 것과 다르다 — 지우면 다시 넣을 때 시각을 또 골라야 한다.
+  /// 잠깐 안 받고 싶은 때를 스위치 하나로 껐다 켜게 둔다.
+  final List<int> _rawMuted;
+
   const AlarmPreferences({
     this.autoAlarm = true,
     this.repeatOnce = true,
     this.tellGuardian = true,
     List<int> hours = const [8, 18],
-  }) : _rawHours = hours;
+    List<int> mutedHours = const [],
+  }) : _rawHours = hours,
+       _rawMuted = mutedHours;
 
   /// 알림 시각(24시간제). 오름차순이고 겹치지 않는다. 적어도 하나는 남는다.
   List<int> get hours => normalize(_rawHours);
+
+  /// 꺼 둔 시각. 목록에 남아 있는 것만 센다.
+  Set<int> get mutedHours => {
+    for (final hour in _rawMuted)
+      if (hours.contains(hour)) hour,
+  };
+
+  /// 실제로 울릴 시각.
+  List<int> get ringingHours => [
+    for (final hour in hours)
+      if (!mutedHours.contains(hour)) hour,
+  ];
+
+  bool isMuted(int hour) => mutedHours.contains(hour);
+
+  /// 한 시각만 껐다 켠다.
+  AlarmPreferences withMuted(int hour, bool muted) => copyWith(
+    mutedHours: [
+      for (final h in mutedHours)
+        if (h != hour) h,
+      if (muted) hour,
+    ],
+  );
 
   /// 한 사람이 챙길 수 있는 알림은 이 정도가 끝이다.
   static const int maxHours = 6;
@@ -34,11 +65,13 @@ class AlarmPreferences {
     bool? repeatOnce,
     bool? tellGuardian,
     List<int>? hours,
+    List<int>? mutedHours,
   }) => AlarmPreferences(
     autoAlarm: autoAlarm ?? this.autoAlarm,
     repeatOnce: repeatOnce ?? this.repeatOnce,
     tellGuardian: tellGuardian ?? this.tellGuardian,
     hours: normalize(hours ?? this.hours),
+    mutedHours: mutedHours ?? _rawMuted,
   );
 
   /// 시각을 더한다. 이미 있는 시각이면 그대로 둔다.
@@ -57,10 +90,14 @@ class AlarmPreferences {
           ],
         );
 
-  /// [was]를 [now]로 바꾼다.
+  /// [was]를 [now]로 바꾼다. 꺼 둔 표시도 새 시각으로 따라간다.
   AlarmPreferences replaceHour(int was, int now) => copyWith(
     hours: [
       for (final h in hours)
+        if (h == was) now else h,
+    ],
+    mutedHours: [
+      for (final h in _rawMuted)
         if (h == was) now else h,
     ],
   );
@@ -83,9 +120,9 @@ class AlarmPreferences {
   }
 
   /// 내 정보 목록에 쓰는 한 줄.
-  String get summary => autoAlarm
-      ? '${hours.map(clock).join(' · ')} · 소리로 알려드려요'
-      : '소리 알림이 꺼져 있어요';
+  String get summary => !autoAlarm || ringingHours.isEmpty
+      ? '소리 알림이 꺼져 있어요'
+      : '${ringingHours.map(clock).join(' · ')} · 소리로 알려드려요';
 }
 
 class AlarmPreferencesController extends Notifier<AlarmPreferences> {
@@ -107,6 +144,10 @@ class AlarmPreferencesController extends Notifier<AlarmPreferences> {
         tellGuardian:
             prefs.getBool('${_prefix}guardian') ?? defaults.tellGuardian,
         hours: _readHours(prefs) ?? defaults.hours,
+        mutedHours: [
+          for (final text in prefs.getStringList('${_prefix}muted') ?? const [])
+            int.tryParse(text) ?? -1,
+        ],
       );
     } catch (_) {
       // 저장소를 못 열면 기본값으로 둔다.
@@ -140,6 +181,9 @@ class AlarmPreferencesController extends Notifier<AlarmPreferences> {
       await prefs.setBool('${_prefix}guardian', next.tellGuardian);
       await prefs.setStringList('${_prefix}hours', [
         for (final hour in next.hours) '$hour',
+      ]);
+      await prefs.setStringList('${_prefix}muted', [
+        for (final hour in next.mutedHours) '$hour',
       ]);
     } catch (_) {
       // 화면에는 이미 반영됐다. 다음 실행 때 기본값으로 돌아갈 뿐이다.

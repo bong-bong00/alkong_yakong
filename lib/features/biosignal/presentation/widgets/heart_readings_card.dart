@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import '../../../../core/theme/app_typography.dart';
-import '../../../../core/widgets/senior_card.dart';
+import '../../../../core/polar_pharmacist_ui/theme/app_typography.dart';
+import '../../../../core/polar_pharmacist_ui/widgets/senior_card.dart';
 import '../../../medication/domain/medication_models.dart';
 import '../../domain/heart_data.dart';
 

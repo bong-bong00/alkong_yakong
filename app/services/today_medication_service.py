@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 import json
+import logging
 import re
+from urllib.parse import urlsplit
 from datetime import date
 from typing import Any
 
 from fastapi import HTTPException
 
+from app.core.kst import today_kst
 from app.database import get_connection
 from app.services.heart_reading import latest_heart_reading
 from app.services.medicine_display import (
@@ -22,6 +25,9 @@ from app.services.medicine_display import (
     split_take_amount,
 )
 from app.services.ocr.parser import take_amount_for_display
+from app.services.medication_user_service import ensure_medication_user
+from app.services.medicine_use_route import classify_medicine_use
+from app.services.mfds_drug_permission.db import find_permission_product_by_item_seq
 from app.services.pharmacist.easy_category import (
     derive_easy_spoken_from_medicine,
     display_product_name,
@@ -80,7 +86,8 @@ def get_today_medicines(user_id: str, target_date: str | None = None) -> dict[st
     uid = (user_id or "").strip()
     if not uid:
         raise HTTPException(status_code=422, detail="user_id가 필요합니다.")
-    day = target_date or date.today().isoformat()
+    ensure_medication_user(uid)
+    day = target_date or today_kst().isoformat()
     conn = get_connection()
     try:
         user = conn.execute("SELECT id, name FROM users WHERE id = ?", (uid,)).fetchone()
@@ -93,8 +100,10 @@ def get_today_medicines(user_id: str, target_date: str | None = None) -> dict[st
         medicine_cols = {
             row[1] for row in conn.execute("PRAGMA table_info(medicines)")
         }
-        if "usage" in medicine_cols:
-            usage_select = ", m.usage"
+        usage_select = "".join(
+            f", m.{column}" for column in ("usage", "image_url")
+            if column in medicine_cols
+        )
 
         schedule_rows = conn.execute(
             f"""
@@ -296,6 +305,36 @@ def _ensure_today_schedules(conn, user_id: str, day: str) -> None:
     conn.commit()
 
 
+def _medicine_image_url(data: dict[str, Any]) -> str | None:
+    """Use the matched product's stored image; never search by a similar name.
+
+    No external request is made while loading home. Missing photos must not
+    delay or break medication retrieval.
+    """
+    def valid_url(value: object) -> str | None:
+        text = str(value or "").strip()
+        try:
+            parsed = urlsplit(text)
+            return text if parsed.scheme in {"https", "http"} and parsed.hostname else None
+        except ValueError:
+            return None
+
+    stored = valid_url(data.get("image_url"))
+    if stored:
+        return stored
+    code = str(data.get("medicine_code") or "").strip()
+    if not code:
+        return None
+    try:
+        product = find_permission_product_by_item_seq(code)
+    except Exception:
+        logging.getLogger(__name__).warning("Local product image lookup failed", exc_info=True)
+        return None
+    if not product or str(product.get("item_seq") or "").strip() != code:
+        return None
+    return valid_url(product.get("big_prdt_img_url"))
+
+
 def _medicine_item(row, *, guidance_cursor=None) -> dict[str, Any]:
     data = dict(row)
     official_product_name = str(data.get("product_name") or "").strip()
@@ -349,6 +388,7 @@ def _medicine_item(row, *, guidance_cursor=None) -> dict[str, Any]:
     ]
     item = {
         "medicine_code": data.get("medicine_code"),
+        "image_url": _medicine_image_url(data),
         "display_name": name,
         "official_product_name": official_product_name or name,
         "product_name": name,
@@ -359,9 +399,11 @@ def _medicine_item(row, *, guidance_cursor=None) -> dict[str, Any]:
         "ingredient_strength": ingredient_strength,
         "dosage_form": dosage_form,
         "administration_route": administration_route,
+        "use_route_type": classify_medicine_use(data),
         "dose_amount": dose_amount,
         "dose_unit": dose_unit,
         "amount": amount,
+        "frequency_per_day": data.get("frequency_per_day"),
         "easy_category": spoken,
         "purpose_label": guidance["purpose_label"],
         "short_explanation": spoken,

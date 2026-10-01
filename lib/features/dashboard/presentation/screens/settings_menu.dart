@@ -6,7 +6,29 @@ import '../../../profile/presentation/screens/help_screen.dart';
 import '../../../profile/presentation/screens/notices_screen.dart';
 import '../../../profile/presentation/screens/policy_screen.dart';
 
-/// 내 정보 탭의 도움말·약관 목록.
+/// 도움말과 약관 — 시안 62. 내 정보에서 들어오는 한 장짜리 화면.
+class SettingsMenuScreen extends StatelessWidget {
+  const SettingsMenuScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: Column(
+        children: [
+          const SeniorBackHeader(title: '도움말과 약관'),
+          Expanded(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.fromLTRB(16, 14, 16, 28),
+              child: const SettingsMenu(),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// 도움말·약관 목록 네 줄.
 ///
 /// 아이콘 단독 사용을 금지했으므로 아이콘을 걷어내고 한글 라벨만 남겼다.
 /// 행 높이는 상하 패딩 17px로 최소 56px를 넘긴다.

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -7,14 +8,14 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 
-import '../../../../core/constants/app_colors.dart';
+import '../../../../core/constants/medicine_flow_colors.dart';
 import '../../../../core/network/api_client.dart';
 import '../../../../core/network/api_config.dart';
 import '../../../../core/session/mvp_session.dart';
-import '../../../../core/theme/app_typography.dart';
+import '../../../../core/theme/medicine_flow_typography.dart';
 import '../../../../core/widgets/recovery_view.dart';
 import '../../../../core/widgets/senior_button.dart';
-import '../../../../core/widgets/senior_card.dart';
+import '../../../../core/widgets/medicine_flow_card.dart';
 import '../../../../core/widgets/senior_feedback.dart';
 import '../../../../core/widgets/senior_header.dart';
 import '../../../../core/widgets/senior_sheet.dart';
@@ -22,6 +23,7 @@ import '../../../../core/widgets/senior_timeline.dart';
 import '../../../dashboard/application/medication_history_provider.dart';
 import '../../../medication/application/medication_controller.dart';
 import '../../../medicines/application/user_medicines_controller.dart';
+import '../../../medicines/application/family_medicine_inbox.dart';
 import '../../../medicines/domain/display_policy.dart';
 import '../../../onboarding/presentation/screens/first_run_screen.dart';
 import 'add_medicine_screen.dart';
@@ -124,15 +126,6 @@ class _PrescriptionScreenState extends ConsumerState<PrescriptionScreen> {
     return const [];
   }
 
-  List<String> get _unrecognizedNames {
-    final raw = _result?['unrecognized_names'];
-    if (raw is! List) return const [];
-    return raw
-        .map((item) => item.toString().trim())
-        .where((name) => name.isNotEmpty)
-        .toList();
-  }
-
   static bool _isOfficialMatchedItem(Map<String, dynamic> item) {
     final code = item['medicine_code']?.toString() ?? '';
     if (code.isEmpty || code.toUpperCase().startsWith('OCR-')) {
@@ -192,6 +185,19 @@ class _PrescriptionScreenState extends ConsumerState<PrescriptionScreen> {
       if (!mounted) return;
       final mapped = Map<String, dynamic>.from(response as Map);
       final items = mapped['items'];
+      // 서버의 동일 OCR 요청과 앱에서 받은 충돌 표시 데이터를 대조한다.
+      if (items is List) {
+        for (final item in items.whereType<Map>()) {
+          final conflicts = item['interaction_conflicts'];
+          debugPrint(
+            '[OCR_DUR_DIAG] trace_id=${mapped['diagnostic_id'] ?? 'unavailable'} '
+            'stage=received code=${item['medicine_code']} '
+            'match_status=${item['match_status']} '
+            'official_matched=${_isOfficialMatchedItem(Map<String, dynamic>.from(item))} '
+            'display_conflict_count=${conflicts is List ? conflicts.length : 0}',
+          );
+        }
+      }
       final hasOfficial = items is List && items.isNotEmpty
           ? items
                 .whereType<Map>()
@@ -201,6 +207,11 @@ class _PrescriptionScreenState extends ConsumerState<PrescriptionScreen> {
           : false;
       final unreadRaw = mapped['unrecognized_names'];
       final hasUnread = unreadRaw is List && unreadRaw.isNotEmpty;
+      // 확인 실패 정보는 내부 응답에 보관하고 안내 카드/팝업에는 노출하지 않는다.
+      // 약 이름이나 사진 원문 대신 개수만 진단 로그로 남긴다.
+      debugPrint(
+        '[PRESCRIPTION_DIAG] unrecognized_count=${unreadRaw is List ? unreadRaw.length : 0}',
+      );
       if (!hasOfficial && !hasUnread) {
         setState(() {
           _failureCount++;
@@ -324,6 +335,18 @@ class _PrescriptionScreenState extends ConsumerState<PrescriptionScreen> {
       return;
     }
 
+    // 내가 내 약을 넣었으면 "가족이 넣어드렸어요"가 뜨면 안 된다. 장부에
+    // 미리 적어 둔다. 대신 넣는 중이라면 적지 않는다 — 어르신은 아직
+    // 그 약이 들어온 것을 모르니 그분 전화기에서 알려드려야 한다.
+    if (widget.onBehalfOfUserId == null) {
+      unawaited(
+        FamilyMedicineInbox.markSeen(
+          userId,
+          confirmItems.map((item) => item['medicine_code']?.toString() ?? ''),
+        ),
+      );
+    }
+
     MvpSession.latestOcrItems = editedItems;
     MvpSession.latestOcrRegisteredAt = DateTime.now();
     var refreshFailed = false;
@@ -353,7 +376,16 @@ class _PrescriptionScreenState extends ConsumerState<PrescriptionScreen> {
       context.push('/schedule-days', extra: MvpSession.latestPrescriptionId);
     }
 
-    if (!_hasPairConflict(durResult)) {
+    final hasPairConflict = _hasPairConflict(durResult);
+    debugPrint(
+      '[OCR_DUR_DIAG] trace_id=${_result?['diagnostic_id'] ?? 'unavailable'} '
+      'stage=registration_navigation analysis_id=${durResult?['analysis_id']} '
+      'assessment_status=${durResult?['assessment_status']} '
+      'analysis_complete=${durResult?['analysis_complete']} '
+      'pair_conflict=$hasPairConflict '
+      'destination=${hasPairConflict ? 'dur_analysis' : 'schedule_days'}',
+    );
+    if (!hasPairConflict) {
       openScheduleDays();
       return;
     }
@@ -437,7 +469,7 @@ class _PrescriptionScreenState extends ConsumerState<PrescriptionScreen> {
         return _ConfirmScreen(
           onBehalfOf: widget.onBehalfOf,
           items: _items,
-          unrecognizedNames: _unrecognizedNames,
+          diagnosticId: _result?['diagnostic_id']?.toString() ?? 'unavailable',
           onRegister: _register,
           onRetake: () => setState(() {
             _image = null;
@@ -749,14 +781,14 @@ class _ConfirmScreen extends StatefulWidget {
   final String? onBehalfOf;
 
   final List<Map<String, dynamic>> items;
-  final List<String> unrecognizedNames;
+  final String diagnosticId;
   final Future<void> Function(List<Map<String, dynamic>> items) onRegister;
   final VoidCallback onRetake;
 
   const _ConfirmScreen({
     this.onBehalfOf,
     required this.items,
-    required this.unrecognizedNames,
+    required this.diagnosticId,
     required this.onRegister,
     required this.onRetake,
   });
@@ -811,7 +843,7 @@ class _ConfirmScreenState extends State<_ConfirmScreen> {
       return '0.5$normalized';
     }
     final fraction = RegExp(
-      r'^(\d+)/(\d+)(알|정|캡슐|포|개|mL|ml|방울|T|TAB|C|CAP|PKG|EA)$',
+      r'^(\d+)/(\d+)(알|정|캡슐|포|개|회|mL|ml|방울|T|TAB|C|CAP|PKG|EA)$',
       caseSensitive: false,
     ).firstMatch(compact);
     if (fraction != null) {
@@ -825,7 +857,7 @@ class _ConfirmScreenState extends State<_ConfirmScreen> {
       }
     }
     final match = RegExp(
-      r'^(\d+(?:\.\d+)?)(알|정|캡슐|포|개|mL|ml|방울|T|TAB|C|CAP|PKG|EA)$',
+      r'^(\d+(?:\.\d+)?)(알|정|캡슐|포|개|회|mL|ml|방울|T|TAB|C|CAP|PKG|EA)$',
       caseSensitive: false,
     ).firstMatch(compact);
     final number =
@@ -848,6 +880,7 @@ class _ConfirmScreenState extends State<_ConfirmScreen> {
       'EA' || '개' => '개',
       'ML' || '밀리리터' => 'mL',
       '방울' => '방울',
+      '회' => '회',
       _ => '',
     };
     return normalizedUnit.isEmpty
@@ -916,7 +949,7 @@ class _ConfirmScreenState extends State<_ConfirmScreen> {
     final existingDosage = item['dosage']?.toString().trim() ?? '';
     final timesPerTake = item['times_per_take'];
     final amountMatch = RegExp(
-      r'^(\d+(?:\.\d+)?)\s*(알|정|캡슐|포|개|mL|ml|방울|T|TAB|C|CAP|PKG|EA)?$',
+      r'^(\d+(?:\.\d+)?)\s*(알|정|캡슐|포|개|회|mL|ml|방울|T|TAB|C|CAP|PKG|EA)?$',
       caseSensitive: false,
     ).firstMatch(existingDosage);
     final amountController = TextEditingController(
@@ -953,6 +986,19 @@ class _ConfirmScreenState extends State<_ConfirmScreen> {
       text: item['drug_name']?.toString() ?? '',
     );
 
+    // 이 이름이 어디서 왔는지 — 사진에서 읽은 글자인지, 공식 목록에서 맞춘
+    // 품목인지. 뭉뚱그리면 잘못 읽은 이름을 공식 약으로 믿고 그대로 등록한다.
+    final ocrRawName = item['ocr_drug_name_raw']?.toString().trim() ?? '';
+    final officialName =
+        item['official_product_name']?.toString().trim() ??
+        item['product_name']?.toString().trim() ??
+        '';
+    final medicineCode = item['medicine_code']?.toString().trim() ?? '';
+    final hasProvenance =
+        ocrRawName.isNotEmpty ||
+        officialName.isNotEmpty ||
+        medicineCode.isNotEmpty;
+
     // 돋보기 — 적어 넣은 이름을 공식 의약품 목록에서 찾는다.
     Future<void> searchName(BuildContext sheetContext) async {
       final query = nameController.text.trim();
@@ -980,6 +1026,34 @@ class _ConfirmScreenState extends State<_ConfirmScreen> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             mainAxisSize: MainAxisSize.min,
             children: [
+              if (hasProvenance) ...[
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.fromLTRB(18, 14, 18, 14),
+                  decoration: BoxDecoration(
+                    color: AppColors.sunken,
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: AppColors.border, width: 2),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (ocrRawName.isNotEmpty) ...[
+                        _DetailLine(label: '사진에서 읽은 이름', value: ocrRawName),
+                        const SizedBox(height: 10),
+                      ],
+                      if (officialName.isNotEmpty) ...[
+                        _DetailLine(label: '공식 제품명', value: officialName),
+                        const SizedBox(height: 10),
+                      ],
+                      if (medicineCode.isNotEmpty)
+                        _DetailLine(label: '공식 의약품 코드', value: medicineCode),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 18),
+              ],
               Text('약 이름', style: AppText.label(size: 18)),
               const SizedBox(height: 8),
               Row(
@@ -1114,6 +1188,7 @@ class _ConfirmScreenState extends State<_ConfirmScreen> {
       'PKG' || '포' => '포',
       'ML' || '밀리리터' => 'mL',
       '방울' => '방울',
+      '회' => '회',
       'EA' || '개' => '개',
       _ => null,
     };
@@ -1272,22 +1347,8 @@ class _ConfirmScreenState extends State<_ConfirmScreen> {
     );
   }
 
-  Future<bool> _confirmPartialRegistration() async {
-    if (widget.unrecognizedNames.isEmpty) return true;
-    return showSeniorYesNoDialog(
-      context: context,
-      title: '확인하지 못한 약이 있어요',
-      message:
-          '제외한 약은 함께 먹기 확인에서도 빠져요. '
-          '처방전과 비교한 뒤 제외하고 등록해 주세요.',
-      yesLabel: '제외하고 등록',
-      noLabel: '다시 확인하기',
-    );
-  }
-
   Future<void> _tryRegister() async {
     if (_registering) return;
-    if (!await _confirmPartialRegistration()) return;
     setState(() => _registering = true);
     try {
       await widget.onRegister(_editedItems);
@@ -1417,14 +1478,24 @@ class _ConfirmScreenState extends State<_ConfirmScreen> {
                     Builder(
                       builder: (context) {
                         final item = _editedItems[index];
+                        final conflicts = _interactionConflicts(item);
+                        final ingredientName =
+                            item['ingredient_name']?.toString().trim() ?? '';
+                        final ingredient = ingredientName.isNotEmpty
+                            ? ingredientName
+                            : item['ingredient']?.toString() ?? '';
+                        debugPrint(
+                          '[OCR_DUR_DIAG] trace_id=${widget.diagnosticId} '
+                          'stage=card_build code=${item['medicine_code']} '
+                          'display_conflict_count=${conflicts.length} '
+                          'conflict_border=${conflicts.isNotEmpty}',
+                        );
                         return _DrugCard(
-                          name: _shortDrugName(
+                          name: compactProductName(
                             item['drug_name']?.toString() ?? '이름을 못 읽었어요',
+                            ingredient: ingredient,
                           ),
-                          ingredient:
-                              item['ingredient_name']?.toString() ??
-                              item['ingredient']?.toString() ??
-                              '',
+                          ingredient: ingredient,
                           ingredientStrength:
                               item['ingredient_strength']?.toString() ?? '',
                           rawOcrName:
@@ -1445,7 +1516,7 @@ class _ConfirmScreenState extends State<_ConfirmScreen> {
                           fieldConfidences: _fieldConfidences(item),
                           matchStatusLabel: _matchStatusLabel(item),
                           uncertain: _uncertain(item),
-                          conflicts: _interactionConflicts(item),
+                          conflicts: conflicts,
                           expanded: _expandedItems.contains(index),
                           onToggle: () => setState(() {
                             if (!_expandedItems.remove(index)) {
@@ -1456,37 +1527,6 @@ class _ConfirmScreenState extends State<_ConfirmScreen> {
                           onEditDosing: () => _editItem(index),
                         );
                       },
-                    ),
-                    const SizedBox(height: 12),
-                  ],
-                  if (widget.unrecognizedNames.isNotEmpty) ...[
-                    SeniorCard(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 22,
-                        vertical: 18,
-                      ),
-                      borderColor: AppColors.attentionBorder,
-                      borderWidth: 2,
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            '읽지 못한 약 이름이 있어요',
-                            style: AppText.cardTitle(
-                              size: 20,
-                              color: AppColors.attentionBorder,
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          Text(
-                            '아래 이름은 등록에서 빼 두었어요. 처방전과 비교하고, 밝은 곳에서 다시 찍어 주세요.',
-                            style: AppText.body(size: 18),
-                          ),
-                          const SizedBox(height: 8),
-                          for (final name in widget.unrecognizedNames)
-                            Text('· $name (못 읽음)', style: AppText.body()),
-                        ],
-                      ),
                     ),
                     const SizedBox(height: 12),
                   ],
@@ -1861,6 +1901,29 @@ class _FailedScreen extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// 이름 한 줄에 그 출처를 붙여 보여준다.
+class _DetailLine extends StatelessWidget {
+  final String label;
+  final String value;
+
+  const _DetailLine({required this.label, required this.value});
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: AppText.label(size: 17, color: AppColors.textSecondary),
+        ),
+        const SizedBox(height: 4),
+        Text(value, style: AppText.body(size: 19)),
+      ],
     );
   }
 }

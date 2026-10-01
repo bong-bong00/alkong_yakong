@@ -2,11 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:flutter_tabler_icons/flutter_tabler_icons.dart';
 
-import '../../../../core/constants/app_colors.dart';
-import '../../../../core/theme/app_typography.dart';
-import '../../../../core/widgets/senior_button.dart';
-import '../../../../core/widgets/senior_card.dart';
-import '../../../../core/widgets/senior_header.dart';
+import '../../../../core/polar_pharmacist_ui/constants/app_colors.dart';
+import '../../../../core/polar_pharmacist_ui/theme/app_typography.dart';
+import '../../../../core/polar_pharmacist_ui/widgets/senior_button.dart';
+import '../../../../core/polar_pharmacist_ui/widgets/senior_card.dart';
+import '../../../../core/polar_pharmacist_ui/widgets/senior_header.dart';
 import '../../domain/heart_time.dart';
 import '../../domain/heart_data.dart';
 
@@ -35,6 +35,7 @@ class SavedScreen extends StatelessWidget {
   /// 심박수 관리 화면에서 시작한 측정이면, 그 화면으로만 돌아간다.
   /// 다른 진입 경로는 기존의 최상위 경로 복귀 동작을 유지한다.
   final bool returnToPreviousScreen;
+  final bool returnToCaller;
   final Future<void> Function()? onConfirmed;
 
   const SavedScreen({
@@ -47,10 +48,15 @@ class SavedScreen extends StatelessWidget {
     this.measurementContext = HeartMeasurementContext.general,
     this.onOpenRecord,
     this.returnToPreviousScreen = false,
+    this.returnToCaller = false,
     this.onConfirmed,
   });
 
   Future<void> _confirm(BuildContext context) async {
+    if (returnToCaller) {
+      Navigator.of(context).pop(true);
+      return;
+    }
     if (returnToPreviousScreen) {
       final router = GoRouter.maybeOf(context);
       if (router != null) {

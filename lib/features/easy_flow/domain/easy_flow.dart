@@ -34,7 +34,8 @@ class EasyStep {
 /// 하루에 실제로 일어나는 차례를 따른다.
 /// 흐름 밖 화면에서는 라벨이 "오늘 화면으로 가기"가 된다.
 const List<EasyStep> kEasyFlow = [
-  EasyStep(screen: EasyScreen.today, nextLabel: '복약 완료 보기'),
+  // 시안 70 — 약을 들기 전에 심박부터 잰다.
+  EasyStep(screen: EasyScreen.today, nextLabel: '복약 전 심박 측정'),
   EasyStep(screen: EasyScreen.done, nextLabel: '복약 기록 보기'),
   EasyStep(screen: EasyScreen.record, nextLabel: '심박수 보기'),
   EasyStep(screen: EasyScreen.heart, nextLabel: '내 약 목록 보기'),
@@ -72,8 +73,14 @@ class EasyDestination {
 ///
 /// 측정 중이거나, 등록 뒤 약 있는 날을 확인하는 화면에서는
 /// "다음 한 걸음"이 방해가 된다. 그 화면들은 자기 단추로 마친다.
+/// 하단 "다음 한 걸음" 바를 띄울 화면.
+///
+/// 오늘 화면은 명세서 76~85의 복약 한 바퀴를 스스로 이끈다 — 그 안에
+/// 다음 걸음 버튼이 이미 있어 바를 겹쳐 두지 않는다.
 bool showsEasyBar(EasyScreen screen) =>
-    screen != EasyScreen.measure && screen != EasyScreen.scheduleDays;
+    screen != EasyScreen.measure &&
+    screen != EasyScreen.scheduleDays &&
+    screen != EasyScreen.today;
 
 /// 하단 바가 뜰 때 스크롤 아래에 둘 여백.
 /// 바가 마지막 카드를 가리지 않게 한다.

@@ -52,9 +52,7 @@ String resolveGuardianTitle(BuildContext context, String? given) {
 
 /// 오늘 복약 상태를 들고 있는 컨트롤러.
 ///
-/// 서버 응답을 우선한다. 서버가 빈 목록을 주면 데모약을 치운다.
-/// (빈 응답인데 데모를 남기면 가짜 약이 실약처럼 보임)
-/// 네트워크 실패 시에만 기존(또는 데모) 상태를 유지한다.
+/// 서버 응답을 우선하며, 첫 로딩·조회 실패·실제 빈 목록을 구분한다.
 class MedicationController extends Notifier<TodayMedication> {
   final ApiClient _api;
 
@@ -68,22 +66,39 @@ class MedicationController extends Notifier<TodayMedication> {
       doses: [],
       guardianRelation: '보호자',
       guardianName: '가족',
+      fetchStatus: MedicationFetchStatus.loading,
     );
   }
 
   Future<void> refreshFromServer({bool throwOnError = false}) async {
+    final timer = Stopwatch()..start();
+    state = state.copyWith(fetchStatus: MedicationFetchStatus.loading);
     try {
-      final userId = Uri.encodeComponent(MvpSession.userId);
-      final response = await _api.get('/api/v1/users/$userId/today-medicines');
+      final userId = MvpSession.userId.trim();
+      if (userId.isEmpty) {
+        throw const ApiException('사용자 확인이 끝나지 않았어요.');
+      }
+      final response = await _api.get(
+        '/api/v1/users/${Uri.encodeComponent(userId)}/today-medicines',
+      );
       if (response is! Map || response['doses'] is! List) {
         throw const ApiException('오늘 복약을 받지 못했어요.');
       }
       final parsed = parse(Map<String, dynamic>.from(response));
-      // 서버가 정상 응답했으면 비어 있어도 그대로 반영 (데모 유지 금지)
+      // 정상적인 빈 응답은 빈 목록으로 반영한다.
       state = parsed;
-    } catch (_) {
+      debugPrint(
+        '[TODAY_MEDICINES_DIAG] status=ok doses=${parsed.doses.length} '
+        'elapsed_ms=${timer.elapsedMilliseconds}',
+      );
+    } catch (error) {
+      state = state.copyWith(fetchStatus: MedicationFetchStatus.failed);
+      debugPrint(
+        '[TODAY_MEDICINES_DIAG] status=failed '
+        'error_type=${error.runtimeType} elapsed_ms=${timer.elapsedMilliseconds}',
+      );
       if (throwOnError) rethrow;
-      // 서버 불가면 현재 상태(최초엔 데모) 유지
+      // 앞서 확인한 약은 유지하되, 실패 상태를 화면에 알린다.
     }
   }
 
@@ -124,6 +139,7 @@ class MedicationController extends Notifier<TodayMedication> {
                 ingredientSummary: m['ingredient_summary']?.toString(),
                 ingredientStrength: m['ingredient_strength']?.toString(),
                 amount: m['amount']?.toString() ?? '',
+                imageUrl: m['image_url']?.toString(),
                 easyCategory: card.spoken,
                 purposeLabel: card.purposeLabel,
                 shortExplanation: card.spoken,

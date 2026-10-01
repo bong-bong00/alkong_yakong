@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_tabler_icons/flutter_tabler_icons.dart';
 
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
@@ -74,9 +73,25 @@ class DayDoseDetail extends StatelessWidget {
                   ),
                 ],
               ),
-              for (final dose in doses) ...[
+              if (doses.isNotEmpty) ...[
                 const SizedBox(height: 14),
-                _SlotRow(dose: dose, now: now, date: date ?? now),
+                IntrinsicHeight(
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      for (int i = 0; i < doses.length; i++) ...[
+                        if (i > 0) const SizedBox(width: 9),
+                        Expanded(
+                          child: _SlotBox(
+                            dose: doses[i],
+                            now: now,
+                            date: date ?? now,
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
               ],
             ],
           ),
@@ -93,15 +108,21 @@ class DayDoseDetail extends StatelessWidget {
   }
 }
 
-/// 한 시간대 — 이름, 표시, 상태말.
-class _SlotRow extends StatelessWidget {
+/// 한 시간대 한 칸 — 이름과 시각 (명세서 43).
+class _SlotBox extends StatelessWidget {
   final DoseEntry dose;
   final DateTime now;
 
   /// 이 카드가 말하는 날.
   final DateTime date;
 
-  const _SlotRow({required this.dose, required this.now, required this.date});
+  const _SlotBox({required this.dose, required this.now, required this.date});
+
+  /// "8:10" 꼴. 12시간제로 짧게 적는다.
+  static String _clock(DateTime time) {
+    final hour12 = time.hour % 12 == 0 ? 12 : time.hour % 12;
+    return '$hour12:${time.minute.toString().padLeft(2, '0')}';
+  }
 
   /// 아직 오지 않은 때는 "못 드셨어요"라고 말하지 않는다.
   bool get _missed {
@@ -121,41 +142,78 @@ class _SlotRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final taken = dose.taken;
-    final color = taken
-        ? AppColors.point
-        : (_missed ? AppColors.danger : AppColors.textTertiary);
+    final Color background;
+    final Color labelColor;
+    final Color timeColor;
+    if (taken) {
+      background = AppColors.pointRing;
+      labelColor = AppColors.textBody;
+      timeColor = AppColors.textPrimary;
+    } else if (_missed) {
+      background = AppColors.calendarMissed;
+      labelColor = AppColors.calendarMissedInk;
+      timeColor = AppColors.calendarMissedInk;
+    } else {
+      background = AppColors.sunken;
+      labelColor = AppColors.slotPending;
+      timeColor = AppColors.slotPending;
+    }
+
+    // 드신 때는 실제로 드신 시각을, 아직인 때는 알림 시각을 적는다.
+    final time = taken && dose.takenAt != null
+        ? dose.takenAt!.toLocal()
+        : dose.slot.todayAt(date);
+
+    // 드셨으면 ✓, 못 드셨으면 ✗. 아직인 때는 아무 표시도 하지 않는다.
+    final mark = taken
+        ? '✓'
+        : _missed
+        ? '✗'
+        : '';
 
     return Semantics(
-      label: '${dose.slot.label} $_state',
+      label: '${dose.slot.label} $_state, ${_clock(time)}',
       child: ExcludeSemantics(
-        child: Row(
-          children: [
-            SizedBox(
-              width: 58,
-              child: Text(dose.slot.label, style: AppText.label(size: 18.5)),
-            ),
-            const SizedBox(width: 10),
-            Container(
-              width: 32,
-              height: 32,
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                color: taken ? AppColors.pointTint : AppColors.bg,
-                shape: BoxShape.circle,
+        child: Container(
+          constraints: const BoxConstraints(minHeight: 64),
+          alignment: Alignment.center,
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+          decoration: BoxDecoration(
+            color: background,
+            borderRadius: BorderRadius.circular(18),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    dose.slot.label,
+                    style: AppText.label(size: 16, color: labelColor),
+                  ),
+                  if (mark.isNotEmpty) ...[
+                    const SizedBox(width: 4),
+                    Text(
+                      mark,
+                      style: AppText.cardTitle(
+                        size: 16,
+                        color: timeColor,
+                      ).copyWith(height: 1),
+                    ),
+                  ],
+                ],
               ),
-              child: Icon(
-                taken
-                    ? TablerIcons.check
-                    : (_missed ? TablerIcons.x : TablerIcons.point),
-                size: taken || _missed ? 20 : 14,
-                color: color,
+              const SizedBox(height: 2),
+              FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Text(
+                  _clock(time),
+                  style: AppText.cardTitle(size: 19, color: timeColor),
+                ),
               ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Text(_state, style: AppText.body(size: 18, color: color)),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );

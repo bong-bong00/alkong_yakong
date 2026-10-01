@@ -16,8 +16,21 @@ abstract final class AppColors {
   /// 핵심 버튼 눌림 상태.
   static const Color pointPressed = Color(0xFF1836C4);
 
-  /// 완료 배지 배경, 강조 안내 박스.
-  static const Color pointTint = Color(0xFFEDEEFB);
+  /// 완료 배지 배경, 강조 안내 박스, 셰브런 동그라미.
+  static const Color pointTint = Color(0xFFEAEFFB);
+
+  /// 시안의 채움 파랑. 큰 동그란 버튼과 고른 칩에 쓴다.
+  /// 글자·밑줄에 쓰는 [point]보다 한 단계 밝다.
+  static const Color pointFill = Color(0xFF3052E6);
+
+  /// 가입 화면 계열의 채움 파랑 (명세서 03~21). [pointFill]보다 아주 조금 밝다.
+  static const Color pointFillSignup = Color(0xFF3B52E6);
+
+  /// 큰 동그란 버튼을 두르는 연한 테. 그림자 대신 자리를 잡아 준다.
+  static const Color pointRing = Color(0xFFE3E8F8);
+
+  /// 하단 탭 바를 본문에서 떼어 놓는 그림자. 경계선 대신 쓴다.
+  static const Color navShadow = Color(0x0F111114);
 
   /// 위험 경고 전용 (약 함께먹기 주의, 미복약 알림).
   static const Color danger = Color(0xFFC0392B);
@@ -50,11 +63,14 @@ abstract final class AppColors {
   /// 화면 배경.
   static const Color bg = Color(0xFFF2F2F6);
 
+  /// 화면 바탕 (명세서 0장). 거의 흰색이지만 흰 카드가 그 위에 떠 보인다.
+  static const Color pageBg = Color(0xFFF7F7FA);
+
   /// 카드.
   static const Color surface = Color(0xFFFFFFFF);
 
-  /// 하단 탭바. 상단 헤더는 흰색([surface])이다.
-  static const Color headerBg = Color(0xFFF7F7FA);
+  /// 헤더와 하단 탭바. 바탕([pageBg])보다 한 톤 밝은 흰색이다.
+  static const Color headerBg = Color(0xFFFFFFFF);
 
   /// 카드 내부 구분선.
   static const Color divider = Color(0xFFEDEDF1);
@@ -68,14 +84,29 @@ abstract final class AppColors {
   /// 비활성 탭 아이콘.
   static const Color inactive = Color(0xFFC6C6CE);
 
-  /// 비활성 탭 라벨.
-  static const Color inactiveLabel = Color(0xFF7A7A83);
+  /// 비활성 탭 라벨. 명세서는 탭 라벨을 옅게 물리지 않는다.
+  static const Color inactiveLabel = Color(0xFF3A3A42);
 
   /// 비활성 날짜 칩.
   static const Color chipBg = Color(0xFFE8E8EE);
 
   /// 차트의 지난 막대.
   static const Color chartPast = Color(0xFFDDDDE6);
+
+  /// 아직 오지 않은 시간대 칸의 글씨 (명세서 43).
+  static const Color slotPending = Color(0xFFA6A8B3);
+
+  /// 심박수 "먹기 전" 값과 막대 (명세서 52).
+  static const Color heartBefore = Color(0xFFB0B5C6);
+  static const Color heartBeforeBar = Color(0xFFD5DAEA);
+
+  // ── 달력 칸 (명세서 44) ────────────────────────────────
+  /// 다 드신 날 — 채움과 글씨.
+  static const Color calendarDone = Color(0xFFDCE3FA);
+
+  /// 빠뜨린 날 — 채움과 글씨.
+  static const Color calendarMissed = Color(0xFFF8DDD9);
+  static const Color calendarMissedInk = Color(0xFFA93226);
 
   /// `›` 셰브런, 입력 플레이스홀더.
   static const Color chevron = Color(0xFFB0B0B8);
@@ -105,18 +136,21 @@ abstract final class AppColors {
   static const Color dangerMuted = Color(0xFFA8746E);
 
   // ── 면과 선 ────────────────────────────────────────────
-  /// 보조 버튼 채움과 눌림.
-  static const Color secondaryFill = Color(0xFFE7E8F0);
-  static const Color secondaryPressed = Color(0xFFDCDDE8);
+  /// 보조 버튼 채움과 눌림. 테두리는 두르지 않는다 (명세서 0장).
+  static const Color secondaryFill = Color(0xFFF0F1F5);
+  static const Color secondaryPressed = Color(0xFFDFE0E6);
 
-  /// 보조 버튼 2px 테두리. 테두리 없는 연회색 버튼은 만들지 않는다.
+  /// 중립 버튼 채움 — 보조 버튼보다 한 톤 진하다 ("전화 드리기").
+  static const Color neutralFill = Color(0xFFE7E8F0);
+
+  /// 선을 꼭 보여야 하는 자리에만 쓰는 회청색 선.
   static const Color strongLine = Color(0xFFC6C9DA);
 
-  /// 카드 안 한 단계 더 들어간 블록. 탭바 배경이기도 하다.
-  static const Color sunken = Color(0xFFF7F7FA);
+  /// 흰 카드 안 한 단계 더 들어간 보조 면. 회색 위에 회색은 쓰지 않는다.
+  static const Color sunken = Color(0xFFF0F1F5);
 
   /// 중립 버튼 눌림.
-  static const Color neutralPressed = Color(0xFFE8E8EE);
+  static const Color neutralPressed = Color(0xFFDFE0E6);
 
   // ── 어두운 면 ──────────────────────────────────────────
   /// 바텀시트 뒤 배경.
@@ -127,6 +161,12 @@ abstract final class AppColors {
 
   /// 카메라 화면의 어두운 칩·버튼.
   static const Color camChip = Color(0xFF2A2A31);
+
+  /// 쉬운 화면 하단 바의 "뒤로" 버튼 (명세서 86~90).
+  static const Color darkButton = Color(0xFF2E2F37);
+
+  /// 쉬운 화면 걸음 표시의 아직 안 온 칸 (명세서 76~84).
+  static const Color stepTrack = Color(0xFFD5D8E4);
 
   /// 처방전 촬영 배경.
   static const Color cameraBg = Color(0xFF111114);
@@ -157,6 +197,11 @@ abstract final class AppColors {
   // ── 그림자 · 가림막 ─────────────────────────────────────────
   /// 시트를 띄울 때 뒤를 덮는 막.
   static const Color sheetScrim = Color(0xA8141620);
+
+  /// 카드 그림자 두 겹 (명세서 0장). 위 겹은 바닥에 닿는 얇은 선처럼,
+  /// 아래 겹은 넓게 퍼져 카드를 띄운다. 한 겹만 쓰면 선처럼 보인다.
+  static const Color cardShadow = Color(0x0D111114);
+  static const Color cardShadowWide = Color(0x0A111114);
 
   /// 시트와 하단 바가 바닥에서 떠 보이게 하는 그림자.
   static const Color sheetShadow = Color(0x2E14161E);

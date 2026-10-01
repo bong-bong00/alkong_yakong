@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_tabler_icons/flutter_tabler_icons.dart';
 
@@ -8,7 +9,6 @@ import '../../../../core/widgets/senior_button.dart';
 import '../../../../core/widgets/senior_card.dart';
 import '../../../../core/widgets/senior_header.dart';
 import '../../../medication/application/medication_controller.dart';
-import '../../../dur_analysis/presentation/screens/dur_analysis_screen.dart';
 import '../../application/medication_history_provider.dart';
 import '../widgets/day_dose_detail.dart';
 import '../../../medication/domain/medication_models.dart';
@@ -60,80 +60,200 @@ class MedicationRecordScreen extends ConsumerWidget {
     final history = patientId == null
         ? mergeCachedScheduleDates(loadedHistory)
         : loadedHistory;
-    final interactionCount = today.interactionCount;
 
     final title = patientName == null ? '복약 기록' : '$patientName님 복약 기록';
 
-    return Column(
-      children: [
-        if (showBack)
-          SeniorBackHeader(title: title)
-        else
-          SeniorTitleHeader(title: title),
-        Expanded(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(20, 16, 20, 28),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                // 기록에서 홈으로 돌아가는 길이 탭바뿐이면 길을 잃는다.
-                if (patientId == null && onBackToToday != null) ...[
-                  SeniorButton(
-                    label: '오늘 화면으로 돌아가기',
-                    icon: TablerIcons.calendar_event,
-                    minHeight: 72,
-                    fontSize: 23,
-                    elevated: true,
-                    onPressed: onBackToToday,
-                  ),
-                  const SizedBox(height: 12),
-                ],
-                AdherenceWeekCard(
-                  days: weekAdherenceStatuses(today, history),
-                  onOpenCalendar: () => Navigator.of(context).push(
-                    MaterialPageRoute<void>(
-                      builder: (_) =>
-                          MonthCalendarScreen(patientUserId: patientId),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                // 오늘 하루를 시간대별로 한 장에 둔다. 날짜별 카드를 쌓는 대신
-                // 달력이 날짜를 맡고, 여기서는 오늘 상태만 본다.
-                DayDoseDetail(
-                  dayLabel:
-                      '${DateTime.now().month}월 ${DateTime.now().day}일 오늘',
-                  doses: today.doses,
-                  footnote: '날짜를 누르면 그날 결과가 여기에 나와요.',
-                ),
-                // 함께먹기 주의 화면은 로그인한 본인 약만 분석한다.
-                if (patientId == null) ...[
-                  const SizedBox(height: 12),
-                  SeniorCard(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 22,
-                      vertical: 4,
-                    ),
-                    child: SeniorListRow(
-                      label: '약 함께먹기 주의',
-                      // 건수보다 무엇을 해야 하는지가 먼저다.
-                      subtitle: interactionCount > 0
-                          ? '확인이 필요한 약이 있어요'
-                          : '부딪히는 약은 없어요',
-                      trailing: const SeniorChevron(),
-                      onTap: () => Navigator.of(context).push(
+    final heartCheck = _todayHeartCheck(today);
+
+    return Container(
+      color: AppColors.pageBg,
+      // 제목이 본문에 있으므로 상태바를 여기서 피한다.
+      child: SafeArea(
+        bottom: false,
+        child: Column(
+          children: [
+            if (showBack)
+              SeniorBackHeader(title: title)
+            else
+              // 시안은 제목을 머리띠가 아니라 본문 맨 위에 큼직하게 적는다.
+              const SizedBox.shrink(),
+            Expanded(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.fromLTRB(16, 20, 16, 28),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    if (!showBack) ...[
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(6, 6, 6, 0),
+                        child: Text.rich(
+                          TextSpan(
+                            children: [
+                              TextSpan(
+                                text: patientName == null
+                                    ? '나의 '
+                                    : '$patientName님 ',
+                                style: AppText.screenTitle(
+                                  size: 26,
+                                ).copyWith(fontWeight: FontWeight.w500),
+                              ),
+                              TextSpan(
+                                text: '복약 기록',
+                                style: AppText.screenTitle(size: 28),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 14),
+                    ],
+                    // 쉬운 화면에는 탭이 없다. 거기서만 돌아가는 길을 낸다 —
+                    // 탭이 있는 일반 화면에서는 시안대로 두지 않는다.
+                    if (onBackToToday != null) ...[
+                      SeniorButton(
+                        label: '오늘 화면으로 돌아가기',
+                        icon: TablerIcons.calendar_event,
+                        minHeight: 72,
+                        fontSize: 23,
+                        elevated: true,
+                        onPressed: onBackToToday,
+                      ),
+                      const SizedBox(height: 12),
+                    ],
+                    AdherenceWeekCard(
+                      days: weekAdherenceStatuses(today, history),
+                      onOpenCalendar: () => Navigator.of(context).push(
                         MaterialPageRoute<void>(
-                          builder: (_) => const DurAnalysisScreen(),
+                          builder: (_) =>
+                              MonthCalendarScreen(patientUserId: patientId),
                         ),
                       ),
                     ),
+                    const SizedBox(height: 12),
+                    // 오늘 하루를 시간대별로 한 장에 둔다. 날짜별 카드를 쌓는 대신
+                    // 달력이 날짜를 맡고, 여기서는 오늘 상태만 본다.
+                    DayDoseDetail(
+                      dayLabel:
+                          '${DateTime.now().month}월 ${DateTime.now().day}일 오늘',
+                      doses: today.doses,
+                      footnote: null,
+                    ),
+                    // 먹기 전과 후를 나란히 놓는 자리는 여기 하나다.
+                    // 오늘 홈은 "지금 할 일" 한 가지만 말한다.
+                    // 잰 값이 없어도 칸은 남긴다 — 여기서 심박수로 가는
+                    // 길이 사라지면 어디로 가야 할지 알 수 없다.
+                    const SizedBox(height: 12),
+                    _TodayHeartCard(
+                      check: heartCheck,
+                      onTap: patientId == null
+                          ? () => context.go('/biosignal')
+                          : null,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// 오늘 심박수를 잰 시간대. 여러 번 쟀으면 가장 나중 것을 쓴다.
+  static DoseHeartCheck? _todayHeartCheck(TodayMedication today) {
+    DoseHeartCheck? found;
+    for (final dose in today.doses) {
+      if (dose.heartCheck != null) found = dose.heartCheck;
+    }
+    return found;
+  }
+}
+
+/// 오늘 심박수 — 먹기 전과 후를 한 줄에 놓는다.
+class _TodayHeartCard extends StatelessWidget {
+  /// 오늘 잰 값. 없으면 null — 숫자를 채우지 않는다.
+  final DoseHeartCheck? check;
+  final VoidCallback? onTap;
+
+  const _TodayHeartCard({required this.check, this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return SeniorCard(
+      radius: 26,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      onTap: onTap,
+      child: Row(
+        children: [
+          Container(
+            width: 56,
+            height: 56,
+            alignment: Alignment.center,
+            // 받은 화면은 동그라미가 아니라 모서리 둥근 네모다.
+            decoration: BoxDecoration(
+              color: AppColors.pointRing,
+              borderRadius: BorderRadius.circular(18),
+            ),
+            child: const Icon(
+              TablerIcons.heart,
+              size: 28,
+              color: AppColors.point,
+            ),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text('오늘 심박수', style: AppText.cardTitle(size: 20)),
+                const SizedBox(height: 2),
+                if (check case final DoseHeartCheck reading)
+                  Text.rich(
+                    TextSpan(
+                      children: [
+                        TextSpan(
+                          text: '먹기 전 ',
+                          style: AppText.label(
+                            size: 17,
+                            color: AppColors.textSecondary,
+                          ),
+                        ),
+                        TextSpan(
+                          text: '${reading.before}',
+                          style: AppText.cardTitle(size: 20),
+                        ),
+                        TextSpan(
+                          text: ' → 후 ',
+                          style: AppText.label(
+                            size: 17,
+                            color: AppColors.textSecondary,
+                          ),
+                        ),
+                        TextSpan(
+                          text: '${reading.after}',
+                          style: AppText.cardTitle(
+                            size: 20,
+                            color: AppColors.point,
+                          ),
+                        ),
+                      ],
+                    ),
+                  )
+                else
+                  Text(
+                    '오늘은 아직 재지 않았어요',
+                    style: AppText.label(
+                      size: 17,
+                      color: AppColors.textSecondary,
+                    ),
                   ),
-                ],
               ],
             ),
           ),
-        ),
-      ],
+          if (onTap != null) const SeniorChevron(),
+        ],
+      ),
     );
   }
 }
@@ -251,16 +371,16 @@ class AdherenceWeekCard extends StatelessWidget {
                       children: [
                         Flexible(
                           child: Text(
-                            '달력으로 보기',
+                            '달력 보기',
                             style: AppText.cardTitle(
-                              size: 17.5,
+                              size: 18,
                               color: AppColors.point,
                             ),
                           ),
                         ),
                         const Icon(
                           TablerIcons.chevron_right,
-                          size: 26,
+                          size: 24,
                           color: AppColors.point,
                         ),
                       ],
@@ -295,36 +415,22 @@ class _WeekDay extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // 명세서 43: 칸 안에는 날짜 숫자만 들어간다. 색이 상태를 말한다.
     late final Color background;
-    late final Widget mark;
-    BoxBorder? border;
+    late final Color ink;
 
     if (status.isToday) {
-      background = AppColors.point;
-      // 오늘은 아직 끝나지 않았다. 다 드시면 ✓, 아니면 아무 표시도 하지
-      // 않는다 — 먹은 횟수를 숫자로 적으면 0이 "빠뜨림"으로 읽힌다.
-      mark = status.complete
-          ? Text('✓', style: AppText.cardTitle(size: 17, color: Colors.white))
-          : const SizedBox.shrink();
+      background = AppColors.textPrimary;
+      ink = Colors.white;
     } else if (status.future || status.noRecord) {
-      background = AppColors.headerBg;
-      mark = Text(
-        '·',
-        style: AppText.cardTitle(size: 17, color: AppColors.inactive),
-      );
+      background = AppColors.sunken;
+      ink = AppColors.textTertiary;
     } else if (status.complete) {
-      background = AppColors.timelineRing;
-      mark = Text(
-        '✓',
-        style: AppText.cardTitle(size: 17, color: AppColors.pointBorder),
-      );
+      background = AppColors.calendarDone;
+      ink = AppColors.pointBorder;
     } else {
-      background = AppColors.surface;
-      border = Border.all(color: AppColors.danger, width: 2);
-      mark = Text(
-        '✗',
-        style: AppText.cardTitle(size: 17, color: AppColors.danger),
-      );
+      background = AppColors.calendarMissed;
+      ink = AppColors.calendarMissedInk;
     }
 
     return Semantics(
@@ -338,9 +444,21 @@ class _WeekDay extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // 38이 제 크기지만, 좁은 화면에서는 받은 폭까지만 줄어든다.
+          Text(
+            label,
+            style: status.isToday
+                ? AppText.cardTitle(size: 16)
+                : AppText.label(
+                    size: 16,
+                    color: status.future
+                        ? AppColors.chevron
+                        : AppColors.textSecondary,
+                  ),
+          ),
+          const SizedBox(height: 8),
+          // 44가 제 크기지만, 좁은 화면에서는 받은 폭까지만 줄어든다.
           ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 38, maxHeight: 38),
+            constraints: const BoxConstraints(maxWidth: 44, maxHeight: 44),
             child: AspectRatio(
               aspectRatio: 1,
               child: Container(
@@ -348,18 +466,26 @@ class _WeekDay extends StatelessWidget {
                 decoration: BoxDecoration(
                   color: background,
                   shape: BoxShape.circle,
-                  border: border,
                 ),
-                child: FittedBox(fit: BoxFit.scaleDown, child: mark),
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Text(
+                    '${status.date.day}',
+                    style: AppText.cardTitle(size: 19, color: ink),
+                  ),
+                ),
               ),
             ),
           ),
+          // 오늘 아래에는 짧은 파란 밑줄을 둔다.
           const SizedBox(height: 6),
-          Text(
-            label,
-            style: status.isToday
-                ? AppText.cardTitle(size: 16, color: AppColors.point)
-                : AppText.label(size: 16, color: AppColors.textTertiary),
+          Container(
+            width: 26,
+            height: 3,
+            decoration: BoxDecoration(
+              color: status.isToday ? AppColors.pointFill : Colors.transparent,
+              borderRadius: BorderRadius.circular(2),
+            ),
           ),
         ],
       ),

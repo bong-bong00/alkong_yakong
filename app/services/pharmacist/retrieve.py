@@ -6,6 +6,8 @@ import re
 import threading
 from typing import Any
 
+from app.services.medicine_merge import upsert_official_medicine
+
 
 _detail_refresh_lock = threading.Lock()
 _detail_refresh_thread: threading.Thread | None = None
@@ -119,47 +121,25 @@ def refresh_app_medicines_from_permission() -> int:
             efficacy = str(med.get("efficacy") or "").strip()
             if not efficacy:
                 continue
-            from app.services.pharmacist.ingredient import clean_ingredient_text
-
-            ingredient = clean_ingredient_text(med.get("ingredient"))
-            if ingredient == str(med.get("product_name") or name).strip():
-                ingredient = ""
-            conn.execute(
-                """
-                UPDATE medicines SET
-                    efficacy = ?,
-                    ingredient = COALESCE(NULLIF(?, ''), ingredient),
-                    usage = COALESCE(NULLIF(?, ''), usage),
-                    precautions = COALESCE(NULLIF(?, ''), precautions),
-                    manufacturer = COALESCE(NULLIF(?, ''), manufacturer),
-                    image_url = COALESCE(NULLIF(?, ''), image_url),
-                    updated_at = CURRENT_TIMESTAMP
-                WHERE id = ?
-                """,
-                (
-                    efficacy,
-                    ingredient,
-                    str(med.get("usage") or "").strip(),
-                    str(med.get("cautions") or med.get("precautions") or "").strip(),
-                    str(med.get("manufacturer") or "").strip(),
-                    str(med.get("image_url") or "").strip(),
-                    row["id"],
-                ),
+            saved = upsert_official_medicine(
+                conn,
+                medicine_code=str(row["medicine_code"]),
+                incoming=med,
             )
             updated += 1
-            saved = conn.execute(
-                "SELECT * FROM medicines WHERE id = ?", (row["id"],)
-            ).fetchone()
             if saved:
                 from app.services.pharmacist.easy_category import sync_medicine_guidance
                 from app.services.medicine_detail_service import ensure_medicine_detail
 
                 sync_medicine_guidance(conn, dict(saved))
                 ensure_medicine_detail(conn, str(saved["medicine_code"]))
-            # Release the write lock before the next medicine's potentially
-            # slow official lookup. Startup initialization already backfills
-            # unchanged medicines; this worker only needs to persist this row.
+            # 다음 약의 외부 API 조회가 진행되는 동안 쓰기 잠금을 유지하지 않는다.
+            # 특히 Render 기동 직후 OCR 요청과 겹칠 때 database is locked를 막는다.
             conn.commit()
+        from app.services.pharmacist.easy_category import backfill_all_medicine_guidance
+
+        backfill_all_medicine_guidance(conn)
+        conn.commit()
     finally:
         conn.close()
     return updated
@@ -196,60 +176,21 @@ def upsert_official_app_medicine(official: dict[str, Any]) -> str | None:
         derive_easy_category_from_medicine,
         sync_medicine_guidance,
     )
-    from app.services.pharmacist.ingredient import clean_ingredient_text
 
     med = (official or {}).get("medicine") or {}
     code = str(med.get("medicine_code") or "").strip()
     name = str(med.get("product_name") or med.get("medicine_name") or "").strip()
     if not code or not name:
         return None
-    ingredient = clean_ingredient_text(med.get("ingredient"))
-    if ingredient == name:
-        ingredient = ""
-    precautions = med.get("precautions") or med.get("cautions") or ""
     easy_category = derive_easy_category_from_medicine({**med, "product_name": name})
     conn = get_connection()
     try:
-        conn.execute(
-            """
-            INSERT INTO medicines (
-                medicine_code, product_name, ingredient, manufacturer,
-                efficacy, usage, precautions, image_url, easy_category
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ON CONFLICT(medicine_code) DO UPDATE SET
-                product_name = excluded.product_name,
-                ingredient = CASE
-                    WHEN excluded.ingredient IS NOT NULL
-                         AND trim(excluded.ingredient) != ''
-                    THEN excluded.ingredient
-                    ELSE medicines.ingredient
-                END,
-                manufacturer = COALESCE(NULLIF(trim(excluded.manufacturer), ''), medicines.manufacturer),
-                efficacy = COALESCE(NULLIF(trim(excluded.efficacy), ''), medicines.efficacy),
-                usage = COALESCE(NULLIF(trim(excluded.usage), ''), medicines.usage),
-                precautions = COALESCE(NULLIF(trim(excluded.precautions), ''), medicines.precautions),
-                image_url = COALESCE(NULLIF(trim(excluded.image_url), ''), medicines.image_url),
-                easy_category = COALESCE(
-                    NULLIF(trim(medicines.easy_category), ''),
-                    excluded.easy_category
-                ),
-                updated_at = CURRENT_TIMESTAMP
-            """,
-            (
-                code,
-                name,
-                ingredient,
-                med.get("manufacturer"),
-                med.get("efficacy"),
-                med.get("usage"),
-                precautions if isinstance(precautions, str) else str(precautions or ""),
-                med.get("image_url"),
-                easy_category,
-            ),
+        saved = upsert_official_medicine(
+            conn,
+            medicine_code=code,
+            incoming={**med, "product_name": name},
+            easy_category=easy_category,
         )
-        saved = conn.execute(
-            "SELECT * FROM medicines WHERE medicine_code = ?", (code,)
-        ).fetchone()
         if saved:
             sync_medicine_guidance(conn, dict(saved))
             from app.services.medicine_detail_service import ensure_medicine_detail
@@ -326,7 +267,7 @@ def _lookup_list_for_app_refresh(name: str) -> dict[str, Any] | None:
 
 
 def search_official_medicine_candidates(query: str, limit: int = 8) -> list[dict[str, Any]]:
-    """Local permission-name search for hand entry. Official code only."""
+    """공식 코드가 있는 손입력 후보 검색. 내부 DB에 없으면 실시간 조회한다."""
     from app.services.pharmacist.easy_category import display_product_name
     from app.services.mfds_drug_permission.db import search_permission_names
 
@@ -351,7 +292,91 @@ def search_official_medicine_candidates(query: str, limit: int = 8) -> list[dict
                 "ingredient": med.get("ingredient") or "",
             }
         )
-    return items
+    if items:
+        return items
+    return search_live_official_candidates(query, limit=limit)
+
+
+def search_live_official_candidates(query: str, limit: int = 5) -> list[dict[str, Any]]:
+    """공식 후보 탐색 전용. 유사 후보를 사용자 복용약으로 자동 확정하지 않는다."""
+    from difflib import SequenceMatcher
+    from app.services.medicine_display import preferred_card_ingredient
+    from app.services.mfds_drug_permission.client import fetch_permission_list_page, extract_items
+    from app.services.matching.name_matcher import (
+        match_medicine_name, _medicine_key, _edit_distance_le1,
+        forms_compatible, strengths_compatible,
+    )
+    from app.services.ocr.parser import product_search_name
+
+    name = product_search_name(query)
+    if len(name) < 2:
+        return []
+    stem = _medicine_key(name)
+    variants = [name]
+    if len(stem) >= 3:
+        # 첫/중간 글자가 오독되어도 공식 목록에서 후보를 찾을 수 있게 한다.
+        variants.extend([stem[:2], stem[-2:]])
+    rows: dict[str, dict[str, Any]] = {}
+    succeeded = False
+    for variant in dict.fromkeys(variants):
+        try:
+            payload = fetch_permission_list_page(
+                page_no=1, num_of_rows=20, item_name=variant, timeout=3
+            )
+            if not isinstance(payload, dict):
+                raise ValueError("invalid_official_response")
+            response = payload.get("response") or payload
+            header = response.get("header") or {}
+            if str(header.get("resultCode", "00")) not in {"00", "0"}:
+                raise ValueError("official_api_error")
+            fetched = extract_items(payload)
+            succeeded = True
+        except Exception:
+            continue
+        for row in fetched:
+            code = str(row.get("ITEM_SEQ") or "").strip()
+            product = str(row.get("ITEM_NAME") or "").strip()
+            if code and product:
+                rows[code] = row
+        if variant == name and rows:
+            break
+    if not succeeded:
+        raise RuntimeError("official_search_unavailable")
+    ranked = match_medicine_name(
+        query, [str(row["ITEM_NAME"]) for row in rows.values()], similar=True
+    )
+    candidates = dict(ranked.candidates)
+    # 짧은 제품명의 한 글자 오독도 '확인 후보'로만 제시한다.
+    # 자동 확정 기준이나 전체 매칭 임계값은 변경하지 않는다.
+    for row in rows.values():
+        product = str(row["ITEM_NAME"])
+        if (
+            len(stem) >= 3
+            and _edit_distance_le1(stem, _medicine_key(product))
+            and forms_compatible(query, product)
+            and strengths_compatible(query, product)
+        ):
+            candidates.setdefault(
+                product, SequenceMatcher(None, stem, _medicine_key(product)).ratio()
+            )
+    results = []
+    for code, row in rows.items():
+        product = str(row["ITEM_NAME"])
+        if product not in candidates:
+            continue
+        results.append({
+            "medicine_code": code,
+            "product_name": product,
+            "official_product_name": product,
+            "display_name": product,
+            "ingredient_name": preferred_card_ingredient(
+                str(row.get("MAIN_ITEM_INGR") or row.get("ITEM_INGR_NAME") or ""),
+                product,
+            ),
+            "requires_confirmation": True,
+            "candidate_score": candidates[product],
+        })
+    return sorted(results, key=lambda row: row["candidate_score"], reverse=True)[:limit]
 
 
 def _permission_result(row: dict[str, Any] | None) -> dict[str, Any] | None:

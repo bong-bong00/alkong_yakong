@@ -10,6 +10,23 @@ class TreatmentUse {
   const TreatmentUse({required this.title, this.description = ''});
 }
 
+enum MedicineUseType {
+  eat('먹는 약', '먹는'),
+  apply('바르는 약', '바르는'),
+  patch('붙이는 약', '붙이는'),
+  eye('눈에 넣는 약', '눈에 넣는'),
+  ear('귀에 넣는 약', '귀에 넣는'),
+  nose('코에 사용하는 약', '코에 사용하는'),
+  inhale('들이마시는 약', '들이마시는'),
+  injection('주사 약', '주사하는'),
+  other('그 밖의 사용 약', '사용하는'),
+  unknown('사용 방법 확인 필요', '사용하는');
+
+  const MedicineUseType(this.label, this.action);
+  final String label;
+  final String action;
+}
+
 class UserMedicine {
   final String medicineCode;
   final String displayName;
@@ -20,6 +37,7 @@ class UserMedicine {
   final String ingredientStrength;
   final String dosageForm;
   final String administrationRoute;
+  final String? useRouteType;
   final String status;
   final String interactionStatus;
   final String? interactionSummary;
@@ -28,6 +46,7 @@ class UserMedicine {
   final String interactionPairLabel;
   final List<String> interactionConflictNames;
   final String amount;
+  final String? imageUrl;
   final String? purposeLabel;
   final String? shortExplanation;
   final String? detailExplanation;
@@ -66,6 +85,7 @@ class UserMedicine {
     this.ingredientStrength = '',
     this.dosageForm = '',
     this.administrationRoute = '',
+    this.useRouteType,
     this.status = 'active',
     this.interactionStatus = 'not_checked',
     this.interactionSummary,
@@ -74,6 +94,7 @@ class UserMedicine {
     this.interactionPairLabel = '',
     this.interactionConflictNames = const [],
     required this.amount,
+    this.imageUrl,
     this.purposeLabel,
     this.shortExplanation,
     this.detailExplanation,
@@ -128,6 +149,7 @@ class UserMedicine {
       ingredientStrength: json['ingredient_strength']?.toString() ?? '',
       dosageForm: json['dosage_form']?.toString() ?? '',
       administrationRoute: json['administration_route']?.toString() ?? '',
+      useRouteType: json['use_route_type']?.toString(),
       status: json['status']?.toString() ?? 'active',
       interactionStatus:
           json['interaction_status']?.toString() ?? 'not_checked',
@@ -137,6 +159,7 @@ class UserMedicine {
       interactionPairLabel: json['interaction_pair_label']?.toString() ?? '',
       interactionConflictNames: _stringList(json['interaction_conflict_names']),
       amount: json['amount']?.toString() ?? '',
+      imageUrl: json['image_url']?.toString(),
       purposeLabel: card.purposeLabel,
       shortExplanation: card.spoken,
       // 상세 첫 문장은 홈 목록용 짧은 분류를 재사용하지 않는다.
@@ -197,6 +220,10 @@ class UserMedicine {
       allApprovedUses.isNotEmpty ||
       treatmentUses.isNotEmpty;
 
+  /// 생김새 한 줄 ("정제"). 서버가 주는 제형만 쓴다 —
+  /// 색·모양은 받지 않으므로 지어내지 않는다.
+  String get appearanceLine => dosageForm.trim();
+
   String get ingredientLabel {
     final summary = ingredientSummary.trim().isNotEmpty
         ? ingredientSummary.trim()
@@ -221,16 +248,44 @@ class UserMedicine {
     return '용량 정보 없음';
   }
 
-  String get doseAction {
-    final value = '$dosageForm $administrationRoute';
-    if (value.contains('점안')) return '눈에 넣는';
-    if (value.contains('연고') || value.contains('크림') || value.contains('외용')) {
-      return '바르는';
+  MedicineUseType get useType {
+    // An explicit server 'unknown' must not be replaced by a client guess.
+    if (useRouteType != null) {
+      return MedicineUseType.values.firstWhere(
+        (type) => type.name == useRouteType,
+        orElse: () => MedicineUseType.unknown,
+      );
     }
-    if (value.contains('패치') || value.contains('패취')) return '붙이는';
-    if (value.contains('흡입')) return '들이마시는';
-    return '먹는';
+    // Compatibility with older servers: use explicit route/form only.
+    final route = administrationRoute.trim().toLowerCase();
+    const routes = {
+      'apply': MedicineUseType.apply,
+      '外用': MedicineUseType.apply,
+      '외용': MedicineUseType.apply,
+      'topical': MedicineUseType.apply,
+      'patch': MedicineUseType.patch,
+      'eye': MedicineUseType.eye,
+      '경구': MedicineUseType.eat,
+      'oral': MedicineUseType.eat,
+      '흡입': MedicineUseType.inhale,
+    };
+    if (routes.containsKey(route)) return routes[route]!;
+    final form = dosageForm;
+    if (form.contains('점안') || form.contains('안연고')) return MedicineUseType.eye;
+    if (form.contains('질') || form.contains('좌제')) return MedicineUseType.other;
+    if (form.contains('연고') || form.contains('크림') || form.contains('로션')) {
+      return MedicineUseType.apply;
+    }
+    if (form.contains('패치') || form.contains('패취')) {
+      return MedicineUseType.patch;
+    }
+    if (form.contains('흡입')) return MedicineUseType.inhale;
+    if (form.contains('주사')) return MedicineUseType.injection;
+    if (['정제', '캡슐', '시럽', '경구액제'].contains(form)) return MedicineUseType.eat;
+    return MedicineUseType.unknown;
   }
+
+  String get doseAction => useType.action;
 
   static List<String> _stringList(dynamic raw) {
     if (raw is! List) return const [];

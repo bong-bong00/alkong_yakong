@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../../../../core/constants/app_colors.dart';
+import '../../../../core/polar_pharmacist_ui/constants/app_colors.dart';
 import '../../../../core/network/api_client.dart';
 import '../../../../core/session/mvp_session.dart';
 

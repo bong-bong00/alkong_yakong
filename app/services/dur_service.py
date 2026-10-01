@@ -4,6 +4,7 @@ import sqlite3
 import uuid
 from collections import defaultdict
 from datetime import date
+from time import perf_counter
 
 from fastapi import HTTPException
 
@@ -31,10 +32,6 @@ HIGH_TYPES = {"병용금기", "중복성분", "효능군중복"}
 MEDIUM_TYPES = {"연령금기", "임부금기"}
 OFFICIAL_DUR_TYPES = {"병용금기", "연령금기", "임부금기", "효능군중복"}
 ALL_CHECK_TYPES = OFFICIAL_DUR_TYPES | {"중복성분"}
-
-
-def _compact_product_name(value: object) -> str:
-    return "".join(str(value or "").split()).casefold()
 
 
 def _official_reason(value: str | None, fallback: str) -> str:
@@ -101,12 +98,11 @@ def analyze_dur(
     *,
     persist: bool = True,
     refresh: bool | None = None,
+    diagnostic_id: str | None = None,
 ) -> dict:
-    if request.medicine_codes:
-        _cache_missing_official_medicines(
-            request.medicine_codes,
-            medicine_names_by_code=request.medicine_names_by_code,
-        )
+    trace_id = diagnostic_id or uuid.uuid4().hex
+    started = perf_counter()
+    diagnostic_logger = logging.getLogger("uvicorn.error")
     conn = get_connection()
     try:
         cursor = conn.cursor()
@@ -117,8 +113,42 @@ def analyze_dur(
         if not user:
             raise HTTPException(status_code=404, detail="사용자가 없습니다.")
 
+        if request.medicine_codes and request.medicine_names_by_code:
+            _cache_missing_official_medicines(
+                request.medicine_codes,
+                medicine_names_by_code=request.medicine_names_by_code,
+            )
         medicines = _load_medicines_with_metadata(cursor, request)
+        requested_codes = set(request.medicine_codes)
+        medicines = [
+            row for row in medicines
+            if not request.medicine_names_by_code.get(row["medicine_code"])
+            or _compact_product_name(row["product_name"])
+            == _compact_product_name(request.medicine_names_by_code[row["medicine_code"]])
+        ]
+        missing_count = len(requested_codes - {row["medicine_code"] for row in medicines})
+        logger.info(
+            "DUR scope requested_count=%d analyzed_count=%d scope_complete=%s",
+            len(requested_codes), len(medicines), missing_count == 0,
+        )
+        diagnostic_logger.info(
+            "[DUR_DIAG] %s",
+            json.dumps({
+                "trace_id": trace_id, "stage": "targets",
+                "persist": persist, "refresh": persist if refresh is None else refresh,
+                "requested_codes": sorted(set(request.medicine_codes or [])),
+                "medicines": [
+                    {"code": row["medicine_code"],
+                     "ingredient_usable": _is_usable_ingredient(row)}
+                    for row in medicines
+                ],
+            }, ensure_ascii=False),
+        )
         if not medicines:
+            diagnostic_logger.info(
+                "[DUR_DIAG] trace_id=%s stage=result status=no_medicines matches=0",
+                trace_id,
+            )
             empty_by_type = _group_by_type([])
             return {
                 "risk_result_id": None,
@@ -224,6 +254,9 @@ def analyze_dur(
         taboo_n = len(taboo_rows)
         incomplete_reasons = []
         incomplete_types: set[str] = set()
+        if missing_count:
+            incomplete_reasons.append(f"{missing_count}개 약의 공식 정보를 확인하지 못해 검사에서 빠졌어요.")
+            incomplete_types.update(ALL_CHECK_TYPES)
         if checkable_n == 0:
             incomplete_reasons.append("등록 약의 성분 정보가 없어 함께먹기 검사를 할 수 없어요.")
             incomplete_types.update(ALL_CHECK_TYPES)
@@ -233,15 +266,9 @@ def analyze_dur(
             )
             incomplete_types.update(ALL_CHECK_TYPES)
         if checkable_n > 0:
-            if dur_sync_status == "skipped" and taboo_n > 0:
-                # refresh=False means this request intentionally avoided a live
-                # network sync.  Existing stored DUR reference rows are still
-                # usable, so the absence of an in-request sync is not itself an
-                # incomplete analysis.
-                dur_sync_status = "stored"
-            elif dur_sync_status == "skipped":
+            if dur_sync_status == "skipped":
                 incomplete_reasons.append(
-                    "저장된 식약처 함께먹기 기준이 없어 검사를 끝내지 못했어요."
+                    "현재 저장된 기준으로 먼저 살펴봤어요. 최신 식약처 자료는 추가로 확인 중이에요."
                 )
                 incomplete_types.update(OFFICIAL_DUR_TYPES)
             elif dur_sync_status == "skipped_missing_key":
@@ -306,6 +333,32 @@ def analyze_dur(
             )
             risk_result_id = cursor.lastrowid
             conn.commit()
+        # 기준 건수는 자료 존재 여부일 뿐 전체 성분에 대한 조회 완료를 뜻하지 않는다.
+        diagnostic_logger.info(
+            "[DUR_DIAG] %s",
+            json.dumps({
+                "trace_id": trace_id, "stage": "result", "analysis_id": analysis_id,
+                "elapsed_ms": round((perf_counter() - started) * 1000),
+                "checkable_count": checkable_n, "skipped_count": len(skipped_ingredient),
+                "taboo_row_count": taboo_n,
+                "relevant_rule_count": sum(
+                    bool(_grouped_hit(lookup_grouped, row["ingredient_a"]) or
+                         _grouped_hit(lookup_grouped, row["ingredient_b"]))
+                    for row in taboo_rows
+                ),
+                "dur_sync_status": dur_sync_status,
+                "dur_sync_fetched": dur_sync_fetched,
+                "dur_sync_upserted": dur_sync_upserted,
+                "assessment_status": assessment_status, "analysis_complete": not incomplete,
+                "match_count": len(matches),
+                "pair_match_count": sum(m.get("type") in HIGH_TYPES for m in matches),
+                "pair_codes": [
+                    {"type": m.get("type"), "a": m.get("medicine_codes_a", []),
+                     "b": m.get("medicine_codes_b", [])}
+                    for m in matches if m.get("type") in HIGH_TYPES
+                ],
+            }, ensure_ascii=False),
+        )
         return {
             "risk_result_id": risk_result_id,
             "analysis_id": analysis_id,
@@ -331,11 +384,19 @@ def analyze_dur(
             "dur_sync_fetched": dur_sync_fetched,
             "dur_sync_upserted": dur_sync_upserted,
         }
-    except Exception:
+    except Exception as error:
+        diagnostic_logger.warning(
+            "[DUR_DIAG] trace_id=%s stage=error error_type=%s",
+            trace_id, type(error).__name__,
+        )
         conn.rollback()
         raise
     finally:
         conn.close()
+
+
+def _compact_product_name(value) -> str:
+    return "".join(str(value or "").split()).casefold()
 
 
 def _cache_missing_official_medicines(
@@ -355,6 +416,11 @@ def _cache_missing_official_medicines(
     if not codes:
         return
 
+    expected_names = {
+        str(code or "").strip(): str(name or "").strip()
+        for code, name in (medicine_names_by_code or {}).items()
+        if str(code or "").strip() and str(name or "").strip()
+    }
     conn = get_connection()
     try:
         placeholders = ",".join("?" for _ in codes)
@@ -366,6 +432,9 @@ def _cache_missing_official_medicines(
                 codes,
             ).fetchall()
             if is_usable_ingredient(row["ingredient"], row["product_name"])
+            and (not expected_names.get(str(row["medicine_code"]))
+                 or _compact_product_name(row["product_name"])
+                 == _compact_product_name(expected_names[str(row["medicine_code"])]))
         }
     finally:
         conn.close()
@@ -376,12 +445,6 @@ def _cache_missing_official_medicines(
         find_permission_product_by_item_seq,
         product_to_medicine,
     )
-
-    expected_names = {
-        str(code or "").strip(): str(name or "").strip()
-        for code, name in (medicine_names_by_code or {}).items()
-        if str(code or "").strip() and str(name or "").strip()
-    }
 
     for code in codes:
         if code in existing_codes:
@@ -412,7 +475,11 @@ def _cache_missing_official_medicines(
                     )
                 )
 
-            permission_row = find_permission_product_by_item_seq(code)
+            try:
+                permission_row = find_permission_product_by_item_seq(code)
+            except Exception as error:
+                logger.warning("DUR official cache stage=local_lookup error_type=%s", type(error).__name__)
+                permission_row = None
             medicine = product_to_medicine(permission_row) if permission_row else None
             if not verified(medicine):
                 try:
@@ -1650,7 +1717,9 @@ def interaction_priority_cards(matches: list, conn=None) -> list[dict]:
             conn.close()
 
 
-def preview_conflicts_for_codes(user_id: str, new_codes: list[str]) -> dict[str, list[dict]]:
+def preview_conflicts_for_codes(
+    user_id: str, new_codes: list[str], diagnostic_id: str | None = None,
+) -> dict[str, list[dict]]:
     """아직 등록 전인 OCR 약과, 이미 먹는 약의 병용 주의를 약 코드별로 붙인다."""
     focus = {str(code).strip() for code in new_codes if str(code).strip()}
     if not user_id or not focus:
@@ -1672,10 +1741,17 @@ def preview_conflicts_for_codes(user_id: str, new_codes: list[str]) -> dict[str,
     finally:
         conn.close()
     codes = list(dict.fromkeys([*existing, *focus]))
+    logging.getLogger("uvicorn.error").info(
+        "[DUR_PREVIEW_DIAG] %s",
+        json.dumps({"trace_id": diagnostic_id, "stage": "targets",
+                    "new_codes": sorted(focus), "existing_codes": sorted(set(existing)),
+                    "combined_codes": sorted(codes)}, ensure_ascii=False),
+    )
     result = analyze_dur(
         DurAnalyzeRequest(user_id=user_id, medicine_codes=codes),
         persist=False,
         refresh=False,
+        diagnostic_id=diagnostic_id,
     )
     by_code: dict[str, list[dict]] = {code: [] for code in focus}
     conn = get_connection()
