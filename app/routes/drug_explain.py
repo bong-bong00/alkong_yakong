@@ -17,27 +17,32 @@ router = APIRouter(prefix="/api/v1", tags=["Drug Explain"])
 @router.post("/drug-explain/chat", response_model=ChatResponse)
 def chat_with_pharmacist(request: DrugExplainChatRequest):
     from app.services.gemini_service import generate_chat_response
-    reply = generate_chat_response(
-        request.message,
-        user_id=request.user_id,
-        selected_medicine=(
-            request.selected_medicine.model_dump()
-            if request.selected_medicine is not None
-            else None
-        ),
-        selected_medicines=[
-            medicine.model_dump() for medicine in request.selected_medicines
-        ],
-        temporary_medicines=[
-            medicine.model_dump() for medicine in request.temporary_medicines
-        ],
-        intent=request.intent,
+    from app.services.pharmacist.conversation import conversation_context, resolve_followup
+    history = [item.model_dump() for item in request.recent_history]
+    selected = request.selected_medicine.model_dump() if request.selected_medicine else None
+    selected_many = [item.model_dump() for item in request.selected_medicines]
+    message, intent, selected, selected_many, clarification = resolve_followup(
+        request.message, request.intent, history, selected, selected_many,
     )
+    with conversation_context(history) as evidence:
+        reply = clarification or generate_chat_response(
+            message,
+            user_id=request.user_id,
+            selected_medicine=selected,
+            selected_medicines=selected_many,
+            temporary_medicines=[
+                medicine.model_dump() for medicine in request.temporary_medicines
+            ],
+            intent=intent,
+        )
     highlights = []
-    if request.intent == "health_precautions":
+    if intent == "health_precautions":
         from app.services.pharmacist.health_precautions import health_highlight_terms
         highlights = health_highlight_terms(request.user_id, reply)
-    return {"reply": reply, "health_highlight_terms": highlights}
+    return {"reply": reply, "health_highlight_terms": highlights,
+            "sources": evidence["sources"], "conversation_medicines": evidence["medicines"],
+            "resolved_intent": intent, "resolved_message": message,
+            "resolved_scope": "selection" if selected or selected_many else None}
 
 
 @router.get("/drugs/search", response_model=DrugSearchResponse)

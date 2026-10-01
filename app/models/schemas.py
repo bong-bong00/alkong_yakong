@@ -197,9 +197,19 @@ class SelectedMedicine(BaseModel):
     product_name: str
 
 
+class PharmacistHistoryMessage(BaseModel):
+    role: Literal["user", "assistant"]
+    content: str = Field(max_length=4000)
+    intent: Optional[Literal["overview", "efficacy", "dosage", "precautions", "health_precautions",
+                             "side_effects", "combination", "age", "pregnancy", "duplicate"]] = None
+    medicines: List[SelectedMedicine] = Field(default_factory=list, max_length=20)
+    scope: Optional[Literal["all", "selection", "general"]] = None
+
+
 class DrugExplainChatRequest(BaseModel):
     user_id: str
     message: str
+    recent_history: List[PharmacistHistoryMessage] = Field(default_factory=list, max_length=6)
     selected_medicine: Optional[SelectedMedicine] = None
     selected_medicines: List[SelectedMedicine] = Field(
         default_factory=list,

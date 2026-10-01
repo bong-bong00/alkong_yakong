@@ -41,6 +41,62 @@ void main() {
 
   setUp(() => MvpSession.userId = 'scope-user');
 
+  testWidgets('최근 대화 전달과 출처 표시, 약 범위 변경 시 문맥 초기화', (tester) async {
+    final requests = <Map<String, dynamic>>[];
+    final client = MockClient((request) async {
+      if (request.method == 'POST') {
+        requests.add(jsonDecode(request.body) as Map<String, dynamic>);
+        return response({
+          'reply': '선택약1정의 공식 주의사항을 확인했어요.',
+          'sources': requests.length == 1 ? ['식약처 의약품 허가정보'] : [],
+          'conversation_medicines': [
+            {'medicine_code': '202400001', 'product_name': '선택약1정'},
+          ],
+          'resolved_message': requests.last['message'],
+          'resolved_intent': 'precautions',
+        });
+      }
+      return response({
+        'medicines': [
+          {
+            'medicine_code': '202400001',
+            'product_name': '선택약1정',
+            'official_product_name': '선택약1정',
+            'status': 'active',
+          },
+        ],
+      });
+    });
+    await tester.pumpWidget(
+      MaterialApp(
+        home: DrugExplainScreen(
+          apiClient: ApiClient(client: client),
+          medicationApiClient: ApiClient(client: client),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await ask(tester);
+    expect(requests.single['recent_history'], isEmpty);
+    expect(find.text('출처: 식약처 의약품 허가정보'), findsOneWidget);
+    final field = find.byType(TextField).last;
+    await tester.enterText(field, '그럼 술은?');
+    await tester.testTextInput.receiveAction(TextInputAction.send);
+    await tester.pumpAndSettle();
+    final history = requests.last['recent_history'] as List;
+    expect(history.length, 2);
+    expect(history.first['role'], 'user');
+    expect(history.last['role'], 'assistant');
+    expect(history.last['medicines'].single['product_name'], '선택약1정');
+    expect(history.last.containsKey('sources'), isFalse);
+    // Only the first, verified answer has a footer; the unverified reply has none.
+    expect(find.text('출처: 식약처 의약품 허가정보'), findsOneWidget);
+    await pick(tester, '약 전체');
+    await ask(tester);
+    expect(requests.last['recent_history'], isEmpty);
+    expect(tester.takeException(), isNull);
+  });
+
   for (final count in [0, 1, 2]) {
     testWidgets(
       '건강 질문 버튼은 ${count == 0 ? '약 전체' : '$count개 선택'} 범위와 전용 intent를 보낸다',

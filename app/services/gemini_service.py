@@ -1177,6 +1177,7 @@ def _generate_chat_response(
     temporary_medicines: list[dict[str, Any]] | None = None,
     intent: str | None = None,
 ) -> str:
+    from app.services.pharmacist.conversation import dialogue_prompt, record_evidence
     # Personal-health guidance is isolated from ordinary precautions and DUR.
     if intent == "health_precautions":
         from app.services.pharmacist.health_precautions import generate_health_reply
@@ -1687,6 +1688,10 @@ def _generate_chat_response(
                 and dur_result["status"] == "current"
                 and not dur_result["items"]
             ):
+                record_evidence(
+                    [item["식약처_공식정보"] for item in official_data_list if item.get("match_type") == "exact"],
+                    dur=True,
+                )
                 return _dur_no_match_reply(
                     intents,
                     dur_result,
@@ -1738,6 +1743,8 @@ def _generate_chat_response(
                 official_contexts=official_contexts,
                 dur_result=prompt_dur_result,
             )
+            prompt += dialogue_prompt()
+            prompt += "\n출처 표시는 서버가 별도로 처리합니다. 답변 본문에 출처·참고자료 표기를 생성하지 마세요."
             if all_medicines_question or selected_medicines_question:
                 verified_count = len(official_contexts)
                 total_count = len((all_medicines_context or {}).get("items") or [])
@@ -1823,6 +1830,12 @@ def _generate_chat_response(
                 reply,
                 confirmed_zero_messages,
             )
+            if reply != INCOMPLETE_CHAT_REPLY:
+                record_evidence(
+                    [item["식약처_공식정보"] for item in official_data_list
+                     if item.get("match_type") == "exact" and _has_requested_official_content(item["식약처_공식정보"], intents)],
+                    dur=safety_question and dur_result.get("status") == "current" and bool(dur_result.get("items")),
+                )
             if (
                 all_medicines_question
                 and bool(intents & {"overview", "precautions"})

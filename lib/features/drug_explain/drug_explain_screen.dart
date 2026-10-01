@@ -50,6 +50,7 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
   String? _medicineLoadError;
   final List<String> _medicines = [];
   final List<Map<String, dynamic>> _messages = [];
+  int _conversationStart = 0;
 
   String? get _selectedMedicine =>
       _selectedMedicines.length == 1 ? _selectedMedicines.single : null;
@@ -449,6 +450,7 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
     final isAllMedicines = picked == 1;
     setState(() {
       _selectedMedicines.clear();
+      _conversationStart = _messages.length;
       _isAllMedicinesSelected = isAllMedicines;
       _pendingGeneralQuestion = null;
       _selectedKeyword = null;
@@ -472,6 +474,7 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
     if (!mounted || result == null) return;
     if (result.searchOther) {
       setState(() {
+        _conversationStart = _messages.length;
         _selectedMedicines
           ..clear()
           ..addAll(result.medicines);
@@ -484,6 +487,7 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
       _selectedMedicines
         ..clear()
         ..addAll(result.medicines);
+      _conversationStart = _messages.length;
       _isAllMedicinesSelected = false;
       _pendingGeneralQuestion = null;
       _selectedKeyword = null;
@@ -518,6 +522,7 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
         _temporaryMedicinesByCode[code] = medicine;
       }
       _officialMedicinesByName[medicine.itemName] = medicine;
+      _conversationStart = _messages.length;
       if (!addToSelection) _selectedMedicines.clear();
       if (!_selectedMedicines.contains(medicine.itemName)) {
         _selectedMedicines.add(medicine.itemName);
@@ -554,7 +559,10 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
         message == null &&
         _selectedMedicines.isEmpty &&
         !_isAllMedicinesSelected;
-    final requestText = _hasMultipleMedicines && message == null
+    final isFollowup = RegExp(
+      r'^(그럼|그러면|그 약|이 약|그건)|번째\s*약|요약|짧게|간단히',
+    ).hasMatch(text);
+    final requestText = _hasMultipleMedicines && message == null && !isFollowup
         ? '${_selectedRequestMedicineNames.join(', ')}에 대해 다음 질문에 답해 주세요: $text'
         : isGeneralFreeInput &&
               pendingQuestion != null &&
@@ -562,8 +570,41 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
         ? '$text에 대해 다음 질문에 답해 주세요: $pendingQuestion'
         : text;
 
+    final previousMessages = _messages
+        .skip(_conversationStart)
+        .where(
+          (entry) =>
+              entry['isMe'] == true || entry['conversationMedicines'] != null,
+        )
+        .toList();
+    final recentHistory = previousMessages
+        .skip(previousMessages.length > 6 ? previousMessages.length - 6 : 0)
+        .map((entry) {
+          final content = (entry['contextText'] ?? entry['text']).toString();
+          return {
+            'role': entry['isMe'] == true ? 'user' : 'assistant',
+            'content': content.length > 4000
+                ? content.substring(0, 4000)
+                : content,
+            if (entry['intent'] != null) 'intent': entry['intent'],
+            if (entry['scope'] != null) 'scope': entry['scope'],
+            'medicines': entry['conversationMedicines'] ?? const [],
+          };
+        })
+        .toList(growable: false);
+    final questionIndex = _messages.length;
     setState(() {
-      _messages.add({'isMe': true, 'text': displayMessage ?? text});
+      _messages.add({
+        'isMe': true,
+        'text': displayMessage ?? text,
+        'contextText': requestText,
+        'intent': intent,
+        'scope': _isAllMedicinesSelected
+            ? 'all'
+            : _selectedMedicines.isNotEmpty
+            ? 'selection'
+            : 'general',
+      });
       _isLoading = true;
       _selectedKeyword = null;
     });
@@ -587,6 +628,7 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
       final body = <String, dynamic>{
         'user_id': MvpSession.userId,
         'message': requestText,
+        'recent_history': recentHistory,
       };
       if (intent != null) body['intent'] = intent;
       final selectedOfficial = _selectedOfficialMedicine;
@@ -635,6 +677,12 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
 
       if (!mounted) return;
       setState(() {
+        _messages[questionIndex]['contextText'] =
+            data['resolved_message'] ?? requestText;
+        _messages[questionIndex]['intent'] = data['resolved_intent'] ?? intent;
+        if (data['resolved_scope'] != null) {
+          _messages[questionIndex]['scope'] = data['resolved_scope'];
+        }
         if (isGeneralFreeInput) {
           _pendingGeneralQuestion = asksForMedicine
               ? (pendingQuestion ?? text)
@@ -645,9 +693,17 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
         _messages.add({
           'isMe': false,
           'text': _plainAiReply(reply),
+          'sources':
+              (data['sources'] as List?)?.whereType<String>().toList(
+                growable: false,
+              ) ??
+              const <String>[],
+          'conversationMedicines': data['conversation_medicines'] ?? const [],
           'officialProductNames': officialProductNames,
-          'isHealthReply': intent == 'health_precautions',
-          'healthHighlightTerms': intent == 'health_precautions'
+          'isHealthReply':
+              (data['resolved_intent'] ?? intent) == 'health_precautions',
+          'healthHighlightTerms':
+              (data['resolved_intent'] ?? intent) == 'health_precautions'
               ? (data['health_highlight_terms'] as List?)
                         ?.whereType<String>()
                         .toList(growable: false) ??
@@ -854,6 +910,11 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
                     _ChatBubble(
                       text: message['text'] as String,
                       isMe: message['isMe'] as bool,
+                      sources:
+                          (message['sources'] as List?)
+                              ?.whereType<String>()
+                              .toList(growable: false) ??
+                          const [],
                       isHealthReply: message['isHealthReply'] == true,
                       healthHighlightTerms:
                           (message['healthHighlightTerms'] as List?)
@@ -1393,6 +1454,7 @@ class _ChatBubble extends StatelessWidget {
   final List<String> officialProductNames;
   final bool isHealthReply;
   final List<String> healthHighlightTerms;
+  final List<String> sources;
 
   const _ChatBubble({
     required this.isMe,
@@ -1400,6 +1462,7 @@ class _ChatBubble extends StatelessWidget {
     this.officialProductNames = const [],
     this.isHealthReply = false,
     this.healthHighlightTerms = const [],
+    this.sources = const [],
   });
 
   @override
@@ -1431,25 +1494,38 @@ class _ChatBubble extends StatelessWidget {
                   ),
                 ],
               ),
-              child: Text.rich(
-                TextSpan(
-                  children: _officialProductNameSpans(
-                    text,
-                    isMe
-                        ? const []
-                        : isHealthReply
-                        ? healthHighlightTerms
-                        : officialProductNames,
-                    AppText.body(
-                      size: 20,
-                      color: isMe ? Colors.white : AppColors.textPrimary,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text.rich(
+                    TextSpan(
+                      children: _officialProductNameSpans(
+                        text,
+                        isMe
+                            ? const []
+                            : isHealthReply
+                            ? healthHighlightTerms
+                            : officialProductNames,
+                        AppText.body(
+                          size: 20,
+                          color: isMe ? Colors.white : AppColors.textPrimary,
+                        ),
+                        emphasisColor: isHealthReply
+                            ? const Color(0xFFB3261E)
+                            : AppColors.detailEmphasis,
+                        healthWarningsOnly: isHealthReply,
+                      ),
                     ),
-                    emphasisColor: isHealthReply
-                        ? const Color(0xFFB3261E)
-                        : AppColors.detailEmphasis,
-                    healthWarningsOnly: isHealthReply,
                   ),
-                ),
+                  if (!isMe && sources.isNotEmpty) ...[
+                    const SizedBox(height: 12),
+                    Text(
+                      '출처: ${sources.join(' · ')}',
+                      style: AppText.caption(size: 14),
+                    ),
+                  ],
+                ],
               ),
             ),
           ),

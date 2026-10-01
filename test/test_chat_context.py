@@ -448,6 +448,7 @@ class ChatContextTest(unittest.TestCase):
                 "selected_medicines",
                 "temporary_medicines",
                 "intent",
+                "recent_history",
             },
         )
 
@@ -487,7 +488,8 @@ class ChatContextTest(unittest.TestCase):
         ) as generate:
             response = client.post("/api/v1/drug-explain/chat", json=payload)
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json(), {"reply": "공식정보에 근거한 개요예요."})
+        self.assertEqual(response.json()["reply"], "공식정보에 근거한 개요예요.")
+        self.assertEqual(response.json()["sources"], [])
         self.assertEqual(
             generate.call_args.kwargs["selected_medicines"],
             [

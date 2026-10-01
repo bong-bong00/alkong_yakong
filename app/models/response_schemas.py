@@ -234,6 +234,11 @@ class DurDiagnoseResponse(ApiResponse):
 class ChatResponse(ApiResponse):
     reply: str
     health_highlight_terms: list[str] = Field(default_factory=list)
+    sources: list[str] = Field(default_factory=list)
+    conversation_medicines: list[dict[str, str]] = Field(default_factory=list)
+    resolved_intent: str | None = None
+    resolved_message: str | None = None
+    resolved_scope: str | None = None
 
 
 class MedicineResponse(ApiResponse):

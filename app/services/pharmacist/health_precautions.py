@@ -102,7 +102,7 @@ def _official_cautions(medicine: dict[str, Any]) -> dict[str, Any] | None:
                 or not candidate.get("cautions")):
             return None
         # Only pass verified official fields; no personal info goes to MFDS.
-        return {"product_name": name, "cautions": candidate["cautions"],
+        return {"product_name": name, "medicine_code": code, "source": candidate.get("source"), "cautions": candidate["cautions"],
                 "ingredient": candidate.get("ingredient") or ""}
     except Exception:
         logger.warning("Health precautions official lookup unavailable")
@@ -235,10 +235,15 @@ def generate_health_reply(
     if len(relevant) < len(official):
         notice += "일부 약에서는 등록 정보와 직접 연결되는 안내를 찾지 못했어요. "
     fallback = _evidence_reply(relevant, terms, notice)
+    from app.services.pharmacist.conversation import dialogue_prompt, record_evidence
+    def delivered(reply):
+        record_evidence(relevant)
+        return reply
     from app.services import gemini_service as gemini
     if not gemini.GEMINI_API_KEY:
-        return fallback
-    prompt = build_health_prompt(message, profile, relevant, incomplete=incomplete)
+        return delivered(fallback)
+    prompt = (build_health_prompt(message, profile, relevant, incomplete=incomplete) + dialogue_prompt()
+              + "\n출처 표시는 서버가 별도로 처리합니다. 답변 본문에 출처·참고자료 표기를 생성하지 마세요.")
     try:
         from google import genai
 
@@ -249,10 +254,10 @@ def generate_health_reply(
                 forbidden_phrases=("안전합니다", "안전해요", "먹어도 됩니다", "복용해도 됩니다", "문제없어요"),
             )
             if not reply or reply == gemini.INCOMPLETE_CHAT_REPLY:
-                return fallback
+                return delivered(fallback)
             # Existing verifier rejects invented/changed conditions, not just length.
             if not _reply_grounded(client, profile, relevant, reply):
-                return fallback
+                return delivered(fallback)
             if len(reply) > 500:
                 reply = gemini._summarize_chat_reply(
                     client, reply, medicine_names=tuple(item["product_name"] for item in relevant),
@@ -260,10 +265,10 @@ def generate_health_reply(
             # Coverage notices and closing are server-owned, not model-dependent.
             reply = reply.replace(CONSULT, "").strip()
             reply = notice + reply + " " + CONSULT
-            return reply if len(reply) <= 600 else fallback
+            return delivered(reply if len(reply) <= 600 else fallback)
     except Exception:
         logger.warning("Health precautions generation unavailable")
-        return fallback
+        return delivered(fallback)
 
 
 def _evidence_reply(official, terms, notice: str) -> str:
