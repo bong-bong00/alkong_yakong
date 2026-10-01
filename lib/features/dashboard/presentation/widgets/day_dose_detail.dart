@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_tabler_icons/flutter_tabler_icons.dart';
 
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
@@ -118,10 +119,10 @@ class _SlotBox extends StatelessWidget {
 
   const _SlotBox({required this.dose, required this.now, required this.date});
 
-  /// "8:10" 꼴. 12시간제로 짧게 적는다.
+  /// "08:10" 꼴. 홈과 같이 24시간 시계로 적는다.
   static String _clock(DateTime time) {
-    final hour12 = time.hour % 12 == 0 ? 12 : time.hour % 12;
-    return '$hour12:${time.minute.toString().padLeft(2, '0')}';
+    final hour = time.hour.toString().padLeft(2, '0');
+    return '$hour:${time.minute.toString().padLeft(2, '0')}';
   }
 
   /// 아직 오지 않은 때는 "못 드셨어요"라고 말하지 않는다.
@@ -164,56 +165,65 @@ class _SlotBox extends StatelessWidget {
         ? dose.takenAt!.toLocal()
         : dose.slot.todayAt(date);
 
-    // 드셨으면 ✓, 못 드셨으면 ✗. 아직인 때는 아무 표시도 하지 않는다.
-    final mark = taken
-        ? '✓'
+    // 드셨으면 파란 체크, 못 드셨으면 붉은 가위표를 칸 왼쪽 위에 붙인다.
+    // 홈 칩과 같은 자리·같은 모양이라 두 화면을 같은 눈으로 읽는다.
+    // 아직인 때는 아무 표시도 하지 않는다.
+    final markIcon = taken
+        ? TablerIcons.check
         : _missed
-        ? '✗'
-        : '';
+        ? TablerIcons.x
+        : null;
+    final markColor = taken ? AppColors.pointFill : AppColors.danger;
 
     return Semantics(
       label: '${dose.slot.label} $_state, ${_clock(time)}',
       child: ExcludeSemantics(
-        child: Container(
-          constraints: const BoxConstraints(minHeight: 64),
-          alignment: Alignment.center,
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
-          decoration: BoxDecoration(
-            color: background,
-            borderRadius: BorderRadius.circular(18),
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Row(
+        child: Stack(
+          clipBehavior: Clip.none,
+          children: [
+            Container(
+              constraints: const BoxConstraints(minHeight: 64),
+              alignment: Alignment.center,
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+              decoration: BoxDecoration(
+                color: background,
+                borderRadius: BorderRadius.circular(18),
+              ),
+              child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Text(
                     dose.slot.label,
                     style: AppText.label(size: 16, color: labelColor),
                   ),
-                  if (mark.isNotEmpty) ...[
-                    const SizedBox(width: 4),
-                    Text(
-                      mark,
-                      style: AppText.cardTitle(
-                        size: 16,
-                        color: timeColor,
-                      ).copyWith(height: 1),
+                  const SizedBox(height: 2),
+                  FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Text(
+                      _clock(time),
+                      style: AppText.cardTitle(size: 19, color: timeColor),
                     ),
-                  ],
+                  ),
                 ],
               ),
-              const SizedBox(height: 2),
-              FittedBox(
-                fit: BoxFit.scaleDown,
-                child: Text(
-                  _clock(time),
-                  style: AppText.cardTitle(size: 19, color: timeColor),
+            ),
+            if (markIcon != null)
+              Positioned(
+                left: -2,
+                top: -2,
+                child: Container(
+                  width: 26,
+                  height: 26,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: markColor,
+                    shape: BoxShape.circle,
+                    border: Border.all(color: AppColors.surface, width: 2),
+                  ),
+                  child: Icon(markIcon, size: 14, color: Colors.white),
                 ),
               ),
-            ],
-          ),
+          ],
         ),
       ),
     );

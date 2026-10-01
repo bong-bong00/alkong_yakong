@@ -1103,10 +1103,14 @@ void _homeTimelineTests() {
     );
     await tester.pump();
 
-    // 약이 없는 때는 "없음"으로, 드실 차례는 시각까지 적는다.
-    expect(find.text('아침 없음'), findsOneWidget);
+    // 약이 없는 때는 "없음"으로. 몇 시인지는 셋 다 적는다 —
+    // 한 칸에만 적혀 있으면 왜 거기만 적혔는지 알 수 없다.
+    expect(find.text('아침'), findsOneWidget);
+    expect(find.text('없음'), findsOneWidget);
     expect(find.text('점심'), findsOneWidget);
-    expect(find.text('저녁 6:00'), findsOneWidget);
+    expect(find.text('12:00'), findsOneWidget);
+    expect(find.text('저녁'), findsOneWidget);
+    expect(find.text('18:00'), findsOneWidget);
 
     // 약 이름은 홈에 늘어놓지 않는다 — "약 보기"에서 본다.
     expect(find.text('메트포르민'), findsNothing);
@@ -1132,7 +1136,8 @@ void _homeTimelineTests() {
 
     expect(find.textContaining('2번 남았어요'), findsOneWidget);
     expect(find.text('먹었어요'), findsOneWidget);
-    expect(find.text('30분 뒤'), findsOneWidget);
+    // 알림 화면으로 가는 네모 칸. 맞춰 둔 시각만 적는다(자명종 그림이 있다).
+    expect(find.text('08:00'), findsWidgets);
   });
 
   test('접고 펴는 버튼에 화살표 장식을 붙이지 않는다', () {

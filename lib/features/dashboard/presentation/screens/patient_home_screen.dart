@@ -12,11 +12,16 @@ import '../../../../core/widgets/senior_button.dart';
 import '../../../../core/widgets/senior_card.dart';
 import '../../../../core/widgets/senior_feedback.dart';
 import '../../../../core/widgets/senior_header.dart';
+import '../../../../core/widgets/senior_sheet.dart';
+import '../../../../core/widgets/senior_wheel.dart';
 import '../../../../core/network/api_client.dart';
 import '../../../guardian/application/guardians_provider.dart';
 import '../../../guardian/data/guardian_repository.dart';
+import '../../../medication/application/dose_times.dart';
 import '../../../medication/application/medication_controller.dart';
+import '../../../reminder/application/alarm_preferences.dart';
 import '../../../reminder/application/reminder_notifications.dart';
+import '../../../reminder/presentation/screens/alarm_settings_screen.dart';
 import '../../../medication/domain/medication_models.dart';
 import '../../../medication/presentation/widgets/dose_flow_sheets.dart';
 import '../../../easy_flow/domain/easy_flow.dart';
@@ -168,6 +173,93 @@ class _PatientHomeScreenState extends ConsumerState<PatientHomeScreen> {
       accept
           ? '${invite.name} 님이 이제 함께 볼 수 있어요'
           : '${invite.name} 님의 요청을 거절했어요',
+    );
+  }
+
+  /// 때 칸을 눌렀을 때 — 아침·점심·저녁이 몇 시인지 보여 주고 그 자리에서
+  /// 고친다.
+  ///
+  /// 여기서 고치는 것은 **화면에 적는 시각**이다. 소리로 울리는 시각은
+  /// "알림 시간"에서 따로 고른다.
+  Future<void> _showDoseTimes() async {
+    await SeniorSheet.show<void>(
+      context: context,
+      builder: (sheetContext) => Consumer(
+        builder: (consumerContext, sheetRef, _) {
+          final times = sheetRef.watch(doseTimesProvider);
+          return SeniorSheet(
+            title: '약 드시는 시간',
+            body: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                for (final slot in DoseSlot.values) ...[
+                  if (slot != DoseSlot.values.first) const SeniorDivider(),
+                  _SlotTimeRow(
+                    label: slot.label,
+                    clock: times.clock(slot),
+                    onTap: () => _changeDoseTime(sheetContext, slot),
+                  ),
+                ],
+              ],
+            ),
+            actions: [
+              SeniorButton(
+                label: '닫기',
+                kind: SeniorButtonKind.secondary,
+                minHeight: 66,
+                fontSize: 21,
+                onPressed: () => Navigator.of(sheetContext).pop(),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  /// 한 때의 시각을 바꾼다.
+  ///
+  /// **소리로 울리는 시각은 건드리지 않는다.** 여기서 고치는 것은 화면에
+  /// 적는 시각뿐이고, 알림은 "알림 시간"에서 따로 고른다.
+  Future<void> _changeDoseTime(BuildContext sheetContext, DoseSlot slot) async {
+    final times = ref.read(doseTimesProvider);
+    final current = times.of(slot);
+    final time = await showSeniorClockWheel(
+      context: sheetContext,
+      title: '${slot.label}, 몇 시에 드세요?',
+      initialMinutes: current,
+    );
+    if (time == null || time == current) return;
+    await ref
+        .read(doseTimesProvider.notifier)
+        .update(times.withTime(slot, time));
+
+    if (!mounted) return;
+    showSeniorSnackbar(
+      context,
+      '${slot.label}을 ${DoseTimes.clockOf(time)}로 바꿨어요',
+    );
+  }
+
+  /// 홈 알림 칸에 적을 말. 다음에 울릴 시각만 적는다 — 자명종 그림이
+  /// 이미 알림이라고 말하고 있다.
+  static String _nextAlarmLabel(AlarmPreferences alarm) {
+    final times = alarm.ringingTimes;
+    if (!alarm.autoAlarm || times.isEmpty) return '알림 꺼짐';
+    final now = DateTime.now();
+    final minutes = now.hour * 60 + now.minute;
+    // 오늘 남은 것 중 첫 번째, 없으면 내일 첫 번째.
+    final next = times.firstWhere(
+      (t) => t > minutes,
+      orElse: () => times.first,
+    );
+    return AlarmPreferences.clock(next);
+  }
+
+  /// "알림 시간" 칸 — 소리로 울릴 시각을 고치러 간다.
+  Future<void> _openAlarmSettings() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(builder: (_) => const AlarmSettingsScreen()),
     );
   }
 
@@ -384,8 +476,20 @@ class _PatientHomeScreenState extends ConsumerState<PatientHomeScreen> {
                       // 오늘 할 일을 한 줄로 먼저 말한다.
                       _TodayHeadline(remaining: remaining),
                       const SizedBox(height: 18),
-                      _SlotChips(today: today, next: next),
-                      const SizedBox(height: 24),
+                      _SlotChips(
+                        today: today,
+                        next: next,
+                        times: ref.watch(doseTimesProvider),
+                        onSetTimes: _showDoseTimes,
+                      ),
+                      const SizedBox(height: 8),
+                      // 누를 수 있다는 것을 모르면 평생 못 누른다. 한 줄만 적는다.
+                      Text(
+                        '칸을 누르면 약 드시는 시간을 바꿔요',
+                        textAlign: TextAlign.left,
+                        style: AppText.caption(size: 16),
+                      ),
+                      const SizedBox(height: 18),
                       // 남는 세로 자리를 그대로 받아 그 안에 맞춘다.
                       _Fill(
                         scrolls: scrolls,
@@ -401,10 +505,10 @@ class _PatientHomeScreenState extends ConsumerState<PatientHomeScreen> {
                       ),
                       const SizedBox(height: 24),
                       _HomeTiles(
-                        takenAt: next == null ? _lastTakenAt(today) : null,
-                        onSnooze: next == null
-                            ? null
-                            : () => _snooze(next.slot),
+                        alarmLabel: _nextAlarmLabel(
+                          ref.watch(alarmPreferencesProvider),
+                        ),
+                        onOpenAlarm: _openAlarmSettings,
                         onOpenMedicines: widget.onOpenMedicines,
                       ),
                       if (today.daysLeft != null) ...[
@@ -424,16 +528,6 @@ class _PatientHomeScreenState extends ConsumerState<PatientHomeScreen> {
         ],
       ),
     );
-  }
-
-  /// 오늘 마지막으로 약을 든 시각. 없으면 null.
-  static DateTime? _lastTakenAt(TodayMedication today) {
-    DateTime? found;
-    for (final dose in today.doses) {
-      final at = dose.takenAt;
-      if (at != null) found = at;
-    }
-    return found;
   }
 }
 
@@ -477,11 +571,26 @@ class _TodayHeadline extends StatelessWidget {
 
 /// 아침·점심·저녁 세 칸. 드신 때는 흰 칩에 체크, 다음 때는 파란 칩,
 /// 약이 없는 때는 회색 칩에 "없음".
+///
+/// 칸 아래에 그 때가 몇 시인지 적는다. 셋 다 적는다 — 한 칸에만 적혀
+/// 있으면 왜 거기만 적혔는지 알 수 없다. 아직 시간을 맞춘 적이 없어도
+/// 기본 시각(아침 8시·점심 12시·저녁 6시)이 적힌다.
 class _SlotChips extends StatelessWidget {
   final TodayMedication today;
   final DoseEntry? next;
 
-  const _SlotChips({required this.today, required this.next});
+  /// 약 드시는 시각 — 소리로 울리는 시각과는 따로 간다.
+  final DoseTimes times;
+
+  /// 칸을 눌렀을 때 — "약 드시는 시간" 창을 연다.
+  final VoidCallback onSetTimes;
+
+  const _SlotChips({
+    required this.today,
+    required this.next,
+    required this.times,
+    required this.onSetTimes,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -500,11 +609,7 @@ class _SlotChips extends StatelessWidget {
     final isNext = next?.slot == slot;
     final taken = dose?.taken ?? false;
 
-    final label = dose == null
-        ? '${slot.label} 없음'
-        : isNext
-        ? '${slot.label} ${_clock(slot)}'
-        : slot.label;
+    final under = dose == null ? '없음' : times.clock(slot);
     final background = dose == null
         ? AppColors.neutralFill
         : isNext
@@ -517,47 +622,76 @@ class _SlotChips extends StatelessWidget {
         : AppColors.point;
 
     return Semantics(
+      button: true,
       label: dose == null
-          ? label
+          ? '${slot.label} 약 없음, 눌러서 시간 설정하기'
           : taken
-          ? '${slot.label} 드셨어요'
-          : label,
+          ? '${slot.label} ${times.clock(slot)}, 드셨어요, 눌러서 시간 설정하기'
+          : '${slot.label} ${times.clock(slot)}, 눌러서 시간 설정하기',
       child: ExcludeSemantics(
-        child: Container(
-          constraints: const BoxConstraints(minHeight: 60),
-          alignment: Alignment.center,
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
-          decoration: BoxDecoration(
-            color: background,
-            borderRadius: BorderRadius.circular(30),
-            // 흰 칩만 그림자로 띄운다. 채운 칩은 색이 이미 자리를 잡는다.
-            boxShadow: background == AppColors.surface ? kCardShadow : null,
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
+        child: GestureDetector(
+          onTap: onSetTimes,
+          child: Stack(
+            clipBehavior: Clip.none,
             children: [
-              Flexible(
-                child: Text(
-                  label,
-                  textAlign: TextAlign.center,
-                  style: AppText.cardTitle(size: 19, color: foreground),
+              Container(
+                constraints: const BoxConstraints(minHeight: 64),
+                alignment: Alignment.center,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 8,
+                  vertical: 10,
+                ),
+                decoration: BoxDecoration(
+                  color: background,
+                  borderRadius: BorderRadius.circular(30),
+                  // 흰 칩만 그림자로 띄운다. 채운 칩은 색이 이미 자리를 잡는다.
+                  boxShadow: background == AppColors.surface
+                      ? kCardShadow
+                      : null,
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      slot.label,
+                      textAlign: TextAlign.center,
+                      style: AppText.cardTitle(size: 19, color: foreground),
+                    ),
+                    Text(
+                      under,
+                      textAlign: TextAlign.center,
+                      style: AppText.cardTitle(size: 16, color: foreground),
+                    ),
+                  ],
                 ),
               ),
-              if (taken) ...[
-                const SizedBox(width: 4),
-                Icon(TablerIcons.check, size: 18, color: foreground),
-              ],
+              // 드신 때는 칩 왼쪽 위에 동그란 체크를 붙인다. 글자 줄에
+              // 끼우면 "아침"이 옆으로 밀려 자리가 좁아진다.
+              if (taken)
+                Positioned(
+                  left: -2,
+                  top: -2,
+                  child: Container(
+                    width: 26,
+                    height: 26,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: AppColors.pointFill,
+                      shape: BoxShape.circle,
+                      border: Border.all(color: AppColors.pageBg, width: 2),
+                    ),
+                    child: const Icon(
+                      TablerIcons.check,
+                      size: 14,
+                      color: Colors.white,
+                    ),
+                  ),
+                ),
             ],
           ),
         ),
       ),
     );
-  }
-
-  /// "6:00" — 칩 안에 들어가는 짧은 시각.
-  static String _clock(DoseSlot slot) {
-    final hour = slot.hour > 12 ? slot.hour - 12 : slot.hour;
-    return '$hour:00';
   }
 }
 
@@ -746,11 +880,18 @@ class _BigDoseButtonState extends State<_BigDoseButton>
 /// 동그라미 아래 두 칸 — "30분 뒤"와 "약 보기".
 /// 다 드신 뒤에는 왼쪽이 드신 시각으로 바뀐다.
 class _HomeTiles extends StatelessWidget {
-  final DateTime? takenAt;
-  final VoidCallback? onSnooze;
+  /// 알림 칸에 적을 말 — "18:00" 또는 "알림 꺼짐".
+  final String alarmLabel;
+
+  /// 복약 알림 설정으로. 소리로 울릴 시각을 거기서 고친다.
+  final VoidCallback? onOpenAlarm;
   final VoidCallback? onOpenMedicines;
 
-  const _HomeTiles({this.takenAt, this.onSnooze, this.onOpenMedicines});
+  const _HomeTiles({
+    required this.alarmLabel,
+    this.onOpenAlarm,
+    this.onOpenMedicines,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -758,21 +899,11 @@ class _HomeTiles extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Expanded(
-          child: takenAt == null
-              ? _tile(
-                  icon: TablerIcons.alarm_snooze,
-                  label: '30분 뒤',
-                  onTap: onSnooze,
-                )
-              : _tile(
-                  icon: TablerIcons.circle_check,
-                  label:
-                      '${TimeOfDay.fromDateTime(takenAt!).hour}:'
-                      '${takenAt!.minute.toString().padLeft(2, '0')}에 드셨어요',
-                  background: AppColors.pointTint,
-                  foreground: AppColors.point,
-                  fontSize: 17,
-                ),
+          child: _tile(
+            icon: TablerIcons.alarm,
+            label: alarmLabel,
+            onTap: onOpenAlarm,
+          ),
         ),
         const SizedBox(width: 16),
         Expanded(
@@ -930,3 +1061,45 @@ class HomeTopBar extends StatelessWidget {
 
 /// 접힌 복약 행을 펼쳤을 때 나오는 약 목록.
 ///
+
+/// "약 드시는 시간" 창의 한 줄. 누르면 그 때의 시각을 바꾼다.
+class _SlotTimeRow extends StatelessWidget {
+  final String label;
+  final String clock;
+  final VoidCallback onTap;
+
+  const _SlotTimeRow({
+    required this.label,
+    required this.clock,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      button: true,
+      label: '$label $clock, 누르면 바꿔요',
+      child: ExcludeSemantics(
+        child: GestureDetector(
+          onTap: onTap,
+          child: Container(
+            color: Colors.transparent,
+            constraints: const BoxConstraints(minHeight: 60),
+            child: Row(
+              children: [
+                Expanded(child: Text(label, style: AppText.label(size: 20))),
+                Text(clock, style: AppText.cardTitle(size: 21)),
+                const SizedBox(width: 8),
+                const Icon(
+                  Icons.expand_more_rounded,
+                  size: 24,
+                  color: AppColors.textTertiary,
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}

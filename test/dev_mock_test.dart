@@ -76,21 +76,33 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('아스피린 100mg'), findsOneWidget);
-    // OCR·상세는 기존 카드형 화면 유지: main의 세 탭으로 바꾸지 않는다.
-    final text = tester
+    String shownText() => tester
         .widgetList<Text>(find.byType(Text))
         .map((widget) => widget.data ?? widget.textSpan?.toPlainText() ?? '')
         .join('\n');
-    expect(text, contains('주성분 설명'));
+
+    // 이름에는 용량을 적지 않는다 — 바로 밑 주성분 줄에 또 적히기 때문이다.
+    expect(find.text('아스피린'), findsOneWidget);
+
+    // 한 화면에 열 장을 쌓지 않는다 — 하는 일·주의·먹는 법으로 나눠 본다.
+    expect(find.text('하는 일'), findsOneWidget);
+    expect(find.text('먹는 법'), findsOneWidget);
+
+    // 처음 탭: 이 약이 하는 일.
+    var text = shownText();
     expect(text, contains('혈관을 막는 것을 예방'));
     expect(text, contains('심근경색'));
-    expect(text, contains('함께먹기 주의가 있어요'));
+    expect(text, isNot(contains('내가 처방받은 복용 방법')));
+
+    await tester.tap(find.text('주의'));
+    await tester.pumpAndSettle();
+    text = shownText();
     expect(text, contains('와파린'));
     expect(text, contains('피가 잘 멈추지 않을 수 있어요'));
-    expect(text, contains('내가 처방받은 복용 방법'));
-    expect(find.text('하는 일'), findsNothing);
-    expect(find.text('먹는 법'), findsNothing);
+
+    await tester.tap(find.text('먹는 법'));
+    await tester.pumpAndSettle();
+    expect(shownText(), contains('얼마나'));
   });
 
   testWidgets('처방전 기록이 지금까지 넣은 처방전을 그린다', (tester) async {

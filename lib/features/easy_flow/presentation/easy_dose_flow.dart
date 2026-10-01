@@ -532,9 +532,9 @@ class _EasyDoseFlowState extends ConsumerState<EasyDoseFlow> {
   /// 85 · 오늘 다 했어요.
   Widget _allDone(TodayMedication today) {
     final alarm = ref.watch(alarmPreferencesProvider);
-    final firstHour = alarm.ringingHours.isEmpty
+    final firstHour = alarm.ringingTimes.isEmpty
         ? null
-        : alarm.ringingHours.first;
+        : alarm.ringingTimes.first;
 
     final scheduled = today.doses
         .where((dose) => dose.medicines.isNotEmpty)

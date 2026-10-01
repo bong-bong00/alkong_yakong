@@ -41,46 +41,55 @@ Future<int?> showSeniorWheel({
   );
 }
 
-/// 시각을 고르는 창 — 왼쪽에 오전·오후, 오른쪽에 시.
+/// 시각을 고르는 창 — 왼쪽에 시, 오른쪽에 분.
 ///
-/// 24시간제 시각(0~23)을 돌려준다. 그만두면 null.
-Future<int?> showSeniorTimeWheel({
+/// 24시간 시계로 고른다. 09시 30분이면 "09:30"이다. 자정부터 몇 분인지
+/// (0~1439)를 돌려준다. 그만두면 null.
+Future<int?> showSeniorClockWheel({
   required BuildContext context,
   required String title,
-  int initialHour = 8,
-}) {
-  final hour = initialHour.clamp(0, 23);
-  var meridiem = hour < 12 ? 0 : 1;
-  final twelve = hour % 12;
-  var clockHour = twelve == 0 ? 12 : twelve;
 
-  int hour24() {
-    if (meridiem == 0) return clockHour == 12 ? 0 : clockHour;
-    return clockHour == 12 ? 12 : clockHour + 12;
+  /// 처음 자리. 자정부터 몇 분인지.
+  int initialMinutes = 8 * 60,
+
+  /// 분을 몇 분씩 끊어 돌릴지. 어르신이 굴릴 자리를 줄이려고 5분씩 돈다.
+  int minuteStep = 5,
+
+  /// 굴림판 아래에 붙일 단추들. "이 시간 지우기" 같은 것.
+  List<Widget> extraButtons = const [],
+}) {
+  final start = initialMinutes.clamp(0, 24 * 60 - 1);
+  final minuteChoices = [
+    for (int minute = 0; minute < 60; minute += minuteStep) minute,
+  ];
+  var hour = start ~/ 60;
+  // 눈금에 없는 분(옛 설정 등)은 가장 가까운 아래 눈금으로 맞춘다.
+  var minuteIndex = 0;
+  for (int i = 0; i < minuteChoices.length; i++) {
+    if (minuteChoices[i] <= start % 60) minuteIndex = i;
   }
 
   return _showPickerSheet<int>(
     context: context,
     title: title,
-    onConfirm: hour24,
+    extraButtons: extraButtons,
+    onConfirm: () => hour * 60 + minuteChoices[minuteIndex],
     builder: (_) => Row(
       children: [
         Expanded(
-          flex: 2,
           child: _Wheel(
-            count: 2,
-            initialIndex: meridiem,
-            labelOf: (i) => i == 0 ? '오전' : '오후',
-            onChanged: (i) => meridiem = i,
+            count: 24,
+            initialIndex: hour,
+            labelOf: (i) => '${i.toString().padLeft(2, '0')}시',
+            onChanged: (i) => hour = i,
           ),
         ),
         Expanded(
-          flex: 2,
           child: _Wheel(
-            count: 12,
-            initialIndex: clockHour - 1,
-            labelOf: (i) => '${i + 1}시',
-            onChanged: (i) => clockHour = i + 1,
+            count: minuteChoices.length,
+            initialIndex: minuteIndex,
+            labelOf: (i) => '${minuteChoices[i].toString().padLeft(2, '0')}분',
+            onChanged: (i) => minuteIndex = i,
           ),
         ),
       ],

@@ -44,8 +44,8 @@ abstract final class ReminderPlan {
   /// 다시 맞출 때마다 전부 지운다. 꺼 둔 알림이 남아서 울리면 안 된다.
   /// 시각을 지웠을 때 그 자리 알림도 같이 지워져야 하므로 자리 수만큼 돈다.
   static List<int> get allIds => [
-    for (int i = 0; i < AlarmPreferences.maxHours; i++) baseId + i,
-    for (int i = 0; i < AlarmPreferences.maxHours; i++) followUpBaseId + i,
+    for (int i = 0; i < AlarmPreferences.maxTimes; i++) baseId + i,
+    for (int i = 0; i < AlarmPreferences.maxTimes; i++) followUpBaseId + i,
   ];
 
   static const followUpMinutes = 10;
@@ -55,32 +55,33 @@ abstract final class ReminderPlan {
   static List<PlannedReminder> forPrefs(AlarmPreferences prefs) {
     if (!prefs.autoAlarm) return const [];
     // 꺼 둔 시각은 목록에는 남아 있지만 울리지 않는다.
-    final hours = prefs.ringingHours;
+    final times = prefs.ringingTimes;
     return [
-      for (int i = 0; i < hours.length; i++) _onTime(baseId + i, hours[i]),
+      for (int i = 0; i < times.length; i++) _onTime(baseId + i, times[i]),
       if (prefs.repeatOnce)
-        for (int i = 0; i < hours.length; i++)
-          _followUp(followUpBaseId + i, hours[i]),
+        for (int i = 0; i < times.length; i++)
+          _followUp(followUpBaseId + i, times[i]),
     ];
   }
 
-  static PlannedReminder _onTime(int id, int hour) => PlannedReminder(
+  /// [time]은 자정부터 몇 분인지.
+  static PlannedReminder _onTime(int id, int time) => PlannedReminder(
     id: id,
-    hour: hour,
-    minute: 0,
+    hour: time ~/ 60,
+    minute: time % 60,
     title: title,
-    body: '${AlarmPreferences.clock(hour)} 약을 물과 함께 드세요.',
+    body: '${AlarmPreferences.clock(time)} 약을 물과 함께 드세요.',
   );
 
-  static PlannedReminder _followUp(int id, int hour) {
-    // 저녁 11시대라도 하루 안으로 감기게 분 단위로 더한다.
-    final total = (hour * 60 + followUpMinutes) % (24 * 60);
+  static PlannedReminder _followUp(int id, int time) {
+    // 밤 11시대라도 하루 안으로 감기게 분 단위로 더한다.
+    final total = (time + followUpMinutes) % (24 * 60);
     return PlannedReminder(
       id: id,
       hour: total ~/ 60,
       minute: total % 60,
       title: followUpTitle,
-      body: '${AlarmPreferences.clock(hour)} 약, 아직 안 드셨다면 지금 드세요.',
+      body: '${AlarmPreferences.clock(time)} 약, 아직 안 드셨다면 지금 드세요.',
     );
   }
 

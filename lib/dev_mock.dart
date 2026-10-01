@@ -198,7 +198,7 @@ List<UserMedicine> _mockMedicines() => [
     highlight: '혈관을 막는 것을 예방',
     uses: const [
       TreatmentUse(title: '심근경색', description: '·뇌경색 재발 예방'),
-      TreatmentUse(title: '혈전', description: '이 걱정되는 경우'),
+      TreatmentUse(title: '혈전', description: '이 생기기 쉬운 분'),
     ],
     conflictWith: '와파린',
     conflictWhy: '두 약 모두 피를 묽게 해서, 같이 드시면 피가 잘 멈추지 않을 수 있어요.',
