@@ -26,6 +26,7 @@ from app.services.medicine_display import (
 )
 from app.services.ocr.parser import take_amount_for_display
 from app.services.medication_user_service import ensure_medication_user
+from app.services.medicine_use_route import classify_medicine_use
 from app.services.mfds_drug_permission.db import find_permission_product_by_item_seq
 from app.services.pharmacist.easy_category import (
     derive_easy_spoken_from_medicine,
@@ -398,6 +399,7 @@ def _medicine_item(row, *, guidance_cursor=None) -> dict[str, Any]:
         "ingredient_strength": ingredient_strength,
         "dosage_form": dosage_form,
         "administration_route": administration_route,
+        "use_route_type": classify_medicine_use(data),
         "dose_amount": dose_amount,
         "dose_unit": dose_unit,
         "amount": amount,

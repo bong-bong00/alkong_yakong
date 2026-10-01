@@ -154,7 +154,7 @@ class _MedicineList extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
               Expanded(
-                child: Text('지금 드시는 약', style: AppText.cardTitle(size: 20)),
+                child: Text('현재 사용하는 약', style: AppText.cardTitle(size: 20)),
               ),
               const SizedBox(width: 10),
               Text(
@@ -165,10 +165,7 @@ class _MedicineList extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 14),
-        for (final med in active) ...[
-          _MedicineCard(medicine: med),
-          const SizedBox(height: 12),
-        ],
+        _GroupedMedicines(medicines: active),
         // 지금 안 드시는 약은 줄 하나로 접어 둔다. 목록을 보는 이유는
         // 대부분 "지금 먹는 약"이기 때문이다.
         if (past.isNotEmpty) ...[
@@ -234,6 +231,62 @@ class _ActionTile extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+class _GroupedMedicines extends StatelessWidget {
+  final List<UserMedicine> medicines;
+  final bool past;
+
+  const _GroupedMedicines({required this.medicines, this.past = false});
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        for (final type in MedicineUseType.values)
+          if (medicines.any((medicine) => medicine.useType == type)) ...[
+            SeniorCard(
+              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+              child: Row(
+                children: [
+                  Icon(
+                    switch (type) {
+                      MedicineUseType.eat => TablerIcons.pill,
+                      MedicineUseType.apply => Icons.back_hand_outlined,
+                      MedicineUseType.patch => Icons.healing_outlined,
+                      MedicineUseType.eye => Icons.visibility_outlined,
+                      MedicineUseType.unknown => Icons.help_outline,
+                      _ => Icons.medical_services_outlined,
+                    },
+                    color: AppColors.point,
+                    size: 25,
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(type.label, style: AppText.cardTitle(size: 20)),
+                  ),
+                  Text(
+                    '${medicines.where((medicine) => medicine.useType == type).length}가지',
+                    style: AppText.body(
+                      size: 17,
+                      color: AppColors.textSecondary,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 10),
+            for (final medicine in medicines.where(
+              (medicine) => medicine.useType == type,
+            )) ...[
+              _MedicineCard(medicine: medicine, past: past),
+              const SizedBox(height: 12),
+            ],
+          ],
+      ],
     );
   }
 }
@@ -320,7 +373,7 @@ class _PastMedicinesState extends State<_PastMedicines> {
           child: SeniorCard(
             padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
             child: SeniorListRow(
-              label: '이전에 먹던 약',
+              label: '이전에 사용한 약',
               labelColor: AppColors.textTertiary,
               value: '${widget.medicines.length}가지',
               trailing: const SeniorChevron(),
@@ -328,11 +381,10 @@ class _PastMedicinesState extends State<_PastMedicines> {
             ),
           ),
         ),
-        if (_open)
-          for (final med in widget.medicines) ...[
-            const SizedBox(height: 10),
-            _MedicineCard(medicine: med, past: true),
-          ],
+        if (_open) ...[
+          const SizedBox(height: 10),
+          _GroupedMedicines(medicines: widget.medicines, past: true),
+        ],
       ],
     );
   }

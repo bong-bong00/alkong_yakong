@@ -11,6 +11,7 @@ import '../../../../core/widgets/senior_header.dart';
 import '../../application/user_medicines_controller.dart';
 import '../../domain/display_policy.dart';
 import '../../domain/user_medicine_models.dart';
+import '../../domain/official_purpose_layout.dart';
 
 /// 내 약 한 종류 상세 — 서버 쉬운말·주의·복용 정보.
 class DrugDetailScreen extends ConsumerStatefulWidget {
@@ -85,6 +86,27 @@ class _DrugDetailScreenState extends ConsumerState<DrugDetailScreen> {
           ),
         ],
       ),
+    );
+  }
+}
+
+class _OfficialPurposeText extends StatelessWidget {
+  final String purpose;
+
+  const _OfficialPurposeText({required this.purpose});
+
+  @override
+  Widget build(BuildContext context) {
+    final layout = OfficialPurposeLayout.fromText(purpose);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (layout.heading.isNotEmpty) ...[
+          Text(layout.heading, style: AppText.cardTitle(size: 20)),
+          const SizedBox(height: 6),
+        ],
+        Text('· ${layout.body}', style: AppText.body(size: 20)),
+      ],
     );
   }
 }
@@ -277,13 +299,7 @@ class _DetailBody extends StatelessWidget {
                     ),
                     children: [
                       for (final purpose in extraOfficialUses) ...[
-                        Align(
-                          alignment: Alignment.centerLeft,
-                          child: Text(
-                            '· $purpose',
-                            style: AppText.body(size: 20),
-                          ),
-                        ),
+                        _OfficialPurposeText(purpose: purpose),
                         const SizedBox(height: 8),
                       ],
                     ],
@@ -379,7 +395,9 @@ class _DetailBody extends StatelessWidget {
               children: [
                 IconTitle(
                   icon: TablerIcons.clock,
-                  text: '내가 처방받은 복용 방법',
+                  text: medicine.useType == MedicineUseType.eat
+                      ? '내가 처방받은 복용 방법'
+                      : '내가 처방받은 사용 방법',
                   style: AppText.cardTitle(size: 22),
                 ),
                 const SizedBox(height: 12),
