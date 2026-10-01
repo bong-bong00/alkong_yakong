@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:alkong_yakong/features/easy_flow/presentation/easy_heart_result.dart';
 import 'package:alkong_yakong/features/easy_flow/presentation/easy_dose_flow.dart';
 import 'package:alkong_yakong/features/medication/application/medication_controller.dart';
@@ -7,6 +9,56 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'polar_save_flow_test.dart' show Rig;
+
+class _ControlledMedication extends _RemainingMedication {
+  final slots = <DoseSlot>[];
+  Completer<void>? pending;
+
+  @override
+  TodayMedication build() => const TodayMedication(
+    guardianRelation: '보호자',
+    guardianName: '가족',
+    doses: [
+      DoseEntry(
+        slot: DoseSlot.morning,
+        medicines: [Medicine(ingredient: '아침시험약', amount: '1알')],
+      ),
+      DoseEntry(
+        slot: DoseSlot.dinner,
+        medicines: [Medicine(ingredient: '저녁시험약', amount: '1알')],
+      ),
+    ],
+  );
+
+  @override
+  Future<DoseCheckOutcome> take(DoseSlot slot, {DateTime? now}) async {
+    slots.add(slot);
+    if (state.doseOf(slot).taken) return DoseCheckOutcome.alreadyTaken;
+    if (pending != null) await pending!.future;
+    return super.take(slot, now: now);
+  }
+}
+
+class _LateMedication extends _RemainingMedication {
+  bool recordedLate = false;
+
+  @override
+  Future<DoseCheckOutcome> take(DoseSlot slot, {DateTime? now}) async =>
+      DoseCheckOutcome.tooLate;
+
+  @override
+  Future<void> takeAnyway(DoseSlot slot, {DateTime? now}) async {
+    recordedLate = true;
+    await super.take(slot, now: now);
+  }
+}
+
+class _DuplicateMedication extends _LateMedication {
+  @override
+  Future<DoseCheckOutcome> take(DoseSlot slot, {DateTime? now}) async =>
+      DoseCheckOutcome.alreadyTaken;
+}
 
 class _RemainingMedication extends MedicationController {
   @override
@@ -37,6 +89,121 @@ class _RemainingMedication extends MedicationController {
 }
 
 void main() {
+  testWidgets(
+    'recording prevents repeated taps and reports failure with retry',
+    (tester) async {
+      SharedPreferences.setMockInitialValues({});
+      final controller = _ControlledMedication()..pending = Completer<void>();
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [medicationProvider.overrideWith(() => controller)],
+          child: const MaterialApp(home: Scaffold(body: EasyDoseFlow())),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('안 잴래요'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('먹었어요'));
+      await tester.tap(find.text('먹었어요'));
+      await tester.pump();
+      expect(controller.slots, [DoseSlot.morning]);
+      expect(find.text('기록 중…'), findsOneWidget);
+      await tester.tap(find.text('뒤로'));
+      await tester.pump();
+      expect(find.text('5 / 8'), findsOneWidget);
+      controller.pending!.completeError(Exception('network failure'));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('저장 여부를 확인하지 못했어요'), findsOneWidget);
+      expect(find.text('5 / 8'), findsOneWidget);
+      expect(find.text('기록했어요'), findsNothing);
+      expect(tester.takeException(), isNull);
+      controller.pending = null;
+      await tester.tap(find.text('다시 저장하기'));
+      await tester.pumpAndSettle();
+      expect(controller.slots, [DoseSlot.morning, DoseSlot.morning]);
+      expect(find.text('기록했어요'), findsOneWidget);
+    },
+  );
+
+  testWidgets('6/8 back retains original dose even when next dose advances', (
+    tester,
+  ) async {
+    SharedPreferences.setMockInitialValues({});
+    tester.view.physicalSize = const Size(480, 1200);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final controller = _ControlledMedication();
+    final rig = Rig(requestPermissions: () async => true);
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [medicationProvider.overrideWith(() => controller)],
+        child: MaterialApp(
+          home: Scaffold(body: EasyDoseFlow(sensor: rig.sensor)),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('복약 전 심박 측정'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('다 찼어요'));
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pump();
+    await rig.widgetWindow(tester);
+    rig.api.succeed(0);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('이제 약 드시기'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('먹었어요'));
+    await tester.pumpAndSettle();
+    expect(find.text('6 / 8'), findsOneWidget);
+    await tester.tap(find.text('뒤로'));
+    await tester.pumpAndSettle();
+    expect(find.text('5 / 8'), findsOneWidget);
+    expect(find.text('아침시험약'), findsOneWidget);
+    expect(find.text('저녁시험약'), findsNothing);
+    await tester.tap(find.text('먹었어요'));
+    await tester.pumpAndSettle();
+    expect(controller.slots, [DoseSlot.morning, DoseSlot.morning]);
+    expect(find.textContaining('드신 것으로 되어 있어요'), findsOneWidget);
+    await tester.pumpWidget(const SizedBox());
+    rig.sensor.dispose();
+    await tester.pump();
+  });
+  for (final duplicate in [false, true]) {
+    testWidgets(
+      duplicate
+          ? '5/8 retains duplicate confirmation without recording again'
+          : '5/8 records an already-taken late dose without a late-dose popup',
+      (tester) async {
+        SharedPreferences.setMockInitialValues({});
+        final controller = duplicate
+            ? _DuplicateMedication()
+            : _LateMedication();
+        await tester.pumpWidget(
+          ProviderScope(
+            overrides: [medicationProvider.overrideWith(() => controller)],
+            child: const MaterialApp(home: Scaffold(body: EasyDoseFlow())),
+          ),
+        );
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('안 잴래요'));
+        await tester.pumpAndSettle();
+        expect(find.text('5 / 8'), findsOneWidget);
+        await tester.tap(find.text('먹었어요'));
+        await tester.pumpAndSettle();
+        expect(find.textContaining('한참 지났어요'), findsNothing);
+        expect(find.text('그래도 먹었어요'), findsNothing);
+        expect(controller.recordedLate, !duplicate);
+        if (duplicate) {
+          expect(find.textContaining('드신 것으로 되어 있어요'), findsOneWidget);
+          expect(find.text('5 / 8'), findsOneWidget);
+        } else {
+          expect(find.text('기록했어요'), findsOneWidget);
+          expect(find.text('5 / 8'), findsNothing);
+        }
+      },
+    );
+  }
   Finder readable(String value) => find.byWidgetPredicate(
     (widget) =>
         widget is Text && widget.data?.replaceAll('\u2060', '') == value,
