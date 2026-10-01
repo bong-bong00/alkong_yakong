@@ -266,6 +266,79 @@ void main() {
     );
   }
 
+  for (final duringBaseline in [true, false]) {
+    test('explicit zero HR immediately cancels: baseline=$duringBaseline', () {
+      fakeAsync((clock) {
+        final r = Rig();
+        r.start(clock);
+        if (!duringBaseline) r.baseline(clock);
+        r.sdk.sample(62, contactStatusSupported: false);
+        clock.flushMicrotasks();
+        r.sdk.sample(0, contactStatusSupported: false);
+        clock.flushMicrotasks();
+        expect(r.sensor.status, HeartSensorStatus.failed);
+        expect(r.sensor.bpm, isNull);
+        expect(r.sensor.measuring, isFalse);
+        // Late positive values cannot revive a failed measurement or be saved.
+        r.sdk.sample(62, contactStatusSupported: false);
+        clock.flushMicrotasks();
+        clock.elapse(const Duration(minutes: 1));
+        expect(r.api.requests, isEmpty);
+        r.start(clock);
+        r.window(clock);
+        expect(r.api.requests, hasLength(1));
+        r.api.succeed(0);
+        clock.flushMicrotasks();
+        r.sensor.dispose();
+        clock.flushMicrotasks();
+      });
+    });
+  }
+
+  test('startup zero waits for HR; repeated valid values are not removal', () {
+    fakeAsync((clock) {
+      final r = Rig();
+      r.start(clock);
+      r.sdk.sample(0, contactStatusSupported: false);
+      clock.flushMicrotasks();
+      expect(r.sensor.status, HeartSensorStatus.streaming);
+      expect(r.sensor.bpm, isNull);
+      expect(r.sensor.measuring, isFalse);
+      for (var i = 0; i < 5; i++) {
+        r.sdk.sample(62, contactStatusSupported: false);
+        clock.flushMicrotasks();
+        clock.elapse(const Duration(seconds: 1));
+      }
+      expect(r.sensor.status, HeartSensorStatus.streaming);
+      expect(r.sensor.bpm, 62);
+      r.sensor.dispose();
+      clock.flushMicrotasks();
+    });
+  });
+
+  testWidgets('zero HR displays recovery without the three-second wait', (
+    tester,
+  ) async {
+    final r = Rig();
+    await r.sensor.start();
+    await tester.pumpWidget(
+      ProviderScope(
+        child: MaterialApp(home: MeasureScreen(sensor: r.sensor)),
+      ),
+    );
+    r.sdk.sample(62, contactStatusSupported: false);
+    await tester.pump();
+    r.sdk.sample(0, contactStatusSupported: false);
+    await tester.pump();
+    await tester.pump();
+    expect(find.text('다시 연결하기'), findsOneWidget);
+    expect(find.text('폴라 센서로 재고 있어요'), findsNothing);
+    expect(r.api.requests, isEmpty);
+    await tester.pumpWidget(const SizedBox());
+    r.sensor.dispose();
+    await tester.pump();
+  });
+
   test('supported skin-contact loss cancels measurement and never saves', () {
     fakeAsync((clock) {
       final r = Rig();

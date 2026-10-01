@@ -47,6 +47,9 @@ class PolarService {
   bool _isAverageMonitoring = false;
   bool _isDisposed = false;
   bool _acceptBpmEvents = false;
+  bool _hasValidHeartRate = false;
+  String? _lastSignalFlags;
+  final Stopwatch _signalClock = Stopwatch();
 
   Stream<int?> get currentBpmStream => _currentBpmController.stream;
   Stream<double?> get averageBpmStream => _averageBpmController.stream;
@@ -143,6 +146,11 @@ class PolarService {
     await stopStreaming();
     _bpmSamples.clear();
     _acceptBpmEvents = true;
+    _hasValidHeartRate = false;
+    _lastSignalFlags = null;
+    _signalClock
+      ..reset()
+      ..start();
     final generation = _streamGeneration;
     debugPrint('[POLAR_SERVICE] hr stream start');
 
@@ -152,24 +160,33 @@ class PolarService {
           (data) {
             if (generation != _streamGeneration) return;
             for (final sample in data.samples) {
+              if (!_acceptBpmEvents) continue;
+              // Log transitions only: no BPM, device ID or patient information.
+              final flags =
+                  'positive_hr=${sample.hr > 0} '
+                  'contact_supported=${sample.contactStatusSupported} '
+                  'contact=${sample.contactStatus}';
+              if (flags != _lastSignalFlags) {
+                _lastSignalFlags = flags;
+                debugPrint(
+                  '[POLAR_SERVICE] signal flags '
+                  'elapsed_ms=${_signalClock.elapsedMilliseconds} $flags',
+                );
+              }
               if (sample.contactStatusSupported && !sample.contactStatus) {
-                if (_acceptBpmEvents) {
-                  debugPrint('[POLAR_SERVICE] skin contact lost');
-                  _acceptBpmEvents = false;
-                  _averageTimer?.cancel();
-                  _averageTimer = null;
-                  _isAverageMonitoring = false;
-                  _bpmSamples.clear();
-                  _emitMeasurementReset();
-                  _emitError(StateError('Skin contact lost'));
-                }
+                _invalidateMeasurement('skin contact lost');
                 continue;
               }
               final bpm = sample.hr;
-              if (bpm <= 0) continue;
-              if (!_acceptBpmEvents) {
+              if (bpm <= 0) {
+                // Initial zero is not a successful measurement. Once HR was
+                // acquired, an explicit invalid value must not wait for silence.
+                if (_hasValidHeartRate) {
+                  _invalidateMeasurement('heart rate signal invalid');
+                }
                 continue;
               }
+              _hasValidHeartRate = true;
               if (_isAverageMonitoring) {
                 _bpmSamples.add(bpm);
               }
@@ -208,6 +225,8 @@ class PolarService {
     _streamGeneration++;
     debugPrint('[POLAR_SERVICE] stopStreaming requested');
     _acceptBpmEvents = false;
+    _hasValidHeartRate = false;
+    _signalClock.stop();
     _averageTimer?.cancel();
     _averageTimer = null;
     _isAverageMonitoring = false;
@@ -247,6 +266,20 @@ class PolarService {
     if (!_averageBpmController.isClosed) {
       _averageBpmController.add(null);
     }
+  }
+
+  void _invalidateMeasurement(String reason) {
+    debugPrint(
+      '[POLAR_SERVICE] $reason '
+      'elapsed_ms=${_signalClock.elapsedMilliseconds}',
+    );
+    _acceptBpmEvents = false;
+    _averageTimer?.cancel();
+    _averageTimer = null;
+    _isAverageMonitoring = false;
+    _bpmSamples.clear();
+    _emitMeasurementReset();
+    _emitError(StateError(reason));
   }
 
   Future<void> dispose() async {
