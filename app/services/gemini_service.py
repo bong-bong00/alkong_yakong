@@ -21,11 +21,6 @@ CHAT_LENGTH_INSTRUCTION = (
     "결론을 먼저 쓰고 반복 설명을 줄이세요. 숫자·용량·횟수·연령·금기·예외 조건과 "
     "확인하지 못한 범위는 유지하고, 글자를 기계적으로 자르지 마세요."
 )
-CHAT_SUMMARY_UNAVAILABLE_REPLY = (
-    "확인한 내용을 600자 이내로 정확하게 요약하지 못했어요. "
-    "필수 주의사항을 모두 전달하지 못했으므로 이 안내를 안전 확인이나 복용 지시로 사용하지 마세요. "
-    "복용 전 의사나 약사에게 약 목록과 처방을 보여 주고 확인해 주세요."
-)
 
 
 INCOMPLETE_CHAT_REPLY = (
@@ -1093,11 +1088,22 @@ def _summarize_chat_reply(client, reply: str, *, medicine_names: tuple[str, ...]
         "검사 미완료를 정상 0건으로 바꾸지 마세요. 어려운 용어는 쉬운 말로 바꾸세요. "
         "요약문만 반환하세요.\n" + CHAT_LENGTH_INSTRUCTION
     )
-    for attempt in range(2):
+    target_chars = 420
+    feedback = ""
+    # Length-only misses get further compression attempts; unsafe/failed output
+    # keeps the bounded two-attempt policy instead of repeatedly regenerating it.
+    length_only_miss = True
+    for attempt in range(4):
+        if attempt >= 2 and not length_only_miss:
+            break
         try:
             response = _generate_content_with_retry(
                 client, model=GEMINI_MODEL,
-                contents=f"{instruction}\n[원문]\n{reply}\n[/원문]",
+                contents=(f"{instruction}\n이번 요약 목표는 {target_chars}자 이내입니다. "
+                          "이 목표와 최대 600자는 출력 글자 수이며 복용 조건이 아닙니다. "
+                          "약마다 경고와 적용 조건을 묶고, 중복 주어·반복 안내·배경 설명을 없애세요. "
+                          "새 인사나 요약 실패 안내는 쓰지 마세요.\n"
+                          f"{feedback}\n[원문]\n{reply}\n[/원문]"),
                 config={"temperature": 0.2, "max_output_tokens": 2048,
                         "thinking_config": {"thinking_budget": 0}},
             )
@@ -1105,17 +1111,31 @@ def _summarize_chat_reply(client, reply: str, *, medicine_names: tuple[str, ...]
                 response, required_medicine_names=required_names,
             )
             numeric_complete = numbers <= set(re.findall(r"\d+(?:\.\d+)?", summary))
+            length_only_miss = complete and numeric_complete and len(summary) > CHAT_REPLY_MAX_CHARS
             if (complete and numeric_complete and len(summary) <= CHAT_REPLY_MAX_CHARS
                     and _summary_preserves_meaning(client, reply, summary)):
                 logger.warning("Gemini summary accepted source_length=%d response_length=%d", len(reply), len(summary))
                 return summary
             logger.warning("Gemini summary retry attempt=%d length=%d numeric_complete=%s issues=%s",
                            attempt + 1, len(summary), numeric_complete, ",".join(issues))
-            instruction += "\n앞 요약은 채택하지 못했습니다. 원문에서 다시 600자 이내로 요약하고 필수 조건을 모두 보존하세요."
+            if length_only_miss:
+                target_chars = max(200, target_chars - 80)
+                feedback = (
+                    f"앞 요약의 실제 길이는 {len(summary)}자로 최대 길이를 "
+                    f"{len(summary) - CHAT_REPLY_MAX_CHARS}자 초과했습니다. "
+                    f"아래 초안을 더 압축하되 원문의 필수 조건을 보존하세요.\n"
+                    f"[압축할 초안]\n{summary}\n[/압축할 초안]"
+                )
+            else:
+                feedback = "앞 요약에 필수 정보 누락이나 품질 문제가 있습니다. 원문에서 조건을 보존하여 다시 요약하세요."
         except Exception:
+            length_only_miss = False
             # Do not log source text, patient information or provider exception payloads.
             logger.warning("Gemini summary generation failed attempt=%d", attempt + 1)
-    return CHAT_SUMMARY_UNAVAILABLE_REPLY
+    # Delivery takes priority over the length target. Never replace an accepted
+    # answer with a summary-failure notice or an unsafe/incomplete summary.
+    logger.warning("Gemini summary fallback retained source_length=%d", len(reply))
+    return reply
 
 
 def generate_chat_response(
@@ -1144,8 +1164,8 @@ def generate_chat_response(
         with genai.Client(api_key=GEMINI_API_KEY) as client:
             return _summarize_chat_reply(client, reply, medicine_names=names)
     except Exception:
-        logger.warning("Gemini summary client unavailable")
-        return CHAT_SUMMARY_UNAVAILABLE_REPLY
+        logger.warning("Gemini summary client unavailable retained source_length=%d", len(reply))
+        return reply
 
 
 def _generate_chat_response(

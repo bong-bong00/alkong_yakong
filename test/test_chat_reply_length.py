@@ -57,14 +57,41 @@ class ChatReplyLengthTest(unittest.TestCase):
         self.assertEqual(generate.call_args_list[0].kwargs["config"]["max_output_tokens"], 1024)
         self.assertIn(source.strip(), generate.call_args_list[1].kwargs["contents"])
 
+    def test_production_length_misses_keep_compressing_instead_of_notice(self):
+        source = "가" * 735 + "."
+        summaries = ["나" * 663 + ".", "다" * 667 + ".", "라" * 549 + "."]
+        with patch.object(service, "_generate_content_with_retry", side_effect=[
+            *[_chat_response(text) for text in summaries],
+            _chat_response('{"preserved":true}'),
+        ]) as generate:
+            result = service._summarize_chat_reply(MagicMock(), source)
+        self.assertEqual(result, summaries[-1])
+        self.assertLessEqual(len(result), 600)
+        second_prompt = generate.call_args_list[1].kwargs["contents"]
+        third_prompt = generate.call_args_list[2].kwargs["contents"]
+        self.assertIn("실제 길이는 664자", second_prompt)
+        self.assertIn("목표는 340자", second_prompt)
+        self.assertIn(summaries[0], second_prompt)
+        self.assertIn("실제 길이는 668자", third_prompt)
+        self.assertIn("목표는 260자", third_prompt)
+        self.assertIn(source, third_prompt)
+
+    def test_fourth_compression_can_return_useful_reply(self):
+        source = "가" * 735 + "."
+        with patch.object(service, "_generate_content_with_retry", side_effect=[
+            *[_chat_response("나" * 650 + ".") for _ in range(3)],
+            _chat_response("약마다 주의사항이 달라요."),
+            _chat_response('{"preserved":true}'),
+        ]):
+            self.assertEqual(service._summarize_chat_reply(MagicMock(), source), "약마다 주의사항이 달라요.")
+
     def test_missing_numbers_or_medicine_does_not_pass(self):
         source = "가나다정은 18세 미만에게 사용하지 마세요. " + "설명. " * 200
         with patch.object(service, "_generate_content_with_retry", side_effect=[
             _chat_response("가나다정은 주의하세요."), _chat_response("18세 미만은 주의하세요.")
         ]):
             result = service._summarize_chat_reply(MagicMock(), source, medicine_names=("가나다정",))
-        self.assertEqual(result, service.CHAT_SUMMARY_UNAVAILABLE_REPLY)
-        self.assertLessEqual(len(result), 600)
+        self.assertEqual(result, source)
 
     def test_semantic_loss_or_added_safety_is_rejected(self):
         # Covers dropped warnings, exceptions, unresolved targets and false zero conclusions.
@@ -74,9 +101,9 @@ class ChatReplyLengthTest(unittest.TestCase):
                 _chat_response(summary), _chat_response('{"preserved":false}'),
                 _chat_response(summary), _chat_response('{"preserved":false}')
             ]):
-                self.assertEqual(service._summarize_chat_reply(MagicMock(), source), service.CHAT_SUMMARY_UNAVAILABLE_REPLY)
+                self.assertEqual(service._summarize_chat_reply(MagicMock(), source), source)
 
-    def test_summary_timeout_empty_truncation_and_malformed_verification_return_notice(self):
+    def test_summary_failures_retain_original_answer(self):
         source = "설명. " * 200
         for responses in (
             [TimeoutError(), TimeoutError()],
@@ -87,8 +114,20 @@ class ChatReplyLengthTest(unittest.TestCase):
             with self.subTest(responses=responses), patch.object(service, "_generate_content_with_retry", side_effect=responses):
                 reply = service._summarize_chat_reply(MagicMock(), source)
                 self.assertTrue(reply)
-                self.assertLessEqual(len(reply), 600)
-                self.assertEqual(reply, service.CHAT_SUMMARY_UNAVAILABLE_REPLY)
+                self.assertEqual(reply, source)
+
+    def test_all_length_attempts_exhausted_retain_original(self):
+        source = "원문 답변. " * 150
+        with patch.object(service, "_generate_content_with_retry", side_effect=[
+            _chat_response("요약 초과. " * 150) for _ in range(4)
+        ]):
+            self.assertEqual(service._summarize_chat_reply(MagicMock(), source), source)
+
+    def test_summary_client_failure_retains_accepted_answer(self):
+        source = "확인된 약의 주의사항이에요. " * 80
+        with patch.object(service, "_generate_chat_response", return_value=source), \
+                patch("google.genai.Client", side_effect=RuntimeError("unavailable")):
+            self.assertEqual(service.generate_chat_response("질문"), source)
 
     def test_all_response_modes_pass_through_finalizer(self):
         for kwargs in ({}, {"selected_medicine": {"name": "가나다정"}},
