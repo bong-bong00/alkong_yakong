@@ -82,7 +82,7 @@ def health():
         "version": APP_VERSION,
         "environment": APP_ENV,
         "database": f"sqlite:{Path(DB_PATH).name}",
-        "demo_seed_enabled": DEMO_SEED_ENABLED,
+        "demo_seed_enabled": False,
         "ocr_engine": "clova-ocr-v2",
         "ocr_configured": bool(
             CLOVA_OCR_ENABLED and CLOVA_OCR_API_URL and CLOVA_OCR_SECRET_KEY
