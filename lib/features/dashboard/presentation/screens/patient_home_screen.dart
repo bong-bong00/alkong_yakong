@@ -953,14 +953,15 @@ class _BigDoseButtonState extends State<_BigDoseButton>
 
   @override
   Widget build(BuildContext context) {
+    final measuring = widget.measureFirst && !widget.done;
     final label = widget.done
         ? '취소하기'
-        : widget.measureFirst
-        ? '심박수 재기'
+        : measuring
+        ? '심박수 측정'
         : '먹었어요';
-    // 먹기 전 재기는 왜 지금 재는지 한 줄 더 말한다. "심박수 재기"만 있으면
-    // 약을 안 누르고 왜 이걸 누르는지 모른다.
-    final sub = widget.measureFirst && !widget.done ? '약 먹기 전에' : null;
+    // 재는 단추는 작은 설명 줄 대신 두 줄로 크게 적는다. 먼저 재는
+    // 때나 드신 뒤에 재는 때나 같은 말로 말한다.
+    final lines = measuring ? const ['심박수', '측정'] : [label];
     final fill = widget.done ? AppColors.surface : AppColors.pointFill;
     final ink = widget.done ? AppColors.textPrimary : Colors.white;
     // 움직임을 꺼 둔 기기에서는 뛰지 않는다. 다 드신 뒤에도 멈춘다 —
@@ -1078,16 +1079,8 @@ class _BigDoseButtonState extends State<_BigDoseButton>
                                       ),
                                       const SizedBox(height: 2),
                                     ],
-                                    Text(label, style: labelStyle),
-                                    if (sub != null)
-                                      Text(
-                                        sub,
-                                        style: AppText.cardTitle(
-                                          size: labelSize * 0.62,
-                                          color: AppColors.onPointMuted,
-                                          weight: FontWeight.w700,
-                                        ),
-                                      ),
+                                    for (final line in lines)
+                                      Text(line, style: labelStyle),
                                   ],
                                 ),
                               ),

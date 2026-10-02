@@ -261,17 +261,17 @@ void main() {
     );
     await tester.pump();
 
-    // 큰 단추가 기록이 아니라 재기를 먼저 말한다.
-    expect(find.text('심박수 재기'), findsOneWidget);
-    expect(find.text('약 먹기 전에'), findsOneWidget);
+    // 큰 단추가 기록이 아니라 재기를 먼저 말한다. 두 줄로 크게 적는다.
+    expect(find.text('심박수'), findsOneWidget);
+    expect(find.text('측정'), findsOneWidget);
 
-    await tester.tap(find.text('심박수 재기'));
+    await tester.tap(find.text('심박수'));
     await tester.pumpAndSettle();
 
     expect(before, 1);
     expect(done, 0);
     // 재고 나면 같은 단추가 약 기록으로 바뀐다.
-    expect(find.text('심박수 재기'), findsNothing);
+    expect(find.text('측정'), findsNothing);
     expect(find.text('먹었어요'), findsWidgets);
   });
 
