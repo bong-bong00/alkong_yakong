@@ -604,10 +604,10 @@ class _DosingTab extends StatelessWidget {
     // ingredientLabel 에 용량이 이미 들어 있다. 또 붙이면 "100mg · 100mg".
     final label = medicine.ingredientLabel.trim();
     final strength = medicine.ingredientStrength.trim();
+    // 제조사는 성분이 아니다. 회사 이름은 적지 않는다.
     final ingredient = [
       label,
       if (strength.isNotEmpty && !label.contains(strength)) strength,
-      medicine.manufacturer.trim(),
     ].where((value) => value.isNotEmpty).join(' · ');
     final rows = <(String, String)>[
       ('얼마나', '한 번에 ${medicine.dosageLabel} · ${medicine.frequencyLabel}'),
@@ -665,26 +665,27 @@ class _AskAboutThisDrug extends StatelessWidget {
       child: ExcludeSemantics(
         child: GestureDetector(
           onTap: () => context.push('/drug-explain', extra: name),
+          // 흰 칸 두 줄. 무엇으로 묻는지("이 약으로")를 같이 적는다.
           child: Container(
-            constraints: const BoxConstraints(minWidth: 56, minHeight: 56),
+            constraints: const BoxConstraints(minHeight: 52),
             alignment: Alignment.center,
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
             decoration: BoxDecoration(
               color: AppColors.surface,
-              borderRadius: BorderRadius.circular(18),
+              borderRadius: BorderRadius.circular(16),
               boxShadow: kCardShadow,
             ),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
-                  '약사',
-                  style: AppText.cardTitle(size: 16, color: AppColors.point),
+                  '이 약으로',
+                  style: AppText.caption(
+                    size: 14,
+                    color: AppColors.textSecondary,
+                  ),
                 ),
-                Text(
-                  '상담',
-                  style: AppText.cardTitle(size: 16, color: AppColors.point),
-                ),
+                Text('약사 상담', style: AppText.cardTitle(size: 16)),
               ],
             ),
           ),

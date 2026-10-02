@@ -957,11 +957,10 @@ class _BigDoseButtonState extends State<_BigDoseButton>
         final outer = room
             .clamp(180.0, widget.compact ? 230.0 : 300.0)
             .toDouble();
-        // 테는 넉넉히 둔다. 얇으면 뛰는 것이 보이지 않는다. 위 칸과 조금
-        // 겹쳐도 괜찮다 — 겹치는 쪽이 눈에 먼저 든다.
-        final ring = outer * 0.2;
-        final size = outer - ring * 2;
-        final halo = outer * 1.12;
+        // 가운데 단추 크기는 그대로 두고, 둘레 테만 넓게 편다. 위 칸과
+        // 겹쳐도 비치는 색이라 칸과 테가 함께 보인다.
+        final size = outer * 0.78;
+        final halo = outer * 1.14;
         // 글자와 아이콘은 지름을 따라간다. 동그라미만 커지고 글자가
         // 그대로면 가운데가 비어 보인다.
         final labelSize = (size * 0.135).clamp(24.0, 34.0).toDouble();
@@ -1000,7 +999,7 @@ class _BigDoseButtonState extends State<_BigDoseButton>
                             width: halo,
                             height: halo,
                             decoration: const BoxDecoration(
-                              color: AppColors.pointRing,
+                              color: AppColors.pointHalo,
                               shape: BoxShape.circle,
                             ),
                           ),
