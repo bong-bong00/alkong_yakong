@@ -299,10 +299,15 @@ MyMedicineCard resolveMyMedicineCard({
   String? shortExplanation,
   String? easyCategory,
 }) {
-  final name = cardOfficialName(
-    productName: productName,
-    displayName: displayName,
-    ingredient: ingredient,
+  // 이름에는 용량을 붙이지 않는다. 용량은 "한 번에 한 알", "500mg"처럼
+  // 따로 적히는 자리가 있어, 이름에 또 적으면 같은 말이 두 번 나오고
+  // 좁은 칸에서 두 줄로 접힌다.
+  final name = nameWithoutStrength(
+    cardOfficialName(
+      productName: productName,
+      displayName: displayName,
+      ingredient: ingredient,
+    ),
   );
   var purpose = cardPurposeLabel(purposeLabel);
   var spoken = cardSpokenOf(shortExplanation) ?? cardSpokenOf(easyCategory);

@@ -93,9 +93,9 @@ class HeartRepository {
     );
   }
 
-  /// 서버의 "17:45"를 앱이 늘 쓰는 "오후 5시 45분"으로.
+  /// 서버의 "17:45"를 앱이 늘 쓰는 "17시 45분"으로.
   ///
-  /// 어르신 화면은 24시간 표기를 쓰지 않는다. 모양을 모르면 받은 그대로 둔다.
+  /// 24시로 적는다. 모양을 모르면 받은 그대로 둔다.
   static String _clock(Object? raw) {
     final text = raw?.toString().trim() ?? '';
     final match = RegExp(r'^(\d{1,2}):(\d{2})').firstMatch(text);

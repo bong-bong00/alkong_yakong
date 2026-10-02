@@ -43,9 +43,9 @@ void main() {
     await tester.pumpWidget(_wrap(const MyMedicinesScreen(asTab: true)));
     await tester.pumpAndSettle();
 
-    expect(find.text('메트포르민 500mg'), findsOneWidget);
-    expect(find.text('암로디핀 5mg'), findsOneWidget);
-    expect(find.text('아스피린 100mg'), findsOneWidget);
+    expect(find.text('메트포르민'), findsOneWidget);
+    expect(find.text('암로디핀'), findsOneWidget);
+    expect(find.text('아스피린'), findsOneWidget);
     // 지난 약은 접혀 있다.
     await tester.scrollUntilVisible(
       find.text('이전에 사용한 약'),
@@ -79,23 +79,28 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('아스피린 100mg'), findsOneWidget);
+    expect(find.text('아스피린'), findsOneWidget);
 
     String shown() => tester
         .widgetList<Text>(find.byType(Text))
         .map((widget) => widget.data ?? widget.textSpan?.toPlainText() ?? '')
         .join('\n');
 
-    // 하는 일 · 주의 · 먹는 법 셋으로 갈라 한 번에 하나만 본다. 한 화면에
-    // 다 쌓으면 아래쪽은 끝까지 안 내려가 안 읽힌다.
+    // 하는 일 · 주의 둘로 가른다. 먹는 법은 "어떤 치료에 쓰이나요" 바로
+    // 아래가 제자리다 — 무슨 약인지 읽고 나면 다음에 궁금한 것이 어떻게
+    // 먹느냐이기 때문이다.
     expect(find.text('하는 일'), findsOneWidget);
     expect(find.text('주의'), findsOneWidget);
-    expect(find.text('먹는 법'), findsOneWidget);
+    expect(find.text('먹는 법'), findsNothing);
 
-    // 처음 보이는 것은 하는 일.
-    expect(shown(), contains('주성분 설명'));
+    // 프로필이 설명을 이미 말하므로 "주성분 설명" 칸은 두지 않는다.
+    expect(shown(), isNot(contains('주성분 설명')));
     expect(shown(), contains('혈관을 막는 것을 예방'));
     expect(shown(), contains('심근경색'));
+    // 하는 일 탭에 쓰임과 먹는 법이 같이 선다.
+    expect(shown(), contains('어떤 치료에 쓰이나요?'));
+    expect(shown(), contains('복용 방법'));
+    expect(shown(), isNot(contains('내가 처방받은')));
     expect(shown(), isNot(contains('함께먹기 주의가 있어요')));
 
     await tester.tap(find.text('주의'));
@@ -104,9 +109,8 @@ void main() {
     expect(shown(), contains('와파린'));
     expect(shown(), contains('피가 잘 멈추지 않을 수 있어요'));
 
-    await tester.tap(find.text('먹는 법'));
-    await tester.pumpAndSettle();
-    expect(shown(), contains('내가 처방받은 복용 방법'));
+    // 출처는 박스가 아니라 꼬리말 한 줄이다.
+    expect(shown(), contains('정보 출처 · 식약처 의약품 허가정보'));
   });
 
   testWidgets('처방전 기록이 지금까지 넣은 처방전을 그린다', (tester) async {
@@ -115,7 +119,7 @@ void main() {
 
     expect(find.text('행복한내과의원 · 우리약국'), findsOneWidget);
     // 며칠치는 날짜 옆에만 적고, 약 줄에는 이름만 둔다.
-    expect(find.text('메트포르민 500mg'), findsOneWidget);
+    expect(find.text('메트포르민'), findsOneWidget);
     expect(find.textContaining('30일치'), findsOneWidget);
     expect(find.text('한빛정형외과'), findsOneWidget);
   });

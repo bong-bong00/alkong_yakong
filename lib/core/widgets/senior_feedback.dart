@@ -140,9 +140,12 @@ class SeniorSegmented extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.all(5),
+      // 바탕(#F7F7FA)과 거의 같은 회색이라 칸이 사라지고 파란 쪽만 떠
+      // 보였다. 다른 카드와 같이 흰 면에 그림자로 띄운다.
       decoration: BoxDecoration(
-        color: AppColors.bg,
+        color: AppColors.surface,
         borderRadius: BorderRadius.circular(16),
+        boxShadow: kCardShadow,
       ),
       child: Row(
         children: [

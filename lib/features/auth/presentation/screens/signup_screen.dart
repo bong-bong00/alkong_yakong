@@ -787,14 +787,14 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
 
       big(
         _StepDef(
-          title: '약을 놓치시면\n가족에게 알려드릴까요?',
-          subtitle: '심박수가 빠를 때도 함께 알려드려요.',
+          title: '가족을 보호자로\n등록할까요?',
+          subtitle: '약을 놓치시거나 심박수가 빠를 때 그 가족에게 알려드려요.',
           validate: () => _guardianAnswer == null ? '해당하는 것을 골라주세요' : null,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               _choice(
-                '네, 알려주세요',
+                '네, 등록할게요',
                 sub: '다음 화면에서 번호를 적어요',
                 selected: _guardianAnswer == 'y',
                 onTap: () => setState(() => _guardianAnswer = 'y'),

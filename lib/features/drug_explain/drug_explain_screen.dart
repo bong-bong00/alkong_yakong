@@ -876,13 +876,8 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
                           alignment: Alignment.centerLeft,
                           child: Text(
                             '무엇이든 물어보세요',
-                            style: AppText.screenTitle(size: 24),
+                            style: AppText.screenTitle(size: 28),
                           ),
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          '약 이야기를 쉬운 말로 알려드려요',
-                          style: AppText.caption(size: 16.5),
                         ),
                       ],
                     ),
@@ -1006,7 +1001,7 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
                       alignment: Alignment.center,
                       decoration: BoxDecoration(
                         color: AppColors.surface,
-                        borderRadius: BorderRadius.circular(30),
+                        borderRadius: BorderRadius.circular(18),
                         border: Border.all(
                           color: AppColors.strongLine,
                           width: 2,
@@ -1050,7 +1045,7 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
                           color: _isLoading
                               ? AppColors.inactive
                               : AppColors.point,
-                          shape: BoxShape.circle,
+                          borderRadius: BorderRadius.circular(18),
                         ),
                         child: const ExcludeSemantics(
                           child: Icon(
@@ -1093,7 +1088,7 @@ class _SubjectCard extends StatelessWidget {
         behavior: HitTestBehavior.opaque,
         child: Container(
           decoration: BoxDecoration(
-            color: picked ? AppColors.pointTint : AppColors.secondaryFill,
+            color: picked ? AppColors.pointTint : AppColors.bg,
             borderRadius: BorderRadius.circular(18),
           ),
           padding: EdgeInsets.fromLTRB(
@@ -1105,7 +1100,7 @@ class _SubjectCard extends StatelessWidget {
           child: Row(
             children: [
               Icon(
-                TablerIcons.capsule,
+                TablerIcons.pill,
                 size: 28,
                 color: picked ? AppColors.point : AppColors.textPrimary,
               ),
@@ -1349,7 +1344,7 @@ class _MedicinePickSheetState extends State<_MedicinePickSheet> {
           Container(
             decoration: BoxDecoration(
               color: AppColors.surface,
-              borderRadius: BorderRadius.circular(30),
+              borderRadius: BorderRadius.circular(18),
               border: Border.all(color: AppColors.strongLine, width: 2),
             ),
             padding: const EdgeInsets.fromLTRB(20, 4, 20, 4),
@@ -1996,7 +1991,7 @@ class _HistoryButton extends StatelessWidget {
             alignment: Alignment.center,
             padding: const EdgeInsets.symmetric(horizontal: 14),
             decoration: BoxDecoration(
-              color: AppColors.secondaryFill,
+              color: AppColors.bg,
               borderRadius: BorderRadius.circular(14),
             ),
             child: Row(

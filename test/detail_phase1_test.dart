@@ -194,12 +194,21 @@ void main() {
     final highlighted = spans.singleWhere((s) => s.text == '정해진 작용');
     expect(highlighted.style!.color, AppColors.detailEmphasis);
     expect(highlighted.style!.fontWeight, FontWeight.w800);
-    expect(find.text('성인에만 사용한다.'), findsOneWidget);
-    final title = tester.widget<Text>(find.text('· 치통'));
-    expect(title.style!.color, AppColors.detailEmphasis);
-    expect(title.style!.fontWeight, FontWeight.w800);
-    final description = tester.widget<Text>(find.text('성인에만 사용한다.'));
-    expect(description.style!.color, isNot(AppColors.detailEmphasis));
+    // 쓰임은 제목과 설명을 한 흐름으로 쓴다. 제목만 굵게 짚고 설명은
+    // 보통 글씨로 이어 붙여, "혈전이 생기기 쉬운 / 분"처럼 끊기지 않는다.
+    final useLine = tester.widget<Text>(
+      find.byWidgetPredicate(
+        (widget) =>
+            widget is Text &&
+            widget.textSpan?.toPlainText() == '· 치통 성인에만 사용한다.',
+      ),
+    );
+    final useSpans = (useLine.textSpan! as TextSpan).children!.cast<TextSpan>();
+    expect(useSpans.first.text, '· 치통');
+    expect(useSpans.first.style!.color, AppColors.detailEmphasis);
+    expect(useSpans.first.style!.fontWeight, FontWeight.w800);
+    expect(useSpans.last.text, ' 성인에만 사용한다.');
+    expect(useSpans.last.style!.color, isNot(AppColors.detailEmphasis));
   });
 
   testWidgets(

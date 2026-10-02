@@ -9,6 +9,7 @@ import '../../../../core/theme/medicine_preserved_typography.dart';
 import '../../../../core/widgets/recovery_view.dart';
 import '../../../../core/widgets/senior_card.dart';
 import '../../../../core/widgets/senior_header.dart';
+import '../../../medicines/domain/display_policy.dart';
 
 /// 처방전 한 줄 — 약 이름과 며칠치.
 @immutable
@@ -205,7 +206,9 @@ class _RecordCard extends StatelessWidget {
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      record.medicines[i].name,
+                      // 이름에는 용량을 붙이지 않는다. 며칠치는 날짜 옆에
+                      // 적고, 한 번에 몇 알인지는 약 자세히에서 본다.
+                      nameWithoutStrength(record.medicines[i].name),
                       style: AppText.label(
                         size: 19,
                         color: AppColors.textPrimary,

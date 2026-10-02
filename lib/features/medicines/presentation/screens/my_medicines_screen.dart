@@ -238,9 +238,8 @@ class _ActionTile extends StatelessWidget {
 
 class _GroupedMedicines extends StatelessWidget {
   final List<UserMedicine> medicines;
-  final bool past;
 
-  const _GroupedMedicines({required this.medicines, this.past = false});
+  const _GroupedMedicines({required this.medicines});
 
   @override
   Widget build(BuildContext context) {
@@ -283,7 +282,7 @@ class _GroupedMedicines extends StatelessWidget {
             for (final medicine in medicines.where(
               (medicine) => medicine.useType == type,
             )) ...[
-              _MedicineCard(medicine: medicine, past: past),
+              _MedicineCard(medicine: medicine),
               const SizedBox(height: 12),
             ],
           ],
@@ -295,22 +294,11 @@ class _GroupedMedicines extends StatelessWidget {
 class _MedicineCard extends StatelessWidget {
   final UserMedicine medicine;
 
-  /// 지금 안 드시는 약. 칸 색은 그대로 두고 왼쪽 회색 띠와 회색 글씨로
-  /// 지금 드시는 약과 갈라 둔다.
-  final bool past;
-
-  const _MedicineCard({required this.medicine, this.past = false});
+  const _MedicineCard({required this.medicine});
 
   @override
   Widget build(BuildContext context) {
-    if (past) {
-      return _StackedCard(child: _body(context));
-    }
-    return _body(context);
-  }
-
-  Widget _body(BuildContext context) {
-    final hasConflict = !past && medicine.interactionStatus == 'risk_found';
+    final hasConflict = medicine.interactionStatus == 'risk_found';
     return SeniorCard(
       radius: 26,
       borderColor: hasConflict ? AppColors.danger : null,
@@ -327,12 +315,7 @@ class _MedicineCard extends StatelessWidget {
               children: [
                 Text(
                   medicine.displayName,
-                  style: AppText.cardTitle(
-                    size: 21,
-                    color: past
-                        ? AppColors.textTertiary
-                        : AppColors.textPrimary,
-                  ),
+                  style: AppText.cardTitle(size: 21),
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                 ),
@@ -400,7 +383,27 @@ class _PastMedicinesState extends State<_PastMedicines> {
         ),
         if (_open) ...[
           const SizedBox(height: 10),
-          _GroupedMedicines(medicines: widget.medicines, past: true),
+          // 지난 약은 한 칸 안에 줄로 쌓는다. 약마다 칸을 따로 세우면
+          // 지금 드시는 약과 같은 무게로 보여 목록이 두 배로 길어진다.
+          _StackedCard(
+            child: SeniorCard(
+              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 6),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  for (final medicine in widget.medicines)
+                    SeniorListRow(
+                      label: medicine.displayName,
+                      labelColor: AppColors.textTertiary,
+                      value: medicine.useType.label,
+                      trailing: const SeniorChevron(),
+                      onTap: () =>
+                          context.push('/medicines/${medicine.medicineCode}'),
+                    ),
+                ],
+              ),
+            ),
+          ),
         ],
       ],
     );

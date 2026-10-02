@@ -76,8 +76,8 @@ class _PairedHeartDevice extends HeartDeviceController {
 const _heartSample = HeartData(
   today: HeartPair(before: 78, after: 72),
   todaySlotLabel: '저녁 약',
-  beforeAt: '오후 5시 52분',
-  afterAt: '오후 6시 40분',
+  beforeAt: '17시 52분',
+  afterAt: '18시 40분',
   week: [
     HeartDay('월', HeartPair(before: 80, after: 74)),
     HeartDay('화', HeartPair()),
@@ -317,9 +317,11 @@ void main() {
     expect(plan[3].fireAt, doseTime.add(const Duration(minutes: 90)));
   });
 
-  test('절대시간으로 말한다 — 상대시간은 보조다', () {
-    expect(DoseSlot.absoluteTime(DateTime(2026, 8, 20, 18, 2)), '오후 6시 2분');
-    expect(DoseSlot.dinner.spokenTime, '저녁 6시');
+  test('절대시간을 24시로 말한다 — 상대시간은 보조다', () {
+    // 알림 시각(18:00)과 기록 시각이 같은 모양이어야 같은 때로 읽힌다.
+    expect(DoseSlot.absoluteTime(DateTime(2026, 8, 20, 18, 2)), '18시 2분');
+    expect(DoseSlot.absoluteTime(DateTime(2026, 8, 20, 8, 5)), '8시 5분');
+    expect(DoseSlot.dinner.spokenTime, '저녁 18시');
   });
 
   testWidgets('비밀번호 "보기"는 입력칸 오른쪽 끝에 붙는다 (4i)', (tester) async {

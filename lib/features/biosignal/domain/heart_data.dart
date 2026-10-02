@@ -211,8 +211,8 @@ class HeartData {
   static const HeartData demo = HeartData(
     today: HeartPair(before: 78, after: 72),
     todaySlotLabel: '저녁 약',
-    beforeAt: '오후 5시 52분',
-    afterAt: '오후 6시 40분',
+    beforeAt: '17시 52분',
+    afterAt: '18시 40분',
     week: [
       HeartDay('월', HeartPair(before: 80, after: 74)),
       HeartDay('화', HeartPair(before: 78, after: 71)),
@@ -250,7 +250,7 @@ class HeartData {
     anomaly: HeartAnomaly(day: 12, slotLabel: '저녁', before: 96, after: 84),
     sensorConnected: true,
     sensorBattery: 82,
-    sensorLastReadAt: '오후 6시 40분',
+    sensorLastReadAt: '18시 40분',
     notifyGuardian: true,
   );
 }

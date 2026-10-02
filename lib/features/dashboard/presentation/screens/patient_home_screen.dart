@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_tabler_icons/flutter_tabler_icons.dart';
 
 import '../../../../core/constants/app_colors.dart';
+import '../../../../dev_mock.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../core/widgets/mode_badge.dart';
 import '../../../../core/widgets/senior_button.dart';
@@ -90,7 +91,12 @@ class _PatientHomeScreenState extends ConsumerState<PatientHomeScreen> {
 
   /// 때마다 먹기 전에 잰 심박수. 다음 때로 넘어가면 그 때에는 값이 없어
   /// 다시 1단계부터 시작한다.
-  final Map<DoseSlot, int> _beforeBpm = {};
+  final Map<DoseSlot, int> _beforeBpm = {
+    // 화면 확인용 가짜 데이터에서는 먹기 전 값을 미리 넣어 둔다.
+    // 재는 걸음부터 거치지 않고 다음 화면을 바로 볼 수 있다.
+    if (mockBeforeBpm() != null)
+      for (final slot in DoseSlot.values) slot: mockBeforeBpm()!,
+  };
 
   @override
   void initState() {

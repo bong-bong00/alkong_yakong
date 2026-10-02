@@ -6,15 +6,20 @@
 /// 올리기 전에 [kMockData]와 main.dart의 `kSkipLogin`을 false로 되돌린다.
 library;
 
+import 'dart:convert';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
 import 'core/network/api_client.dart';
+import 'core/session/mvp_session.dart';
+import 'features/biosignal/application/heart_device.dart';
 import 'features/biosignal/data/heart_repository.dart';
 import 'features/biosignal/domain/heart_data.dart';
 import 'features/dashboard/application/medication_history_provider.dart';
+import 'features/drug_explain/conversation_store.dart';
 import 'features/dashboard/presentation/screens/month_calendar_screen.dart';
 import 'features/dashboard/presentation/screens/patient_data.dart';
 import 'features/guardian/application/guardians_provider.dart';
@@ -24,6 +29,7 @@ import 'features/guardian/presentation/screens/care_patient_screen.dart';
 import 'features/medication/application/medication_controller.dart';
 import 'features/medication/domain/medication_models.dart';
 import 'features/medicines/application/user_medicines_controller.dart';
+import 'features/medicines/domain/display_policy.dart';
 import 'features/medicines/domain/user_medicine_models.dart';
 import 'features/prescription/presentation/screens/prescription_history_screen.dart';
 import 'features/profile/application/current_user_controller.dart';
@@ -131,7 +137,8 @@ UserMedicine _userMedicine({
   int frequency = 1,
 }) => UserMedicine(
   medicineCode: code,
-  displayName: name,
+  // 화면에 적는 이름에는 용량을 붙이지 않는다. 서버에서 온 약과 같은 규칙.
+  displayName: nameWithoutStrength(name),
   officialProductName: name,
   manufacturer: maker,
   ingredientName: ingredient,
@@ -400,6 +407,16 @@ class _MockHeartRepository extends HeartRepository {
   Future<HeartData?> fetch({String? userId}) async => HeartData.demo;
 }
 
+/// 가짜 데이터에서는 심박 기기를 차고 있는 것으로 둔다. 그래야 홈이
+/// 먹기 전 재기 → 먹었어요 → 먹은 뒤 재기 흐름을 보여 준다.
+class _MockPairedDevice extends HeartDeviceController {
+  @override
+  bool build() => true;
+}
+
+/// 먹기 전에 이미 재 둔 값. 화면을 볼 때 재는 걸음부터 거치지 않게 한다.
+int? mockBeforeBpm() => mockData ? 78 : null;
+
 /// 심박수 화면에 넣어 주는 가짜 저장소. 켜져 있지 않으면 null이다.
 HeartRepository? mockHeartRepository() =>
     mockData ? _MockHeartRepository() : null;
@@ -532,6 +549,119 @@ UserProfile _mockPatientProfile(String id) {
 
 // ── 묶어서 내보내기 ───────────────────────────────────────
 
+/// AI 약사 화면용 가짜 서버.
+///
+/// 이 화면은 Riverpod을 거치지 않고 제 ApiClient로 서버를 부른다. 그래서
+/// 다른 화면이 가짜 데이터로 차 있어도 여기만 비어 있었다.
+ApiClient mockPharmacistApi() => ApiClient(
+  client: MockClient((request) async {
+    final path = request.url.path;
+    Map<String, dynamic> body = const {};
+
+    if (path.endsWith('/medicines')) {
+      // 약 고르기 창에 내 약이 선다.
+      body = {
+        'medicines': [
+          for (final medicine in _mockMedicines())
+            {
+              'medicine_code': medicine.medicineCode,
+              'product_name': medicine.displayName,
+              'official_product_name': medicine.displayName,
+              'ingredient': medicine.ingredientName,
+              'status': 'active',
+            },
+        ],
+      };
+    } else if (path.endsWith('/drugs/search')) {
+      final query = request.url.queryParameters['q'] ?? '';
+      body = {
+        'query': query,
+        'count': 1,
+        'items': [
+          {
+            'item_name': '$query정',
+            'manufacturer': '보기용제약',
+            'item_seq': 'MOCK-1',
+          },
+        ],
+      };
+    } else if (path.endsWith('/drug-explain/chat')) {
+      body = {
+        'reply':
+            '보기용 답변이에요. 드시는 약과 함께 봤을 때 특별히 걸리는 것은 없었어요.\n'
+            '속이 불편하면 식사 직후에 드시고, 그래도 불편하시면 알려 주세요.',
+        'sources': ['식약처 의약품 허가정보'],
+      };
+    } else if (path.endsWith('/cache-context')) {
+      body = {'verified': false};
+    }
+
+    return http.Response(
+      jsonEncode(body),
+      200,
+      headers: const {'content-type': 'application/json; charset=utf-8'},
+    );
+  }),
+);
+
+/// 이전 대화 두 건을 기기에 적어 둔다. 이 목록은 서버가 아니라 기기에 쌓인다.
+///
+/// 로그인한 사람이 정해진 뒤에 부른다 — 아이디가 비어 있으면 적을 자리가 없다.
+Future<void> seedMockConversations() async {
+  final userId = MvpSession.userId;
+  if (!mockData || userId.trim().isEmpty) return;
+  final store = PharmacistConversationStore();
+  if ((await store.load(userId)).isNotEmpty) return;
+  final today = DateTime.now();
+
+  Future<void> add(
+    String id,
+    String title,
+    DateTime at,
+    List<Map<String, dynamic>> messages,
+  ) => store.save(userId, {
+    'id': id,
+    'title': title,
+    'updatedAt': at.toIso8601String(),
+    'pendingQuestion': null,
+    'selected': const [],
+    'temporary': const [],
+    'messages': messages,
+  });
+
+  await add('mock-2', '메트포르민 500mg', today.subtract(const Duration(days: 4)), [
+    {
+      'isMe': true,
+      'createdAt': today.subtract(const Duration(days: 4)).toIso8601String(),
+      'text': '꼭 밥 먹고 먹어야 하나요?',
+    },
+    {
+      'isMe': false,
+      'createdAt': today.subtract(const Duration(days: 4)).toIso8601String(),
+      'text':
+          '네, 식사 직후에 드시는 것이 좋아요. 빈속에 드시면 속이 불편할 수 있어요.\n'
+          '깜빡하고 식사를 거르셨다면 간단한 간식과 함께 드셔도 괜찮아요.',
+      'sources': const ['식약처 의약품 허가정보'],
+    },
+  ]);
+
+  await add('mock-1', '내 약 전체', today.subtract(const Duration(days: 1)), [
+    {
+      'isMe': true,
+      'createdAt': today.subtract(const Duration(days: 1)).toIso8601String(),
+      'text': '아침 약이랑 우유 같이 먹어도 돼요?',
+    },
+    {
+      'isMe': false,
+      'createdAt': today.subtract(const Duration(days: 1)).toIso8601String(),
+      'text':
+          '아침에 드시는 약은 아스피린 100mg 한 가지예요.\n'
+          '우유와 함께 드셔도 괜찮아요. 오히려 속이 덜 불편할 수 있어요.',
+      'sources': const ['식약처 의약품 허가정보'],
+    },
+  ]);
+}
+
 /// 서버에 아무것도 보내지 않는 ApiClient. 기록 버튼을 눌러도 조용히 끝난다.
 ApiClient _silentApi() => ApiClient(
   client: MockClient(
@@ -550,6 +680,7 @@ List<Override> devMockOverrides({bool force = false}) {
   if (!mockData && !force) return const [];
   return [
     userRepositoryProvider.overrideWith((ref) => _MockUserRepository()),
+    heartDevicePairedProvider.overrideWith(_MockPairedDevice.new),
     medicationProvider.overrideWith(_MockMedication.new),
     userMedicinesProvider.overrideWith(_MockUserMedicines.new),
     currentUserProvider.overrideWith(_MockUser.new),

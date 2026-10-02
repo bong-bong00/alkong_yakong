@@ -463,7 +463,7 @@ class _TodayCard extends StatelessWidget {
 
   /// 잰 시각만 짧게. 둘 다 없으면 이 줄을 그리지 않는다.
   ///
-  /// "오후 5시 52분 · 오후 6시 40분에 측정했어요"는 숫자를 가린다.
+  /// "17시 52분 · 18시 40분에 측정했어요"는 숫자를 가린다.
   /// 화살표 하나로 전·후를 잇는다.
   String? _measuredLine() {
     final parts = [

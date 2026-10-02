@@ -162,8 +162,12 @@ final _router = GoRouter(
     GoRoute(
       path: '/drug-explain',
       // 약 자세히에서 "이 약 물어보기"로 오면 그 약을 고른 채로 연다.
-      builder: (context, state) =>
-          DrugExplainScreen(initialMedicine: state.extra as String?),
+      builder: (context, state) => DrugExplainScreen(
+        initialMedicine: state.extra as String?,
+        // 가짜 데이터를 켠 개발 빌드에서는 이 화면도 서버를 타지 않는다.
+        apiClient: mockData ? mockPharmacistApi() : null,
+        medicationApiClient: mockData ? mockPharmacistApi() : null,
+      ),
     ),
   ],
 );
@@ -180,6 +184,8 @@ void main() {
   // 가짜 데이터는 개발 빌드에서만 깔린다. 배포 빌드에서는 빈 목록이다.
   final container = ProviderContainer(overrides: devMockOverrides());
   final sessionReady = _restoreSession(container);
+  // 가짜 이전 대화는 로그인한 사람이 정해진 뒤에 적는다.
+  unawaited(sessionReady.then((_) => seedMockConversations()));
   // 알림 초기화는 화면·로그인 확인을 기다리게 하지 않는다.
   final remindersReady = ReminderNotifications.instance.initialize().catchError(
     (_) {},
