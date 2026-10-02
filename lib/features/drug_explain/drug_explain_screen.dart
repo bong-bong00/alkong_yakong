@@ -500,6 +500,7 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
         apiClient: _apiClient,
         medicines: _medicines,
         shortName: _shortName,
+        selected: _selectedMedicine,
       ),
     );
     if (!mounted || pick == null) return;
@@ -1182,10 +1183,14 @@ class _MedicinePickSheet extends StatefulWidget {
   final List<String> medicines;
   final String Function(String name) shortName;
 
+  /// 지금 고른 약. 그 줄에만 체크가 찬다.
+  final String? selected;
+
   const _MedicinePickSheet({
     required this.apiClient,
     required this.medicines,
     required this.shortName,
+    this.selected,
   });
 
   @override
@@ -1322,6 +1327,7 @@ class _MedicinePickSheetState extends State<_MedicinePickSheet> {
                     if (i > 0) const SeniorDivider(),
                     _MedicineToggleRow(
                       label: widget.shortName(widget.medicines[i]),
+                      picked: widget.selected == widget.medicines[i],
                       onPick: () => Navigator.of(
                         context,
                       ).pop(_MedicinePick(name: widget.medicines[i])),
@@ -1970,9 +1976,16 @@ class _HistoryButton extends StatelessWidget {
 /// 내 약 한 줄. 오른쪽 스위치를 켜면 그 약으로 고른다.
 class _MedicineToggleRow extends StatelessWidget {
   final String label;
+
+  /// 지금 고른 약이면 체크가 찬다.
+  final bool picked;
   final VoidCallback onPick;
 
-  const _MedicineToggleRow({required this.label, required this.onPick});
+  const _MedicineToggleRow({
+    required this.label,
+    required this.onPick,
+    this.picked = false,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -1989,13 +2002,33 @@ class _MedicineToggleRow extends StatelessWidget {
             child: Row(
               children: [
                 Expanded(
-                  child: Text(label, style: AppText.cardTitle(size: 19)),
+                  child: Text(
+                    label,
+                    style: AppText.cardTitle(
+                      size: 19,
+                      color: picked ? AppColors.point : AppColors.textPrimary,
+                    ),
+                  ),
                 ),
                 const SizedBox(width: 10),
-                SeniorToggle(
-                  value: false,
-                  semanticLabel: label,
-                  onChanged: (_) => onPick(),
+                Container(
+                  width: 30,
+                  height: 30,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: picked ? AppColors.point : Colors.transparent,
+                    shape: BoxShape.circle,
+                    border: picked
+                        ? null
+                        : Border.all(color: AppColors.strongLine, width: 2),
+                  ),
+                  child: picked
+                      ? const Icon(
+                          TablerIcons.check,
+                          size: 18,
+                          color: Colors.white,
+                        )
+                      : null,
                 ),
               ],
             ),

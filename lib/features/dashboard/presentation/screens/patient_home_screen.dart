@@ -519,7 +519,7 @@ class _PatientHomeScreenState extends ConsumerState<PatientHomeScreen> {
                         const SizedBox(height: 14),
                         _HeartSteps(beforeBpm: _beforeBpm[next.slot]),
                       ],
-                      const SizedBox(height: 18),
+                      const SizedBox(height: 10),
                       // 남는 세로 자리를 그대로 받아 그 안에 맞춘다.
                       _Fill(
                         scrolls: scrolls,
@@ -542,7 +542,9 @@ class _PatientHomeScreenState extends ConsumerState<PatientHomeScreen> {
                                 ),
                         ),
                       ),
-                      const SizedBox(height: 24),
+                      // 테가 아래 칸에 가리지 않을 만큼은 비워 둔다.
+                      // 겹치는 것은 위쪽 한 곳으로 족하다.
+                      const SizedBox(height: 32),
                       _HomeTiles(
                         alarmLabel: _nextAlarmLabel(
                           ref.watch(alarmPreferencesProvider),
