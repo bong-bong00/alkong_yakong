@@ -1052,7 +1052,10 @@ class _BigDoseButtonState extends State<_BigDoseButton>
             (box.maxHeight.isFinite ? box.maxHeight : 320) - skipRoom,
           );
           // 걸음 표시가 위에 붙으면 자리가 좁다. 그때는 한 치수 줄인다.
-          final outer = room.clamp(180.0, cap).toDouble();
+          // 읽힐 크기(180) 아래로는 줄이지 않으되, 받은 자리가 그보다
+          // 좁으면 그 자리에 맞춘다 — 칸이 자라나는 찰나에 비지 않게.
+          final floor = math.min(180.0, math.max(room, 0.0));
+          final outer = room.clamp(floor, cap).toDouble();
           // 가운데 단추 크기는 그대로 두고, 둘레 테만 넓게 편다. 위 칸과
           // 겹쳐도 비치는 색이라 칸과 테가 함께 보인다.
           final size = outer * 0.78;
