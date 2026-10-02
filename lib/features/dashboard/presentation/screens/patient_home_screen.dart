@@ -20,6 +20,7 @@ import '../../../guardian/application/guardians_provider.dart';
 import '../../../guardian/data/guardian_repository.dart';
 import '../../../medication/application/dose_times.dart';
 import '../../../biosignal/application/heart_device.dart';
+import '../../../biosignal/presentation/screens/polar_screen.dart';
 import '../../../medication/application/medication_controller.dart';
 import '../../../reminder/application/alarm_preferences.dart';
 import '../../../reminder/application/reminder_notifications.dart';
@@ -277,6 +278,20 @@ class _PatientHomeScreenState extends ConsumerState<PatientHomeScreen> {
     );
   }
 
+  /// 심박기기 연결로. 지금까지는 기록 › 오늘 심박수 › 기기 연결로
+  /// 세 걸음 들어가야 닿았다. 홈에서 한 번에 가게 둔다.
+  Future<void> _openHeartDevice() async {
+    // 가짜 데이터로 볼 때는 기기가 없다. 연결된 셈 치고 화면만
+    // 바뀜다 — 보여 주려는 것은 펜어림이 아니라 그 뒤의 홈이다.
+    if (mockData) {
+      await ref.read(heartDevicePairedProvider.notifier).set(true);
+      return;
+    }
+    await Navigator.of(
+      context,
+    ).push(MaterialPageRoute<void>(builder: (_) => const PolarScreen()));
+  }
+
   /// 장부에 없는 약 — 내가 넣지 않았는데 들어와 있는 약을 알린다.
   ///
   /// 내가 등록한 약은 등록하는 자리에서 미리 장부에 적으므로 여기 걸리지
@@ -515,10 +530,21 @@ class _PatientHomeScreenState extends ConsumerState<PatientHomeScreen> {
                         textAlign: TextAlign.left,
                         style: AppText.caption(size: 16),
                       ),
-                      if (usesDevice && next != null) ...[
-                        const SizedBox(height: 14),
-                        _HeartSteps(beforeBpm: _beforeBpm[next.slot]),
-                      ],
+                      // 기기를 연결하면 걸음 칸이 위에서 자라난다. 그만큼
+                      // 아래 동그라미가 줄며 내려가 무엇이 바뀜는지 눈으로 따라간다.
+                      AnimatedSize(
+                        duration: const Duration(milliseconds: 420),
+                        curve: Curves.easeOutCubic,
+                        alignment: Alignment.topCenter,
+                        child: usesDevice && next != null
+                            ? Padding(
+                                padding: const EdgeInsets.only(top: 14),
+                                child: _HeartSteps(
+                                  beforeBpm: _beforeBpm[next.slot],
+                                ),
+                              )
+                            : const SizedBox(width: double.infinity),
+                      ),
                       const SizedBox(height: 20),
                       // 남는 세로 자리를 그대로 받아 그 안에 맞춘다.
                       _Fill(
@@ -549,6 +575,9 @@ class _PatientHomeScreenState extends ConsumerState<PatientHomeScreen> {
                           ref.watch(alarmPreferencesProvider),
                         ),
                         onOpenAlarm: _openAlarmSettings,
+                        // 아직 기기를 안 쓰시는 분께는 연결 길을 먼저
+                        // 보여 드린다. 약 보기는 아래 “내 약” 칸에도 있다.
+                        onConnectDevice: usesDevice ? null : _openHeartDevice,
                         onOpenMedicines: widget.onOpenMedicines,
                       ),
                       if (today.daysLeft != null) ...[
@@ -944,123 +973,133 @@ class _BigDoseButtonState extends State<_BigDoseButton>
       _beat.value = 0;
     }
 
-    return LayoutBuilder(
-      builder: (context, box) {
-        // 받은 자리 안에 테까지 들어가야 한다. 가로·세로 중 좁은 쪽에
-        // 맞추되, 글자를 읽을 수 있는 크기 아래로는 줄이지 않는다.
-        // 가로는 양옆을 한 뼘씩 비워 둔다. 화면 폭을 꽉 채우면
-        // 동그라미가 벽에 낀 것처럼 답답해 보인다.
-        final room = math.min(
-          (box.maxWidth.isFinite ? box.maxWidth : 320) - 56,
-          box.maxHeight.isFinite ? box.maxHeight : 320,
-        );
-        // 걸음 표시가 위에 붙으면 자리가 좁다. 그때는 한 치수 줄인다.
-        final outer = room
-            .clamp(180.0, widget.compact ? 230.0 : 300.0)
-            .toDouble();
-        // 가운데 단추 크기는 그대로 두고, 둘레 테만 넓게 편다. 위 칸과
-        // 겹쳐도 비치는 색이라 칸과 테가 함께 보인다.
-        final size = outer * 0.78;
-        // 쉬고 있을 때는 단추보다 조금만 크다. 뛸 때(최대 1.09배) 커지는
-        // 만큼만 여유를 둔다.
-        final halo = size * 1.2;
-        // 글자와 아이콘은 지름을 따라간다. 동그라미만 커지고 글자가
-        // 그대로면 가운데가 비어 보인다.
-        final labelSize = (size * 0.135).clamp(24.0, 34.0).toDouble();
-        final iconSize = (size * 0.24).clamp(44.0, 66.0).toDouble();
-        final labelStyle = AppText.cardTitle(size: labelSize, color: ink);
+    // 위에 걸음 칸이 붙고 떨어질 때 지름이 한 꺼번에 바뀜지 않게
+    // 최대 치수를 천천히 옮긴다. 칸이 자라나는 만큼 동그라미가 줄며
+    // 아래로 내려간다.
+    return TweenAnimationBuilder<double>(
+      tween: Tween<double>(end: widget.compact ? 230.0 : 300.0),
+      duration: const Duration(milliseconds: 420),
+      curve: Curves.easeOutCubic,
+      builder: (context, cap, _) => LayoutBuilder(
+        builder: (context, box) {
+          // 받은 자리 안에 테까지 들어가야 한다. 가로·세로 중 좁은 쪽에
+          // 맞추되, 글자를 읽을 수 있는 크기 아래로는 줄이지 않는다.
+          // 가로는 양옆을 한 뼘씩 비워 둔다. 화면 폭을 꽉 채우면
+          // 동그라미가 벽에 낀 것처럼 답답해 보인다.
+          final room = math.min(
+            (box.maxWidth.isFinite ? box.maxWidth : 320) - 56,
+            box.maxHeight.isFinite ? box.maxHeight : 320,
+          );
+          // 걸음 표시가 위에 붙으면 자리가 좁다. 그때는 한 치수 줄인다.
+          final outer = room.clamp(180.0, cap).toDouble();
+          // 가운데 단추 크기는 그대로 두고, 둘레 테만 넓게 편다. 위 칸과
+          // 겹쳐도 비치는 색이라 칸과 테가 함께 보인다.
+          final size = outer * 0.78;
+          // 쉬고 있을 때는 단추보다 조금만 크다. 뛸 때(최대 1.09배) 커지는
+          // 만큼만 여유를 둔다.
+          final halo = size * 1.2;
+          // 글자와 아이콘은 지름을 따라간다. 동그라미만 커지고 글자가
+          // 그대로면 가운데가 비어 보인다.
+          final labelSize = (size * 0.135).clamp(24.0, 34.0).toDouble();
+          final iconSize = (size * 0.24).clamp(44.0, 66.0).toDouble();
+          final labelStyle = AppText.cardTitle(size: labelSize, color: ink);
 
-        // 위 칸과 아래 칸 사이 정가운데에 둔다.
-        return Align(
-          alignment: Alignment.center,
-          child: Semantics(
-            button: true,
-            label: label,
-            child: GestureDetector(
-              onTap: widget.done
-                  ? widget.onUndo
-                  : widget.measureFirst
-                  ? widget.onMeasure
-                  : widget.onTake,
-              child: ExcludeSemantics(
-                child: SizedBox(
-                  width: outer,
-                  height: outer,
-                  child: Stack(
-                    alignment: Alignment.center,
-                    // 테가 받은 자리 밖으로 조금 나가도 자르지 않는다.
-                    clipBehavior: Clip.none,
-                    children: [
-                      OverflowBox(
-                        maxWidth: halo,
-                        maxHeight: halo,
-                        child: AnimatedBuilder(
-                          animation: _pulse,
-                          builder: (context, child) => Transform.scale(
-                            scale: beating ? _pulse.value : 1.0,
-                            child: child,
-                          ),
-                          child: Container(
-                            width: halo,
-                            height: halo,
-                            decoration: const BoxDecoration(
-                              color: AppColors.pointHalo,
-                              shape: BoxShape.circle,
+          // 위 칸과 아래 칸 사이 정가운데에 둔다.
+          return Align(
+            alignment: Alignment.center,
+            child: Semantics(
+              button: true,
+              label: label,
+              child: GestureDetector(
+                onTap: widget.done
+                    ? widget.onUndo
+                    : widget.measureFirst
+                    ? widget.onMeasure
+                    : widget.onTake,
+                child: ExcludeSemantics(
+                  child: SizedBox(
+                    width: outer,
+                    height: outer,
+                    child: Stack(
+                      alignment: Alignment.center,
+                      // 테가 받은 자리 밖으로 조금 나가도 자르지 않는다.
+                      clipBehavior: Clip.none,
+                      children: [
+                        OverflowBox(
+                          maxWidth: halo,
+                          maxHeight: halo,
+                          child: AnimatedBuilder(
+                            animation: _pulse,
+                            builder: (context, child) => Transform.scale(
+                              scale: beating ? _pulse.value : 1.0,
+                              child: child,
+                            ),
+                            child: Container(
+                              width: halo,
+                              height: halo,
+                              decoration: const BoxDecoration(
+                                color: AppColors.pointHalo,
+                                shape: BoxShape.circle,
+                              ),
                             ),
                           ),
                         ),
-                      ),
-                      Container(
-                        width: size,
-                        height: size,
-                        alignment: Alignment.center,
-                        decoration: BoxDecoration(
-                          color: fill,
-                          shape: BoxShape.circle,
-                        ),
-                        // 동그라미 안에 드는 네모는 지름의 0.7배다. 글씨를
-                        // 키운 기기에서도 그 안에서 줄여 담아 넘치지 않게 한다.
-                        child: SizedBox(
-                          width: size * 0.72,
-                          height: size * 0.72,
-                          child: FittedBox(
-                            fit: BoxFit.scaleDown,
-                            child: Column(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(
-                                  widget.done
-                                      ? TablerIcons.arrow_back_up
-                                      : widget.measureFirst
-                                      ? TablerIcons.heart_filled
-                                      : TablerIcons.check,
-                                  size: iconSize,
-                                  color: ink,
-                                ),
-                                const SizedBox(height: 2),
-                                Text(label, style: labelStyle),
-                                if (sub != null)
-                                  Text(
-                                    sub,
-                                    style: AppText.cardTitle(
-                                      size: labelSize * 0.62,
-                                      color: AppColors.onPointMuted,
-                                      weight: FontWeight.w700,
+                        Container(
+                          width: size,
+                          height: size,
+                          alignment: Alignment.center,
+                          decoration: BoxDecoration(
+                            color: fill,
+                            shape: BoxShape.circle,
+                          ),
+                          // 동그라미 안에 드는 네모는 지름의 0.7배다. 글씨를
+                          // 키운 기기에서도 그 안에서 줄여 담아 넘치지 않게 한다.
+                          child: SizedBox(
+                            width: size * 0.72,
+                            height: size * 0.72,
+                            child: FittedBox(
+                              fit: BoxFit.scaleDown,
+                              child: AnimatedSwitcher(
+                                duration: const Duration(milliseconds: 260),
+                                child: Column(
+                                  key: ValueKey(label),
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(
+                                      widget.done
+                                          ? TablerIcons.arrow_back_up
+                                          : widget.measureFirst
+                                          ? TablerIcons.heart_filled
+                                          : TablerIcons.check,
+                                      size: iconSize,
+                                      color: ink,
                                     ),
-                                  ),
-                              ],
+                                    const SizedBox(height: 2),
+                                    Text(label, style: labelStyle),
+                                    if (sub != null)
+                                      Text(
+                                        sub,
+                                        style: AppText.cardTitle(
+                                          size: labelSize * 0.62,
+                                          color: AppColors.onPointMuted,
+                                          weight: FontWeight.w700,
+                                        ),
+                                      ),
+                                  ],
+                                ),
+                              ),
                             ),
                           ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
                 ),
               ),
             ),
-          ),
-        );
-      },
+          );
+        },
+      ),
     );
   }
 }
@@ -1073,11 +1112,15 @@ class _HomeTiles extends StatelessWidget {
 
   /// 복약 알림 설정으로. 소리로 울릴 시각을 거기서 고친다.
   final VoidCallback? onOpenAlarm;
+
+  /// 심박기기 연결로. null이면 이미 쓰고 계셔서 “약 보기”를 둔다.
+  final VoidCallback? onConnectDevice;
   final VoidCallback? onOpenMedicines;
 
   const _HomeTiles({
     required this.alarmLabel,
     this.onOpenAlarm,
+    this.onConnectDevice,
     this.onOpenMedicines,
   });
 
@@ -1095,11 +1138,18 @@ class _HomeTiles extends StatelessWidget {
         ),
         const SizedBox(width: 16),
         Expanded(
-          child: _tile(
-            icon: TablerIcons.pill,
-            label: '약 보기',
-            onTap: onOpenMedicines,
-          ),
+          child: onConnectDevice != null
+              ? _tile(
+                  icon: TablerIcons.device_watch_heart,
+                  label: '심박기기 연결',
+                  onTap: onConnectDevice,
+                  fontSize: 18,
+                )
+              : _tile(
+                  icon: TablerIcons.pill,
+                  label: '약 보기',
+                  onTap: onOpenMedicines,
+                ),
         ),
       ],
     );

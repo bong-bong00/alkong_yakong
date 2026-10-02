@@ -994,16 +994,20 @@ void _backButtonTests() {
 void _homeTimelineTests() {
   /// 오늘 홈의 동그라미는 심장처럼 계속 뛴다. 켜 둔 채로는
   /// `pumpAndSettle`이 끝나지 않으므로 테스트에서는 움직임을 끈다.
-  Widget home({required List<DoseEntry> doses}) => ProviderScope(
-    overrides: [medicationProvider.overrideWith(() => _FixedMedication(doses))],
-    child: MaterialApp(
-      theme: AppTheme.build(),
-      home: const MediaQuery(
-        data: MediaQueryData(disableAnimations: true),
-        child: Scaffold(body: PatientHomeScreen()),
-      ),
-    ),
-  );
+  Widget home({required List<DoseEntry> doses, bool paired = false}) =>
+      ProviderScope(
+        overrides: [
+          medicationProvider.overrideWith(() => _FixedMedication(doses)),
+          if (paired) heartDevicePairedProvider.overrideWith(_PairedDevice.new),
+        ],
+        child: MaterialApp(
+          theme: AppTheme.build(),
+          home: const MediaQuery(
+            data: MediaQueryData(disableAnimations: true),
+            child: Scaffold(body: PatientHomeScreen()),
+          ),
+        ),
+      );
 
   testWidgets('굵은 테두리 카드가 하나만 있다', (tester) async {
     await tester.pumpWidget(
@@ -1177,9 +1181,28 @@ void _homeTimelineTests() {
       findsOneWidget,
     );
 
-    // 약 이름은 홈에 늘어놓지 않는다 — "약 보기"에서 본다.
+    // 약 이름은 홈에 늘어놓지 않는다 — 아래 칸에서 본다.
     expect(find.text('메트포르민'), findsNothing);
+    // 심박기기를 안 쓰시면 그 자리는 연결 길이다.
+    expect(find.text('심박기기 연결'), findsOneWidget);
+  });
+
+  testWidgets('심박기기를 쓰시면 아래 칸이 "약 보기"로 돌아온다', (tester) async {
+    await tester.pumpWidget(
+      home(
+        paired: true,
+        doses: const [
+          DoseEntry(
+            slot: DoseSlot.dinner,
+            medicines: [Medicine(ingredient: '저녁정', amount: '1알')],
+          ),
+        ],
+      ),
+    );
+    await tester.pump();
+
     expect(find.text('약 보기'), findsOneWidget);
+    expect(find.text('심박기기 연결'), findsNothing);
   });
 
   testWidgets('아직 드시지 않았으면 큰 단추가 "먹었어요"다', (tester) async {
@@ -1570,4 +1593,10 @@ void _realLoginTests() {
     expect(main.contains('if (!AuthSession.isLoggedIn)'), isTrue);
     expect(main.contains("publicRoute ? null : '/login'"), isTrue);
   });
+}
+
+/// 심박기기를 이미 쓰고 계신 분. 홈 아래 칸이 "약 보기"로 돌아온다.
+class _PairedDevice extends HeartDeviceController {
+  @override
+  bool build() => true;
 }
