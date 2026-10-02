@@ -387,20 +387,9 @@ class _PrescriptionScreenState extends ConsumerState<PrescriptionScreen> {
       'pair_conflict=$hasPairConflict '
       'destination=${hasPairConflict ? 'dur_analysis' : 'schedule_days'}',
     );
-    if (!hasPairConflict) {
-      openScheduleDays();
-      return;
-    }
-
-    final onCompleted = widget.onCompleted;
-    if (onCompleted != null) {
-      onCompleted(durResult);
-      return;
-    }
-    context.push(
-      '/dur-analysis',
-      extra: {...?durResult, 'open_schedule_days': true},
-    );
+    // 함께먹기 주의 화면은 없앴다. 충돌이 있어도 등록은 그대로 이어가고,
+    // 주의 내용은 약 자세히에서 그 약을 열어 볼 때 보여 준다.
+    openScheduleDays();
   }
 
   /// 가족에게 처방전을 찍어 달라고 부탁한다.
@@ -505,21 +494,9 @@ class _PrescriptionScreenState extends ConsumerState<PrescriptionScreen> {
         return ManualMedicineScreen(
           onBack: () => setState(() => _step = PrescriptionStep.pickMethod),
           onSaved: (durResult) {
-            final onCompleted = widget.onCompleted;
-            if (_hasPairConflict(durResult) && onCompleted != null) {
-              onCompleted(durResult);
-              return;
-            }
             final onOpenScheduleDays = widget.onOpenScheduleDays;
             if (onOpenScheduleDays != null) {
               onOpenScheduleDays();
-              return;
-            }
-            if (_hasPairConflict(durResult)) {
-              context.push(
-                '/dur-analysis',
-                extra: {...?durResult, 'open_schedule_days': true},
-              );
               return;
             }
             context.push(

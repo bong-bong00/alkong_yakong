@@ -12,7 +12,6 @@ import '../../../dev_mock.dart';
 import '../../biosignal/presentation/screens/heart_screen.dart';
 import '../../biosignal/presentation/screens/measure_screen.dart';
 import '../../dashboard/presentation/screens/medication_record_screen.dart';
-import '../../dur_analysis/presentation/screens/dur_analysis_screen.dart';
 import 'easy_dose_flow.dart';
 import '../../medication/domain/medication_models.dart';
 import '../../medication/presentation/screens/dose_done_screen.dart';
@@ -40,7 +39,6 @@ class EasyFlowShell extends ConsumerStatefulWidget {
 
 class _EasyFlowShellState extends ConsumerState<EasyFlowShell> {
   EasyScreen _screen = EasyScreen.today;
-  Map<String, dynamic>? _durResult;
 
   /// 방금 기록한 시간대. 완료 화면이 저녁이라고 우기지 않게 들고 있는다.
   DoseSlot? _recordedSlot;
@@ -138,20 +136,7 @@ class _EasyFlowShellState extends ConsumerState<EasyFlowShell> {
         return const MyMedicinesScreen();
       case EasyScreen.prescription:
         return PrescriptionScreen(
-          onCompleted: (result) {
-            _durResult = result;
-            if (_hasPairConflict(result)) {
-              _goTo(EasyScreen.interaction);
-            } else {
-              _goTo(EasyScreen.scheduleDays);
-            }
-          },
-          onOpenScheduleDays: () => _goTo(EasyScreen.scheduleDays),
-          onGoHome: () => _goTo(EasyScreen.today),
-        );
-      case EasyScreen.interaction:
-        return DurAnalysisScreen(
-          initialResult: _durResult,
+          onCompleted: (_) => _goTo(EasyScreen.scheduleDays),
           onOpenScheduleDays: () => _goTo(EasyScreen.scheduleDays),
           onGoHome: () => _goTo(EasyScreen.today),
         );
@@ -364,13 +349,4 @@ class EasyMenuButton extends StatelessWidget {
       ),
     );
   }
-}
-
-bool _hasPairConflict(Map<String, dynamic>? durResult) {
-  const pairTypes = {'병용금기', '중복성분', '효능군중복'};
-  final matches = durResult?['matches'];
-  if (matches is! List) return false;
-  return matches.any(
-    (item) => item is Map && pairTypes.contains(item['type']?.toString()),
-  );
 }

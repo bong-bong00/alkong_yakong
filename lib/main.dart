@@ -21,7 +21,6 @@ import 'features/dashboard/presentation/screens/dashboard_screen.dart';
 import 'features/dashboard/presentation/screens/guardian_home_screen.dart';
 import 'features/dashboard/presentation/screens/home_screen.dart';
 import 'features/drug_explain/drug_explain_screen.dart';
-import 'features/dur_analysis/presentation/screens/dur_analysis_screen.dart';
 import 'features/medication/application/medication_controller.dart';
 import 'features/medicines/presentation/screens/drug_detail_screen.dart';
 import 'features/onboarding/presentation/screens/first_run_screen.dart';
@@ -98,15 +97,6 @@ final _router = GoRouter(
       path: '/medicines/:code',
       builder: (context, state) =>
           DrugDetailScreen(medicineCode: state.pathParameters['code'] ?? ''),
-    ),
-    GoRoute(
-      path: '/dur-analysis',
-      builder: (context, state) {
-        final extra = state.extra;
-        return DurAnalysisScreen(
-          initialResult: extra is Map ? Map<String, dynamic>.from(extra) : null,
-        );
-      },
     ),
     GoRoute(
       path: '/schedule-days',

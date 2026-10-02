@@ -117,15 +117,38 @@ class FirstRunScreen extends StatelessWidget {
                   ],
                 ),
               ),
-              const SizedBox(height: 22),
+              const SizedBox(height: 14),
 
-              SeniorTextButton(
-                label: '약 이름을 손으로 적을게요',
-                color: AppColors.point,
-                fontSize: 19,
-                onPressed: () => context.push('/manual-medicine'),
+              // ── 선택지 3 ──
+              // 작은 글자 단추로 두었더니 손으로 적는 길이 없는 줄 알고
+              // 그냥 건너뛰셨다. 나머지 둘과 같은 칸으로 세운다.
+              SeniorCard(
+                padding: const EdgeInsets.fromLTRB(18, 14, 18, 14),
+                radius: 24,
+                borderColor: AppColors.border,
+                borderWidth: 2,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Text('손으로 적기', style: AppText.screenTitle(size: 24)),
+                    const SizedBox(height: 6),
+                    Text(
+                      '처방전이 없어도 괜찮아요. '
+                      '약 이름과 드시는 때만 적으면 됩니다.',
+                      style: AppText.body(size: 18.5),
+                    ),
+                    const SizedBox(height: 14),
+                    SeniorButton(
+                      label: '약 이름 적기',
+                      kind: SeniorButtonKind.secondary,
+                      minHeight: 66,
+                      fontSize: 22,
+                      onPressed: () => context.push('/manual-medicine'),
+                    ),
+                  ],
+                ),
               ),
-              const SizedBox(height: 10),
+              const SizedBox(height: 22),
               SeniorButton(
                 label: '건너뛰기',
                 subLabel: '나중에 넣어도 됩니다',
