@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
 
-import 'package:alkong_yakong/core/polar_pharmacist_ui/constants/app_colors.dart';
 import 'package:alkong_yakong/core/network/api_client.dart';
 import 'package:alkong_yakong/core/theme/app_theme.dart';
 import 'package:alkong_yakong/core/polar_pharmacist_ui/widgets/senior_button.dart';
@@ -206,45 +205,23 @@ void main() {
     expect(find.byType(SavedScreen), findsNothing);
   });
 
-  testWidgets('monthly incomplete medication record has no conclusion', (
+  testWidgets('monthly keeps the daily chart even with nothing measured', (
     tester,
   ) async {
-    final data = HeartData(
-      readings: [
-        HeartReading(
-          id: 1,
-          bpm: 81,
-          measuredAt: DateTime(2026, 9, 1, 10),
-          measurementContext: HeartMeasurementContext.afterMedication,
-        ),
-      ],
-      periodDate: DateTime(2026, 9, 28),
-      today: const HeartPair(),
-      todaySlotLabel: '',
-      beforeAt: '',
-      afterAt: '',
-      week: const [],
-      month: const [
-        HeartMonthDay(1, HeartPair(after: 81)),
-        HeartMonthDay(3, HeartPair(after: 79)),
-      ],
-      streakDays: 2,
-      bestStreakDays: 2,
-      anomaly: null,
-      sensorConnected: false,
-      sensorBattery: null,
-      sensorLastReadAt: '',
-      notifyGuardian: false,
-    );
+    final data = monthlyData(const []);
     await tester.pumpWidget(
       wrap(MonthlyHeartScreen(data: data, now: DateTime(2026, 9, 28))),
     );
     await tester.pumpAndSettle();
-    expect(find.text('복약 전·후를 비교할 기록이 아직 부족해요.'), findsOneWidget);
-    expect(find.text('일째'), findsNothing);
-    expect(find.textContaining('가장 길었던 기록'), findsNothing);
-    expect(find.textContaining('정상'), findsNothing);
+
+    // 잰 것이 없어도 자리는 그대로다. 칸이 통째로 사라지면 기록이 없는
+    // 것인지 화면이 잘못된 것인지 알 수 없다.
+    expect(find.text('날마다 복약 전·후'), findsOneWidget);
+    expect(find.text('9월에는 아직 잰 기록이 없어요'), findsOneWidget);
+    expect(find.byKey(const Key('daily-heart-bars')), findsOneWidget);
+    // 단정하는 말은 어디에도 없다.
     expect(find.textContaining('비슷했어요'), findsNothing);
+    expect(find.textContaining('높았어요'), findsNothing);
   });
 
   testWidgets(
@@ -267,143 +244,56 @@ void main() {
     },
   );
 
-  testWidgets(
-    'monthly comparison ignores general and incomplete medication contexts',
-    (tester) async {
-      final cases = <List<HeartReading>>[
-        [HeartReading(id: 1, bpm: 90, measuredAt: DateTime(2026, 9, 8, 9))],
-        [
-          HeartReading(
-            id: 2,
-            bpm: 91,
-            measuredAt: DateTime(2026, 9, 8, 9),
-            measurementContext: HeartMeasurementContext.beforeMedication,
-          ),
-        ],
-        [
-          HeartReading(
-            id: 3,
-            bpm: 89,
-            measuredAt: DateTime(2026, 9, 8, 10),
-            measurementContext: HeartMeasurementContext.afterMedication,
-          ),
-        ],
-      ];
+  testWidgets('daily chart counts only explicit before/after readings', (
+    tester,
+  ) async {
+    // 일반 측정은 복약 전·후가 아니다. 시각으로 짐작해 넣지 않는다.
+    final data = monthlyData(
+      [HeartReading(id: 1, bpm: 90, measuredAt: DateTime(2026, 9, 8, 9))],
+      month: const [HeartMonthDay(8, HeartPair(before: 90, after: 89))],
+    );
 
-      for (final readings in cases) {
-        await tester.pumpWidget(
-          wrap(
-            MonthlyHeartScreen(
-              data: monthlyData(
-                readings,
-                // 서버 요약에 값이 있더라도 명시적인 측정 목적이 우선이다.
-                month: const [
-                  HeartMonthDay(8, HeartPair(before: 90, after: 89)),
-                ],
-              ),
-              now: DateTime(2026, 9, 28),
-            ),
-          ),
-        );
-        await tester.pumpAndSettle();
-        expect(find.text('복약 전·후를 비교할 기록이 아직 부족해요.'), findsOneWidget);
-        expect(find.text('주별 평균'), findsNothing);
-        expect(find.textContaining('비슷했어요'), findsNothing);
-        expect(find.textContaining('내려갔'), findsNothing);
-      }
-    },
-  );
+    await tester.pumpWidget(
+      wrap(MonthlyHeartScreen(data: data, now: DateTime(2026, 9, 28))),
+    );
+    await tester.pumpAndSettle();
 
-  testWidgets(
-    'one explicit before/after pair shows one-week bars without a conclusion',
-    (tester) async {
-      final data = monthlyData([
-        HeartReading(
-          id: 1,
-          bpm: 90,
-          measuredAt: DateTime(2026, 9, 8, 9),
-          measurementContext: HeartMeasurementContext.beforeMedication,
-        ),
-        HeartReading(
-          id: 2,
-          bpm: 91,
-          measuredAt: DateTime(2026, 9, 8, 10),
-          measurementContext: HeartMeasurementContext.afterMedication,
-        ),
-      ]);
+    expect(find.text('9월에는 아직 잰 기록이 없어요'), findsOneWidget);
+    expect(find.text('주별 평균'), findsNothing);
+  });
 
-      await tester.pumpWidget(
-        wrap(MonthlyHeartScreen(data: data, now: DateTime(2026, 9, 28))),
-      );
-      await tester.pumpAndSettle();
+  testWidgets('daily chart shows the day it was measured', (tester) async {
+    final data = monthlyData([
+      HeartReading(
+        id: 1,
+        bpm: 90,
+        measuredAt: DateTime(2026, 9, 8, 9),
+        measurementContext: HeartMeasurementContext.beforeMedication,
+      ),
+      HeartReading(
+        id: 2,
+        bpm: 91,
+        measuredAt: DateTime(2026, 9, 8, 10),
+        measurementContext: HeartMeasurementContext.afterMedication,
+      ),
+    ]);
 
-      expect(find.text('1회/분 높았어요', skipOffstage: false), findsOneWidget);
-      expect(find.text('복약 전  90회/분', skipOffstage: false), findsOneWidget);
-      expect(find.text('복약 후  91회/분', skipOffstage: false), findsOneWidget);
-      expect(find.text('일반 범위', skipOffstage: false), findsNWidgets(2));
-      expect(find.text('비교 기록 1주', skipOffstage: false), findsOneWidget);
-      expect(
-        find.text('아직 경향을 판단하기 어려워요', skipOffstage: false),
-        findsOneWidget,
-      );
-      expect(find.textContaining('약의 영향으로 단정할 수 없어요.'), findsOneWidget);
-      expect(find.text('주별 평균'), findsOneWidget);
-      expect(find.text('단위: 회/분 · 비교 가능한 주 1주'), findsOneWidget);
-      expect(find.text('복약 전 평균'), findsOneWidget);
-      expect(find.text('복약 후 평균'), findsOneWidget);
-      expect(find.text('9/7~9/13'), findsOneWidget);
-      expect(find.textContaining('비슷했어요'), findsNothing);
-      expect(find.textContaining('효과'), findsNothing);
-      expect(find.textContaining('약 때문에'), findsNothing);
-    },
-  );
+    await tester.pumpWidget(
+      wrap(MonthlyHeartScreen(data: data, now: DateTime(2026, 9, 28))),
+    );
+    await tester.pumpAndSettle();
 
-  testWidgets(
-    'monthly summary classifies averages and emphasizes after value',
-    (tester) async {
-      final data = monthlyData([
-        HeartReading(
-          id: 1,
-          bpm: 54,
-          measuredAt: DateTime(2026, 9, 28, 16),
-          measurementContext: HeartMeasurementContext.beforeMedication,
-        ),
-        HeartReading(
-          id: 2,
-          bpm: 64,
-          measuredAt: DateTime(2026, 9, 28, 16, 1),
-          measurementContext: HeartMeasurementContext.afterMedication,
-        ),
-      ]);
+    expect(find.text('날마다 복약 전·후'), findsOneWidget);
+    expect(find.text('단위: 회/분 · 잰 날 1일'), findsOneWidget);
+    expect(find.text('복약 전'), findsWidgets);
+    expect(find.text('복약 후'), findsWidgets);
+    // 약 때문이라고 단정하지 않는다.
+    expect(find.textContaining('비슷했어요'), findsNothing);
+    expect(find.textContaining('효과'), findsNothing);
+    expect(find.textContaining('약 때문에'), findsNothing);
+  });
 
-      await tester.pumpWidget(
-        wrap(MonthlyHeartScreen(data: data, now: DateTime(2026, 9, 30))),
-      );
-      await tester.pumpAndSettle();
-
-      expect(find.text('복약 후 평균 심박수가', skipOffstage: false), findsOneWidget);
-      expect(find.text('10회/분 높았어요', skipOffstage: false), findsOneWidget);
-      expect(find.text('복약 전  54회/분', skipOffstage: false), findsOneWidget);
-      expect(find.text('복약 후  64회/분', skipOffstage: false), findsOneWidget);
-      expect(find.text('느린 범위', skipOffstage: false), findsOneWidget);
-      expect(find.text('일반 범위', skipOffstage: false), findsOneWidget);
-
-      final afterValue = tester.widget<Text>(
-        find.byKey(const Key('weekly-after-value'), skipOffstage: false),
-      );
-      expect(afterValue.data, '64');
-      expect(afterValue.style?.color, AppColors.point);
-
-      final valuesLabel = tester.widget<Text>(
-        find.byKey(const Key('weekly-values-label'), skipOffstage: false),
-      );
-      final spans = (valuesLabel.textSpan as TextSpan).children!;
-      expect((spans.last as TextSpan).text, '후 64');
-      expect((spans.last as TextSpan).style?.color, AppColors.point);
-    },
-  );
-
-  testWidgets('multiple comparable weeks show units, legend, and periods', (
+  testWidgets('daily chart fits narrow screens with large text', (
     tester,
   ) async {
     final data = monthlyData([
@@ -448,12 +338,8 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(find.text('주별 평균'), findsOneWidget);
-      expect(find.text('단위: 회/분 · 비교 가능한 주 2주'), findsOneWidget);
-      expect(find.text('복약 전 평균'), findsOneWidget);
-      expect(find.text('복약 후 평균'), findsOneWidget);
-      expect(find.text('8/31~9/6'), findsOneWidget);
-      expect(find.text('9/7~9/13'), findsOneWidget);
+      expect(find.text('날마다 복약 전·후'), findsOneWidget);
+      expect(find.text('단위: 회/분 · 잰 날 2일'), findsOneWidget);
       expect(find.textContaining('비슷했어요'), findsNothing);
       expect(find.textContaining('내려갔'), findsNothing);
       expect(tester.takeException(), isNull);

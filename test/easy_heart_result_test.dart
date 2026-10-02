@@ -285,15 +285,17 @@ void main() {
         expect(readable('1회/분 높아요'), findsOneWidget);
         expect(find.byIcon(Icons.arrow_forward_rounded), findsOneWidget);
         expect(find.text('약이 잘 듣고 있어요'), findsNothing);
-        final bars = tester
-            .widgetList<Container>(find.byType(Container))
-            .where((item) => item.constraints?.maxWidth == 44)
-            .toList();
-        expect(bars, hasLength(2));
-        expect(
-          bars[1].constraints!.maxHeight / bars[0].constraints!.maxHeight,
-          closeTo(97 / 96, .001),
+        // 먹은 뒤 막대는 자라 오른다. 다 자란 뒤에 높이를 잰다.
+        await tester.pumpAndSettle();
+        final beforeBar = tester.getSize(
+          find.byKey(const Key('heart-bar-before')),
         );
+        final afterBar = tester.getSize(
+          find.byKey(const Key('heart-bar-after')),
+        );
+        expect(beforeBar.width, 44);
+        expect(afterBar.width, 44);
+        expect(afterBar.height / beforeBar.height, closeTo(97 / 96, .001));
         expect(tester.takeException(), isNull);
       },
     );
