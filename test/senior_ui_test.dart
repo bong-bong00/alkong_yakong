@@ -508,7 +508,8 @@ void _easyModeTests() {
     final shell = File(
       'lib/features/easy_flow/presentation/easy_flow_shell.dart',
     ).readAsStringSync();
-    expect(shell.contains("label: '일반 화면으로'"), isTrue);
+    // 띄는 일반 화면과 같은 것을 쓴다 — 같은 자리, 같은 모양.
+    expect(shell.contains('ModeBadge()'), isTrue);
     expect(shell.contains('EasyMenuButton('), isFalse);
   });
 }
@@ -1451,7 +1452,7 @@ void _rightAlignTests() {
 
 /// C장 — 기록도 날짜 타임라인이다.
 void _recordTimelineTests() {
-  testWidgets('기록 첫 화면에 오늘로 돌아가는 버튼이 있다', (tester) async {
+  testWidgets('기록 첫 화면에는 오늘로 돌아가는 버튼을 두지 않는다', (tester) async {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
@@ -1472,7 +1473,8 @@ void _recordTimelineTests() {
       ),
     );
     await tester.pump();
-    expect(find.text('오늘 화면으로 돌아가기'), findsOneWidget);
+    // 탭 막대와 쉬운 화면의 "뒤로"가 이미 돌아가는 길이다.
+    expect(find.text('오늘 화면으로 돌아가기'), findsNothing);
   });
 
   test('기록 탭은 주간칸과 달력으로 가는 길만 둔다', () {

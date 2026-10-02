@@ -1,13 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:flutter_tabler_icons/flutter_tabler_icons.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/constants/app_colors.dart';
-import '../../../core/mode/app_mode.dart';
-import '../../../core/theme/app_typography.dart';
 import '../../../core/widgets/senior_button.dart';
-import '../../../core/widgets/senior_card.dart';
+import '../../../core/widgets/mode_badge.dart';
 import '../../../dev_mock.dart';
 import '../../biosignal/presentation/screens/heart_screen.dart';
 import '../../biosignal/presentation/screens/measure_screen.dart';
@@ -113,37 +110,42 @@ class _EasyFlowShellState extends ConsumerState<EasyFlowShell> {
   @override
   Widget build(BuildContext context) {
     final showBar = showsEasyBar(_screen);
-    return Scaffold(
-      backgroundColor: AppColors.pageBg,
-      body: SafeArea(
-        bottom: false,
-        child: Column(
-          children: [
-            _EasyFlowTop(
-              onLeave: () =>
-                  ref.read(appModeProvider.notifier).set(AppMode.normal),
-            ),
-            Expanded(
-              child: KeyedSubtree(
-                // 화면마다 새로 만든다. 보이지도 않는 화면이 센서를 잡고
-                // 있지 않도록.
-                key: ValueKey(_screen),
-                child: MediaQuery.removePadding(
-                  context: context,
-                  removeBottom: true,
-                  child: _buildScreen(),
+    return PopScope(
+      // 핸드폰 뒤로가기도 앞 화면으로. 메뉴에서 들어가서 누르면
+      // 앱이 꺼지던 것을 고친다.
+      canPop: _screen == EasyScreen.today && _history.isEmpty,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) _back();
+      },
+      child: Scaffold(
+        backgroundColor: AppColors.pageBg,
+        body: SafeArea(
+          bottom: false,
+          child: Column(
+            children: [
+              const _EasyFlowTop(),
+              Expanded(
+                child: KeyedSubtree(
+                  // 화면마다 새로 만든다. 보이지도 않는 화면이 센서를 잡고
+                  // 있지 않도록.
+                  key: ValueKey(_screen),
+                  child: MediaQuery.removePadding(
+                    context: context,
+                    removeBottom: true,
+                    child: _buildScreen(),
+                  ),
                 ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
+        bottomNavigationBar: showBar
+            ? _EasyFlowBar(
+                // 메뉴에서 들어온 화면에는 돌아가는 길 하나면 된다.
+                onBack: _back,
+              )
+            : null,
       ),
-      bottomNavigationBar: showBar
-          ? _EasyFlowBar(
-              // 메뉴에서 들어온 화면에는 돌아가는 길 하나면 된다.
-              onBack: _back,
-            )
-          : null,
     );
   }
 }
@@ -153,53 +155,19 @@ class _EasyFlowShellState extends ConsumerState<EasyFlowShell> {
 /// 걸음 막대는 여기서 그리지 않는다. 명세서는 복약 한 바퀴(76~84)에서만
 /// 여덟 칸 막대를 두고, 나머지 간편 화면(85~90)에는 두지 않는다.
 class _EasyFlowTop extends StatelessWidget {
-  final VoidCallback onLeave;
-
-  const _EasyFlowTop({required this.onLeave});
+  const _EasyFlowTop();
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(18, 6, 18, 2),
+    return const Padding(
+      // 일반 화면 머리와 같은 여백이다. 두 화면의 띄가 같은 자리에
+      // 있어야 같은 앱으로 읽힌다.
+      padding: EdgeInsets.fromLTRB(18, 16, 18, 14),
       child: Row(
         children: [
-          const Spacer(),
-          _pill(onTap: onLeave, label: '일반 화면으로'),
+          Spacer(),
+          Flexible(child: ModeBadge()),
         ],
-      ),
-    );
-  }
-
-  Widget _pill({required VoidCallback onTap, required String label}) {
-    return Semantics(
-      button: true,
-      label: label,
-      child: GestureDetector(
-        onTap: onTap,
-        child: ExcludeSemantics(
-          child: Container(
-            constraints: const BoxConstraints(minHeight: 50),
-            padding: const EdgeInsets.symmetric(horizontal: 14),
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-              color: AppColors.surface,
-              borderRadius: BorderRadius.circular(14),
-              boxShadow: kCardShadow,
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Icon(
-                  TablerIcons.arrows_exchange,
-                  size: 22,
-                  color: AppColors.textPrimary,
-                ),
-                const SizedBox(width: 6),
-                Text(label, style: AppText.cardTitle(size: 18)),
-              ],
-            ),
-          ),
-        ),
       ),
     );
   }

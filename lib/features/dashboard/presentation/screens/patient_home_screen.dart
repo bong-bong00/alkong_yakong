@@ -1026,7 +1026,7 @@ class _BigDoseButtonState extends State<_BigDoseButton>
           // 걸음 칸이 붙어 자리가 좁을 때는 받은 자리보다 조금 더 크게
           // 잡는다. 넣는 동그라미는 그 안에 있고, 말가의 연한 테만
           // 위아래 칸에 살짝 걸친다.
-          final stretch = widget.compact ? 36.0 : 0.0;
+          final stretch = widget.compact ? 16.0 : 0.0;
           final room = math.min(
             (box.maxWidth.isFinite ? box.maxWidth : 320) - 56,
             (box.maxHeight.isFinite ? box.maxHeight : 320) + stretch - skipRoom,
