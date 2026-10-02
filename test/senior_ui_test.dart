@@ -694,7 +694,7 @@ void _signupTests() {
       "title: '지금 치료받고 있는",
       "title: '예전에 크게",
       "title: '부모님이나 형제가",
-      "title: '약을 놓치시면",
+      "title: '가족을 보호자로",
     ]) {
       expect(source.contains(question), isTrue, reason: '$question 단계가 없다');
     }

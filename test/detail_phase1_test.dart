@@ -294,10 +294,13 @@ void main() {
         for (final entry in entries.skip(1)) {
           expect(find.text('· $entry'), findsOneWidget);
         }
-        expect(
-          find.text(entries[1]),
-          findsOneWidget,
-        ); // Representative remains too.
+        // 대표 조건은 "쓰이는 경우" 줄에도 남는다. 그 줄은 앞말만 굵게
+        // 짚은 Text.rich라 글만 모아 본다.
+        final shown = tester
+            .widgetList<Text>(find.byType(Text))
+            .map((w) => w.data ?? w.textSpan?.toPlainText() ?? '')
+            .join(' ');
+        expect(shown, contains(entries[1]));
         final expanded = tester.widget<ExpansionTile>(
           find.byType(ExpansionTile),
         );

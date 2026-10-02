@@ -388,7 +388,7 @@ void main() {
           now: DateTime.parse('2026-09-18T06:00:00Z'),
           localize: localize,
         ),
-        '오늘 오후 2시 42분',
+        '오늘 14시 42분',
       );
       expect(
         heartSavedTimeLabel(
@@ -396,7 +396,7 @@ void main() {
           now: DateTime.parse('2026-05-31T15:01:00Z'),
           localize: localize,
         ),
-        '오늘 오전 12시 0분',
+        '오늘 0시 0분',
       );
       expect(
         heartSavedTimeLabel(
@@ -404,7 +404,7 @@ void main() {
           now: DateTime.parse('2026-05-31T15:01:00Z'),
           localize: localize,
         ),
-        '2026년 5월 31일 오후 11시 59분',
+        '2026년 5월 31일 23시 59분',
       );
     },
   );

@@ -26,7 +26,8 @@ void main() {
       purposeLabel: '속쓰림·위산 역류 완화',
       shortExplanation: '위산을 줄여 속쓰림과 위산 역류를 완화하는 약이에요.',
     );
-    expect(card.name, '휴온스시메티딘정200밀리그램');
+    // 이름에서 용량을 뗀다 — 용량은 따로 적히는 자리가 있다.
+    expect(card.name, '휴온스시메티딘정');
     expect(card.purposeLabel, '속쓰림·위산 역류 완화');
     expect(card.spoken, contains('위산을 줄여'));
   });
