@@ -159,24 +159,35 @@ class _HeartScreenState extends State<HeartScreen> {
     if (mounted) await _load(quiet: true);
   }
 
-  /// 센서 화면을 거쳐 재러 간다. 연결하지 않고 나오셨으면 거기서
-  /// 멈춘다 — 안 참 센서로 측정 화면을 열어 두면 기다리기만 한다.
+  /// 센서 화면에서 연결을 확인한 뒤 그대로 재러 간다. 연결되지 않은 채
+  /// 나오셨으면 거기서 멈춘다 — 측정 화면을 열어 두면 기다리기만 한다.
   Future<void> _connectThenMeasure() async {
+    // 지금 신호가 들어오고 있으면 확인할 것이 없다. 바로 재러 간다.
+    if (_streaming) {
+      await _openMeasure();
+      return;
+    }
+    final pairedBefore = _paired;
     await Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (_) => PolarScreen(sensor: widget.sensor),
       ),
     );
     if (!mounted) return;
-    final paired = ProviderScope.containerOf(
-      context,
-      listen: false,
-    ).read(heartDevicePairedProvider);
-    final connected =
-        widget.sensor?.status == HeartSensorStatus.streaming || paired;
-    if (!connected) return;
+    // 연결하고 나오셨을 때만 이어서 재러 간다. 그냥 뒤로 나오셨으면
+    // 여기서 멈춘다 — 뒤로가기는 돌아가겠다는 뜻이지 재겠다는 뜻이 아니다.
+    if (!_streaming && !(!pairedBefore && _paired)) return;
     await _openMeasure();
   }
+
+  /// 지금 실제로 심박이 들어오는지.
+  bool get _streaming => widget.sensor?.status == HeartSensorStatus.streaming;
+
+  /// 앱이 기억하는 연결 여부. 화면이 센서를 들고 있지 않을 때 쓴다.
+  bool get _paired => ProviderScope.containerOf(
+    context,
+    listen: false,
+  ).read(heartDevicePairedProvider);
 
   Future<void> _openMeasure() async {
     final measurementContext = _measurementContext;
@@ -303,39 +314,22 @@ class _HeartScreenState extends State<HeartScreen> {
                         children: [
                           Text('측정 목적', style: AppText.cardTitle(size: 20)),
                           const SizedBox(height: 12),
-                          SeniorSegmented(
-                            labels: HeartMeasurementContext.values
-                                .map((context) => context.shortLabel)
-                                .toList(growable: false),
-                            index: HeartMeasurementContext.values.indexOf(
-                              _measurementContext,
-                            ),
-                            onChanged: (index) => setState(
-                              () => _measurementContext =
-                                  HeartMeasurementContext.values[index],
-                            ),
+                          _PurposeChips(
+                            selected: _measurementContext,
+                            onChanged: (value) =>
+                                setState(() => _measurementContext = value),
+                          ),
+                          const SizedBox(height: 16),
+                          // 연결부터 확인하고 재러 간다. 차고 계신 줄 알았는데 끜겨 있었던 일이
+                          // 제일 잘한다 — 측정 화면에서 기다리기만 하게 두지 않는다.
+                          SeniorButton(
+                            label: '연결 확인 후 측정',
+                            minHeight: 66,
+                            fontSize: 23,
+                            onPressed: () => unawaited(_connectThenMeasure()),
                           ),
                         ],
                       ),
-                    ),
-                    const SizedBox(height: 12),
-                    // 연결과 측정을 나눔 이유가 없다. 재려고 들어왔으면
-                    // 연결은 거쳐 가는 길일 뿐이다.
-                    Consumer(
-                      builder: (context, ref, _) {
-                        final connected =
-                            widget.sensor?.status ==
-                                HeartSensorStatus.streaming ||
-                            ref.watch(heartDevicePairedProvider);
-                        return SeniorButton(
-                          label: connected ? '지금 측정' : '센서 연결하고 측정',
-                          minHeight: 66,
-                          fontSize: 23,
-                          onPressed: () => unawaited(
-                            connected ? _openMeasure() : _connectThenMeasure(),
-                          ),
-                        );
-                      },
                     ),
                   ],
                 ],
@@ -770,3 +764,56 @@ String _heartRateRange(int bpm) {
 ///
 /// 화면은 그대로 보여주되 **이 숫자가 무엇인지** 먼저 밝힌다.
 /// 예시를 진짜 기록으로 읽고 나면 그것대로 판단의 근거가 된다.
+/// 측정 목적 세 칸. 붙여 두지 않고 한 칸씩 떨어뜨려 둔다 — 고를 것이
+/// 세개라는 것이 한눈에 보인다. 고른 칸만 파랑으로 채운다.
+class _PurposeChips extends StatelessWidget {
+  final HeartMeasurementContext selected;
+  final ValueChanged<HeartMeasurementContext> onChanged;
+
+  const _PurposeChips({required this.selected, required this.onChanged});
+
+  @override
+  Widget build(BuildContext context) {
+    final values = HeartMeasurementContext.values;
+    return Row(
+      children: [
+        for (int i = 0; i < values.length; i++) ...[
+          if (i > 0) const SizedBox(width: 10),
+          Expanded(child: _chip(values[i])),
+        ],
+      ],
+    );
+  }
+
+  Widget _chip(HeartMeasurementContext value) {
+    final picked = value == selected;
+    return Semantics(
+      button: true,
+      selected: picked,
+      child: GestureDetector(
+        onTap: () => onChanged(value),
+        child: Container(
+          constraints: const BoxConstraints(minHeight: 58),
+          alignment: Alignment.center,
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+          decoration: BoxDecoration(
+            color: picked ? AppColors.point : AppColors.surface,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: picked ? AppColors.point : AppColors.border,
+              width: 2,
+            ),
+          ),
+          child: Text(
+            value.shortLabel,
+            textAlign: TextAlign.center,
+            style: AppText.cardTitle(
+              size: 18.5,
+              color: picked ? Colors.white : AppColors.textSecondary,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
