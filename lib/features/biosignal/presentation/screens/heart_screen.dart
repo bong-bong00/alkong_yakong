@@ -7,6 +7,9 @@ import 'package:flutter_tabler_icons/flutter_tabler_icons.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../../core/polar_pharmacist_ui/constants/app_colors.dart';
+// 흰 칸 위에 올라가는 칸의 그림자만 빌려 쓴다 — 집 안 다른 흰 칸들과
+// 같은 방식으로 띄우기 위해서다.
+import '../../../../core/widgets/senior_card.dart' as shadows;
 import '../../../../core/polar_pharmacist_ui/theme/app_typography.dart';
 import '../../../../core/polar_pharmacist_ui/widgets/senior_button.dart';
 import '../../../../core/polar_pharmacist_ui/widgets/senior_card.dart';
@@ -799,10 +802,9 @@ class _PurposeChips extends StatelessWidget {
           decoration: BoxDecoration(
             color: picked ? AppColors.point : AppColors.surface,
             borderRadius: BorderRadius.circular(16),
-            border: Border.all(
-              color: picked ? AppColors.point : AppColors.border,
-              width: 2,
-            ),
+            // 큰 칸이 흰색이라 테를 두르면 줄만 남는다. 띄우는 것은
+            // 그림자가 한다 — 집 안 다른 흰 칸들과 같은 방식이다.
+            boxShadow: picked ? shadows.kAccentShadow : shadows.kRaisedShadow,
           ),
           child: Text(
             value.shortLabel,
