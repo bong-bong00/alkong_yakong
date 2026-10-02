@@ -7,6 +7,8 @@ import re
 import unicodedata
 from typing import Any
 
+from app.services.ocr.dosing_timing import instruction_line, read_timing
+
 # 앱·DB가 기대하는 정형 필드. drug_name만 필수, 나머지는 원문에 있을 때만 채운다.
 PRESCRIPTION_SCHEMA = {
     "type": "object",
@@ -27,6 +29,11 @@ PRESCRIPTION_SCHEMA = {
                     "duration_days": {"type": "integer"},
                     "easy_explanation": {"type": "string"},
                     "warning_note": {"type": "string"},
+                    "dosing_instruction": {"type": "string"},
+                    "administration_times": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                    },
                 },
                 "required": ["drug_name"],
                 "additionalProperties": False,
@@ -139,6 +146,7 @@ def parse_prescription_text(
         return None
     filtered["items"] = _normalize_table_dosing(filtered["items"])
     filtered["items"] = _merge_duplicate_drugs(filtered["items"])
+    filtered = attach_dosing_timing(filtered, text)
     conflicts = sum(bool(item.get("_dosing_conflicts")) for item in filtered["items"])
     for item in filtered["items"]:
         for key in item.pop("_dosing_conflicts", []):
@@ -1016,6 +1024,16 @@ def _dosing_near_name(drug_name: str, raw_text: str) -> dict[str, Any]:
     if len(core) < 2:
         return {}
 
+    window = _name_window(name, core, raw_text)
+    if not window:
+        return {}
+    return _dosing_from_window(
+        window, allow_unlabelled_duration=_has_dosing_table_headers(raw_text)
+    )
+
+
+def _name_window(name: str, core: str, raw_text: str) -> str:
+    """약 이름 줄부터 다음 약 줄 앞까지. 그 약에 딸린 숫자와 용법이 여기 있다."""
     lines = raw_text.splitlines()
     name_index = next(
         (
@@ -1026,17 +1044,44 @@ def _dosing_near_name(drug_name: str, raw_text: str) -> dict[str, Any]:
         None,
     )
     if name_index is None:
-        return {}
-
+        return ""
     end = name_index + 1
     while end < len(lines) and not _is_other_drug_line(lines[end], core):
         end += 1
         if end - name_index > 40:
             break
-    window = "\n".join(lines[name_index:end])
-    return _dosing_from_window(
-        window, allow_unlabelled_duration=_has_dosing_table_headers(raw_text)
-    )
+    return "\n".join(lines[name_index:end])
+
+
+def attach_dosing_timing(structured: dict[str, Any], raw_text: str) -> dict[str, Any]:
+    """처방전에 적힌 용법에서 복용 시간대를 읽어 항목마다 붙인다.
+
+    약 줄 주변에서 먼저 찾고, 거기 없으면 문서에 한 번만 적힌 공통 용법
+    ("1일 3회 매 식후 30분")을 쓴다. 어느 쪽에서도 못 읽으면 비워 둔다 —
+    때를 지어내면 그 시각에 드시게 된다.
+    """
+    items = [item for item in structured.get("items") or [] if isinstance(item, dict)]
+    if not items:
+        return structured
+    source = raw_text or ""
+    common = instruction_line(source)
+
+    for item in items:
+        name = str(item.get("drug_name") or "").strip()
+        core = _name_core(name)
+        window = _name_window(name, core, source) if len(core) >= 2 else ""
+        frequency = item.get("frequency_per_day")
+        timing = read_timing(window, frequency) if window else {}
+        if not timing.get("instruction") and common:
+            timing = read_timing(common, frequency)
+        if not timing:
+            continue
+        if timing.get("instruction"):
+            item["dosing_instruction"] = timing["instruction"]
+        if timing.get("slots"):
+            item["administration_times"] = list(timing["slots"])
+    structured["items"] = items
+    return structured
 
 
 _PERCENT_STRENGTH_RE = re.compile(r"\s*\d+(?:\.\d+)?\s*%")

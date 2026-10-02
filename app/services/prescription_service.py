@@ -29,6 +29,11 @@ from app.services.medicine_detail_service import ensure_medicine_detail
 from app.services.medicine_merge import upsert_official_medicine
 from app.services.mfds_drug_permission.db import find_permission_product_by_item_seq
 from app.core.kst import today_kst
+from app.services.ocr.dosing_timing import (
+    default_slots_for_frequency,
+    sort_slots,
+    timing_from_usage,
+)
 from app.services.ocr.parser import (
     _clean_drug_label,
     _is_plausible_drug_candidate,
@@ -206,6 +211,8 @@ def _structured_items(structured: dict) -> list[OCRMedicineItem]:
                 duration_days=item.get("duration_days"),
                 easy_explanation=item.get("easy_explanation"),
                 warning_note=item.get("warning_note"),
+                administration_times=list(item.get("administration_times") or []),
+                dosing_instruction=item.get("dosing_instruction"),
             )
         )
     return results
@@ -259,6 +266,27 @@ def _extract_items(
     if discarded:
         trace["discarded_names"] = discarded
     return items, result.raw_text, trace, result.structured
+
+
+def _resolve_timing(item: OCRMedicineItem, med_dict: dict) -> tuple[list[str], str]:
+    """언제 드시는 약인지 아는 순서대로 고른다.
+
+    1. 처방전에 적힌 용법 (가장 정확)
+    2. 그 약의 허가 용법 ("1일 1회 취침 전"처럼 때가 분명한 약만)
+    3. 1일 N회를 끼니에 맞춰 나눈 기본값 (추정)
+
+    어느 쪽에서 왔는지 함께 돌려준다. 확인 화면이 추정일 때만 묻는다.
+    """
+    frequency = _schedule_frequency(item.frequency_per_day)
+    confirmed = sort_slots(item.administration_times)
+    if confirmed:
+        return confirmed, "PRESCRIPTION"
+
+    from_usage = timing_from_usage(med_dict.get("usage"), frequency)
+    if from_usage:
+        return from_usage, "MEDICINE_USAGE"
+
+    return default_slots_for_frequency(frequency), "FREQUENCY_GUESS"
 
 
 def _upsert_official_medicine(cursor, official: dict) -> tuple[str, str]:
@@ -928,6 +956,7 @@ def create_prescription_from_ocr(request: PrescriptionOCRRequest) -> dict:
                 raw_name=ocr_raw,
                 ocr_trace=ocr_trace,
             )
+            timing_slots, timing_source = _resolve_timing(item, med_dict)
             readiness_seed.append(
                 {
                     "drug_name": official_name,
@@ -963,7 +992,9 @@ def create_prescription_from_ocr(request: PrescriptionOCRRequest) -> dict:
                     "frequency_per_day": item.frequency_per_day,
                     "times_per_take": item.times_per_take,
                     "duration_days": item.duration_days,
-                    "administration_times": list(item.administration_times or []),
+                    "administration_times": timing_slots,
+                    "administration_times_source": timing_source,
+                    "dosing_instruction": item.dosing_instruction or "",
                     "easy_explanation": official_spoken,
                     "short_explanation": official_spoken,
                     "easy_category": guidance["purpose_label"],

@@ -1058,6 +1058,13 @@ class _ConfirmScreenState extends State<_ConfirmScreen> {
     var amount = int.tryParse(amountController.text.trim()) ?? 1;
     var frequency = int.tryParse(frequencyController.text.trim());
     var days = int.tryParse(durationController.text.trim());
+    // 언제 드시는 약인지. 처방전에서 읽었으면 그대로, 못 읽었으면 추정값이
+    // 미리 찍혀 있고 "확인해 주세요"가 붙는다.
+    final times = <String>{..._slotsOf(item)};
+    final timingGuessed =
+        (item['administration_times_source']?.toString() ?? '') !=
+        'PRESCRIPTION';
+    final instruction = item['dosing_instruction']?.toString().trim() ?? '';
     final nameController = TextEditingController(
       text: item['drug_name']?.toString() ?? '',
     );
@@ -1196,6 +1203,33 @@ class _ConfirmScreenState extends State<_ConfirmScreen> {
                       : (frequency! < 6 ? frequency! + 1 : frequency),
                 ),
               ),
+              const SizedBox(height: 18),
+              Row(
+                children: [
+                  Expanded(
+                    child: Text('언제 드세요?', style: AppText.label(size: 19)),
+                  ),
+                  if (timingGuessed)
+                    Text(
+                      '확인해 주세요',
+                      style: AppText.label(size: 17, color: AppColors.danger),
+                    ),
+                ],
+              ),
+              if (instruction.isNotEmpty) ...[
+                const SizedBox(height: 4),
+                Text(
+                  '처방전에 적힌 것: $instruction',
+                  style: AppText.caption(size: 16),
+                ),
+              ],
+              const SizedBox(height: 8),
+              _SlotPicker(
+                selected: times,
+                onToggle: (slot) => setSheetState(() {
+                  if (!times.remove(slot)) times.add(slot);
+                }),
+              ),
               const SizedBox(height: 16),
               _Stepper(
                 label: '며칠분',
@@ -1243,6 +1277,9 @@ class _ConfirmScreenState extends State<_ConfirmScreen> {
                     'times_per_take': null,
                     'frequency_per_day': frequency,
                     'duration_days': days,
+                    'administration_times': _orderedSlots(times),
+                    // 사람이 한 번 보고 고른 값이다. 추정으로 되돌리지 않는다.
+                    'administration_times_source': 'USER',
                   };
                 });
                 Navigator.of(sheetContext).pop();
@@ -1479,6 +1516,53 @@ class _ConfirmScreenState extends State<_ConfirmScreen> {
       ...rows,
       const SizedBox(height: 12),
     ];
+  }
+
+  /// 하루 안에서의 차례. 화면과 서버가 같은 순서를 쓴다.
+  static const List<String> _slotOrder = ['아침', '점심', '저녁', '취침전'];
+
+  /// 항목에 적힌 복용 시간대. 서버가 주는 말과 시각을 모두 받는다.
+  static List<String> _slotsOf(Map<String, dynamic> item) {
+    final raw = item['administration_times'];
+    if (raw is! List) return const [];
+    final picked = <String>[];
+    for (final value in raw) {
+      final slot = _slotName(value?.toString() ?? '');
+      if (slot != null && !picked.contains(slot)) picked.add(slot);
+    }
+    return _orderedSlots(picked);
+  }
+
+  static List<String> _orderedSlots(Iterable<String> slots) {
+    final kept = slots.where(_slotOrder.contains).toSet().toList();
+    kept.sort((a, b) => _slotOrder.indexOf(a).compareTo(_slotOrder.indexOf(b)));
+    return kept;
+  }
+
+  /// 서버 말·시각을 네 때 중 하나로. 모르면 null.
+  static String? _slotName(String raw) {
+    final text = raw.toLowerCase().replaceAll(' ', '');
+    if (text.contains('취침') || text.contains('자기') || text.contains('night')) {
+      return '취침전';
+    }
+    if (text.contains('아침') || text.contains('morning')) return '아침';
+    if (text.contains('점심') ||
+        text.contains('lunch') ||
+        text.contains('noon') ||
+        text.contains('afternoon')) {
+      return '점심';
+    }
+    if (text.contains('저녁') ||
+        text.contains('evening') ||
+        text.contains('dinner')) {
+      return '저녁';
+    }
+    final hour = int.tryParse(text.split(':').first);
+    if (hour == null) return null;
+    if (hour >= 21 || hour < 4) return '취침전';
+    if (hour < 11) return '아침';
+    if (hour < 16) return '점심';
+    return '저녁';
   }
 
   /// 서버가 주는 복용 시간을 화면 문구로. 모르면 null.
@@ -1999,6 +2083,65 @@ class _DetailLine extends StatelessWidget {
         ),
         const SizedBox(height: 4),
         Text(value, style: AppText.body(size: 19)),
+      ],
+    );
+  }
+}
+
+/// "언제 드세요?" — 아침·점심·저녁·취침전을 눌러서 고른다.
+///
+/// 처방전에는 때가 안 적혀 있는 일이 흔하다. 숫자만 보고 앱이 정하면
+/// 1일 1회 약이 모두 아침으로 가는데, 저녁에 드시는 약이 적지 않다.
+/// 그래서 한 번은 사람 눈으로 보고 넘긴다.
+class _SlotPicker extends StatelessWidget {
+  final Set<String> selected;
+  final ValueChanged<String> onToggle;
+
+  const _SlotPicker({required this.selected, required this.onToggle});
+
+  static const List<(String, String)> _slots = [
+    ('아침', '아침 8시'),
+    ('점심', '점심 1시'),
+    ('저녁', '저녁 8시'),
+    ('취침전', '자기 전'),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    return Wrap(
+      spacing: 10,
+      runSpacing: 10,
+      children: [
+        for (final (slot, label) in _slots)
+          Semantics(
+            button: true,
+            selected: selected.contains(slot),
+            child: GestureDetector(
+              key: ValueKey('dose-slot-$slot'),
+              onTap: () => onToggle(slot),
+              behavior: HitTestBehavior.opaque,
+              child: Container(
+                constraints: const BoxConstraints(minHeight: 58),
+                alignment: Alignment.center,
+                padding: const EdgeInsets.symmetric(horizontal: 18),
+                decoration: BoxDecoration(
+                  color: selected.contains(slot)
+                      ? AppColors.point
+                      : AppColors.secondaryFill,
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Text(
+                  label,
+                  style: AppText.cardTitle(
+                    size: 19,
+                    color: selected.contains(slot)
+                        ? Colors.white
+                        : AppColors.textPrimary,
+                  ),
+                ),
+              ),
+            ),
+          ),
       ],
     );
   }
