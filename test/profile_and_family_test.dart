@@ -100,12 +100,17 @@ void main() {
       tester.view.devicePixelRatio = 1.0;
       addTearDown(tester.view.reset);
 
+      var asked = 0;
       var checked = 0;
       await tester.pumpWidget(
         wrap(
           AddMedicineScreen(
             onPick: (_) {},
             guardianTitle: '딸 지안 님',
+            onAskFamily: () async {
+              asked++;
+              return true;
+            },
             onCheckFamily: () async {
               checked++;
               return false;
@@ -118,6 +123,8 @@ void main() {
       await tester.tap(find.text('가족에게'));
       await tester.pumpAndSettle();
 
+      // 부탁을 보내고 나서 바로 한 번 확인한다.
+      expect(asked, 1);
       expect(checked, 1);
       expect(find.textContaining('아직 처방전을 넣지 않으셨어요'), findsOneWidget);
       expect(find.text('넣으셨는지 확인하기'), findsOneWidget);
@@ -138,6 +145,7 @@ void main() {
           AddMedicineScreen(
             onPick: (_) {},
             guardianTitle: '딸 지안 님',
+            onAskFamily: () async => true,
             // 부른 쪽이 다음 화면으로 넘긴다.
             onCheckFamily: () async => true,
           ),
@@ -150,6 +158,37 @@ void main() {
 
       expect(find.textContaining('아직 처방전을 넣지 않으셨어요'), findsNothing);
     });
+  });
+
+  testWidgets('받을 가족이 없으면 부탁했다고 말하지 않는다', (tester) async {
+    tester.view.physicalSize = const Size(390, 1200);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+
+    var checked = 0;
+    await tester.pumpWidget(
+      wrap(
+        AddMedicineScreen(
+          onPick: (_) {},
+          guardianTitle: '딸 지안 님',
+          // 연결된 가족이 없어 못 보낸 경우.
+          onAskFamily: () async => false,
+          onCheckFamily: () async {
+            checked++;
+            return false;
+          },
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('가족에게'));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('부탁했어요'), findsNothing);
+    expect(checked, 0);
+    // 다시 부탁해 볼 수 있게 단추는 그대로 있다.
+    expect(find.text('가족에게'), findsOneWidget);
   });
 
   testWidgets('내 약 목록에는 뒤로 가는 머리띠가 없다', (tester) async {

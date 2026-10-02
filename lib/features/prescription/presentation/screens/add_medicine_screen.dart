@@ -27,6 +27,13 @@ class AddMedicineScreen extends StatefulWidget {
   /// 이미 부탁을 마치고 들어왔는지. 첫 사용 화면에서 넘어올 때 true다.
   final bool familyAsked;
 
+  /// 가족에게 부탁을 보낸다.
+  ///
+  /// 보냈으면 true. 받을 가족이 없거나 못 보냈으면 false — 그때는 이
+  /// 화면이 "부탁했어요"로 바뀌지 않는다. 보낸 척하면 어르신은 오지 않을
+  /// 약을 기다린다.
+  final Future<bool> Function()? onAskFamily;
+
   /// 가족이 처방전을 넣었는지 서버에 물어본다.
   ///
   /// 넣었으면 부른 쪽이 다음 화면으로 넘기고 true를 돌려준다.
@@ -39,6 +46,7 @@ class AddMedicineScreen extends StatefulWidget {
     this.guardianTitle = '',
     this.onGoHome,
     this.familyAsked = false,
+    this.onAskFamily,
     this.onCheckFamily,
   });
 
@@ -50,11 +58,35 @@ class _AddMedicineScreenState extends State<AddMedicineScreen> {
   /// 가족에게 부탁했는지. 화면을 옮기지 않고 자리에서 카드로 바뀐다.
   late bool _asked = widget.familyAsked;
 
+  /// 지금 서버에 부탁을 보내는 중인지.
+  bool _asking = false;
+
   /// 지금 서버에 물어보는 중인지.
   bool _checking = false;
 
   /// 물어봤더니 아직 안 들어와 있었는지.
   bool _notYet = false;
+
+  /// 가족에게 부탁을 보낸다. 보내진 뒤에야 이 자리가 카드로 바뀐다.
+  Future<void> _askFamily() async {
+    if (_asking) return;
+    widget.onPick(AddMedicineMethod.family);
+    final ask = widget.onAskFamily;
+    if (ask == null) {
+      // 부탁을 보낼 길이 없이 열린 화면(화면 확인용). 자리만 바꾼다.
+      setState(() => _asked = true);
+      unawaited(_checkFamily());
+      return;
+    }
+    setState(() => _asking = true);
+    final sent = await ask();
+    if (!mounted) return;
+    setState(() {
+      _asking = false;
+      _asked = sent;
+    });
+    if (sent) unawaited(_checkFamily());
+  }
 
   /// 가족이 넣었는지 확인한다. 넣었으면 부른 쪽이 다음 화면으로 넘긴다.
   Future<void> _checkFamily() async {
@@ -140,12 +172,8 @@ class _AddMedicineScreenState extends State<AddMedicineScreen> {
                           Expanded(
                             child: _SmallWay(
                               icon: TablerIcons.users,
-                              label: '가족에게',
-                              onTap: () {
-                                setState(() => _asked = true);
-                                widget.onPick(AddMedicineMethod.family);
-                                unawaited(_checkFamily());
-                              },
+                              label: _asking ? '부탁하는 중…' : '가족에게',
+                              onTap: _asking ? null : _askFamily,
                             ),
                           ),
                         ],
@@ -253,7 +281,9 @@ class _PrimaryWay extends StatelessWidget {
 class _SmallWay extends StatelessWidget {
   final IconData icon;
   final String label;
-  final VoidCallback onTap;
+
+  /// null이면 지금은 누를 수 없다.
+  final VoidCallback? onTap;
 
   const _SmallWay({
     required this.icon,
@@ -355,8 +385,8 @@ class _AskedCard extends StatelessWidget {
                       style: AppText.cardTitle(size: 21),
                     ),
                     Text(
-                      '$guardianTitle이 처방전을 넣으면 '
-                      '이 화면에 약이 나타납니다',
+                      '$guardianTitle 전화기에 알림이 갔어요. '
+                      '찍어서 보내시면 이 화면에 약이 나타납니다',
                       style: AppText.caption(size: 17.5),
                     ),
                   ],

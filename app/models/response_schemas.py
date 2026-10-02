@@ -403,6 +403,14 @@ class NotificationResponse(StoredNotificationResponse):
     relationship: str | None = None
 
 
+class PrescriptionHelpRequestResponse(ApiResponse):
+    user_id: str
+    sent: bool
+    reason: str | None = None
+    guardians: list[str] = []
+    notification_ids: list[int] = []
+
+
 class ReminderGenerationResponse(ApiResponse):
     user_id: str
     target_date: str

@@ -86,6 +86,86 @@ def generate_medication_reminders(
         conn.close()
 
 
+PRESCRIPTION_HELP_TYPE = "PRESCRIPTION_HELP_REQUEST"
+
+
+def request_prescription_help(user_id: str) -> dict:
+    """어르신이 "가족에게 부탁하기"를 눌렀을 때 보호자에게 알림을 남긴다.
+
+    연결된 보호자가 없으면 아무것도 넣지 않고 그렇다고 알려 준다.
+    부탁했다고 말해 놓고 받을 사람이 없으면 어르신은 하염없이 기다린다.
+    """
+    conn = get_connection()
+    try:
+        cursor = conn.cursor()
+        user = cursor.execute(
+            "SELECT id, name FROM users WHERE id = ?",
+            (user_id,),
+        ).fetchone()
+        if not user:
+            raise HTTPException(status_code=404, detail="사용자가 없습니다.")
+
+        guardians = cursor.execute(
+            """
+            SELECT id, guardian_name, relationship
+            FROM guardians
+            WHERE user_id = ? AND UPPER(status) = 'ACCEPTED'
+            ORDER BY created_at
+            """,
+            (user_id,),
+        ).fetchall()
+        if not guardians:
+            return {
+                "user_id": user_id,
+                "sent": False,
+                "reason": "NO_GUARDIAN",
+                "guardians": [],
+                "notification_ids": [],
+            }
+
+        name = (user["name"] or "어르신").strip() or "어르신"
+        created = []
+        for guardian in guardians:
+            cursor.execute(
+                """
+                INSERT INTO notifications (
+                    user_id, guardian_id, notification_type,
+                    title, message, status
+                ) VALUES (?, ?, ?, ?, ?, 'PENDING')
+                """,
+                (
+                    user_id,
+                    guardian["id"],
+                    PRESCRIPTION_HELP_TYPE,
+                    "처방전을 찍어 주세요",
+                    f"{name} 님이 처방전 넣기를 부탁하셨어요.",
+                ),
+            )
+            created.append(cursor.lastrowid)
+        conn.commit()
+        return {
+            "user_id": user_id,
+            "sent": True,
+            "guardians": [
+                " ".join(
+                    part
+                    for part in [guardian["relationship"], guardian["guardian_name"]]
+                    if part
+                ).strip()
+                for guardian in guardians
+            ],
+            "notification_ids": created,
+        }
+    except HTTPException:
+        conn.rollback()
+        raise
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
 def get_user_notifications(user_id: str) -> list[dict]:
     conn = get_connection()
     try:

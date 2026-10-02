@@ -26,6 +26,7 @@ import '../../../medicines/application/user_medicines_controller.dart';
 import '../../../medicines/application/family_medicine_inbox.dart';
 import '../../../medicines/domain/display_policy.dart';
 import '../../../medicines/domain/user_medicine_models.dart';
+import '../../data/prescription_help_repository.dart';
 import '../../../onboarding/presentation/screens/first_run_screen.dart';
 import 'add_medicine_screen.dart';
 import 'manual_medicine_screen.dart';
@@ -402,6 +403,36 @@ class _PrescriptionScreenState extends ConsumerState<PrescriptionScreen> {
     );
   }
 
+  /// 가족에게 처방전을 찍어 달라고 부탁한다.
+  ///
+  /// 보호자 전화기에 알림으로 남고, 거기서 "대신 처방전 찍기"로 바로
+  /// 이어진다. 연결된 가족이 없으면 그렇다고 말하고 아무것도 보내지 않는다.
+  Future<bool> _askFamilyForPrescription() async {
+    final userId = MvpSession.userId.trim();
+    final result = await PrescriptionHelpRepository().ask(userId);
+    if (!mounted) return result.isSent;
+    switch (result.outcome) {
+      case PrescriptionHelpOutcome.sent:
+        final who = result.guardians.isEmpty
+            ? '가족'
+            : result.guardians.join(', ');
+        showSeniorSnackbar(context, '$who 님에게 부탁을 보냈어요');
+      case PrescriptionHelpOutcome.noGuardian:
+        showSeniorSnackbar(
+          context,
+          '등록된 가족이 없어요. 내 정보에서 가족을 먼저 등록해 주세요.',
+          error: true,
+        );
+      case PrescriptionHelpOutcome.failed:
+        showSeniorSnackbar(
+          context,
+          '지금은 부탁을 보내지 못했어요. 잠시 뒤 다시 눌러 주세요.',
+          error: true,
+        );
+    }
+    return result.isSent;
+  }
+
   /// 가족이 처방전을 넣었는지 서버에 다시 물어본다.
   ///
   /// 서버는 "누가 넣었는지"를 알려주지 않는다. 그래서 이 기기가 본 적 없는
@@ -451,6 +482,7 @@ class _PrescriptionScreenState extends ConsumerState<PrescriptionScreen> {
         return AddMedicineScreen(
           guardianTitle: resolveGuardianTitle(context, widget.guardianTitle),
           onGoHome: widget.onGoHome ?? () => Navigator.of(context).maybePop(),
+          onAskFamily: _askFamilyForPrescription,
           onCheckFamily: _checkFamilyPrescription,
           onPick: (method) {
             switch (method) {

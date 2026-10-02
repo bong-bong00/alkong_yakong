@@ -16,7 +16,10 @@ import '../../../guardian/application/guardians_provider.dart';
 import '../../../guardian/data/alert_repository.dart';
 import '../../../guardian/presentation/screens/care_family_screen.dart';
 import '../../../guardian/presentation/screens/care_patient_screen.dart';
+import '../../../guardian/application/prescription_help_inbox.dart';
 import '../../../guardian/presentation/screens/guardian_info_screen.dart';
+import '../../../guardian/presentation/screens/guardian_prescription_screen.dart';
+import '../../../../core/session/mvp_session.dart';
 import '../../application/medication_history_provider.dart';
 import '../../../medication/application/medication_controller.dart';
 import '../../../medication/domain/medication_models.dart';
@@ -42,10 +45,49 @@ class GuardianHomeScreen extends ConsumerStatefulWidget {
 class _GuardianHomeScreenState extends ConsumerState<GuardianHomeScreen> {
   int _index = 0;
 
+  /// 부탁 팝업을 이번에 켠 동안 한 번만 본다.
+  bool _askedAboutHelp = false;
+
   static const List<SeniorNavItem> _tabs = [
     SeniorNavItem(icon: TablerIcons.users, label: '돌보는 분'),
     SeniorNavItem(icon: TablerIcons.user, label: '정보'),
   ];
+
+  /// 어르신이 "처방전 찍어 주세요"라고 부탁한 것이 있으면 바로 묻는다.
+  ///
+  /// 알림 목록을 열어 봐야 알 수 있으면 그 부탁은 며칠씩 묻힌다. 어르신은
+  /// 그동안 약 없이 기다린다.
+  Future<void> _maybeAskForPrescription(List<CarePatient> patients) async {
+    if (_askedAboutHelp || patients.isEmpty) return;
+    _askedAboutHelp = true;
+    final owner = MvpSession.userId.trim();
+    final repository = widget.alertsRepository ?? AlertRepository();
+
+    for (final patient in patients) {
+      final alerts = await repository.fetch(patient.patientId);
+      if (!mounted) return;
+      final ids = [
+        for (final alert in alerts ?? const <AlertItem>[])
+          if (alert.type == 'help' && alert.id != null) alert.id!,
+      ];
+      final fresh = await PrescriptionHelpInbox.unshown(owner, ids);
+      if (!mounted) return;
+      if (fresh.isEmpty) continue;
+
+      await PrescriptionHelpInbox.markShown(owner, fresh);
+      if (!mounted) return;
+      final go = await showSeniorYesNoDialog(
+        context: context,
+        title: '${patient.title} 님이\n처방전을 부탁하셨어요',
+        message: '처방전을 찍어서 보내 드리면 그 자리에서 약이 들어가요.',
+        yesLabel: '대신 처방전 찍기',
+        noLabel: '나중에 할게요',
+      );
+      if (!go || !mounted) return;
+      await openGuardianPrescription(context, patient);
+      return;
+    }
+  }
 
   /// 어르신을 고르면 현황 화면을 연다. 탭을 바꾸지 않는다.
   void _openPatient(CarePatient patient) {
@@ -81,6 +123,14 @@ class _GuardianHomeScreenState extends ConsumerState<GuardianHomeScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // 돌보는 분 목록을 읽고 나서 부탁이 있는지 본다.
+    ref.listen(careOverviewProvider, (_, next) {
+      final patients = next.valueOrNull?.patients;
+      if (patients != null && patients.isNotEmpty) {
+        unawaited(_maybeAskForPrescription(patients));
+      }
+    });
+
     return Scaffold(
       backgroundColor: AppColors.pageBg,
       body: IndexedStack(
@@ -408,7 +458,14 @@ class _GuardianAlertsTabState extends State<GuardianAlertsTab> {
   /// "일주일 동안 모두 정상이었어요" 같은 줄이 쌓이면, 정작 손이 가야 할
   /// 알림이 그 사이에 묻힌다. 알림은 할 일이 있을 때만 온다.
   static bool _worthTelling(AlertItem alert) {
-    const actionable = {'miss', 'alert', 'refill', 'prescription', 'done'};
+    const actionable = {
+      'help',
+      'miss',
+      'alert',
+      'refill',
+      'prescription',
+      'done',
+    };
     if (!actionable.contains(alert.type)) return false;
     if (alert.type == 'alert' && alert.desc.contains('정상')) return false;
     return true;
@@ -627,6 +684,15 @@ class _AlertCard extends StatelessWidget {
             applyHeightToLastDescent: false,
           ),
         ),
+        if (alert.type == 'help') ...[
+          const SizedBox(height: 14),
+          SeniorButton(
+            label: '대신 처방전 찍기',
+            minHeight: 60,
+            fontSize: 20,
+            onPressed: () => openGuardianPrescription(context, patient),
+          ),
+        ],
         if (alert.type == 'prescription') ...[
           Align(
             alignment: Alignment.centerLeft,

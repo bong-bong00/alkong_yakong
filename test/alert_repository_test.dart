@@ -41,6 +41,31 @@ void main() {
     expect(alerts[1].type, 'miss');
   });
 
+  test('처방전 부탁은 새 처방전과 다른 갈래로, 번호까지 싣는다', () async {
+    final alerts = await repositoryReturning([
+      {
+        'id': 42,
+        'notification_type': 'PRESCRIPTION_HELP_REQUEST',
+        'title': '처방전을 찍어 주세요',
+        'message': '김복자 님이 처방전 넣기를 부탁하셨어요.',
+        'created_at': '2026-10-02T11:00:00',
+      },
+      {
+        'id': 43,
+        'notification_type': 'PRESCRIPTION_REGISTERED',
+        'title': '새 처방전',
+        'message': '약이 들어왔어요',
+        'created_at': '2026-10-02T12:00:00',
+      },
+    ]).fetch('u1');
+
+    // 부탁은 아직 할 일이다. 들어온 처방전과 같은 칸에 두면 묻힌다.
+    expect(alerts![0].type, 'help');
+    expect(alerts[0].id, 42);
+    expect(alerts[0].tappable, isTrue);
+    expect(alerts[1].type, 'prescription');
+  });
+
   test('모르는 종류도 버리지 않는다', () async {
     final alerts = await repositoryReturning([
       {

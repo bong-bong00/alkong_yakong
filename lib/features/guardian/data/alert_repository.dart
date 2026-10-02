@@ -31,18 +31,24 @@ class AlertRepository {
 
   AlertItem _toAlert(Map<String, dynamic> json) {
     final type = json['notification_type']?.toString() ?? '';
+    final kind = _kindOf(type);
     return AlertItem(
-      type: _kindOf(type),
+      type: kind,
       title: json['title']?.toString() ?? _titleOf(type),
       desc: json['message']?.toString() ?? '',
       time: _time(json['sent_at'] ?? json['created_at']),
-      tappable: false,
+      // 부탁은 눌러서 바로 대신 찍는 자리로 간다.
+      tappable: kind == 'help',
+      id: int.tryParse(json['id']?.toString() ?? ''),
     );
   }
 
   /// 서버 종류를 화면이 아는 갈래로.
   static String _kindOf(String type) {
     final upper = type.toUpperCase();
+    // 부탁이 먼저다. 'PRESCRIPTION_HELP_REQUEST'는 새 처방전이 아니라
+    // 아직 찍지 않은 일거리다.
+    if (upper.contains('HELP') || upper.contains('REQUEST')) return 'help';
     if (upper.contains('ABNORMAL') || upper.contains('HEART')) return 'alert';
     if (upper.contains('MISS')) return 'miss';
     if (upper.contains('REFILL') || upper.contains('EXPIRE')) return 'refill';
@@ -54,6 +60,7 @@ class AlertRepository {
   }
 
   static String _titleOf(String type) => switch (_kindOf(type)) {
+    'help' => '처방전을 찍어 주세요',
     'alert' => '심장 박동이 빨라요',
     'miss' => '약을 안 드셨어요',
     'refill' => '약이 떨어졌어요',
