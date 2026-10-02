@@ -197,7 +197,13 @@ void main() {
     var measured = 0;
     await tester.pumpWidget(
       wrap(
-        PatientHomeScreen(onDone: (_) => done++, onMeasure: (_) => measured++),
+        PatientHomeScreen(
+          onDone: (_) => done++,
+          onMeasure: (_) async {
+            measured++;
+            return 70;
+          },
+        ),
       ),
     );
     await tester.pump();
@@ -273,6 +279,55 @@ void main() {
     // 재고 나면 같은 단추가 약 기록으로 바뀐다.
     expect(find.text('측정'), findsNothing);
     expect(find.text('먹었어요'), findsWidgets);
+  });
+
+  testWidgets('드신 뒤 재지 않고 나오면 홈에 재는 단추가 남는다', (tester) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          medicationProvider.overrideWith(_SeniorTestMedicationController.new),
+          heartDevicePairedProvider.overrideWith(_PairedHeartDevice.new),
+        ],
+        child: MaterialApp(
+          theme: AppTheme.build(),
+          home: MediaQuery(
+            data: const MediaQueryData(disableAnimations: true),
+            child: Scaffold(
+              body: PatientHomeScreen(
+                onMeasureBefore: (_) async => 78,
+                // 그냥 나왔다 — 재지 않았으므로 null이다.
+                onMeasure: (_) async => null,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    await tester.tap(find.text('심박수'));
+    await tester.pumpAndSettle();
+    // 걸음 칸에도 같은 말이 있어 큰 단추 쪽을 골라 누른다.
+    await tester.tap(find.text('먹었어요').last);
+    await tester.pumpAndSettle();
+    if (find.text('네 알겠어요').evaluate().isNotEmpty) {
+      await tester.tap(find.text('네 알겠어요'));
+      await tester.pumpAndSettle();
+    }
+
+    // 걸음 칸은 세 번째를 가리키고, 큰 단추는 다시 측정을 말한다.
+    expect(find.text('심박수'), findsOneWidget);
+    expect(find.text('측정'), findsOneWidget);
+    expect(find.text('먹은 뒤 재기'), findsOneWidget);
+
+    // 지금 재지 않겠다고 할 수도 있어야 한다.
+    await tester.tap(find.text('나중에 재기'));
+    await tester.pumpAndSettle();
+    expect(find.text('측정'), findsNothing);
   });
 
   testWidgets('완료 화면의 되돌리기는 시간 제한 없이 있다 (14)', (tester) async {
