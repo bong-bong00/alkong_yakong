@@ -203,6 +203,11 @@ abstract final class AppColors {
   static const Color cardShadow = Color(0x0D111114);
   static const Color cardShadowWide = Color(0x0A111114);
 
+  /// 흰 카드 위에 올라가는 흰 칸의 그림자. 카드 그림자보다 진해야
+  /// 흰 바탕에서 자리가 보인다.
+  static const Color raisedShadow = Color(0x22111114);
+  static const Color raisedShadowWide = Color(0x14111114);
+
   /// 시트와 하단 바가 바닥에서 떠 보이게 하는 그림자.
   static const Color sheetShadow = Color(0x2E14161E);
 

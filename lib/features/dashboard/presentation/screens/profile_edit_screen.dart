@@ -733,11 +733,10 @@ class _ChoiceBox extends StatelessWidget {
             alignment: Alignment.center,
             padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 12),
             decoration: BoxDecoration(
-              color: selected ? AppColors.pointFill : AppColors.secondaryFill,
+              color: selected ? AppColors.pointFill : AppColors.surface,
               borderRadius: BorderRadius.circular(16),
-              border: selected
-                  ? null
-                  : Border.all(color: AppColors.border, width: 1.5),
+              // 흰 카드 위의 흰 칸이라 그림자를 한 단계 진하게 깐다.
+              boxShadow: selected ? null : kRaisedShadow,
             ),
             child: Text(
               label,
@@ -782,9 +781,9 @@ class _PickRow extends StatelessWidget {
             constraints: const BoxConstraints(minHeight: 66),
             padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
             decoration: BoxDecoration(
-              color: AppColors.secondaryFill,
+              color: AppColors.surface,
               borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: AppColors.border, width: 1.5),
+              boxShadow: kRaisedShadow,
             ),
             child: Row(
               children: [
