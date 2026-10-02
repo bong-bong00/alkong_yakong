@@ -107,7 +107,7 @@ class _MyPageScreenState extends ConsumerState<MyPageScreen> {
                     ),
                     const SizedBox(height: 14),
 
-                    // ── 내 몸 정보 ──
+                    // ── 내 건강 정보 ──
                     _BodyInfoCard(
                       ageLine: ageLine,
                       bloodType: profile?.bloodType,
@@ -355,7 +355,7 @@ class _SquareTile extends StatelessWidget {
 }
 
 /// 시안 54 — 나이·혈액형·알레르기를 한 줄에 세 칸으로 놓고,
-/// 그 아래 앓는 병을 적는다. 고치는 길은 카드 오른쪽 위 하나뿐이다.
+/// 그 아래 보유 질환을 적는다. 고치는 길은 카드 오른쪽 위 하나뿐이다.
 class _BodyInfoCard extends StatelessWidget {
   final String ageLine;
   final String? bloodType;
@@ -386,13 +386,13 @@ class _BodyInfoCard extends StatelessWidget {
           Row(
             children: [
               Expanded(
-                child: Text('내 몸 정보', style: AppText.cardTitle(size: 20)),
+                child: Text('내 건강 정보', style: AppText.cardTitle(size: 20)),
               ),
               const SizedBox(width: 10),
               // 알약 모양 단추 하나로 고치는 길을 연다.
               Semantics(
                 button: true,
-                label: loadFailed ? '다시 불러오기' : '내 정보 고치기',
+                label: loadFailed ? '다시 불러오기' : '내 정보 수정',
                 child: GestureDetector(
                   onTap: loadFailed ? onRetry : onEdit,
                   child: ExcludeSemantics(
@@ -417,7 +417,7 @@ class _BodyInfoCard extends StatelessWidget {
                           ),
                           const SizedBox(width: 6),
                           Text(
-                            loadFailed ? '다시' : '고치기',
+                            loadFailed ? '다시' : '수정',
                             style: AppText.cardTitle(size: 18),
                           ),
                         ],
@@ -450,7 +450,7 @@ class _BodyInfoCard extends StatelessWidget {
             const SeniorDivider(),
             const SizedBox(height: 12),
             Text(
-              '앓는 병 · ${diseases.isEmpty ? '없어요' : diseases.join(', ')}',
+              '보유 질환 : ${diseases.isEmpty ? '없어요' : diseases.join(', ')}',
               style: AppText.cardTitle(size: 18, color: AppColors.textBody),
             ),
           ],

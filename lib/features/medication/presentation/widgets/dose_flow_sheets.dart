@@ -99,7 +99,7 @@ Future<RefillChoice> showRefillSheet(
       ]),
       actions: [
         SeniorButton(
-          label: '새 처방전 들이기',
+          label: '새 처방전 등록하기',
           subLabel: '사진 한 장이면 됩니다',
           icon: TablerIcons.camera,
           minHeight: 78,

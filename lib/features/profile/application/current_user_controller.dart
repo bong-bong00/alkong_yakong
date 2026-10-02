@@ -46,5 +46,6 @@ class CurrentUserController extends AsyncNotifier<UserProfile?> {
 
   void _syncSession(UserProfile user) {
     MvpSession.isPregnant = user.isPregnant;
+    MvpSession.userName = user.name;
   }
 }

@@ -45,6 +45,8 @@ class _ProfileEditScreenState extends ConsumerState<ProfileEditScreen> {
   String? _drinking;
   final Set<String> _allergens = {};
   final Set<String> _diseases = {};
+  final Set<String> _pastIllnesses = {};
+  final Set<String> _familyIllnesses = {};
   bool? _pastYes;
   bool? _familyYes;
 
@@ -74,6 +76,10 @@ class _ProfileEditScreenState extends ConsumerState<ProfileEditScreen> {
     '관절염',
     '위장질환',
   ];
+  // 회원가입에서 쓰는 보기와 같다. 같은 것을 물으면서 보기가 다르면
+  // 고칠 때마다 없던 병이 생기거나 사라진다.
+  static const _pastOptions = ['암', '뇌졸중', '심근경색', '간·콩팥병'];
+  static const _familyOptions = ['고혈압', '당뇨', '심장병', '암', '치매', '뇌졸중'];
 
   @override
   void initState() {
@@ -112,6 +118,12 @@ class _ProfileEditScreenState extends ConsumerState<ProfileEditScreen> {
       ..addAll(user.diseases);
     _pastYes = user.pastHistory;
     _familyYes = user.familyHistory;
+    _pastIllnesses
+      ..clear()
+      ..addAll(user.pastIllnesses);
+    _familyIllnesses
+      ..clear()
+      ..addAll(user.familyIllnesses);
   }
 
   static String _numberText(double? value) {
@@ -170,11 +182,17 @@ class _ProfileEditScreenState extends ConsumerState<ProfileEditScreen> {
       diseases: _isGuardian ? original.diseases : _diseases.toList(),
       pastHistory: _isGuardian ? original.pastHistory : _pastYes,
       familyHistory: _isGuardian ? original.familyHistory : _familyYes,
-      pastIllnesses: _isGuardian || _pastYes != false
+      // "없어요"로 바꾸면 적어 두었던 병도 함께 지운다. 안 그러면
+      // 없다고 해 놓고 목록만 남는다.
+      pastIllnesses: _isGuardian
           ? original.pastIllnesses
+          : _pastYes == true
+          ? _pastIllnesses.toList()
           : const [],
-      familyIllnesses: _isGuardian || _familyYes != false
+      familyIllnesses: _isGuardian
           ? original.familyIllnesses
+          : _familyYes == true
+          ? _familyIllnesses.toList()
           : const [],
     );
 
@@ -263,139 +281,33 @@ class _ProfileEditScreenState extends ConsumerState<ProfileEditScreen> {
     setState(() => _birth = picked);
   }
 
-  // 칩 + 검색 추가 시트
+  /// 칩을 고르는 창을 연다.
+  ///
+  /// 창은 제 몫의 상태와 입력칸을 들고 있고, 닫힐 때 고른 것을 돌려준다.
+  /// 창 안에서 이 화면의 `setState`를 부르거나 이 화면이 가진 Set을 직접
+  /// 고치지 않는다 — 그렇게 하면 창이 닫히는 도중에 두 화면이 서로를
+  /// 다시 그리다가 프레임워크가 넘어졌다.
   Future<void> _openPicker(
     String title,
     Set<String> selected,
     List<String> options,
   ) async {
-    final searchCtrl = TextEditingController();
-    await showModalBottomSheet(
+    final picked = await showModalBottomSheet<Set<String>>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.white,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      builder: (ctx) {
-        return StatefulBuilder(
-          builder: (ctx, setSheet) {
-            final q = searchCtrl.text.trim();
-            final filtered = options
-                .where((o) => q.isEmpty || o.contains(q))
-                .toList();
-            final canAddCustom =
-                q.isNotEmpty && !options.contains(q) && !selected.contains(q);
-            return Padding(
-              padding: EdgeInsets.only(
-                bottom: MediaQuery.of(ctx).viewInsets.bottom,
-              ),
-              child: SafeArea(
-                child: SizedBox(
-                  height: MediaQuery.of(ctx).size.height * 0.7,
-                  child: Column(
-                    children: [
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Text(
-                              title,
-                              style: const TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.w800,
-                                color: kText,
-                              ),
-                            ),
-                            GestureDetector(
-                              onTap: () => Navigator.pop(ctx),
-                              child: const Text(
-                                '완료',
-                                style: TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.w800,
-                                  color: kPrimary,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 20),
-                        child: TextField(
-                          controller: searchCtrl,
-                          onChanged: (_) => setSheet(() {}),
-                          decoration: InputDecoration(
-                            hintText: '검색하거나 직접 입력',
-                            prefixIcon: const Icon(Icons.search),
-                            filled: true,
-                            fillColor: kBackground,
-                            contentPadding: const EdgeInsets.symmetric(
-                              vertical: 0,
-                            ),
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(14),
-                              borderSide: BorderSide.none,
-                            ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      Expanded(
-                        child: ListView(
-                          children: [
-                            if (canAddCustom)
-                              ListTile(
-                                leading: const Icon(
-                                  Icons.add_circle_outline,
-                                  color: kPrimary,
-                                ),
-                                title: Text("'$q' 직접 추가"),
-                                onTap: () {
-                                  setState(() => selected.add(q));
-                                  searchCtrl.clear();
-                                  setSheet(() {});
-                                },
-                              ),
-                            // 저장돼 있던 값이 보기에 없으면 그것도 목록에 보인다.
-                            for (final o in {
-                              ...filtered,
-                              ...selected.where(
-                                (s) => q.isEmpty || s.contains(q),
-                              ),
-                            })
-                              CheckboxListTile(
-                                value: selected.contains(o),
-                                activeColor: kPrimary,
-                                controlAffinity:
-                                    ListTileControlAffinity.leading,
-                                title: Text(o),
-                                onChanged: (_) {
-                                  setState(() {
-                                    if (selected.contains(o)) {
-                                      selected.remove(o);
-                                    } else {
-                                      selected.add(o);
-                                    }
-                                  });
-                                  setSheet(() {});
-                                },
-                              ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            );
-          },
-        );
-      },
+      builder: (_) =>
+          _PickerSheet(title: title, options: options, initial: selected),
     );
-    searchCtrl.dispose();
+    if (!mounted || picked == null) return;
+    setState(() {
+      selected
+        ..clear()
+        ..addAll(picked);
+    });
   }
 
   @override
@@ -649,6 +561,57 @@ class _ProfileEditScreenState extends ConsumerState<ProfileEditScreen> {
                         _openPicker('현재 질환', _diseases, _diseaseOptions),
                     onRemove: (item) => setState(() => _diseases.remove(item)),
                   ),
+                  const SizedBox(height: 18),
+                  // 회원가입에서 물은 것을 여기서도 다 고칠 수 있어야 한다.
+                  // 한쪽에서만 고쳐지면 어느 쪽이 맞는 값인지 알 수 없다.
+                  Text('예전에 크게 아팠던 적이 있나요?', style: AppText.label(size: 18)),
+                  const SizedBox(height: 8),
+                  _ChoiceRow(
+                    options: const ['네, 있어요', '아니요, 없어요'],
+                    selected: switch (_pastYes) {
+                      true => '네, 있어요',
+                      false => '아니요, 없어요',
+                      null => null,
+                    },
+                    onPick: (value) =>
+                        setState(() => _pastYes = value == '네, 있어요'),
+                  ),
+                  if (_pastYes == true) ...[
+                    const SizedBox(height: 10),
+                    _ChipEditor(
+                      items: _pastIllnesses,
+                      onAdd: () =>
+                          _openPicker('예전에 앓은 병', _pastIllnesses, _pastOptions),
+                      onRemove: (item) =>
+                          setState(() => _pastIllnesses.remove(item)),
+                    ),
+                  ],
+                  const SizedBox(height: 18),
+                  Text('부모님이나 형제가 앓은 병이 있나요?', style: AppText.label(size: 18)),
+                  const SizedBox(height: 8),
+                  _ChoiceRow(
+                    options: const ['네, 있어요', '아니요, 없어요'],
+                    selected: switch (_familyYes) {
+                      true => '네, 있어요',
+                      false => '아니요, 없어요',
+                      null => null,
+                    },
+                    onPick: (value) =>
+                        setState(() => _familyYes = value == '네, 있어요'),
+                  ),
+                  if (_familyYes == true) ...[
+                    const SizedBox(height: 10),
+                    _ChipEditor(
+                      items: _familyIllnesses,
+                      onAdd: () => _openPicker(
+                        '가족이 앓은 병',
+                        _familyIllnesses,
+                        _familyOptions,
+                      ),
+                      onRemove: (item) =>
+                          setState(() => _familyIllnesses.remove(item)),
+                    ),
+                  ],
                 ],
               ),
             ),
@@ -925,6 +888,139 @@ class _ChipEditor extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+/// 칩을 고르는 창. 검색해서 고르거나 없는 것은 직접 적어 넣는다.
+///
+/// 고른 것은 제 안에만 쌓아 두었다가 닫힐 때 한 번에 돌려준다. 입력칸도
+/// 제 것이라 제 `dispose`에서 함께 버린다.
+class _PickerSheet extends StatefulWidget {
+  final String title;
+  final List<String> options;
+  final Set<String> initial;
+
+  const _PickerSheet({
+    required this.title,
+    required this.options,
+    required this.initial,
+  });
+
+  @override
+  State<_PickerSheet> createState() => _PickerSheetState();
+}
+
+class _PickerSheetState extends State<_PickerSheet> {
+  late final Set<String> _selected = {...widget.initial};
+  final _search = TextEditingController();
+
+  @override
+  void dispose() {
+    _search.dispose();
+    super.dispose();
+  }
+
+  void _toggle(String option) {
+    setState(() {
+      if (!_selected.remove(option)) _selected.add(option);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final query = _search.text.trim();
+    final filtered = widget.options
+        .where((option) => query.isEmpty || option.contains(query))
+        .toList();
+    final canAddCustom =
+        query.isNotEmpty &&
+        !widget.options.contains(query) &&
+        !_selected.contains(query);
+
+    return Padding(
+      padding: EdgeInsets.only(
+        bottom: MediaQuery.of(context).viewInsets.bottom,
+      ),
+      child: SafeArea(
+        child: SizedBox(
+          height: MediaQuery.of(context).size.height * 0.7,
+          child: Column(
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(widget.title, style: AppText.cardTitle(size: 20)),
+                    GestureDetector(
+                      onTap: () => Navigator.of(context).pop(_selected),
+                      child: Text(
+                        '완료',
+                        style: AppText.cardTitle(size: 20, color: kPrimary),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                child: TextField(
+                  controller: _search,
+                  onChanged: (_) => setState(() {}),
+                  style: AppText.body(size: 19),
+                  decoration: InputDecoration(
+                    hintText: '검색하거나 직접 추가',
+                    prefixIcon: const Icon(Icons.search),
+                    filled: true,
+                    fillColor: kBackground,
+                    contentPadding: const EdgeInsets.symmetric(vertical: 0),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(14),
+                      borderSide: BorderSide.none,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 8),
+              Expanded(
+                child: ListView(
+                  children: [
+                    if (canAddCustom)
+                      ListTile(
+                        leading: const Icon(
+                          Icons.add_circle_outline,
+                          color: kPrimary,
+                        ),
+                        title: Text("'$query' 직접 추가"),
+                        onTap: () {
+                          setState(() {
+                            _selected.add(query);
+                            _search.clear();
+                          });
+                        },
+                      ),
+                    // 저장돼 있던 값이 보기에 없으면 그것도 목록에 보인다.
+                    for (final option in {
+                      ...filtered,
+                      ..._selected.where(
+                        (item) => query.isEmpty || item.contains(query),
+                      ),
+                    })
+                      CheckboxListTile(
+                        value: _selected.contains(option),
+                        activeColor: kPrimary,
+                        controlAffinity: ListTileControlAffinity.leading,
+                        title: Text(option),
+                        onChanged: (_) => _toggle(option),
+                      ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

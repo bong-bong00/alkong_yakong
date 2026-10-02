@@ -154,7 +154,7 @@ class _MedicationRecordScreenState
                       ),
                       const SizedBox(height: 14),
                     ],
-                    // 쉬운 화면에는 탭이 없다. 거기서만 돌아가는 길을 낸다 —
+                    // 간편 화면에는 탭이 없다. 거기서만 돌아가는 길을 낸다 —
                     // 탭이 있는 일반 화면에서는 시안대로 두지 않는다.
                     if (onBackToToday != null) ...[
                       SeniorButton(

@@ -20,15 +20,21 @@ import 'patient_home_screen.dart';
 /// 시안대로 "내 약"을 상시 탭으로 되돌렸다. 오늘 홈에서 약 이름과
 /// 바로가기를 걷어냈으므로, 약을 보고 처방전을 넣고 AI 약사에게 묻는
 /// 일은 모두 이 탭 한 자리로 모인다.
+/// 아래 탭 넷. 다른 화면이 "내 약을 열어 달라"고 할 때 쓴다.
+enum HomeTab { today, medicines, record, profile }
+
 class HomeScreen extends ConsumerStatefulWidget {
-  const HomeScreen({super.key});
+  /// 열 때 먼저 보여 줄 탭.
+  final HomeTab initialTab;
+
+  const HomeScreen({super.key, this.initialTab = HomeTab.today});
 
   @override
   ConsumerState<HomeScreen> createState() => _HomeScreenState();
 }
 
 class _HomeScreenState extends ConsumerState<HomeScreen> {
-  int _index = 0;
+  late int _index = widget.initialTab.index;
 
   /// 방금 기록한 시간대. null이 아니면 오늘 탭이 완료 화면을 그린다.
 
@@ -73,6 +79,18 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               }
               context.push('/medicines/$code');
             },
+            // 기기를 쓰는 분은 약을 들기 전에 먼저 잰다.
+            onMeasureBefore: (_) async {
+              final bpm = await Navigator.of(context).push<Object?>(
+                MaterialPageRoute(
+                  builder: (_) => const MeasureScreen(
+                    returnToPreviousScreen: true,
+                    beforeDose: true,
+                  ),
+                ),
+              );
+              return bpm is int ? bpm : null;
+            },
             onMeasure: (_) => Navigator.of(context).push(
               MaterialPageRoute(
                 builder: (_) => const MeasureScreen(
@@ -82,7 +100,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               ),
             ),
           ),
-          const MyMedicinesScreen(asTab: true),
+          const MyMedicinesScreen(),
           // 탭이 오늘로 돌아가는 길이므로 화면 안에 단추를 두지 않는다.
           const MedicationRecordScreen(),
           const MyPageScreen(),

@@ -166,7 +166,7 @@ void main() {
         await finishWindow(0, 'before_medication');
         expect(find.text('4 / 8'), findsOneWidget);
         expect(find.bySemanticsLabel('성인이 쉴 때의 기준이에요.'), findsOneWidget);
-        await tester.tap(find.text('이제 약 드시기'));
+        await tester.tap(find.text('약 복용 시작'));
         await tester.pumpAndSettle();
         await tester.tap(find.text('먹었어요'));
         await tester.pumpAndSettle();

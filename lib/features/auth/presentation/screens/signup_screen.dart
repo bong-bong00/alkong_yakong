@@ -4,6 +4,7 @@ import 'package:flutter_tabler_icons/flutter_tabler_icons.dart';
 import 'package:go_router/go_router.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../domain/exclusive_choice.dart';
+import 'login_screen.dart' show PhoneNumberFormatter;
 import '../../../../core/network/api_client.dart';
 import '../../../../core/providers/user_role.dart';
 import '../../../../core/session/auth_session.dart';
@@ -13,6 +14,7 @@ import '../../../../core/widgets/senior_feedback.dart';
 import '../../../../core/widgets/senior_card.dart';
 import '../../../../core/widgets/senior_wheel.dart';
 import '../../../../core/widgets/senior_header.dart';
+import '../../../../core/widgets/senior_sheet.dart';
 import '../../../guardian/application/guardians_provider.dart';
 import '../../../guardian/data/guardian_repository.dart';
 import '../../../profile/application/session_actions.dart';
@@ -203,14 +205,12 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
         children: [
           _choice(
             yesLabel,
-            icon: TablerIcons.check,
             selected: answer == 'y',
             onTap: () => setState(() => onAnswer('y')),
           ),
           const SizedBox(height: 12),
           _choice(
             noLabel,
-            icon: TablerIcons.x,
             selected: answer == 'n',
             onTap: () => setState(() => onAnswer('n')),
           ),
@@ -413,6 +413,7 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
         validate: () {
           if (_name.text.trim().isEmpty) return '이름을 입력해주세요';
           if (_phone.text.trim().isEmpty) return '휴대폰 번호를 입력해주세요';
+          if (!_isPhoneComplete(_phone.text)) return '전화번호를 다시 확인해주세요';
           if (_pw.text.isEmpty) return '비밀번호를 입력해주세요';
           if (_pw.text.length < 6) return '비밀번호는 6자 이상이어야 해요';
           return null;
@@ -611,14 +612,12 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
               children: [
                 _choice(
                   '네',
-                  icon: TablerIcons.check,
                   selected: _pregnant == true,
                   onTap: () => setState(() => _pregnant = true),
                 ),
                 const SizedBox(height: 12),
                 _choice(
                   '아니요',
-                  icon: TablerIcons.x,
                   selected: _pregnant == false,
                   onTap: () => setState(() => _pregnant = false),
                 ),
@@ -682,7 +681,7 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
 
       big(
         _yesNoStep(
-          title: '약을 먹고 두드러기가 나거나\n숨이 찬 적이 있나요?',
+          title: '약을 먹고 거부 반응이나\n이상 반응이 있으신 적 있나요?',
           subtitle: '약 알레르기를 여쭤보는 거예요.',
           answer: _allergyAnswer,
           onAnswer: (v) => _allergyAnswer = v,
@@ -702,6 +701,7 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
               _allergyOptions,
               _allergens,
               (o) => _toggle(_allergens, o),
+              addTitle: '어떤 약에 반응이 있었나요?',
             ),
           ),
         );
@@ -726,6 +726,7 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
               _diseaseOptions,
               _diseases,
               (o) => _toggle(_diseases, o),
+              addTitle: '어떤 병인가요?',
             ),
           ),
         );
@@ -751,6 +752,7 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
               _pastOptions,
               _pastIllnesses,
               (o) => _toggle(_pastIllnesses, o),
+              addTitle: '어떤 병이었나요?',
             ),
           ),
         );
@@ -777,6 +779,7 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
               _familyOptions,
               _familyIllnesses,
               (o) => _toggle(_familyIllnesses, o),
+              addTitle: '가족이 앓은 병은요?',
             ),
           ),
         );
@@ -793,7 +796,6 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
               _choice(
                 '네, 알려주세요',
                 sub: '다음 화면에서 번호를 적어요',
-                icon: TablerIcons.users,
                 selected: _guardianAnswer == 'y',
                 onTap: () => setState(() => _guardianAnswer = 'y'),
               ),
@@ -801,7 +803,6 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
               _choice(
                 '나중에 할게요',
                 sub: '내 정보에서 언제든 넣어요',
-                icon: TablerIcons.clock,
                 selected: _guardianAnswer == 'n',
                 onTap: () => setState(() {
                   _guardianAnswer = 'n';
@@ -825,6 +826,9 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
               }
               if (_guardianPhone.text.trim().isEmpty) {
                 return '보호자 휴대폰 번호를 입력해주세요';
+              }
+              if (!_isPhoneComplete(_guardianPhone.text)) {
+                return '전화번호를 다시 확인해주세요';
               }
               return null;
             },
@@ -1108,6 +1112,10 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
   // 단계 정의는 모두 이 일곱 개를 통과한다. 여기만 시니어 규격으로
   // 맞추면 일곱 단계가 한꺼번에 따라온다.
 
+  /// 번호가 11자리로 다 채워졌는지. 열 자리로 끊긴 번호는 알림이 못 간다.
+  static bool _isPhoneComplete(String value) =>
+      value.replaceAll(RegExp(r'[^0-9]'), '').length == 11;
+
   Widget _field(
     TextEditingController c, {
     String? label,
@@ -1123,6 +1131,10 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
       hint: hint,
       obscure: obscure,
       keyboardType: keyboard,
+      // 번호 칸은 하이픈을 대신 넣어 주고 11자리에서 멈춘다.
+      inputFormatters: keyboard == TextInputType.phone
+          ? [PhoneNumberFormatter()]
+          : null,
       suffix:
           suffix ??
           (suffixText == null
@@ -1200,10 +1212,11 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
   }
 
   /// 큰 답 하나. 한 줄에 하나씩 쌓아 한 번에 하나씩 읽게 둔다.
+  /// 보기 한 칸. **아이콘은 두지 않는다** — 뜻이 겹치는 그림이 글보다 먼저
+  /// 눈에 들어와 무엇을 고르는지 흐려진다.
   Widget _choice(
     String label, {
     String? sub,
-    IconData? icon,
     required bool selected,
     required VoidCallback onTap,
   }) {
@@ -1225,14 +1238,6 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
             ),
             child: Row(
               children: [
-                if (icon != null) ...[
-                  Icon(
-                    icon,
-                    size: 34,
-                    color: selected ? Colors.white : AppColors.textPrimary,
-                  ),
-                  const SizedBox(width: 14),
-                ],
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -1329,21 +1334,43 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
     );
   }
 
+  /// 보기에 없는 것을 직접 적어 넣는다.
+  ///
+  /// 내 정보 수정에서는 되는데 가입에서는 안 되면, 가입할 때 빠뜨린 병을
+  /// 나중에 따로 찾아 들어가 적어야 한다.
+  Future<void> _addCustom(Set<String> selected, String title) async {
+    final added = await SeniorSheet.show<String>(
+      context: context,
+      builder: (_) => _AddOwnSheet(title: title),
+    );
+    if (!mounted || added == null || added.isEmpty) return;
+    setState(() => selected.add(added));
+  }
+
   Widget _multiChips(
     List<String> options,
     Set<String> selected,
-    void Function(String) onTap,
-  ) {
+    void Function(String) onTap, {
+    String addTitle = '직접 적어 넣기',
+  }) {
+    // 적어 넣은 것도 보기 자리에 함께 세운다. 맨 끝은 더 넣는 칸이다.
+    const addKey = '＋ 직접 추가';
+    final shown = [
+      ...options,
+      ...selected.where((item) => !options.contains(item)),
+      addKey,
+    ];
     return _OptionFlow(
-      options: options,
+      options: shown,
       builder: (option, full) {
-        final picked = selected.contains(option);
+        final isAdd = option == addKey;
+        final picked = !isAdd && selected.contains(option);
         return Semantics(
           button: true,
           selected: picked,
-          label: '$option ${picked ? '고름' : '고르지 않음'}',
+          label: isAdd ? addTitle : '$option ${picked ? '고름' : '고르지 않음'}',
           child: GestureDetector(
-            onTap: () => onTap(option),
+            onTap: () => isAdd ? _addCustom(selected, addTitle) : onTap(option),
             child: ExcludeSemantics(
               child: Container(
                 constraints: const BoxConstraints(minHeight: 64),
@@ -1629,6 +1656,63 @@ class _OptionFlow extends StatelessWidget {
           children: rows,
         );
       },
+    );
+  }
+}
+
+/// 보기에 없는 것을 적어 넣는 창.
+///
+/// 입력칸을 제가 들고 제 `dispose`에서 버린다. 창이 닫히는 도중에 바깥에서
+/// 버리면 프레임워크가 넘어진다.
+class _AddOwnSheet extends StatefulWidget {
+  final String title;
+
+  const _AddOwnSheet({required this.title});
+
+  @override
+  State<_AddOwnSheet> createState() => _AddOwnSheetState();
+}
+
+class _AddOwnSheetState extends State<_AddOwnSheet> {
+  final _controller = TextEditingController();
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _submit() {
+    final value = _controller.text.trim();
+    if (value.isEmpty) return;
+    Navigator.of(context).pop(value);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SeniorSheet(
+      title: widget.title,
+      body: SeniorField(
+        controller: _controller,
+        hint: '여기에 적어 주세요',
+        textInputAction: TextInputAction.done,
+        onSubmitted: (_) => _submit(),
+      ),
+      actions: [
+        SeniorButton(
+          label: '넣기',
+          minHeight: 66,
+          fontSize: 22,
+          onPressed: _submit,
+        ),
+        SeniorButton(
+          label: '그만두기',
+          kind: SeniorButtonKind.secondary,
+          minHeight: 62,
+          fontSize: 21,
+          onPressed: () => Navigator.of(context).pop(),
+        ),
+      ],
     );
   }
 }

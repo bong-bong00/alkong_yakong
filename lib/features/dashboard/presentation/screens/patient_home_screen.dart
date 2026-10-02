@@ -18,6 +18,7 @@ import '../../../../core/network/api_client.dart';
 import '../../../guardian/application/guardians_provider.dart';
 import '../../../guardian/data/guardian_repository.dart';
 import '../../../medication/application/dose_times.dart';
+import '../../../biosignal/application/heart_device.dart';
 import '../../../medication/application/medication_controller.dart';
 import '../../../reminder/application/alarm_preferences.dart';
 import '../../../reminder/application/reminder_notifications.dart';
@@ -25,7 +26,6 @@ import '../../../reminder/presentation/screens/alarm_settings_screen.dart';
 import '../../../medication/domain/medication_models.dart';
 import '../../../medication/presentation/widgets/dose_flow_sheets.dart';
 import '../../../easy_flow/domain/easy_flow.dart';
-import '../../../easy_flow/presentation/easy_flow_shell.dart';
 import '../../../medication/presentation/widgets/dose_guard_sheets.dart';
 import '../../../profile/application/current_user_controller.dart';
 import 'package:go_router/go_router.dart';
@@ -53,6 +53,10 @@ class PatientHomeScreen extends ConsumerStatefulWidget {
   /// "먹었어요" 뒤 심박수를 재러 갈 때. 방금 기록한 시간대를 함께 넘긴다.
   final void Function(DoseSlot slot)? onMeasure;
 
+  /// 약을 들기 **전에** 재러 갈 때. 다 재면 잰 값을 돌려준다.
+  /// 기기를 쓰는 분에게만 쓰인다.
+  final Future<int?> Function(DoseSlot slot)? onMeasureBefore;
+
   /// 복약을 기록한 뒤 완료 화면으로. 방금 기록한 시간대를 함께 넘긴다.
   final void Function(DoseSlot slot)? onDone;
 
@@ -61,7 +65,6 @@ class PatientHomeScreen extends ConsumerStatefulWidget {
   final bool easyMode;
 
   /// 쉬운 모드에서 메뉴를 열 때.
-  final VoidCallback? onOpenMenu;
 
   const PatientHomeScreen({
     super.key,
@@ -72,9 +75,9 @@ class PatientHomeScreen extends ConsumerStatefulWidget {
     this.onOpenPrescription,
     this.onOpenDrug,
     this.onMeasure,
+    this.onMeasureBefore,
     this.onDone,
     this.easyMode = false,
-    this.onOpenMenu,
   });
 
   @override
@@ -84,6 +87,10 @@ class PatientHomeScreen extends ConsumerStatefulWidget {
 class _PatientHomeScreenState extends ConsumerState<PatientHomeScreen> {
   /// 방금 기록한 시간대. 파란 띠로 알리고, X를 누르면 사라진다.
   DoseSlot? _recordedSlot;
+
+  /// 때마다 먹기 전에 잰 심박수. 다음 때로 넘어가면 그 때에는 값이 없어
+  /// 다시 1단계부터 시작한다.
+  final Map<DoseSlot, int> _beforeBpm = {};
 
   @override
   void initState() {
@@ -322,7 +329,10 @@ class _PatientHomeScreenState extends ConsumerState<PatientHomeScreen> {
     }
   }
 
-  /// "먹었어요" — 바로 기록하지 않고 센서 착용부터 묻는다.
+  /// "먹었어요" — 바로 기록한다.
+  ///
+  /// 센서를 차고 계신지 묻지 않는다. 기기를 쓰는 분인지는 앱이 이미 알고,
+  /// 모르는 것을 물어 흐름을 끊을 이유가 없다.
   Future<void> _take(DoseSlot slot) async {
     final controller = ref.read(medicationProvider.notifier);
 
@@ -331,9 +341,6 @@ class _PatientHomeScreenState extends ConsumerState<PatientHomeScreen> {
       await _showDuplicateGuard(slot);
       return;
     }
-
-    final choice = await showWearSensorSheet(context);
-    if (!mounted || choice == WearChoice.cancel) return;
 
     final outcome = await controller.take(slot);
     if (!mounted) return;
@@ -346,24 +353,32 @@ class _PatientHomeScreenState extends ConsumerState<PatientHomeScreen> {
         if (proceed && mounted) {
           await controller.takeAnyway(slot);
           if (!mounted) return;
-          _afterRecord(choice, slot);
+          _afterRecord(slot);
         }
       case DoseCheckOutcome.recorded:
-        _afterRecord(choice, slot);
+        _afterRecord(slot);
     }
   }
 
-  void _afterRecord(WearChoice choice, DoseSlot slot) {
+  void _afterRecord(DoseSlot slot) {
     // 기록하고 나서도 오늘 화면에 남는다. 화면이 바뀌면 방금 무엇을
     // 눌렀는지 놓친다. 대신 맨 위에 파란 띠로 알린다.
     setState(() {
       _recordedSlot = slot;
     });
-    if (choice == WearChoice.wearingAndMeasure) {
+    // 기기를 쓰는 분은 드신 뒤에 한 번 더 잰다.
+    if (ref.read(heartDevicePairedProvider)) {
       widget.onMeasure?.call(slot);
     } else {
       widget.onDone?.call(slot);
     }
+  }
+
+  /// 먹기 전 심박수를 재러 간다. 다 재면 그 값이 `_beforeBpm`에 남는다.
+  Future<void> _measureBefore(DoseSlot slot) async {
+    final bpm = await widget.onMeasureBefore?.call(slot);
+    if (!mounted || bpm == null) return;
+    setState(() => _beforeBpm[slot] = bpm);
   }
 
   Future<void> _showDuplicateGuard(DoseSlot slot) async {
@@ -392,19 +407,20 @@ class _PatientHomeScreenState extends ConsumerState<PatientHomeScreen> {
     final next = today.nextDose;
     final now = DateTime.now();
     final remaining = today.doses.where((dose) => !dose.taken).length;
+    // 기기를 쓰는 분인지에 따라 홈이 통째로 다른 흐름이 된다.
+    final usesDevice = ref.watch(heartDevicePairedProvider);
 
     return Container(
       color: AppColors.pageBg,
       child: Column(
         children: [
-          // 쉬운 화면에서는 쉘이 위에 걸음 표시와 "일반 화면으로"를 둔다.
+          // 간편 화면에서는 쉘이 위에 걸음 표시와 "일반 화면으로"를 둔다.
           // 여기서 또 머리를 그리면 두 줄이 겹친다.
           if (!widget.easyMode)
             HomeTopBar(
               userName: ref.watch(currentUserNameProvider),
               date: now,
               easyMode: widget.easyMode,
-              onOpenMenu: widget.onOpenMenu,
             ),
           Expanded(
             child: LayoutBuilder(
@@ -489,12 +505,25 @@ class _PatientHomeScreenState extends ConsumerState<PatientHomeScreen> {
                         textAlign: TextAlign.left,
                         style: AppText.caption(size: 16),
                       ),
+                      if (usesDevice && next != null) ...[
+                        const SizedBox(height: 14),
+                        _HeartSteps(beforeBpm: _beforeBpm[next.slot]),
+                      ],
                       const SizedBox(height: 18),
                       // 남는 세로 자리를 그대로 받아 그 안에 맞춘다.
                       _Fill(
                         scrolls: scrolls,
                         child: _BigDoseButton(
                           done: next == null,
+                          // 기기를 쓰는 분은 먹기 전에 먼저 잰다.
+                          measureFirst:
+                              next != null &&
+                              usesDevice &&
+                              _beforeBpm[next.slot] == null,
+                          compact: usesDevice && next != null,
+                          onMeasure: next == null
+                              ? null
+                              : () => _measureBefore(next.slot),
                           onTake: next == null ? null : () => _take(next.slot),
                           onUndo: next != null
                               ? null
@@ -708,6 +737,102 @@ class _Fill extends StatelessWidget {
       scrolls ? child : Expanded(child: child);
 }
 
+/// 기기를 쓰는 분의 세 걸음 — 먹기 전 재기 · 먹었어요 · 먹은 뒤 재기.
+///
+/// 지금 어디쯤인지 번호로 말한다. 끝난 걸음은 체크로 바뀌고, 먹기 전 재기가
+/// 끝나면 라벨이 잰 값으로 바뀐다 — 쟀다는 사실보다 얼마였는지가 궁금하다.
+class _HeartSteps extends StatelessWidget {
+  /// 먹기 전에 잰 값. 아직 안 쟀으면 null이다.
+  final int? beforeBpm;
+
+  const _HeartSteps({required this.beforeBpm});
+
+  @override
+  Widget build(BuildContext context) {
+    final done = beforeBpm != null;
+    final current = done ? 1 : 0;
+    final labels = [done ? '먹기 전 $beforeBpm회' : '먹기 전 재기', '먹었어요', '먹은 뒤 재기'];
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(18),
+        boxShadow: kCardShadow,
+      ),
+      child: Row(
+        children: [
+          for (int i = 0; i < labels.length; i++)
+            Expanded(
+              child: _step(index: i, current: current, label: labels[i]),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _step({
+    required int index,
+    required int current,
+    required String label,
+  }) {
+    final passed = index < current;
+    final now = index == current;
+    return Semantics(
+      label: passed
+          ? '$label, 끝났어요'
+          : now
+          ? '$label, 지금 할 차례'
+          : label,
+      child: ExcludeSemantics(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 28,
+              height: 28,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: passed
+                    ? AppColors.pointTint
+                    : now
+                    ? AppColors.pointFill
+                    : AppColors.secondaryFill,
+                shape: BoxShape.circle,
+              ),
+              child: passed
+                  ? const Icon(
+                      TablerIcons.check,
+                      size: 16,
+                      color: AppColors.point,
+                    )
+                  : Text(
+                      '${index + 1}',
+                      style: AppText.cardTitle(
+                        size: 15,
+                        color: now ? Colors.white : AppColors.textSecondary,
+                      ),
+                    ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              label,
+              textAlign: TextAlign.center,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: AppText.cardTitle(
+                size: 16,
+                color: now ? AppColors.textPrimary : AppColors.textSecondary,
+                weight: now ? FontWeight.w900 : FontWeight.w600,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 /// 오늘 화면에서 제일 큰 것 하나. 드시기 전에는 파란 "먹었어요",
 /// 다 드신 뒤에는 흰 "취소하기"로 바뀐다.
 ///
@@ -715,10 +840,25 @@ class _Fill extends StatelessWidget {
 /// 어르신이 이 화면에서 누를 것이 하나뿐임을 몸으로 알리는 장치다.
 class _BigDoseButton extends StatefulWidget {
   final bool done;
+
+  /// 약을 들기 전에 심박수부터 재야 하는 상태.
+  /// 기기를 쓰는 분이 아직 안 쟀을 때다.
+  final bool measureFirst;
+
+  /// 위에 걸음 표시가 붙어 자리가 좁은 상태. 동그라미를 한 치수 줄인다.
+  final bool compact;
+  final VoidCallback? onMeasure;
   final VoidCallback? onTake;
   final VoidCallback? onUndo;
 
-  const _BigDoseButton({required this.done, this.onTake, this.onUndo});
+  const _BigDoseButton({
+    required this.done,
+    this.measureFirst = false,
+    this.compact = false,
+    this.onMeasure,
+    this.onTake,
+    this.onUndo,
+  });
 
   @override
   State<_BigDoseButton> createState() => _BigDoseButtonState();
@@ -773,7 +913,14 @@ class _BigDoseButtonState extends State<_BigDoseButton>
 
   @override
   Widget build(BuildContext context) {
-    final label = widget.done ? '취소하기' : '먹었어요';
+    final label = widget.done
+        ? '취소하기'
+        : widget.measureFirst
+        ? '심박수 재기'
+        : '먹었어요';
+    // 먹기 전 재기는 왜 지금 재는지 한 줄 더 말한다. "심박수 재기"만 있으면
+    // 약을 안 누르고 왜 이걸 누르는지 모른다.
+    final sub = widget.measureFirst && !widget.done ? '약 먹기 전에' : null;
     final fill = widget.done ? AppColors.surface : AppColors.pointFill;
     final ink = widget.done ? AppColors.textPrimary : Colors.white;
     // 움직임을 꺼 둔 기기에서는 뛰지 않는다. 다 드신 뒤에도 멈춘다 —
@@ -796,7 +943,10 @@ class _BigDoseButtonState extends State<_BigDoseButton>
           (box.maxWidth.isFinite ? box.maxWidth : 320) - 56,
           box.maxHeight.isFinite ? box.maxHeight : 320,
         );
-        final outer = room.clamp(180.0, 300.0).toDouble();
+        // 걸음 표시가 위에 붙으면 자리가 좁다. 그때는 한 치수 줄인다.
+        final outer = room
+            .clamp(180.0, widget.compact ? 230.0 : 300.0)
+            .toDouble();
         final ring = outer * 0.11;
         final size = outer - ring * 2;
         // 글자와 아이콘은 지름을 따라간다. 동그라미만 커지고 글자가
@@ -810,7 +960,11 @@ class _BigDoseButtonState extends State<_BigDoseButton>
             button: true,
             label: label,
             child: GestureDetector(
-              onTap: widget.done ? widget.onUndo : widget.onTake,
+              onTap: widget.done
+                  ? widget.onUndo
+                  : widget.measureFirst
+                  ? widget.onMeasure
+                  : widget.onTake,
               child: ExcludeSemantics(
                 child: SizedBox(
                   width: outer,
@@ -854,12 +1008,23 @@ class _BigDoseButtonState extends State<_BigDoseButton>
                                 Icon(
                                   widget.done
                                       ? TablerIcons.arrow_back_up
+                                      : widget.measureFirst
+                                      ? TablerIcons.heart_filled
                                       : TablerIcons.check,
                                   size: iconSize,
                                   color: ink,
                                 ),
                                 const SizedBox(height: 2),
                                 Text(label, style: labelStyle),
+                                if (sub != null)
+                                  Text(
+                                    sub,
+                                    style: AppText.cardTitle(
+                                      size: labelSize * 0.62,
+                                      color: AppColors.onPointMuted,
+                                      weight: FontWeight.w700,
+                                    ),
+                                  ),
                               ],
                             ),
                           ),
@@ -1005,14 +1170,12 @@ class HomeTopBar extends StatelessWidget {
   final String userName;
   final DateTime date;
   final bool easyMode;
-  final VoidCallback? onOpenMenu;
 
   const HomeTopBar({
     super.key,
     required this.userName,
     required this.date,
     this.easyMode = false,
-    this.onOpenMenu,
   });
 
   static const _weekdays = ['월', '화', '수', '목', '금', '토', '일'];
@@ -1044,12 +1207,7 @@ class HomeTopBar extends StatelessWidget {
           ),
           const SizedBox(width: 10),
           // 지금 어느 화면인지는 두 모드 모두에서 보여야 한다.
-          // 쉬운 화면에서는 그 옆에 메뉴 단추가 하나 더 붙는다.
           const Flexible(child: ModeBadge()),
-          if (easyMode && onOpenMenu != null) ...[
-            const SizedBox(width: 10),
-            EasyMenuButton(onTap: onOpenMenu!),
-          ],
         ],
       ),
     );

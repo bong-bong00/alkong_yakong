@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_tabler_icons/flutter_tabler_icons.dart';
 
 import '../../../../core/polar_pharmacist_ui/constants/app_colors.dart';
@@ -10,6 +11,7 @@ import '../../../../core/polar_pharmacist_ui/widgets/senior_card.dart';
 import '../../../../core/polar_pharmacist_ui/widgets/senior_feedback.dart';
 import '../../../../core/polar_pharmacist_ui/widgets/senior_header.dart';
 import '../../../medication/domain/medication_models.dart';
+import '../../application/heart_device.dart';
 import '../../application/heart_sensor.dart';
 import 'measure_screen.dart';
 
@@ -20,19 +22,21 @@ import 'measure_screen.dart';
 ///
 /// 연결·배터리·마지막 측정은 **[HeartSensor]가 말한 것만** 보여준다.
 /// 기기가 아직 안 알려준 값은 "모른다"고 쓰고, 숫자를 채워 넣지 않는다.
-class PolarScreen extends StatefulWidget {
+class PolarScreen extends ConsumerStatefulWidget {
   /// 밖에서 넣어 주는 센서. 없으면 이 화면이 하나 만들어 쓴다.
   final HeartSensor? sensor;
 
   const PolarScreen({super.key, this.sensor});
 
   @override
-  State<PolarScreen> createState() => _PolarScreenState();
+  ConsumerState<PolarScreen> createState() => _PolarScreenState();
 }
 
-class _PolarScreenState extends State<PolarScreen> {
-  late final bool _ownsSensor = widget.sensor == null;
-  late final HeartSensor _sensor = widget.sensor ?? HeartSensor();
+class _PolarScreenState extends ConsumerState<PolarScreen> {
+  // 앱이 들고 있는 센서를 빌려 쓴다. 이 화면이 치우지 않는다 — 뒤로 나갔다
+  // 들어와도 연결이 그대로 있어야 한다.
+  late final HeartSensor _sensor =
+      widget.sensor ?? ref.read(heartSensorProvider);
 
   bool _searching = false;
   bool _sensorUpdatePending = false;
@@ -56,9 +60,6 @@ class _PolarScreenState extends State<PolarScreen> {
   @override
   void dispose() {
     _sensor.removeListener(_onSensor);
-    // 넘겨받은 센서는 연결을 끊지 않는다 — 재러 들어갈 때 다시 붙는 시간을
-    // 아끼기 위해서다. 이 화면이 만든 센서만 이 화면이 치운다.
-    if (_ownsSensor) _sensor.dispose();
     super.dispose();
   }
 
@@ -103,28 +104,6 @@ class _PolarScreenState extends State<PolarScreen> {
                       onPressed: _searching ? null : _search,
                     ),
                   ],
-                  const SizedBox(height: 12),
-                  SeniorCard(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 20,
-                      vertical: 18,
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        Text('착용하는 방법', style: AppText.cardTitle(size: 20)),
-                        const SizedBox(height: 14),
-                        const NumberedSteps(
-                          boxed: false,
-                          steps: [
-                            '센서 안쪽 두 군데를 물로 살짝 적셔주세요',
-                            '가슴 아래, 명치 높이에 맞춰 차세요',
-                            '약을 드시기 5분 전에 차 두시면 편해요',
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
                   if (connected) ...[
                     const SizedBox(height: 16),
                     SeniorButton(
@@ -135,6 +114,10 @@ class _PolarScreenState extends State<PolarScreen> {
                       onPressed: () async {
                         // 화면 표시만 바꾸지 않는다. 실제로 끊는다.
                         await _sensor.stop();
+                        // 홈도 기기 없는 흐름으로 돌아가야 한다.
+                        await ref
+                            .read(heartDevicePairedProvider.notifier)
+                            .set(false);
                         if (!context.mounted) return;
                         showSeniorSnackbar(context, '센서 연결을 끊었어요');
                       },
@@ -157,6 +140,8 @@ class _PolarScreenState extends State<PolarScreen> {
 
     // 못 찾았는데 "찾았어요"라고 말하지 않는다.
     final found = _sensor.status == HeartSensorStatus.streaming;
+    // 한 번 붙으면 홈이 심박 흐름으로 간다.
+    if (found) await ref.read(heartDevicePairedProvider.notifier).set(true);
     showSeniorSnackbar(
       context,
       found ? '폴라 센서를 찾았어요' : '센서를 찾지 못했어요. 단추를 한 번 눌러 주세요.',

@@ -16,7 +16,7 @@ import '../../medication/presentation/widgets/dose_guard_sheets.dart';
 import '../../reminder/application/alarm_preferences.dart';
 import 'easy_heart_result.dart';
 
-/// 쉬운 화면의 복약 한 바퀴 (명세서 76~85).
+/// 간편 화면의 복약 한 바퀴 (명세서 76~85).
 ///
 /// 여덟 걸음을 한 걸음에 하나씩만 보여 준다.
 /// 1 약 드실 시간 · 2 가슴 띠 차기 · 3 먹기 전 재는 중 · 4 잘 쟀어요
@@ -385,7 +385,7 @@ class _EasyDoseFlowState extends ConsumerState<EasyDoseFlow> {
       title: '잘 측정했어요',
       body: [if (_before != null) EasyHeartResult(value: _before!)],
       primary: _EasyAction(
-        label: '이제 약 드시기',
+        label: '약 복용 시작',
         onPressed: () => _goTo(EasyDoseStep.take),
       ),
       secondaries: [_EasyAction(label: '뒤로', onPressed: _back)],
@@ -878,10 +878,7 @@ class _MedicineRow extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text(
-                medicine.displayName,
-                style: AppText.cardTitle(size: 21),
-              ),
+              Text(medicine.displayName, style: AppText.cardTitle(size: 21)),
               if (look.isNotEmpty) ...[
                 const SizedBox(height: 2),
                 Text(look, style: AppText.body(size: 17)),
@@ -968,18 +965,15 @@ class _DoneSlotBox extends StatelessWidget {
         ? '없음'
         : taken
         ? _clock((dose.takenAt ?? DateTime.now()).toLocal())
-        : '아직';
-    // 드셨으면 ✓, 약이 있는데 안 드셨으면 ✗. 약이 없는 때는 표시하지 않는다.
-    final mark = empty
-        ? ''
-        : taken
-        ? '✓'
-        : '✗';
+        : '미복용';
+    // 드셨으면 ✓. 아직 안 드신 때에는 아무 표도 하지 않는다 — ✗는 그냥
+    // 지나간 약에 쓰는 표지, 이따 드실 약에 붙이면 혼낸 것처럼 읽힌다.
+    final mark = taken ? '✓' : '';
     final ink = taken
         ? AppColors.textPrimary
         : empty
         ? AppColors.slotPending
-        : AppColors.calendarMissedInk;
+        : AppColors.textSecondary;
 
     return Semantics(
       label: '${dose.slot.label} $value',
@@ -989,11 +983,9 @@ class _DoneSlotBox extends StatelessWidget {
           alignment: Alignment.center,
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 14),
           decoration: BoxDecoration(
-            color: taken
-                ? AppColors.pointRing
-                : empty
-                ? AppColors.sunken
-                : AppColors.calendarMissed,
+            // 안 드신 때는 붉은 면이 아니라 회색이다. 아직 드실 수 있는
+            // 약을 놓친 약처럼 칠하지 않는다.
+            color: taken ? AppColors.pointRing : AppColors.sunken,
             borderRadius: BorderRadius.circular(18),
           ),
           child: Column(

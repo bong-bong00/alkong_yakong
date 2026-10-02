@@ -155,7 +155,7 @@ void main() {
 
   for (final all in [false, true]) {
     testWidgets(
-      'restore ${all ? 'all' : 'searched'} medicine scope without registration',
+      'restore ${all ? 'every' : 'searched'} medicine scope without registration',
       (tester) async {
         await PharmacistConversationStore().save('history-user', {
           'id': 'stored',
@@ -219,7 +219,8 @@ void main() {
         await tester.pumpAndSettle();
         await tester.tap(find.text('이어서 대화하기'));
         await tester.pumpAndSettle();
-        expect(find.text(all ? '약 전체' : '검색약정'), findsOneWidget);
+        // 고른 약이 없으면 머리 아래 칸은 다시 "약 고르기"로 돌아온다.
+        expect(find.text(all ? '약 고르기' : '검색약정'), findsOneWidget);
         await tester.enterText(find.byType(TextField).last, '그럼 술은?');
         await tester.testTextInput.receiveAction(TextInputAction.send);
         await tester.pumpAndSettle();

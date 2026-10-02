@@ -14,14 +14,17 @@ import '../../domain/user_medicine_models.dart';
 
 /// 내 약 — 활성 약 종류당 1행 (서버 `/medicines`).
 ///
-/// 시안 38. 맨 위에 "처방전 넣기"와 "AI 약사에게 묻기"를 큰 두 칸으로 두고,
+/// 시안 38. 맨 위에 "처방전 넣기"와 "AI 약사 질문"을 큰 두 칸으로 두고,
 /// 그 아래 지금 드시는 약을 쌓는다. 오늘 홈에서 내린 두 길이 여기 모인다.
+///
+/// **뒤로 가는 머리띠는 두지 않는다.** 이 화면은 아래 탭에서 바로 열리는
+/// 자리라 돌아갈 곳이 없고, 탭이 있는데 뒤로 화살표까지 있으면 어느 쪽이
+/// 돌아가는 길인지 헷갈린다.
 class MyMedicinesScreen extends ConsumerWidget {
-  /// 탭으로 열렸는지. 탭이면 돌아갈 곳이 없으므로 뒤로 머리를 두지 않고
-  /// 제목을 본문 맨 위에 적는다.
+  /// 남아 있는 깃발. 간편 화면 쉘이 자기 걸음 머리를 따로 그린다.
   final bool asTab;
 
-  const MyMedicinesScreen({super.key, this.asTab = false});
+  const MyMedicinesScreen({super.key, this.asTab = true});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -34,8 +37,6 @@ class MyMedicinesScreen extends ConsumerWidget {
         bottom: false,
         child: Column(
           children: [
-            if (!asTab)
-              SeniorBackHeader(title: '내 약 목록', onBack: () => context.pop()),
             Expanded(
               child: medicines.when(
                 loading: () => const Center(child: CircularProgressIndicator()),
@@ -87,7 +88,7 @@ class _MedicineList extends StatelessWidget {
               // 시안은 동그라미 안에 물음표를 둔다. 말풍선은 "대화"를
               // 말하지만 여기서 하는 일은 "묻는" 것이다.
               icon: TablerIcons.help_circle,
-              label: 'AI 약사에게 묻기',
+              label: 'AI 약사 질문',
               onTap: () => context.push('/drug-explain'),
             ),
           ),

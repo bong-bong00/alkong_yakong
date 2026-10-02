@@ -527,54 +527,42 @@ class _DayCell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final background = day.on ? AppColors.secondaryFill : AppColors.surface;
-    final ink = day.on ? AppColors.point : AppColors.textPrimary;
-    final borderColor = day.on || day.isToday
-        ? AppColors.point
-        : AppColors.strongLine;
+    // 기록 달력과 같은 모양을 쓴다. 같은 달을 보는 칸이 화면마다 다르게
+    // 생기면 어르신은 다른 달력인 줄 안다.
+    final background = day.on ? AppColors.calendarDone : Colors.transparent;
+    final ink = day.on ? AppColors.pointBorder : AppColors.chevron;
     final spoken = day.on ? '이 약을 드시는 날' : '약 없는 날';
-    final todayMark = day.isToday ? '오늘' : '';
 
     return Semantics(
       button: true,
       selected: day.on,
-      label: '${day.day}일 $spoken',
+      label: '${day.day}일 $spoken${day.isToday ? ', 오늘' : ''}',
       child: ExcludeSemantics(
-        child: Material(
-          color: background,
-          borderRadius: BorderRadius.circular(14),
-          child: InkWell(
-            onTap: busy ? null : onTap,
-            borderRadius: BorderRadius.circular(14),
+        child: GestureDetector(
+          onTap: busy ? null : onTap,
+          child: Container(
+            // 손가락이 짚을 자리는 동그라미보다 넓게 둔다.
+            constraints: const BoxConstraints(minHeight: 54),
+            alignment: Alignment.center,
+            color: Colors.transparent,
             child: Container(
-              constraints: const BoxConstraints(minHeight: 64),
+              width: 42,
+              height: 42,
               alignment: Alignment.center,
-              padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 2),
               decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: borderColor, width: 2),
+                color: background,
+                shape: BoxShape.circle,
+                // 오늘만 옅은 테로 짚어 준다.
+                border: day.isToday
+                    ? Border.all(color: AppColors.pointBorder, width: 2)
+                    : null,
               ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    '${day.day}',
-                    style: AppText.cardTitle(
-                      size: 20,
-                      color: ink,
-                    ).copyWith(height: 1),
-                  ),
-                  if (todayMark.isNotEmpty) ...[
-                    const SizedBox(height: 2),
-                    Text(
-                      todayMark,
-                      style: AppText.label(
-                        size: 13,
-                        color: ink,
-                      ).copyWith(height: 1),
-                    ),
-                  ],
-                ],
+              child: Text(
+                '${day.day}',
+                style: AppText.cardTitle(
+                  size: 18,
+                  color: ink,
+                ).copyWith(height: 1),
               ),
             ),
           ),
@@ -591,7 +579,7 @@ class _Legend extends StatelessWidget {
   Widget build(BuildContext context) {
     return Row(
       children: [
-        _swatch(AppColors.secondaryFill, AppColors.point),
+        _swatch(AppColors.calendarDone, AppColors.pointBorder),
         const SizedBox(width: 8),
         Expanded(
           child: Text(

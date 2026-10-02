@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_tabler_icons/flutter_tabler_icons.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../../core/constants/medicine_flow_colors.dart';
 import '../../../../core/mode/app_mode.dart';
@@ -84,7 +85,68 @@ class _DrugDetailScreenState extends ConsumerState<DrugDetailScreen> {
                   )
                 : _DetailBody(medicine: _medicine!, easyMode: easyMode),
           ),
+          // 읽다가 모르는 것이 생기면 그 자리에서 물어보게 한다. 약 이름을
+          // 다시 고르게 하지 않는다 — 지금 보고 있는 약이 곧 그 약이다.
+          if (!_loading && _error == null && _medicine != null)
+            _AskAboutThisDrug(name: _medicine!.displayName),
         ],
+      ),
+    );
+  }
+}
+
+/// 약 자세히 맨 아래 주 버튼. 누르면 이 약을 고른 채로 알콩이가 열린다.
+class _AskAboutThisDrug extends StatelessWidget {
+  final String name;
+
+  const _AskAboutThisDrug({required this.name});
+
+  @override
+  Widget build(BuildContext context) {
+    final short = nameWithoutStrength(name);
+    return Container(
+      decoration: const BoxDecoration(
+        color: AppColors.surface,
+        border: Border(top: BorderSide(color: AppColors.border, width: 1)),
+      ),
+      padding: const EdgeInsets.fromLTRB(20, 14, 20, 20),
+      child: SafeArea(
+        top: false,
+        child: Semantics(
+          button: true,
+          label: '$short 물어보기',
+          child: GestureDetector(
+            onTap: () => context.push('/drug-explain', extra: name),
+            behavior: HitTestBehavior.opaque,
+            child: Container(
+              constraints: const BoxConstraints(minHeight: 76),
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: AppColors.point,
+                borderRadius: BorderRadius.circular(20),
+              ),
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    '이 약 물어보기',
+                    style: AppText.cardTitle(size: 22, color: Colors.white),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    '알콩이가 $short만 보고 답해요',
+                    style: AppText.caption(
+                      size: 16,
+                      color: AppColors.onPointMuted,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }

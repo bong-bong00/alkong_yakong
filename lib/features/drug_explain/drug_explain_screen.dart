@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_tabler_icons/flutter_tabler_icons.dart';
 
 import '../../core/polar_pharmacist_ui/constants/app_colors.dart';
 import '../../core/network/api_client.dart';
@@ -12,7 +13,6 @@ import '../../core/polar_pharmacist_ui/widgets/senior_card.dart';
 import '../../core/polar_pharmacist_ui/widgets/senior_feedback.dart';
 import '../../core/polar_pharmacist_ui/widgets/senior_header.dart';
 import '../../core/polar_pharmacist_ui/widgets/senior_sheet.dart';
-import '../../core/polar_pharmacist_ui/widgets/senior_wheel.dart';
 import '../medicines/domain/display_policy.dart';
 import 'conversation_store.dart';
 import 'answer_cache.dart';
@@ -21,10 +21,14 @@ class DrugExplainScreen extends StatefulWidget {
   final ApiClient? apiClient;
   final ApiClient? medicationApiClient;
 
+  /// 약 자세히에서 "이 약 물어보기"로 들어오면 그 약을 고른 채로 연다.
+  final String? initialMedicine;
+
   const DrugExplainScreen({
     super.key,
     this.apiClient,
     this.medicationApiClient,
+    this.initialMedicine,
   });
 
   @override
@@ -41,10 +45,9 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
 
   bool _isLoading = false;
   bool _isLoadingMedicines = false;
-  String? _selectedKeyword;
+  // 고르는 약은 **하나까지**다. 여러 약은 질문에 적으면 된다.
   final List<String> _selectedMedicines = [];
   String? _pendingGeneralQuestion;
-  bool _isAllMedicinesSelected = false;
   final Map<String, _DrugSearchCandidate> _officialMedicinesByName = {};
   final Set<String> _confirmedOfficialProductNames = {};
   final Map<String, _DrugSearchCandidate> _temporaryMedicinesByCode = {};
@@ -95,17 +98,14 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
         .toList();
     if (!messages.any((message) => message['isMe'] == true)) return;
     _conversationId ??= DateTime.now().microsecondsSinceEpoch.toString();
-    final title = _isAllMedicinesSelected
-        ? '약 전체'
-        : _selectedMedicines.isEmpty
-        ? '일반 질문'
+    final title = _selectedMedicines.isEmpty
+        ? '내 약 전체'
         : _selectedMedicines.join(', ');
     await _conversationStore.save(_conversationUserId, {
       'id': _conversationId,
       'title': title,
       'updatedAt': DateTime.now().toIso8601String(),
       'messages': messages,
-      'allMedicines': _isAllMedicinesSelected,
       'pendingQuestion': _pendingGeneralQuestion,
       'selected': _selectedMedicines
           .map(
@@ -149,7 +149,6 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
           );
         _conversationStart = 0;
         _conversationId = conversation['id'] as String;
-        _isAllMedicinesSelected = conversation['allMedicines'] == true;
         _selectedMedicines.clear();
         // Keep current registered medicines. Old search selections are not registered.
         for (final candidate in _temporaryMedicinesByCode.values) {
@@ -181,7 +180,6 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
           if (!_medicines.contains(name)) _medicines.add(name);
         }
         _pendingGeneralQuestion = conversation['pendingQuestion'] as String?;
-        _selectedKeyword = null;
         _chatController.clear();
       });
       _scrollToBottom();
@@ -197,130 +195,57 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
   }
 
   String? get _selectedMedicine =>
-      _selectedMedicines.length == 1 ? _selectedMedicines.single : null;
+      _selectedMedicines.isEmpty ? null : _selectedMedicines.first;
 
-  bool get _hasMultipleMedicines => _selectedMedicines.length >= 2;
+  /// 고른 약이 없으면 알콩이는 **내 약 전부**를 놓고 답한다.
+  /// 그래서 "아침 약이랑 우유" 같은 질문이 그대로 통한다.
+  bool get _asksAboutAllMedicines => _selectedMedicines.isEmpty;
 
-  List<String> get _selectedRequestMedicineNames => _selectedMedicines
-      .map((name) => _officialMedicinesByName[name]?.itemName ?? name)
-      .toList(growable: false);
+  /// 화면에 적는 이름. 용량(mg)은 떼고 약 이름만 보여 준다.
+  String _shortName(String name) => nameWithoutStrength(name);
 
   _DrugSearchCandidate? get _selectedOfficialMedicine {
     final medicine = _selectedMedicine;
     return medicine == null ? null : _officialMedicinesByName[medicine];
   }
 
-  static const List<Map<String, String>> _suggestions = [
+  /// 약을 고르지 않았을 때. 알콩이가 내 약 전부를 알고 있으니
+  /// 약 이름 없이 "아침 약"처럼 물어도 된다.
+  static const List<Map<String, String>> _generalSuggestions = [
     {
-      'label': '이 약은 무슨 약이에요?',
-      'prompt': '{medicine}이 무슨 약인지 쉬운 말로 알려주세요.',
-      'intent': 'overview',
+      'label': '아침 약이랑 우유 같이 먹어도 돼요?',
+      'prompt': '제가 아침에 먹는 약이랑 우유를 같이 먹어도 되는지 알려주세요.',
+      'intent': 'combination',
     },
     {
-      'label': '언제 어떻게 사용하나요?',
-      'prompt': '{medicine}을 언제 어떻게 사용하는지 쉬운 말로 알려주세요.',
-      'intent': 'dosage',
+      'label': '혈압약이랑 관절약 같이 먹어도 돼요?',
+      'prompt': '제가 먹는 혈압약이랑 관절약을 같이 먹어도 되는지 알려주세요.',
+      'intent': 'combination',
+    },
+    {
+      'label': '졸리지 않는 감기약이 있어요?',
+      'prompt': '제가 먹는 약과 같이 먹어도 되는, 졸리지 않는 감기약이 있는지 알려주세요.',
+      'intent': 'overview',
     },
   ];
 
-  static const Map<String, String> _healthPrompt = {
-    'label': '내 건강 상태에서 주의할 점은?',
-    'prompt':
-        '내 건강 상태에서 이 약을 먹을 때 주의할 점은? 등록한 질환, 과거력, 알레르기, 흡연과 음주 정보를 참고해 선택 범위의 약을 확인해 주세요.',
-    'display': '내 건강 상태에서 주의할 점은?',
-    'intent': 'health_precautions',
-  };
-
-  /// 약을 선택한 뒤 필요한 질문을 고른다.
-  static const List<Map<String, String>> _keywordPrompts = [
+  /// 약 하나를 골랐을 때. {medicine} 자리에 고른 약 이름이 들어간다.
+  static const List<Map<String, String>> _medicineSuggestions = [
     {
-      'label': '어디에 쓰는 약인가요?',
-      'prompt': '이 약은 어디에 쓰는 약인가요?',
-      'intent': 'efficacy',
-    },
-    {
-      'label': '어떻게 사용하나요?',
-      'prompt': '이 약은 보통 어떻게 사용하나요? 제가 등록한 사용 방법과 제품의 일반적인 사용법을 구분해서 알려주세요.',
-      'display': '이 약은 보통 어떻게 사용하나요?',
+      'label': '꼭 밥 먹고 먹어야 하나요?',
+      'prompt': '{medicine}은 꼭 밥을 먹고 나서 먹어야 하나요?',
       'intent': 'dosage',
     },
     {
-      'label': '무엇을 조심해야 하나요?',
-      'prompt': '이 약을 사용할 때 무엇을 조심해야 하나요?',
-      'intent': 'precautions',
-    },
-    {
-      'label': '사용 뒤 증상이 생기면?',
-      'prompt': '이 약을 사용한 뒤 평소와 다른 증상이 생기면 어떻게 해야 하나요?',
+      'label': '속이 울렁거리는데 괜찮나요?',
+      'prompt': '{medicine}을 먹고 속이 울렁거리는데 괜찮은가요?',
       'intent': 'side_effects',
     },
     {
-      'label': '나이에 따라 조심할 점',
-      'prompt': '제 나이에 이 약을 사용할 때 조심할 점이 있나요?',
-      'intent': 'age',
-    },
-    {
-      'label': '임신 중에 조심할 점',
-      'prompt': '임신 중에 이 약을 사용할 때 조심할 점이 있나요?',
-      'intent': 'pregnancy',
-    },
-    _healthPrompt,
-  ];
-
-  static const List<Map<String, String>> _allMedicinePrompts = [
-    {
-      'label': '제가 먹는 약 알려주세요',
-      'prompt': '제가 현재 먹는 약 전체를 쉬운 말로 알려주세요.',
-      'display': '제가 먹는 약 알려주세요',
-      'intent': 'overview',
-    },
-    {
-      'label': '같이 먹어도 괜찮나요?',
-      'prompt': '제가 현재 먹는 약 전체를 같이 먹을 때 주의할 점이 있는지 확인해 주세요.',
-      'display': '같이 먹어도 괜찮나요?',
+      'label': '같이 먹으면 안 되는 음식은요?',
+      'prompt': '{medicine}과 같이 먹으면 안 되는 음식이 있나요?',
       'intent': 'combination',
     },
-    {
-      'label': '같은 성분의 약이 있나요?',
-      'prompt': '제가 현재 먹는 약 전체에서 같은 성분이나 비슷한 역할이 겹치는 약이 있는지 확인해 주세요.',
-      'display': '같은 성분의 약이 있나요?',
-      'intent': 'duplicate',
-    },
-    {
-      'label': '약마다 주의할 점은요?',
-      'prompt': '제가 현재 먹는 약마다 공식 자료에서 확인되는 주의할 점을 알려주세요.',
-      'display': '약마다 주의할 점은요?',
-      'intent': 'precautions',
-    },
-    _healthPrompt,
-  ];
-
-  static const List<Map<String, String>> _selectedMedicinePrompts = [
-    {
-      'label': '선택한 약 알려주세요',
-      'prompt': '{medicines} 각각이 무슨 약인지 쉬운 말로 알려주세요.',
-      'display': '선택한 약 알려주세요',
-      'intent': 'overview',
-    },
-    {
-      'label': '같이 먹어도 괜찮나요?',
-      'prompt': '{medicines}을 함께 사용할 때 주의할 점이 있는지 확인해 주세요.',
-      'display': '같이 먹어도 괜찮나요?',
-      'intent': 'combination',
-    },
-    {
-      'label': '같은 성분의 약이 있나요?',
-      'prompt': '{medicines} 사이에 같은 성분이나 비슷한 역할이 겹치는지 확인해 주세요.',
-      'display': '같은 성분의 약이 있나요?',
-      'intent': 'duplicate',
-    },
-    {
-      'label': '약마다 주의할 점은요?',
-      'prompt': '{medicines} 각각의 공식 자료에서 확인되는 주의할 점을 알려주세요.',
-      'display': '약마다 주의할 점은요?',
-      'intent': 'precautions',
-    },
-    _healthPrompt,
   ];
 
   @override
@@ -331,11 +256,10 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
     _medicationApiClient =
         widget.medicationApiClient ??
         ApiClient(baseUrl: ApiConfig.localFeatureBaseUrl);
-    // 초기 안내 메시지 추가
-    _messages.add({
-      'isMe': false,
-      'text': '안녕하세요, 선생님! 약에 대해 궁금한 것을 편하게 물어보세요.\n어려운 말은 쉬운 말로 바꿔서 알려드릴게요.',
-    });
+    final initial = widget.initialMedicine?.trim() ?? '';
+    if (initial.isNotEmpty) _selectedMedicines.add(initial);
+    // 첫 인사는 이름과 고른 약에 따라 달라진다. 글은 그릴 때 만든다.
+    _messages.add({'isMe': false, 'greeting': true, 'text': _greeting('')});
     WidgetsBinding.instance.addPostFrameCallback((_) {
       unawaited(_loadMedicines());
       unawaited(_refreshCacheContext());
@@ -356,35 +280,22 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
     if (_chatFocusNode.hasFocus) _scrollToBottom();
   }
 
-  Future<void> _selectKeyword(Map<String, String> keyword) async {
-    if (_isLoading) return;
-
-    final label = keyword['label'];
-    final prompt = keyword['prompt'];
-    final intent = keyword['intent'];
-    if (label == null || prompt == null || intent == null) return;
-
-    if (_isAllMedicinesSelected && !_allMedicinePrompts.contains(keyword)) {
-      return;
+  /// 머리말 인사. 약을 고르면 그 약 이야기로 좁혀 말한다.
+  String _greeting(String userName) {
+    final medicine = _selectedMedicine;
+    if (medicine != null) {
+      return '${_shortName(medicine)}에 대해 궁금한 걸 물어보세요.';
     }
-    if (_hasMultipleMedicines && !_selectedMedicinePrompts.contains(keyword)) {
-      return;
-    }
-    if (!_isAllMedicinesSelected && _selectedMedicines.isEmpty) return;
+    final given = _givenName(userName);
+    final hello = given.isEmpty ? '안녕하세요.' : '$given 님, 안녕하세요.';
+    return '$hello 드시는 모든 약들에 대해 알고 있어요. 약이든 건강이든 편하게 물어보세요.';
+  }
 
-    final requestPrompt = _hasMultipleMedicines
-        ? prompt.replaceAll(
-            '{medicines}',
-            _selectedRequestMedicineNames.join(', '),
-          )
-        : prompt;
-
-    setState(() => _selectedKeyword = label);
-    await _sendMessage(
-      message: requestPrompt,
-      displayMessage: keyword['display'] ?? requestPrompt,
-      intent: intent,
-    );
+  /// "김복자" → "복자". 성은 떼고 부른다 — 성만으로는 누구인지 모른다.
+  String _givenName(String userName) {
+    final name = userName.trim();
+    if (name.length < 3 || name.contains(' ')) return name;
+    return name.substring(1);
   }
 
   Future<void> _loadMedicines() async {
@@ -580,112 +491,71 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
     }
   }
 
-  Future<void> _pickSubject() async {
+  /// 물어볼 약을 하나 고른다. 고르지 않아도 되는 지름길이다.
+  Future<void> _pickMedicines() async {
     if (_isLoading) return;
-    const options = <String>['일반 질문', '약 전체', '약 이름 선택'];
-    final current = _selectedMedicines.isNotEmpty
-        ? 2
-        : (_isAllMedicinesSelected ? 1 : 0);
-    final picked = await showSeniorWheel(
+    final pick = await SeniorSheet.show<_MedicinePick>(
       context: context,
-      title: '어떤 약을 물어볼까요?',
-      options: options,
-      selectedIndex: current,
-      confirmLabel: '선택',
+      builder: (_) => _MedicinePickSheet(
+        apiClient: _apiClient,
+        medicines: _medicines,
+        shortName: _shortName,
+      ),
     );
-    if (!mounted || picked == null) return;
-    if (picked == 2) {
-      await _pickMedicines();
+    if (!mounted || pick == null) return;
+    final found = pick.candidate;
+    if (found != null) {
+      _selectMedicine(found.itemName, candidate: found);
       return;
     }
-    final isAllMedicines = picked == 1;
+    final name = pick.name;
+    if (name != null) _selectMedicine(name);
+  }
+
+  /// 고른 약 하나만 남긴다. 대화도 거기서 새로 시작한다.
+  void _selectMedicine(String name, {_DrugSearchCandidate? candidate}) {
+    setState(() {
+      if (candidate != null) {
+        if (!_medicines.contains(candidate.itemName)) {
+          _medicines.add(candidate.itemName);
+        }
+        final code = candidate.itemSeq?.trim();
+        if (code != null && code.isNotEmpty) {
+          _temporaryMedicinesByCode[code] = candidate;
+        }
+        _officialMedicinesByName[candidate.itemName] = candidate;
+      }
+      _selectedMedicines
+        ..clear()
+        ..add(name);
+      _conversationStart = _messages.length;
+      _conversationId = null;
+      _pendingGeneralQuestion = null;
+    });
+  }
+
+  /// 고른 약을 뺀다. 다시 내 약 전부를 놓고 묻는 자리로 돌아온다.
+  void _clearMedicine() {
+    if (_isLoading) return;
     setState(() {
       _selectedMedicines.clear();
       _conversationStart = _messages.length;
       _conversationId = null;
-      _isAllMedicinesSelected = isAllMedicines;
       _pendingGeneralQuestion = null;
-      _selectedKeyword = null;
-    });
-  }
-
-  Future<void> _pickMedicines() async {
-    final result = await SeniorSheet.show<_MedicineSelectionResult>(
-      context: context,
-      builder: (_) => _MedicineSelectionSheet(
-        medicines: _medicines,
-        selectedMedicines: _selectedMedicines,
-        searchedMedicines: _medicines.where((name) {
-          final code = _officialMedicinesByName[name]?.itemSeq;
-          return code != null &&
-              _temporaryMedicinesByCode.containsKey(code) &&
-              !_registeredMedicineCodes.contains(code);
-        }).toSet(),
-      ),
-    );
-    if (!mounted || result == null) return;
-    if (result.searchOther) {
-      setState(() {
-        _conversationStart = _messages.length;
-        _conversationId = null;
-        _selectedMedicines
-          ..clear()
-          ..addAll(result.medicines);
-      });
-      await _enterOtherMedicine(addToSelection: true);
-      return;
-    }
-    if (result.medicines.isEmpty) return;
-    setState(() {
-      _selectedMedicines
-        ..clear()
-        ..addAll(result.medicines);
-      _conversationStart = _messages.length;
-      _conversationId = null;
-      _isAllMedicinesSelected = false;
-      _pendingGeneralQuestion = null;
-      _selectedKeyword = null;
     });
   }
 
   Future<void> _askSuggestion(Map<String, String> suggestion) async {
     if (_isLoading) return;
-    // 약을 아직 안 골랐으면 "제가 먹는 약"으로 물어본다. 되묻지 않는다.
-    final medicine = _selectedMedicine?.trim();
-    final subject = (medicine == null || medicine.isEmpty)
-        ? '제가 먹는 약'
-        : medicine;
+    final medicine = _selectedMedicine;
+    final official = medicine == null
+        ? ''
+        : (_officialMedicinesByName[medicine]?.itemName ?? medicine);
     await _sendMessage(
-      message: suggestion['prompt']!.replaceAll('{medicine}', subject),
+      message: suggestion['prompt']!.replaceAll('{medicine}', official),
+      displayMessage: suggestion['label'],
       intent: suggestion['intent'],
     );
-  }
-
-  Future<void> _enterOtherMedicine({bool addToSelection = false}) async {
-    final medicine = await SeniorSheet.show<_DrugSearchCandidate>(
-      context: context,
-      builder: (_) => _OtherMedicineDialog(apiClient: _apiClient),
-    );
-    if (!mounted || medicine == null) return;
-    setState(() {
-      if (!_medicines.contains(medicine.itemName)) {
-        _medicines.add(medicine.itemName);
-      }
-      final code = medicine.itemSeq?.trim();
-      if (code != null && code.isNotEmpty) {
-        _temporaryMedicinesByCode[code] = medicine;
-      }
-      _officialMedicinesByName[medicine.itemName] = medicine;
-      _conversationStart = _messages.length;
-      _conversationId = null;
-      if (!addToSelection) _selectedMedicines.clear();
-      if (!_selectedMedicines.contains(medicine.itemName)) {
-        _selectedMedicines.add(medicine.itemName);
-      }
-      _isAllMedicinesSelected = false;
-      _pendingGeneralQuestion = null;
-      _selectedKeyword = null;
-    });
   }
 
   void _scrollToBottom() {
@@ -711,18 +581,16 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
     final text = (message ?? _chatController.text).trim();
     if (text.isEmpty) return;
     final pendingQuestion = _pendingGeneralQuestion;
-    final isGeneralFreeInput =
-        message == null &&
-        _selectedMedicines.isEmpty &&
-        !_isAllMedicinesSelected;
+    // 약을 고르지 않고 직접 적은 질문. 서버가 약을 되물으면 다음 줄에서
+    // 적은 약 이름을 그 질문에 붙여 다시 보낸다.
+    final isGeneralFreeInput = message == null && _selectedMedicines.isEmpty;
     final isFollowup = RegExp(
       r'^(그럼|그러면|그 약|이 약|그건)|번째\s*약|요약|짧게|간단히',
     ).hasMatch(text);
-    final requestText = _hasMultipleMedicines && message == null && !isFollowup
-        ? '${_selectedRequestMedicineNames.join(', ')}에 대해 다음 질문에 답해 주세요: $text'
-        : isGeneralFreeInput &&
-              pendingQuestion != null &&
-              _looksLikeMedicineIdentity(text)
+    final requestText =
+        isGeneralFreeInput &&
+            pendingQuestion != null &&
+            _looksLikeMedicineIdentity(text)
         ? '$text에 대해 다음 질문에 답해 주세요: $pendingQuestion'
         : text;
 
@@ -756,14 +624,9 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
         'text': displayMessage ?? text,
         'contextText': requestText,
         'intent': intent,
-        'scope': _isAllMedicinesSelected
-            ? 'all'
-            : _selectedMedicines.isNotEmpty
-            ? 'selection'
-            : 'general',
+        'scope': _asksAboutAllMedicines ? 'all' : 'selection',
       });
       _isLoading = true;
-      _selectedKeyword = null;
     });
     if (message == null) _chatController.clear();
     _scrollToBottom();
@@ -802,24 +665,10 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
           'product_name': selectedOfficial.itemName,
         };
       }
-      if (_hasMultipleMedicines) {
-        body['selected_medicines'] = _selectedMedicines
-            .map((name) {
-              final official = _officialMedicinesByName[name];
-              return {
-                'medicine_code': official?.itemSeq ?? '',
-                'product_name': official?.itemName ?? name,
-              };
-            })
-            .toList(growable: false);
-      }
-      final temporaryMedicines = _isAllMedicinesSelected
-          ? _temporaryMedicinesByCode.values
-          : _temporaryMedicinesByCode.values.where(
-              (medicine) => _selectedMedicines.contains(medicine.itemName),
-            );
-      if ((_isAllMedicinesSelected || _hasMultipleMedicines) &&
-          temporaryMedicines.isNotEmpty) {
+      // 고른 약이 없으면 알콩이가 내 약 전부를 본다. 이름으로 찾아 둔 약도
+      // 그 안에 든다.
+      final temporaryMedicines = _temporaryMedicinesByCode.values;
+      if (_asksAboutAllMedicines && temporaryMedicines.isNotEmpty) {
         body['temporary_medicines'] = temporaryMedicines
             .map(
               (medicine) => {
@@ -831,7 +680,7 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
       }
       final requestKey = PharmacistAnswerCache.canonical({
         ...body,
-        'scope': _isAllMedicinesSelected ? 'all' : 'selection',
+        'scope': _asksAboutAllMedicines ? 'all' : 'selection',
         'recent_history':
             message == null || isFollowup || pendingQuestion != null
             ? recentHistory
@@ -988,88 +837,32 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
         !_looksLikeMedicineIdentity(text);
   }
 
-  Widget _buildKeywordBar(List<Map<String, String>> prompts) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 4, 20, 0),
-      child: LayoutBuilder(
-        builder: (context, constraints) => Scrollbar(
-          child: SingleChildScrollView(
-            key: ValueKey(
-              _selectedMedicine ??
-                  (_isAllMedicinesSelected ? 'all-medicines' : 'general'),
-            ),
-            scrollDirection: Axis.horizontal,
-            child: Row(
-              children: prompts.map((keyword) {
-                final label = keyword['label']!;
-                final selected = label == _selectedKeyword;
-                return Padding(
-                  padding: const EdgeInsets.only(right: 8),
-                  child: ConstrainedBox(
-                    constraints: BoxConstraints(
-                      maxWidth: constraints.maxWidth - 8,
-                    ),
-                    child: ChoiceChip(
-                      label: Text(label),
-                      selected: selected,
-                      onSelected: _isLoading
-                          ? null
-                          : (_) => _selectKeyword(keyword),
-                      labelStyle: AppText.label(
-                        size: 19,
-                        color: selected ? Colors.white : AppColors.textBody,
-                      ),
-                      backgroundColor: AppColors.surface,
-                      selectedColor: AppColors.point,
-                      side: BorderSide(
-                        color: selected
-                            ? AppColors.point
-                            : AppColors.strongLine,
-                        width: 2,
-                      ),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(18),
-                      ),
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 12,
-                      ),
-                    ),
-                  ),
-                );
-              }).toList(),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
-    // 아직 아무것도 안 물어봤을 때만 예시 질문을 보여준다.
-    final largeText = MediaQuery.textScalerOf(context).scale(16) > 24;
-    final historyButton = TextButton(
-      onPressed: _isLoading || _isLoadingMedicines
+    final historyButton = _HistoryButton(
+      onTap: _isLoading || _isLoadingMedicines
           ? null
           : _openPreviousConversations,
-      child: const Text('이전 대화', style: TextStyle(fontSize: 16)),
     );
-    final showSuggestions =
-        _messages.length <= 1 && _selectedMedicines.length == 1;
-    final subject = _selectedMedicine?.trim();
-    final subjectLabel = _hasMultipleMedicines
-        ? '${_selectedMedicines.first} 외 ${_selectedMedicines.length - 1}개'
-        : subject?.isNotEmpty == true
-        ? subject!
-        : (_isAllMedicinesSelected ? '약 전체' : '일반 질문');
+    final medicine = _selectedMedicine;
+    final shortName = medicine == null ? null : _shortName(medicine);
+    // 지금 대화에서 아직 아무것도 안 물어봤을 때만 질문 보기를 보여 준다.
+    // 약을 새로 고르면 거기서 대화가 다시 시작되므로 보기도 다시 나온다.
+    final showSuggestions = _messages.length - _conversationStart <= 1;
+    final suggestions = medicine == null
+        ? _generalSuggestions
+        : _medicineSuggestions;
+    final greeting = _greeting(MvpSession.userName);
 
     return Scaffold(
       backgroundColor: AppColors.bg,
       body: SafeArea(
         child: Column(
           children: [
+            // 머리와 약 고르는 칸은 흰 바탕 한 덩어리다. 경계선은 그 아래에
+            // 한 번만 긋는다.
             SeniorHeader(
+              borderColor: AppColors.surface,
               child: Row(
                 children: [
                   const SeniorBackButton(),
@@ -1087,71 +880,32 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
                           ),
                         ),
                         const SizedBox(height: 2),
-                        if (largeText)
-                          historyButton
-                        else
-                          Text(
-                            '약 이야기를 쉬운 말로 알려드려요',
-                            style: AppText.caption(size: 16.5),
-                          ),
+                        Text(
+                          '약 이야기를 쉬운 말로 알려드려요',
+                          style: AppText.caption(size: 16.5),
+                        ),
                       ],
                     ),
                   ),
-                  if (!largeText) historyButton,
+                  const SizedBox(width: 10),
+                  historyButton,
                 ],
               ),
             ),
-            // 무엇에 대해 묻는지 늘 보이게 둔다. 고른 약은 질문에 함께 실린다.
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 14, 20, 2),
-              child: SeniorCard(
-                padding: const EdgeInsets.fromLTRB(20, 12, 12, 12),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text('물어볼 약', style: AppText.caption(size: 17.5)),
-                          const SizedBox(height: 2),
-                          Text(
-                            subjectLabel,
-                            style: AppText.cardTitle(size: 22),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    Semantics(
-                      button: true,
-                      child: GestureDetector(
-                        onTap: _pickSubject,
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 6,
-                            vertical: 12,
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Text(
-                                '바꾸기',
-                                style: AppText.label(
-                                  size: 19,
-                                  color: AppColors.point,
-                                ),
-                              ),
-                              const SizedBox(width: 4),
-                              const SeniorChevron(color: AppColors.point),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
+            Container(
+              width: double.infinity,
+              decoration: const BoxDecoration(
+                color: AppColors.surface,
+                border: Border(
+                  bottom: BorderSide(color: AppColors.border, width: 1),
                 ),
+              ),
+              padding: const EdgeInsets.fromLTRB(20, 2, 20, 14),
+              child: _SubjectCard(
+                key: const ValueKey('ai-subject-card'),
+                medicineName: shortName,
+                onTap: _isLoading ? null : _pickMedicines,
+                onClear: _isLoading ? null : _clearMedicine,
               ),
             ),
             Expanded(
@@ -1168,8 +922,11 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
                         style: AppText.caption(size: 14),
                       ),
                     _ChatBubble(
-                      text: message['text'] as String,
+                      text: message['greeting'] == true
+                          ? greeting
+                          : message['text'] as String,
                       isMe: message['isMe'] as bool,
+                      speaker: message['isMe'] == true ? null : '알콩이',
                       sources:
                           (message['sources'] as List?)
                               ?.whereType<String>()
@@ -1212,24 +969,20 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
                   ],
                   if (showSuggestions) ...[
                     const SizedBox(height: 4),
-                    Text('이렇게 물어보셔도 돼요', style: AppText.caption(size: 18.5)),
+                    Text(
+                      medicine == null ? '이렇게 물어보셔도 돼요' : '이 약에 대해 많이 묻는 것',
+                      style: AppText.caption(size: 18.5),
+                    ),
                     const SizedBox(height: 10),
-                    for (final suggestion in _suggestions) ...[
+                    for (final suggestion in suggestions) ...[
                       SeniorCard(
-                        onTap: () => _askSuggestion(suggestion),
-                        borderColor: AppColors.border,
-                        borderWidth: 2,
+                        onTap: _isLoading
+                            ? null
+                            : () => _askSuggestion(suggestion),
                         padding: const EdgeInsets.fromLTRB(20, 18, 20, 18),
-                        child: Row(
-                          children: [
-                            Expanded(
-                              child: Text(
-                                suggestion['label']!,
-                                style: AppText.label(size: 21),
-                              ),
-                            ),
-                            const SeniorChevron(),
-                          ],
+                        child: Text(
+                          suggestion['label']!,
+                          style: AppText.cardTitle(size: 20),
                         ),
                       ),
                       const SizedBox(height: 10),
@@ -1242,15 +995,6 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
                 ],
               ),
             ),
-            if (!_isLoadingMedicines &&
-                (_isAllMedicinesSelected || _selectedMedicines.isNotEmpty))
-              _buildKeywordBar(
-                _isAllMedicinesSelected
-                    ? _allMedicinePrompts
-                    : _hasMultipleMedicines
-                    ? _selectedMedicinePrompts
-                    : _keywordPrompts,
-              ),
             Padding(
               padding: const EdgeInsets.fromLTRB(20, 10, 20, 14),
               child: Row(
@@ -1277,7 +1021,9 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
                         onSubmitted: (_) => _sendMessage(),
                         style: AppText.body(size: 20),
                         decoration: InputDecoration(
-                          hintText: '여기에 물어보세요',
+                          hintText: shortName == null
+                              ? '여기에 물어보세요'
+                              : '$shortName에 대해 물어보세요',
                           hintStyle: AppText.body(
                             size: 20,
                             color: AppColors.textTertiary,
@@ -1326,154 +1072,130 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
   }
 }
 
-class _MedicineSelectionResult {
-  final List<String> medicines;
-  final bool searchOther;
+/// 머리 아래 칸. 약을 고르기 전에는 "약 고르기", 고른 뒤에는 그 약과
+/// 빼는 단추를 보여 준다. 고르지 않아도 묻는 데는 아무 지장이 없다.
+class _SubjectCard extends StatelessWidget {
+  final String? medicineName;
+  final VoidCallback? onTap;
+  final VoidCallback? onClear;
 
-  const _MedicineSelectionResult({
-    this.medicines = const [],
-    this.searchOther = false,
-  });
-}
-
-class _MedicineSelectionSheet extends StatefulWidget {
-  final List<String> medicines;
-  final List<String> selectedMedicines;
-  final Set<String> searchedMedicines;
-
-  const _MedicineSelectionSheet({
-    required this.medicines,
-    required this.selectedMedicines,
-    required this.searchedMedicines,
-  });
-
-  @override
-  State<_MedicineSelectionSheet> createState() =>
-      _MedicineSelectionSheetState();
-}
-
-class _MedicineSelectionSheetState extends State<_MedicineSelectionSheet> {
-  late final Set<String> _selected = widget.selectedMedicines.toSet();
+  const _SubjectCard({super.key, this.medicineName, this.onTap, this.onClear});
 
   @override
   Widget build(BuildContext context) {
-    return SeniorSheet(
-      title: '약 이름을 선택해 주세요',
-      body: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Text(
-            '함께 확인할 약을 선택해 주세요.',
-            style: AppText.body(size: 18, color: AppColors.textBody),
+    final name = medicineName;
+    final picked = name != null;
+    return Semantics(
+      button: true,
+      label: picked ? '물어볼 약 $name' : '물어볼 약 고르기',
+      child: GestureDetector(
+        onTap: onTap,
+        behavior: HitTestBehavior.opaque,
+        child: Container(
+          decoration: BoxDecoration(
+            color: picked ? AppColors.pointTint : AppColors.secondaryFill,
+            borderRadius: BorderRadius.circular(18),
           ),
-          const SizedBox(height: 10),
-          const Wrap(
-            spacing: 8,
-            runSpacing: 8,
+          padding: EdgeInsets.fromLTRB(
+            20,
+            picked ? 12 : 16,
+            picked ? 12 : 18,
+            picked ? 12 : 16,
+          ),
+          child: Row(
             children: [
-              _MedicineSourceBadge(isSearched: false),
-              _MedicineSourceBadge(isSearched: true),
-            ],
-          ),
-          const SizedBox(height: 14),
-          for (final medicine in widget.medicines)
-            Material(
-              color: Colors.transparent,
-              child: CheckboxListTile(
-                key: ValueKey('medicine-selection-$medicine'),
-                value: _selected.contains(medicine),
-                onChanged: (checked) {
-                  setState(() {
-                    if (checked == true) {
-                      _selected.add(medicine);
-                    } else {
-                      _selected.remove(medicine);
-                    }
-                  });
-                },
-                title: Text(medicine, style: AppText.label(size: 19)),
-                subtitle: Padding(
-                  padding: const EdgeInsets.only(top: 6, bottom: 6),
-                  child: Align(
-                    alignment: Alignment.centerLeft,
-                    child: _MedicineSourceBadge(
-                      isSearched: widget.searchedMedicines.contains(medicine),
+              Icon(
+                TablerIcons.capsule,
+                size: 28,
+                color: picked ? AppColors.point : AppColors.textPrimary,
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: picked
+                    ? Text(
+                        name,
+                        style: AppText.cardTitle(size: 22),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      )
+                    : Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('약 고르기', style: AppText.cardTitle(size: 22)),
+                          const SizedBox(height: 2),
+                          Text(
+                            '약 하나만 물어볼 때',
+                            style: AppText.caption(size: 16.5),
+                          ),
+                        ],
+                      ),
+              ),
+              const SizedBox(width: 10),
+              if (picked)
+                Semantics(
+                  button: true,
+                  label: '고른 약 빼기',
+                  child: GestureDetector(
+                    onTap: onClear,
+                    behavior: HitTestBehavior.opaque,
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: AppColors.surface,
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 12,
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(TablerIcons.x, size: 20),
+                          const SizedBox(width: 4),
+                          Text('삭제', style: AppText.label(size: 19)),
+                        ],
+                      ),
                     ),
                   ),
-                ),
-                activeColor: AppColors.point,
-                checkColor: Colors.white,
-                controlAffinity: ListTileControlAffinity.leading,
-                contentPadding: EdgeInsets.zero,
-              ),
-            ),
-          if (widget.medicines.isEmpty)
-            Text(
-              '목록에 약이 없습니다. 다른 약을 검색해 주세요.',
-              style: AppText.caption(size: 17),
-            ),
-        ],
-      ),
-      actions: [
-        SeniorButton(
-          label: _selected.isEmpty ? '약을 선택해 주세요' : '${_selected.length}개 선택',
-          onPressed: _selected.isEmpty
-              ? null
-              : () => Navigator.of(
-                  context,
-                ).pop(_MedicineSelectionResult(medicines: _selected.toList())),
-        ),
-        SeniorButton(
-          label: '다른 약 검색하기',
-          kind: SeniorButtonKind.secondary,
-          minHeight: 60,
-          fontSize: 19,
-          onPressed: () => Navigator.of(context).pop(
-            _MedicineSelectionResult(
-              medicines: _selected.toList(),
-              searchOther: true,
-            ),
+                )
+              else
+                const SeniorChevron(),
+            ],
           ),
         ),
-      ],
-    );
-  }
-}
-
-class _MedicineSourceBadge extends StatelessWidget {
-  final bool isSearched;
-
-  const _MedicineSourceBadge({required this.isSearched});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-      decoration: BoxDecoration(
-        color: isSearched ? AppColors.bg : AppColors.pointTint,
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Text(
-        isSearched ? '검색한 약' : '등록된 약',
-        style: AppText.body(
-          size: 15,
-          color: isSearched ? AppColors.textBody : AppColors.point,
-        ),
       ),
     );
   }
 }
 
-class _OtherMedicineDialog extends StatefulWidget {
+/// 창에서 고른 결과. 내 약에서 고르면 [name], 이름으로 찾으면 [candidate].
+class _MedicinePick {
+  final String? name;
+  final _DrugSearchCandidate? candidate;
+
+  const _MedicinePick({this.name, this.candidate});
+}
+
+/// 약 하나를 고르는 창.
+///
+/// 누르면 확인 단추 없이 바로 닫힌다. 여러 개를 고르는 길은 없앴다 —
+/// 여러 약이 궁금하면 질문에 적으면 되고, 그 편이 훨씬 쉽다.
+class _MedicinePickSheet extends StatefulWidget {
   final ApiClient apiClient;
+  final List<String> medicines;
+  final String Function(String name) shortName;
 
-  const _OtherMedicineDialog({required this.apiClient});
+  const _MedicinePickSheet({
+    required this.apiClient,
+    required this.medicines,
+    required this.shortName,
+  });
 
   @override
-  State<_OtherMedicineDialog> createState() => _OtherMedicineDialogState();
+  State<_MedicinePickSheet> createState() => _MedicinePickSheetState();
 }
 
-class _OtherMedicineDialogState extends State<_OtherMedicineDialog> {
+class _MedicinePickSheetState extends State<_MedicinePickSheet> {
   final TextEditingController _controller = TextEditingController();
   Timer? _debounce;
   List<_DrugSearchCandidate> _candidates = const [];
@@ -1491,7 +1213,6 @@ class _OtherMedicineDialogState extends State<_OtherMedicineDialog> {
     super.dispose();
   }
 
-  /// 자판의 "완료". 실패했던 검색어도 여기서 다시 물어본다.
   void _searchNow(String value) {
     _debounce?.cancel();
     final query = value.trim();
@@ -1504,6 +1225,7 @@ class _OtherMedicineDialogState extends State<_OtherMedicineDialog> {
     _debounce?.cancel();
     final sequence = ++_requestSequence;
     final query = value.trim();
+    setState(() {});
     if (query.length < 2) {
       setState(() {
         _candidates = const [];
@@ -1512,9 +1234,7 @@ class _OtherMedicineDialogState extends State<_OtherMedicineDialog> {
       });
       return;
     }
-    if (query == _inFlightQuery || query == _lastCompletedQuery) {
-      return;
-    }
+    if (query == _inFlightQuery || query == _lastCompletedQuery) return;
     _debounce = Timer(
       const Duration(milliseconds: 550),
       () => _search(query, sequence),
@@ -1569,73 +1289,110 @@ class _OtherMedicineDialogState extends State<_OtherMedicineDialog> {
         _errorMessage = '의약품 정보를 불러오지 못했습니다. 다시 시도해주세요.';
       });
     } finally {
-      if (_inFlightQuery == query) {
-        _inFlightQuery = null;
-      }
+      if (_inFlightQuery == query) _inFlightQuery = null;
       if (mounted && sequence == _requestSequence) {
         setState(() => _isSearching = false);
       }
     }
   }
 
-  void _select(_DrugSearchCandidate candidate) {
-    Navigator.of(context).pop(candidate);
-  }
-
   @override
   Widget build(BuildContext context) {
-    final mediaQuery = MediaQuery.of(context);
-    final availableHeight =
-        mediaQuery.size.height - mediaQuery.viewInsets.bottom;
-    final maxContentHeight = (availableHeight - 200)
-        .clamp(120.0, 368.0)
-        .toDouble();
-
+    final searching = _controller.text.trim().length >= 2;
     return SeniorSheet(
-      title: '다른 약 검색하기',
-      body: ConstrainedBox(
-        constraints: BoxConstraints(maxHeight: maxContentHeight),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            SeniorField(
-              key: const Key('otherMedicineSearchField'),
-              controller: _controller,
-              hint: '약 이름을 적어 주세요',
-              textInputAction: TextInputAction.search,
-              onChanged: _onQueryChanged,
-              onSubmitted: _searchNow,
-            ),
-            const SizedBox(height: 12),
-            Flexible(
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxHeight: 300),
-                child: _buildSearchContent(),
+      title: '어떤 약이 궁금하세요?',
+      bodyGap: 18,
+      body: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (!searching) ...[
+            Text('내 약', style: AppText.caption(size: 17.5)),
+            const SizedBox(height: 10),
+            if (widget.medicines.isEmpty)
+              Text(
+                '등록된 약이 없어요. 아래에서 약 이름으로 찾아보세요.',
+                style: AppText.body(size: 18, color: AppColors.textBody),
+              )
+            else
+              LayoutBuilder(
+                builder: (context, constraints) {
+                  // 두 줄로 세운다. 좁은 폰이나 큰 글씨에서는 한 줄로 내린다.
+                  final twoColumns =
+                      constraints.maxWidth >= 300 &&
+                      MediaQuery.textScalerOf(context).scale(19) <= 26;
+                  final width = twoColumns
+                      ? (constraints.maxWidth - 10) / 2
+                      : constraints.maxWidth;
+                  return Wrap(
+                    spacing: 10,
+                    runSpacing: 10,
+                    children: [
+                      for (final medicine in widget.medicines)
+                        SizedBox(
+                          width: width,
+                          child: _MedicineChoice(
+                            label: widget.shortName(medicine),
+                            onTap: () => Navigator.of(
+                              context,
+                            ).pop(_MedicinePick(name: medicine)),
+                          ),
+                        ),
+                    ],
+                  );
+                },
               ),
+            const SizedBox(height: 20),
+          ],
+          Text('다른 약은 이름으로 찾기', style: AppText.caption(size: 17.5)),
+          const SizedBox(height: 10),
+          Container(
+            decoration: BoxDecoration(
+              color: AppColors.surface,
+              borderRadius: BorderRadius.circular(30),
+              border: Border.all(color: AppColors.strongLine, width: 2),
+            ),
+            padding: const EdgeInsets.fromLTRB(20, 4, 20, 4),
+            child: Row(
+              children: [
+                const Icon(TablerIcons.search, size: 24),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: TextField(
+                    key: const Key('otherMedicineSearchField'),
+                    controller: _controller,
+                    textInputAction: TextInputAction.search,
+                    onChanged: _onQueryChanged,
+                    onSubmitted: _searchNow,
+                    style: AppText.body(size: 20),
+                    decoration: InputDecoration(
+                      hintText: '약 이름 적기 (예: 타이레놀)',
+                      hintStyle: AppText.body(
+                        size: 20,
+                        color: AppColors.textTertiary,
+                      ),
+                      border: InputBorder.none,
+                      isDense: true,
+                      contentPadding: const EdgeInsets.symmetric(vertical: 16),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          if (searching) ...[
+            const SizedBox(height: 14),
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxHeight: 300),
+              child: _buildSearchContent(),
             ),
           ],
-        ),
+        ],
       ),
-      actions: [
-        SeniorButton(
-          label: '취소',
-          kind: SeniorButtonKind.neutral,
-          minHeight: 62,
-          fontSize: 20,
-          onPressed: () => Navigator.of(context).pop(),
-        ),
-      ],
     );
   }
 
   Widget _buildSearchContent() {
-    if (_controller.text.trim().length < 2) {
-      return const Align(
-        alignment: Alignment.centerLeft,
-        child: Text('약 이름을 2글자 이상 입력해주세요.'),
-      );
-    }
     if (_isSearching) {
       return const Center(
         child: Padding(
@@ -1668,7 +1425,8 @@ class _OtherMedicineDialogState extends State<_OtherMedicineDialog> {
             'drugCandidate:${candidate.itemSeq ?? candidate.itemName}',
           ),
           behavior: HitTestBehavior.opaque,
-          onTap: () => _select(candidate),
+          onTap: () =>
+              Navigator.of(context).pop(_MedicinePick(candidate: candidate)),
           child: Padding(
             padding: const EdgeInsets.symmetric(vertical: 14),
             child: Row(
@@ -1696,6 +1454,41 @@ class _OtherMedicineDialogState extends State<_OtherMedicineDialog> {
           ),
         );
       },
+    );
+  }
+}
+
+/// 내 약 한 칸. 누르면 바로 닫힌다.
+class _MedicineChoice extends StatelessWidget {
+  final String label;
+  final VoidCallback onTap;
+
+  const _MedicineChoice({required this.label, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      button: true,
+      child: GestureDetector(
+        key: ValueKey('medicine-selection-$label'),
+        onTap: onTap,
+        behavior: HitTestBehavior.opaque,
+        child: Container(
+          constraints: const BoxConstraints(minHeight: 58),
+          alignment: Alignment.centerLeft,
+          decoration: BoxDecoration(
+            color: AppColors.secondaryFill,
+            borderRadius: BorderRadius.circular(14),
+          ),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          child: Text(
+            label,
+            style: AppText.cardTitle(size: 19),
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
+      ),
     );
   }
 }
@@ -1876,6 +1669,9 @@ class _PreviousConversationScreen extends StatelessWidget {
 class _ChatBubble extends StatelessWidget {
   final bool isMe;
   final String text;
+
+  /// 누가 한 말인지. 알콩이 답장에만 적는다.
+  final String? speaker;
   final List<String> officialProductNames;
   final bool isHealthReply;
   final List<String> healthHighlightTerms;
@@ -1884,6 +1680,7 @@ class _ChatBubble extends StatelessWidget {
   const _ChatBubble({
     required this.isMe,
     required this.text,
+    this.speaker,
     this.officialProductNames = const [],
     this.isHealthReply = false,
     this.healthHighlightTerms = const [],
@@ -1923,6 +1720,16 @@ class _ChatBubble extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
                 children: [
+                  if (speaker != null) ...[
+                    Text(
+                      speaker!,
+                      style: AppText.cardTitle(
+                        size: 18,
+                        color: AppColors.point,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                  ],
                   Text.rich(
                     TextSpan(
                       children: _officialProductNameSpans(
@@ -2136,5 +1943,73 @@ String _plainAiReply(String value) {
       .split('\n')
       .map((line) => line.replaceAll(RegExp(r'[ \t]{3,}'), ' ').trimRight())
       .join('\n');
+  text = _withoutClosingDisclaimer(text);
   return text.replaceAll(RegExp(r'\n{3,}'), '\n\n').trim();
+}
+
+/// 답장 끝에 늘 붙는 면책 한 줄을 뗀다.
+///
+/// 매번 같은 말이 붙으면 어르신은 그 줄을 읽지 않고 넘기게 되고, 정작
+/// 읽어야 할 주의사항까지 같이 묻힌다. 약을 바꾸거나 끊는 일을 혼자
+/// 정하지 말라는 말은 약 자세히와 이용 안내에 그대로 남아 있다.
+String _withoutClosingDisclaimer(String text) {
+  final lines = text.split('\n');
+  while (lines.isNotEmpty) {
+    final last = lines.last.replaceFirst(RegExp(r'^[•\-\s]+'), '').trim();
+    if (last.isEmpty) {
+      lines.removeLast();
+      continue;
+    }
+    final isDisclaimer =
+        last.length <= 80 &&
+        RegExp(r'(약사|의사|전문가)').hasMatch(last) &&
+        RegExp(r'(상의|상담|문의)하').hasMatch(last);
+    if (!isDisclaimer) break;
+    lines.removeLast();
+  }
+  return lines.join('\n');
+}
+
+/// 머리 오른쪽의 "이전 대화" 칸.
+///
+/// 작은 글자 단추로 두었더니 지난 이야기를 다시 볼 수 있다는 것을 모르고
+/// 같은 것을 또 물으셨다. 글자만 두지 않고 칸으로 세워 눈에 띄게 한다.
+class _HistoryButton extends StatelessWidget {
+  final VoidCallback? onTap;
+
+  const _HistoryButton({this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final enabled = onTap != null;
+    final ink = enabled ? AppColors.textPrimary : AppColors.inactiveLabel;
+    return Semantics(
+      button: true,
+      enabled: enabled,
+      label: '이전 대화 보기',
+      child: GestureDetector(
+        onTap: onTap,
+        behavior: HitTestBehavior.opaque,
+        child: ExcludeSemantics(
+          child: Container(
+            constraints: const BoxConstraints(minHeight: 52),
+            alignment: Alignment.center,
+            padding: const EdgeInsets.symmetric(horizontal: 14),
+            decoration: BoxDecoration(
+              color: AppColors.secondaryFill,
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(TablerIcons.history, size: 22, color: ink),
+                const SizedBox(width: 6),
+                Text('이전 대화', style: AppText.cardTitle(size: 18, color: ink)),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }

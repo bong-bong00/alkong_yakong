@@ -146,17 +146,23 @@ class ActivityItem {
 
 class AlertItem {
   /// 'miss'·'alert' 위험 · 'refill' 약 떨어짐 · 'shared' 어르신이 보냄 ·
-  /// 'done' 복약 완료 · 'prescription' 새 처방전 · 'past' 지난 것.
+  /// 'done' 복약 완료 · 'prescription' 새 처방전 ·
+  /// 'help' 어르신이 처방전을 찍어 달라고 부탁함 · 'past' 지난 것.
   final String type;
   final String title;
   final String desc;
   final String time;
   final bool tappable; // 심박 이상 → 상세로
+
+  /// 서버가 매긴 알림 번호. 같은 것을 두 번 띄우지 않을 때 쓴다.
+  final int? id;
+
   const AlertItem({
     required this.type,
     required this.title,
     required this.desc,
     required this.time,
     this.tappable = false,
+    this.id,
   });
 }

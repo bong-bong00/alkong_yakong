@@ -25,6 +25,8 @@ import '../../../medication/application/medication_controller.dart';
 import '../../../medicines/application/user_medicines_controller.dart';
 import '../../../medicines/application/family_medicine_inbox.dart';
 import '../../../medicines/domain/display_policy.dart';
+import '../../../medicines/domain/user_medicine_models.dart';
+import '../../data/prescription_help_repository.dart';
 import '../../../onboarding/presentation/screens/first_run_screen.dart';
 import 'add_medicine_screen.dart';
 import 'manual_medicine_screen.dart';
@@ -385,20 +387,81 @@ class _PrescriptionScreenState extends ConsumerState<PrescriptionScreen> {
       'pair_conflict=$hasPairConflict '
       'destination=${hasPairConflict ? 'dur_analysis' : 'schedule_days'}',
     );
-    if (!hasPairConflict) {
-      openScheduleDays();
-      return;
-    }
+    // 함께먹기 주의 화면은 없앴다. 충돌이 있어도 등록은 그대로 이어가고,
+    // 주의 내용은 약 자세히에서 그 약을 열어 볼 때 보여 준다.
+    openScheduleDays();
+  }
 
-    final onCompleted = widget.onCompleted;
-    if (onCompleted != null) {
-      onCompleted(durResult);
-      return;
+  /// 가족에게 처방전을 찍어 달라고 부탁한다.
+  ///
+  /// 보호자 전화기에 알림으로 남고, 거기서 "대신 처방전 찍기"로 바로
+  /// 이어진다. 연결된 가족이 없으면 그렇다고 말하고 아무것도 보내지 않는다.
+  Future<bool> _askFamilyForPrescription() async {
+    final userId = MvpSession.userId.trim();
+    final result = await PrescriptionHelpRepository().ask(userId);
+    if (!mounted) return result.isSent;
+    switch (result.outcome) {
+      case PrescriptionHelpOutcome.sent:
+        final who = result.guardians.isEmpty
+            ? '가족'
+            : result.guardians.join(', ');
+        showSeniorSnackbar(context, '$who 님에게 부탁을 보냈어요');
+      case PrescriptionHelpOutcome.noGuardian:
+        showSeniorSnackbar(
+          context,
+          '등록된 가족이 없어요. 내 정보에서 가족을 먼저 등록해 주세요.',
+          error: true,
+        );
+      case PrescriptionHelpOutcome.failed:
+        showSeniorSnackbar(
+          context,
+          '지금은 부탁을 보내지 못했어요. 잠시 뒤 다시 눌러 주세요.',
+          error: true,
+        );
     }
-    context.push(
-      '/dur-analysis',
-      extra: {...?durResult, 'open_schedule_days': true},
+    return result.isSent;
+  }
+
+  /// 가족이 처방전을 넣었는지 서버에 다시 물어본다.
+  ///
+  /// 서버는 "누가 넣었는지"를 알려주지 않는다. 그래서 이 기기가 본 적 없는
+  /// 약이 들어와 있으면 가족이 넣은 것으로 본다 — 홈에서 쓰는 장부와
+  /// 같은 규칙이다. 넣으셨으면 "약이 들어왔어요"로 넘기고 true를 돌려준다.
+  Future<bool> _checkFamilyPrescription() async {
+    final userId = MvpSession.userId.trim();
+    if (userId.isEmpty) return false;
+    try {
+      await ref.read(userMedicinesProvider.notifier).refresh();
+    } catch (_) {
+      // 못 읽었으면 "안 넣으셨다"고 단정하지 않는다. 다시 눌러 보시면 된다.
+      if (mounted) {
+        showSeniorSnackbar(
+          context,
+          '지금은 확인하지 못했어요. 잠시 뒤 다시 눌러 주세요.',
+          error: true,
+        );
+      }
+      return false;
+    }
+    final medicines =
+        ref.read(userMedicinesProvider).valueOrNull ?? const <UserMedicine>[];
+    final arrived = await FamilyMedicineInbox.unseen(
+      userId,
+      medicines.map((medicine) => medicine.medicineCode),
     );
+    if (arrived.isEmpty) return false;
+
+    final rows = [
+      for (final medicine in medicines)
+        if (arrived.contains(medicine.medicineCode))
+          {'name': medicine.displayName, 'dose': medicine.amount},
+    ];
+    if (rows.isEmpty) return false;
+
+    await FamilyMedicineInbox.markSeen(userId, arrived);
+    if (!mounted) return true;
+    context.push('/medicine-arrived', extra: {'medicines': rows});
+    return true;
   }
 
   @override
@@ -408,6 +471,8 @@ class _PrescriptionScreenState extends ConsumerState<PrescriptionScreen> {
         return AddMedicineScreen(
           guardianTitle: resolveGuardianTitle(context, widget.guardianTitle),
           onGoHome: widget.onGoHome ?? () => Navigator.of(context).maybePop(),
+          onAskFamily: _askFamilyForPrescription,
+          onCheckFamily: _checkFamilyPrescription,
           onPick: (method) {
             switch (method) {
               case AddMedicineMethod.camera:
@@ -429,21 +494,9 @@ class _PrescriptionScreenState extends ConsumerState<PrescriptionScreen> {
         return ManualMedicineScreen(
           onBack: () => setState(() => _step = PrescriptionStep.pickMethod),
           onSaved: (durResult) {
-            final onCompleted = widget.onCompleted;
-            if (_hasPairConflict(durResult) && onCompleted != null) {
-              onCompleted(durResult);
-              return;
-            }
             final onOpenScheduleDays = widget.onOpenScheduleDays;
             if (onOpenScheduleDays != null) {
               onOpenScheduleDays();
-              return;
-            }
-            if (_hasPairConflict(durResult)) {
-              context.push(
-                '/dur-analysis',
-                extra: {...?durResult, 'open_schedule_days': true},
-              );
               return;
             }
             context.push(
@@ -982,6 +1035,13 @@ class _ConfirmScreenState extends State<_ConfirmScreen> {
     var amount = int.tryParse(amountController.text.trim()) ?? 1;
     var frequency = int.tryParse(frequencyController.text.trim());
     var days = int.tryParse(durationController.text.trim());
+    // 언제 드시는 약인지. 처방전에서 읽었으면 그대로, 못 읽었으면 추정값이
+    // 미리 찍혀 있고 "확인해 주세요"가 붙는다.
+    final times = <String>{..._slotsOf(item)};
+    final timingGuessed =
+        (item['administration_times_source']?.toString() ?? '') !=
+        'PRESCRIPTION';
+    final instruction = item['dosing_instruction']?.toString().trim() ?? '';
     final nameController = TextEditingController(
       text: item['drug_name']?.toString() ?? '',
     );
@@ -1120,6 +1180,33 @@ class _ConfirmScreenState extends State<_ConfirmScreen> {
                       : (frequency! < 6 ? frequency! + 1 : frequency),
                 ),
               ),
+              const SizedBox(height: 18),
+              Row(
+                children: [
+                  Expanded(
+                    child: Text('언제 드세요?', style: AppText.label(size: 19)),
+                  ),
+                  if (timingGuessed)
+                    Text(
+                      '확인해 주세요',
+                      style: AppText.label(size: 17, color: AppColors.danger),
+                    ),
+                ],
+              ),
+              if (instruction.isNotEmpty) ...[
+                const SizedBox(height: 4),
+                Text(
+                  '처방전에 적힌 것: $instruction',
+                  style: AppText.caption(size: 16),
+                ),
+              ],
+              const SizedBox(height: 8),
+              _SlotPicker(
+                selected: times,
+                onToggle: (slot) => setSheetState(() {
+                  if (!times.remove(slot)) times.add(slot);
+                }),
+              ),
               const SizedBox(height: 16),
               _Stepper(
                 label: '며칠분',
@@ -1167,6 +1254,9 @@ class _ConfirmScreenState extends State<_ConfirmScreen> {
                     'times_per_take': null,
                     'frequency_per_day': frequency,
                     'duration_days': days,
+                    'administration_times': _orderedSlots(times),
+                    // 사람이 한 번 보고 고른 값이다. 추정으로 되돌리지 않는다.
+                    'administration_times_source': 'USER',
                   };
                 });
                 Navigator.of(sheetContext).pop();
@@ -1403,6 +1493,53 @@ class _ConfirmScreenState extends State<_ConfirmScreen> {
       ...rows,
       const SizedBox(height: 12),
     ];
+  }
+
+  /// 하루 안에서의 차례. 화면과 서버가 같은 순서를 쓴다.
+  static const List<String> _slotOrder = ['아침', '점심', '저녁', '취침전'];
+
+  /// 항목에 적힌 복용 시간대. 서버가 주는 말과 시각을 모두 받는다.
+  static List<String> _slotsOf(Map<String, dynamic> item) {
+    final raw = item['administration_times'];
+    if (raw is! List) return const [];
+    final picked = <String>[];
+    for (final value in raw) {
+      final slot = _slotName(value?.toString() ?? '');
+      if (slot != null && !picked.contains(slot)) picked.add(slot);
+    }
+    return _orderedSlots(picked);
+  }
+
+  static List<String> _orderedSlots(Iterable<String> slots) {
+    final kept = slots.where(_slotOrder.contains).toSet().toList();
+    kept.sort((a, b) => _slotOrder.indexOf(a).compareTo(_slotOrder.indexOf(b)));
+    return kept;
+  }
+
+  /// 서버 말·시각을 네 때 중 하나로. 모르면 null.
+  static String? _slotName(String raw) {
+    final text = raw.toLowerCase().replaceAll(' ', '');
+    if (text.contains('취침') || text.contains('자기') || text.contains('night')) {
+      return '취침전';
+    }
+    if (text.contains('아침') || text.contains('morning')) return '아침';
+    if (text.contains('점심') ||
+        text.contains('lunch') ||
+        text.contains('noon') ||
+        text.contains('afternoon')) {
+      return '점심';
+    }
+    if (text.contains('저녁') ||
+        text.contains('evening') ||
+        text.contains('dinner')) {
+      return '저녁';
+    }
+    final hour = int.tryParse(text.split(':').first);
+    if (hour == null) return null;
+    if (hour >= 21 || hour < 4) return '취침전';
+    if (hour < 11) return '아침';
+    if (hour < 16) return '점심';
+    return '저녁';
   }
 
   /// 서버가 주는 복용 시간을 화면 문구로. 모르면 null.
@@ -1923,6 +2060,65 @@ class _DetailLine extends StatelessWidget {
         ),
         const SizedBox(height: 4),
         Text(value, style: AppText.body(size: 19)),
+      ],
+    );
+  }
+}
+
+/// "언제 드세요?" — 아침·점심·저녁·취침전을 눌러서 고른다.
+///
+/// 처방전에는 때가 안 적혀 있는 일이 흔하다. 숫자만 보고 앱이 정하면
+/// 1일 1회 약이 모두 아침으로 가는데, 저녁에 드시는 약이 적지 않다.
+/// 그래서 한 번은 사람 눈으로 보고 넘긴다.
+class _SlotPicker extends StatelessWidget {
+  final Set<String> selected;
+  final ValueChanged<String> onToggle;
+
+  const _SlotPicker({required this.selected, required this.onToggle});
+
+  static const List<(String, String)> _slots = [
+    ('아침', '아침 8시'),
+    ('점심', '점심 1시'),
+    ('저녁', '저녁 8시'),
+    ('취침전', '자기 전'),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    return Wrap(
+      spacing: 10,
+      runSpacing: 10,
+      children: [
+        for (final (slot, label) in _slots)
+          Semantics(
+            button: true,
+            selected: selected.contains(slot),
+            child: GestureDetector(
+              key: ValueKey('dose-slot-$slot'),
+              onTap: () => onToggle(slot),
+              behavior: HitTestBehavior.opaque,
+              child: Container(
+                constraints: const BoxConstraints(minHeight: 58),
+                alignment: Alignment.center,
+                padding: const EdgeInsets.symmetric(horizontal: 18),
+                decoration: BoxDecoration(
+                  color: selected.contains(slot)
+                      ? AppColors.point
+                      : AppColors.secondaryFill,
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Text(
+                  label,
+                  style: AppText.cardTitle(
+                    size: 19,
+                    color: selected.contains(slot)
+                        ? Colors.white
+                        : AppColors.textPrimary,
+                  ),
+                ),
+              ),
+            ),
+          ),
       ],
     );
   }

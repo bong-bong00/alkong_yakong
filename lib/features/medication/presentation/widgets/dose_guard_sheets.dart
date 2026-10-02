@@ -185,7 +185,7 @@ Future<void> showDuplicateDoseSheet({
 }
 
 /// 지연 복약 — 복약 시각에서 4시간 이상 지난 뒤 체크했을 때.
-/// "그래도 먹었어요"를 고르면 true를 돌려준다.
+/// "네 알겠어요"를 고르면 true를 돌려준다.
 Future<bool> showLateDoseSheet({
   required BuildContext context,
   required DoseSlot slot,
@@ -199,12 +199,12 @@ Future<bool> showLateDoseSheet({
         Text('지금 드시면 다음 약과 너무 가까워질 수 있어요.', style: AppText.body()),
         const SizedBox(height: 14),
         SeniorButton(
-          label: '그래도 먹었어요',
+          label: '네 알겠어요',
           fontSize: 23,
           onPressed: () => Navigator.of(context).pop(true),
         ),
         SeniorTextButton(
-          label: '아직 안 먹었어요',
+          label: '지금 기록하지 않을게요',
           fontSize: 18.5,
           onPressed: () => Navigator.of(context).pop(false),
         ),

@@ -6,6 +6,9 @@ abstract final class MvpSession {
 
   /// 서버 오늘약 API용. dart-define 없으면 체험 사용자.
   static String userId = defaultUserId;
+
+  /// 화면에서 부르는 이름. 내 정보를 읽어 오면 채워진다.
+  static String userName = '';
   static String medicineCode = '';
   static List<Map<String, dynamic>> latestOcrItems = <Map<String, dynamic>>[];
   static DateTime? latestOcrRegisteredAt;

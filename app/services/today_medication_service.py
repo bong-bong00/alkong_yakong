@@ -150,13 +150,15 @@ def get_today_medicines(user_id: str, target_date: str | None = None) -> dict[st
             for row in active_origin_rows
             if row["prescription_item_id"] is not None
         }
+        # 처방이 끝나는 날은 **가장 늦게 끝나는 약**이 정한다. 먼저 끝나는
+        # 약에 맞추면 아직 보름이 남은 약을 두고 "다 떨어졌다"고 말한다.
         course = conn.execute(
             """
             SELECT start_date, end_date
             FROM user_medicines
             WHERE user_id = ? AND COALESCE(is_active, 1) = 1
               AND end_date IS NOT NULL AND end_date >= ?
-            ORDER BY end_date LIMIT 1
+            ORDER BY end_date DESC LIMIT 1
             """,
             (uid, day),
         ).fetchone()
@@ -234,7 +236,7 @@ def get_today_medicines(user_id: str, target_date: str | None = None) -> dict[st
 
 
 def _course_fields(course, day: str) -> dict[str, Any]:
-    """가장 먼저 끝나는 처방 기준으로 남은 날을 센다. 끝나는 날을 모르면 비워 둔다."""
+    """가장 늦게 끝나는 처방 기준으로 남은 날을 센다. 끝나는 날을 모르면 비워 둔다."""
     empty = {"days_left": None, "course_started_on": None, "course_total_days": None}
     if course is None:
         return empty

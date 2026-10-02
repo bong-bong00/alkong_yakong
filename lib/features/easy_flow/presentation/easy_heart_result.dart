@@ -65,7 +65,13 @@ class EasyHeartResult extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
                 Expanded(
-                  child: _bar(before!, '먹기 전', AppColors.textTertiary, scale),
+                  child: _bar(
+                    before!,
+                    '먹기 전',
+                    AppColors.textTertiary,
+                    scale,
+                    barKey: const Key('heart-bar-before'),
+                  ),
                 ),
                 const Padding(
                   padding: EdgeInsets.symmetric(horizontal: 6),
@@ -75,7 +81,16 @@ class EasyHeartResult extends StatelessWidget {
                     size: 26,
                   ),
                 ),
-                Expanded(child: _bar(value, '먹은 후', AppColors.point, scale)),
+                Expanded(
+                  child: _bar(
+                    value,
+                    '먹은 후',
+                    AppColors.point,
+                    scale,
+                    grow: true,
+                    barKey: const Key('heart-bar-after'),
+                  ),
+                ),
               ],
             )
           else ...[
@@ -140,7 +155,14 @@ class EasyHeartResult extends StatelessWidget {
     );
   }
 
-  Widget _bar(int bpm, String label, Color color, double scale) => Column(
+  Widget _bar(
+    int bpm,
+    String label,
+    Color color,
+    double scale, {
+    bool grow = false,
+    Key? barKey,
+  }) => Column(
     children: [
       FittedBox(
         fit: BoxFit.scaleDown,
@@ -154,13 +176,11 @@ class EasyHeartResult extends StatelessWidget {
         height: 130,
         child: Align(
           alignment: Alignment.bottomCenter,
-          child: Container(
-            width: 44,
+          child: _GrowingBar(
+            key: barKey,
             height: 130 * bpm / scale,
-            decoration: BoxDecoration(
-              color: color,
-              borderRadius: BorderRadius.circular(9),
-            ),
+            color: color,
+            animate: grow,
           ),
         ),
       ),
@@ -392,4 +412,43 @@ class _SensorBackPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+}
+
+/// 막대 하나. [animate]면 바닥에서 제 높이까지 자라 오른다.
+///
+/// 먹은 뒤 막대만 움직인다. 둘 다 움직이면 무엇이 달라졌는지 안 보이고,
+/// 움직임이 아예 없으면 두 숫자를 눈으로 다시 재어 봐야 한다.
+class _GrowingBar extends StatelessWidget {
+  final double height;
+  final Color color;
+  final bool animate;
+
+  const _GrowingBar({
+    super.key,
+    required this.height,
+    required this.color,
+    required this.animate,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final bar = Container(
+      width: 44,
+      decoration: BoxDecoration(
+        color: color,
+        borderRadius: BorderRadius.circular(9),
+      ),
+    );
+    // 애니메이션을 끈 기기(접근성 설정)와 시험에서는 바로 제 높이로 선다.
+    if (!animate || MediaQuery.disableAnimationsOf(context)) {
+      return SizedBox(height: height, child: bar);
+    }
+    return TweenAnimationBuilder<double>(
+      tween: Tween<double>(begin: 0, end: height),
+      duration: const Duration(milliseconds: 700),
+      curve: Curves.easeOutCubic,
+      builder: (context, value, child) => SizedBox(height: value, child: child),
+      child: bar,
+    );
+  }
 }

@@ -21,10 +21,8 @@ import 'features/dashboard/presentation/screens/dashboard_screen.dart';
 import 'features/dashboard/presentation/screens/guardian_home_screen.dart';
 import 'features/dashboard/presentation/screens/home_screen.dart';
 import 'features/drug_explain/drug_explain_screen.dart';
-import 'features/dur_analysis/presentation/screens/dur_analysis_screen.dart';
 import 'features/medication/application/medication_controller.dart';
 import 'features/medicines/presentation/screens/drug_detail_screen.dart';
-import 'features/medicines/presentation/screens/my_medicines_screen.dart';
 import 'features/onboarding/presentation/screens/first_run_screen.dart';
 import 'features/prescription/presentation/screens/manual_medicine_screen.dart';
 import 'features/prescription/presentation/screens/prescription_screen.dart';
@@ -91,21 +89,14 @@ final _router = GoRouter(
     ),
     GoRoute(
       path: '/my-medicines',
-      builder: (context, state) => const MyMedicinesScreen(),
+      // 내 약은 아래 탭에 있는 자리다. 따로 쌓지 않고 그 탭을 연다.
+      builder: (context, state) =>
+          const HomeScreen(initialTab: HomeTab.medicines),
     ),
     GoRoute(
       path: '/medicines/:code',
       builder: (context, state) =>
           DrugDetailScreen(medicineCode: state.pathParameters['code'] ?? ''),
-    ),
-    GoRoute(
-      path: '/dur-analysis',
-      builder: (context, state) {
-        final extra = state.extra;
-        return DurAnalysisScreen(
-          initialResult: extra is Map ? Map<String, dynamic>.from(extra) : null,
-        );
-      },
     ),
     GoRoute(
       path: '/schedule-days',
@@ -170,7 +161,9 @@ final _router = GoRouter(
     ),
     GoRoute(
       path: '/drug-explain',
-      builder: (context, state) => const DrugExplainScreen(),
+      // 약 자세히에서 "이 약 물어보기"로 오면 그 약을 고른 채로 연다.
+      builder: (context, state) =>
+          DrugExplainScreen(initialMedicine: state.extra as String?),
     ),
   ],
 );

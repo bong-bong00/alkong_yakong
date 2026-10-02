@@ -12,7 +12,6 @@ import '../../../dev_mock.dart';
 import '../../biosignal/presentation/screens/heart_screen.dart';
 import '../../biosignal/presentation/screens/measure_screen.dart';
 import '../../dashboard/presentation/screens/medication_record_screen.dart';
-import '../../dur_analysis/presentation/screens/dur_analysis_screen.dart';
 import 'easy_dose_flow.dart';
 import '../../medication/domain/medication_models.dart';
 import '../../medication/presentation/screens/dose_done_screen.dart';
@@ -20,10 +19,8 @@ import '../../medicines/presentation/screens/my_medicines_screen.dart';
 import '../../drug_explain/drug_explain_screen.dart';
 import '../../prescription/presentation/screens/prescription_screen.dart';
 import '../../prescription/presentation/screens/schedule_days_screen.dart';
-import '../../profile/application/current_user_controller.dart';
 import '../../profile/presentation/screens/mypage_screen.dart';
 import '../domain/easy_flow.dart';
-import 'widgets/easy_sheets.dart';
 
 /// 쉬운 모드 쉘.
 ///
@@ -40,7 +37,6 @@ class EasyFlowShell extends ConsumerStatefulWidget {
 
 class _EasyFlowShellState extends ConsumerState<EasyFlowShell> {
   EasyScreen _screen = EasyScreen.today;
-  Map<String, dynamic>? _durResult;
 
   /// 방금 기록한 시간대. 완료 화면이 저녁이라고 우기지 않게 들고 있는다.
   DoseSlot? _recordedSlot;
@@ -93,23 +89,6 @@ class _EasyFlowShellState extends ConsumerState<EasyFlowShell> {
     );
   }
 
-  Future<void> _openMenu() async {
-    final result = await showEasyMenuSheet(
-      context,
-      userName: ref.read(currentUserNameProvider),
-    );
-    if (!mounted || result == null) return;
-    if (result.leaveEasyMode) {
-      await ref.read(appModeProvider.notifier).set(AppMode.normal);
-      return;
-    }
-    if (result.screen == EasyScreen.chat) {
-      context.push('/drug-explain');
-      return;
-    }
-    if (result.screen != null) _goTo(result.screen!);
-  }
-
   /// 일반 모드가 쓰는 화면을 그대로 부른다.
   Widget _buildScreen() {
     switch (_screen) {
@@ -138,20 +117,7 @@ class _EasyFlowShellState extends ConsumerState<EasyFlowShell> {
         return const MyMedicinesScreen();
       case EasyScreen.prescription:
         return PrescriptionScreen(
-          onCompleted: (result) {
-            _durResult = result;
-            if (_hasPairConflict(result)) {
-              _goTo(EasyScreen.interaction);
-            } else {
-              _goTo(EasyScreen.scheduleDays);
-            }
-          },
-          onOpenScheduleDays: () => _goTo(EasyScreen.scheduleDays),
-          onGoHome: () => _goTo(EasyScreen.today),
-        );
-      case EasyScreen.interaction:
-        return DurAnalysisScreen(
-          initialResult: _durResult,
+          onCompleted: (_) => _goTo(EasyScreen.scheduleDays),
           onOpenScheduleDays: () => _goTo(EasyScreen.scheduleDays),
           onGoHome: () => _goTo(EasyScreen.today),
         );
@@ -176,7 +142,6 @@ class _EasyFlowShellState extends ConsumerState<EasyFlowShell> {
         child: Column(
           children: [
             _EasyFlowTop(
-              onMenu: _openMenu,
               onLeave: () =>
                   ref.read(appModeProvider.notifier).set(AppMode.normal),
             ),
@@ -206,15 +171,14 @@ class _EasyFlowShellState extends ConsumerState<EasyFlowShell> {
   }
 }
 
-/// 쉬운 화면 맨 위 — 메뉴와 일반 화면으로 나가는 길.
+/// 간편 화면 맨 위 — 메뉴와 일반 화면으로 나가는 길.
 ///
 /// 걸음 막대는 여기서 그리지 않는다. 명세서는 복약 한 바퀴(76~84)에서만
-/// 여덟 칸 막대를 두고, 나머지 쉬운 화면(85~90)에는 두지 않는다.
+/// 여덟 칸 막대를 두고, 나머지 간편 화면(85~90)에는 두지 않는다.
 class _EasyFlowTop extends StatelessWidget {
-  final VoidCallback onMenu;
   final VoidCallback onLeave;
 
-  const _EasyFlowTop({required this.onMenu, required this.onLeave});
+  const _EasyFlowTop({required this.onLeave});
 
   @override
   Widget build(BuildContext context) {
@@ -222,7 +186,6 @@ class _EasyFlowTop extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(18, 10, 18, 6),
       child: Row(
         children: [
-          EasyMenuButton(onTap: onMenu),
           const Spacer(),
           _pill(onTap: onLeave, label: '일반 화면으로'),
         ],
@@ -336,41 +299,4 @@ class _EasyFlowBar extends StatelessWidget {
       ),
     );
   }
-}
-
-/// 헤더 오른쪽의 "메뉴" 버튼. 쉬운 모드에서 아바타 자리를 대신한다.
-class EasyMenuButton extends StatelessWidget {
-  final VoidCallback onTap;
-
-  const EasyMenuButton({super.key, required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    return Semantics(
-      button: true,
-      label: '메뉴 열기',
-      child: GestureDetector(
-        onTap: onTap,
-        child: Container(
-          constraints: const BoxConstraints(minHeight: 52),
-          alignment: Alignment.center,
-          padding: const EdgeInsets.symmetric(horizontal: 17),
-          decoration: BoxDecoration(
-            color: AppColors.bg,
-            borderRadius: BorderRadius.circular(26),
-          ),
-          child: Text('메뉴', style: AppText.cardTitle(size: 19)),
-        ),
-      ),
-    );
-  }
-}
-
-bool _hasPairConflict(Map<String, dynamic>? durResult) {
-  const pairTypes = {'병용금기', '중복성분', '효능군중복'};
-  final matches = durResult?['matches'];
-  if (matches is! List) return false;
-  return matches.any(
-    (item) => item is Map && pairTypes.contains(item['type']?.toString()),
-  );
 }
