@@ -54,7 +54,6 @@ class FirstRunScreen extends StatelessWidget {
               SeniorCard(
                 padding: const EdgeInsets.fromLTRB(18, 14, 18, 14),
                 radius: 24,
-                borderColor: AppColors.point,
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
@@ -94,8 +93,6 @@ class FirstRunScreen extends StatelessWidget {
               SeniorCard(
                 padding: const EdgeInsets.fromLTRB(18, 14, 18, 14),
                 radius: 24,
-                borderColor: AppColors.border,
-                borderWidth: 2,
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
@@ -125,8 +122,6 @@ class FirstRunScreen extends StatelessWidget {
               SeniorCard(
                 padding: const EdgeInsets.fromLTRB(18, 14, 18, 14),
                 radius: 24,
-                borderColor: AppColors.border,
-                borderWidth: 2,
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [

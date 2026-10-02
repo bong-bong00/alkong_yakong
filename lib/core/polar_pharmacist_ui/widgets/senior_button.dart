@@ -123,17 +123,9 @@ class _SeniorButtonState extends State<SeniorButton> {
     }
   }
 
-  BoxBorder? get _border {
-    switch (widget.kind) {
-      case SeniorButtonKind.secondary:
-      case SeniorButtonKind.outline:
-        return Border.all(color: AppColors.strongLine, width: 2);
-      case SeniorButtonKind.dark:
-        return Border.all(color: AppColors.onDarkBorder, width: 2);
-      default:
-        return null;
-    }
-  }
+  /// 단추에는 테두리를 두지 않는다. 면과 그림자로만 가른다 — 테두리까지
+  /// 두면 같은 줄이 두 겹으로 보이고 글자가 갇힌 것처럼 읽힌다.
+  BoxBorder? get _border => null;
 
   @override
   Widget build(BuildContext context) {
@@ -263,9 +255,8 @@ class _SeniorChoiceCardState extends State<SeniorChoiceCard> {
           decoration: BoxDecoration(
             color: bg,
             borderRadius: BorderRadius.circular(22),
-            border: primary
-                ? null
-                : Border.all(color: AppColors.strongLine, width: 2),
+            // 큰 보기 칸도 테두리 없이 면으로만 가른다.
+            border: null,
             boxShadow: primary && !_pressed
                 ? const [
                     BoxShadow(

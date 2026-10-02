@@ -839,12 +839,10 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
 
   @override
   Widget build(BuildContext context) {
-    final largeText = MediaQuery.textScalerOf(context).scale(16) > 24;
-    final historyButton = TextButton(
-      onPressed: _isLoading || _isLoadingMedicines
+    final historyButton = _HistoryButton(
+      onTap: _isLoading || _isLoadingMedicines
           ? null
           : _openPreviousConversations,
-      child: const Text('이전 대화', style: TextStyle(fontSize: 16)),
     );
     final medicine = _selectedMedicine;
     final shortName = medicine == null ? null : _shortName(medicine);
@@ -882,17 +880,15 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
                           ),
                         ),
                         const SizedBox(height: 2),
-                        if (largeText)
-                          historyButton
-                        else
-                          Text(
-                            '약 이야기를 쉬운 말로 알려드려요',
-                            style: AppText.caption(size: 16.5),
-                          ),
+                        Text(
+                          '약 이야기를 쉬운 말로 알려드려요',
+                          style: AppText.caption(size: 16.5),
+                        ),
                       ],
                     ),
                   ),
-                  if (!largeText) historyButton,
+                  const SizedBox(width: 10),
+                  historyButton,
                 ],
               ),
             ),
@@ -1972,4 +1968,48 @@ String _withoutClosingDisclaimer(String text) {
     lines.removeLast();
   }
   return lines.join('\n');
+}
+
+/// 머리 오른쪽의 "이전 대화" 칸.
+///
+/// 작은 글자 단추로 두었더니 지난 이야기를 다시 볼 수 있다는 것을 모르고
+/// 같은 것을 또 물으셨다. 글자만 두지 않고 칸으로 세워 눈에 띄게 한다.
+class _HistoryButton extends StatelessWidget {
+  final VoidCallback? onTap;
+
+  const _HistoryButton({this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final enabled = onTap != null;
+    final ink = enabled ? AppColors.textPrimary : AppColors.inactiveLabel;
+    return Semantics(
+      button: true,
+      enabled: enabled,
+      label: '이전 대화 보기',
+      child: GestureDetector(
+        onTap: onTap,
+        behavior: HitTestBehavior.opaque,
+        child: ExcludeSemantics(
+          child: Container(
+            constraints: const BoxConstraints(minHeight: 52),
+            alignment: Alignment.center,
+            padding: const EdgeInsets.symmetric(horizontal: 14),
+            decoration: BoxDecoration(
+              color: AppColors.secondaryFill,
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(TablerIcons.history, size: 22, color: ink),
+                const SizedBox(width: 6),
+                Text('이전 대화', style: AppText.cardTitle(size: 18, color: ink)),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }
