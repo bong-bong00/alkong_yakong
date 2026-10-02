@@ -14,6 +14,7 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
 import 'core/network/api_client.dart';
+import 'core/session/auth_session.dart';
 import 'core/session/mvp_session.dart';
 import 'features/biosignal/application/heart_device.dart';
 import 'features/biosignal/data/heart_repository.dart';
@@ -245,6 +246,16 @@ class _MockUserMedicines extends UserMedicinesController {
         (med) => med.medicineCode == medicineCode,
         orElse: () => _mockMedicines().first,
       );
+}
+
+/// 가짜 데이터로 화면을 볼 때는 로그인 화면을 건너뛴다.
+///
+/// 보여 주려는 것은 로그인 절차가 아니라 그 뒤의 화면이다. [kMockData]가
+/// 켜졌을 때만 부른다 — 실제 빌드에서는 이 길이 아예 돌지 않는다.
+Future<void> applyMockSession() async {
+  if (!mockData) return;
+  MvpSession.userId = 'mock-patient';
+  await AuthSession.setLoggedIn('patient');
 }
 
 // ── 내 정보 ───────────────────────────────────────────────

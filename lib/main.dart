@@ -207,6 +207,8 @@ void main() {
 
 Future<void> _restoreSession(ProviderContainer container) async {
   final timer = Stopwatch()..start();
+  // 가짜 데이터로 볼 때는 로그인 화면을 건너뛴다(dev_mock.dart와 함께 꺼진다).
+  await applyMockSession();
   final restoredUser = await restorePersistedSession(UserRepository());
   if (restoredUser != null) {
     container.read(userRoleProvider.notifier).state = restoredUser.isGuardian
