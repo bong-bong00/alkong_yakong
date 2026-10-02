@@ -31,9 +31,6 @@ class MedicationRecordScreen extends ConsumerStatefulWidget {
   /// 보호자가 볼 어르신 id. null이면 로그인한 본인의 기록이다.
   final String? patientUserId;
 
-  /// 쉬운 화면에서 열렸을 때. 위에 이미 띄가 있어 제목을 더 위로 붙인다.
-  final bool compactTop;
-
   /// 남아 있는 자리. 화면 안에는 더 이상 단추를 두지 않는다 —
   /// 탭과 쉬운 화면의 "뒤로"가 이미 돌아가는 길이다.
   final VoidCallback? onBackToToday;
@@ -44,7 +41,6 @@ class MedicationRecordScreen extends ConsumerStatefulWidget {
     this.onBackToToday,
     this.showBack = false,
     this.patientUserId,
-    this.compactTop = false,
   });
 
   @override
@@ -129,12 +125,7 @@ class _MedicationRecordScreenState
               const SizedBox.shrink(),
             Expanded(
               child: SingleChildScrollView(
-                padding: EdgeInsets.fromLTRB(
-                  16,
-                  widget.compactTop ? 2 : 20,
-                  16,
-                  28,
-                ),
+                padding: const EdgeInsets.fromLTRB(16, 20, 16, 28),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [

@@ -84,12 +84,11 @@ class _EasyFlowShellState extends ConsumerState<EasyFlowShell> {
       case EasyScreen.record:
         return MedicationRecordScreen(
           onBackToToday: () => _goTo(EasyScreen.today),
-          compactTop: true,
         );
       case EasyScreen.heart:
         return HeartScreen(repository: mockHeartRepository());
       case EasyScreen.medicines:
-        return const MyMedicinesScreen(compactTop: true);
+        return const MyMedicinesScreen();
       case EasyScreen.prescription:
         return PrescriptionScreen(
           onCompleted: (_) => _goTo(EasyScreen.scheduleDays),
@@ -103,7 +102,7 @@ class _EasyFlowShellState extends ConsumerState<EasyFlowShell> {
       case EasyScreen.measure:
         return const MeasureScreen(returnToPreviousScreen: true);
       case EasyScreen.myInfo:
-        return const MyPageScreen(compactTop: true);
+        return const MyPageScreen();
     }
   }
 
