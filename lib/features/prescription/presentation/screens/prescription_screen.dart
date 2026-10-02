@@ -49,6 +49,9 @@ enum PrescriptionStep {
   /// 4e — 이렇게 읽었어요.
   confirm,
 
+  /// 때를 못 읽은 약이 있을 때 한 번만 묻는 화면.
+  whenToTake,
+
   /// 읽지 못했을 때 (5e 회복 패턴).
   failed,
 }
@@ -245,6 +248,60 @@ class _PrescriptionScreenState extends ConsumerState<PrescriptionScreen> {
       });
     }
   }
+
+  /// 확인 화면에서 넘어온 약. 때를 고르고 나면 이 값으로 등록한다.
+  List<Map<String, dynamic>> _pendingItems = const [];
+
+  /// 때를 못 읽은 약이 하나라도 있으면 한 번 묻고, 아니면 바로 등록한다.
+  Future<void> _askWhenThenRegister(
+    List<Map<String, dynamic>> editedItems,
+  ) async {
+    final unknown = editedItems.where(_hasNoSlots).toList();
+    if (unknown.isEmpty) {
+      await _register(editedItems);
+      return;
+    }
+    setState(() {
+      _pendingItems = editedItems;
+      _step = PrescriptionStep.whenToTake;
+    });
+  }
+
+  static bool _hasNoSlots(Map<String, dynamic> item) {
+    final times = item['administration_times'];
+    return times is! List || times.isEmpty;
+  }
+
+  /// 미리 켜 둘 때. 1일 N회를 읽었으면 그만큼 켠다.
+  ///
+  /// 네 번 이상은 끼니로 나눌 수 없어 아무것도 켜지 않는다 — 지어내지
+  /// 않는 편이 낫다.
+  static List<String> _suggestedSlots(List<Map<String, dynamic>> items) {
+    var most = 0;
+    for (final item in items.where(_hasNoSlots)) {
+      final raw = item['frequency_per_day'];
+      final count = raw is num ? raw.toInt() : int.tryParse('$raw') ?? 0;
+      if (count > most) most = count;
+    }
+    return switch (most) {
+      1 => const ['아침'],
+      2 => const ['아침', '저녁'],
+      3 => const ['아침', '점심', '저녁'],
+      _ => const [],
+    };
+  }
+
+  /// 고른 때를 **모르던 약에만** 넣는다. 읽어 둔 약은 그대로 둔다.
+  static List<Map<String, dynamic>> _applySlots(
+    List<Map<String, dynamic>> items,
+    List<String> slots,
+  ) => [
+    for (final item in items)
+      if (_hasNoSlots(item) && slots.isNotEmpty)
+        {...item, 'administration_times': slots}
+      else
+        item,
+  ];
 
   Future<void> _register(List<Map<String, dynamic>> editedItems) async {
     final userId = _targetUserId;
@@ -543,12 +600,22 @@ class _PrescriptionScreenState extends ConsumerState<PrescriptionScreen> {
         );
       case PrescriptionStep.reading:
         return _ReadingScreen(image: _image);
+      case PrescriptionStep.whenToTake:
+        return _WhenToTakeScreen(
+          initialSlots: _suggestedSlots(_pendingItems),
+          onBack: () => setState(() => _step = PrescriptionStep.confirm),
+          onDone: (slots) {
+            final items = _applySlots(_pendingItems, slots);
+            _pendingItems = const [];
+            unawaited(_register(items));
+          },
+        );
       case PrescriptionStep.confirm:
         return _ConfirmScreen(
           onBehalfOf: widget.onBehalfOf,
           items: _items,
           diagnosticId: _result?['diagnostic_id']?.toString() ?? 'unavailable',
-          onRegister: _register,
+          onRegister: _askWhenThenRegister,
           onRetake: () => setState(() {
             _image = null;
             _step = PrescriptionStep.pickMethod;
@@ -2145,6 +2212,133 @@ class _SlotPicker extends StatelessWidget {
             ),
           ),
       ],
+    );
+  }
+}
+
+/// 등록 끝에 한 번 묻는 "언제 드세요?".
+///
+/// 봉투 하나의 약은 대개 같은 때에 드신다. 약마다 묻지 않고 한 번만
+/// 묻고, 고른 때를 때가 비어 있는 약에 모두 넣는다.
+class _WhenToTakeScreen extends StatefulWidget {
+  final List<String> initialSlots;
+  final VoidCallback onBack;
+  final ValueChanged<List<String>> onDone;
+
+  const _WhenToTakeScreen({
+    required this.initialSlots,
+    required this.onBack,
+    required this.onDone,
+  });
+
+  @override
+  State<_WhenToTakeScreen> createState() => _WhenToTakeScreenState();
+}
+
+class _WhenToTakeScreenState extends State<_WhenToTakeScreen> {
+  static const _slots = ['아침', '점심', '저녁', '취침전'];
+  late final Set<String> _picked = {...widget.initialSlots};
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: AppColors.bg,
+      body: Column(
+        children: [
+          SeniorBackHeader(title: '언제 드세요?', onBack: widget.onBack),
+          Expanded(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.fromLTRB(20, 16, 20, 28),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text('이 약들, 언제 드세요?', style: AppText.screenTitle(size: 27)),
+                  const SizedBox(height: 8),
+                  Text(
+                    '봉투에 적혀 있지 않아 한 번만 여쭤봐요. 여러 개 고르셔도 돼요.',
+                    style: AppText.body(
+                      size: 18,
+                      color: AppColors.textTertiary,
+                    ),
+                  ),
+                  const SizedBox(height: 18),
+                  SeniorCard(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 20,
+                      vertical: 4,
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        for (int i = 0; i < _slots.length; i++) ...[
+                          if (i > 0) const SeniorDivider(),
+                          _SlotToggleRow(
+                            label: _slots[i],
+                            value: _picked.contains(_slots[i]),
+                            onChanged: (on) => setState(() {
+                              if (on) {
+                                _picked.add(_slots[i]);
+                              } else {
+                                _picked.remove(_slots[i]);
+                              }
+                            }),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+            child: SeniorButton(
+              label: '이대로 등록하기',
+              minHeight: 72,
+              fontSize: 23,
+              elevated: true,
+              onPressed: _picked.isEmpty
+                  ? null
+                  : () => widget.onDone([
+                      for (final slot in _slots)
+                        if (_picked.contains(slot)) slot,
+                    ]),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// 때 한 줄. 오른쪽 스위치로 켜고 끈다.
+class _SlotToggleRow extends StatelessWidget {
+  final String label;
+  final bool value;
+  final ValueChanged<bool> onChanged;
+
+  const _SlotToggleRow({
+    required this.label,
+    required this.value,
+    required this.onChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      constraints: const BoxConstraints(minHeight: 64),
+      child: Row(
+        children: [
+          Expanded(child: Text(label, style: AppText.cardTitle(size: 21))),
+          const SizedBox(width: 10),
+          SeniorToggle(
+            value: value,
+            semanticLabel: label,
+            onChanged: onChanged,
+          ),
+        ],
+      ),
     );
   }
 }
