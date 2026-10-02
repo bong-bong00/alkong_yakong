@@ -121,10 +121,11 @@ class _EasyFlowShellState extends ConsumerState<EasyFlowShell> {
         backgroundColor: AppColors.pageBg,
         body: SafeArea(
           bottom: false,
-          child: Column(
+          // 띄가 제 줄을 차지하면 화면이 그만큼 밀린다. 일반 화면처럼
+          // 화면 위에 얼려 둔다 — 내용은 맨 위에서 시작한다.
+          child: Stack(
             children: [
-              const _EasyFlowTop(),
-              Expanded(
+              Positioned.fill(
                 child: KeyedSubtree(
                   // 화면마다 새로 만든다. 보이지도 않는 화면이 센서를 잡고
                   // 있지 않도록.
@@ -136,6 +137,7 @@ class _EasyFlowShellState extends ConsumerState<EasyFlowShell> {
                   ),
                 ),
               ),
+              const Positioned(top: 16, right: 18, child: ModeBadge()),
             ],
           ),
         ),
@@ -154,25 +156,6 @@ class _EasyFlowShellState extends ConsumerState<EasyFlowShell> {
 ///
 /// 걸음 막대는 여기서 그리지 않는다. 명세서는 복약 한 바퀴(76~84)에서만
 /// 여덟 칸 막대를 두고, 나머지 간편 화면(85~90)에는 두지 않는다.
-class _EasyFlowTop extends StatelessWidget {
-  const _EasyFlowTop();
-
-  @override
-  Widget build(BuildContext context) {
-    return const Padding(
-      // 일반 화면 머리와 같은 여백이다. 두 화면의 띄가 같은 자리에
-      // 있어야 같은 앱으로 읽힌다.
-      padding: EdgeInsets.fromLTRB(18, 16, 18, 14),
-      child: Row(
-        children: [
-          Spacer(),
-          Flexible(child: ModeBadge()),
-        ],
-      ),
-    );
-  }
-}
-
 /// 다음 한 걸음 바.
 class _EasyFlowBar extends StatelessWidget {
   final VoidCallback onBack;

@@ -703,7 +703,8 @@ class _EasyStepPage extends StatelessWidget {
       children: [
         Expanded(
           child: SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(18, 8, 18, 18),
+            // 걸음 막대는 가로를 다 쓴다. 띄가 떠 있는 위쪽은 비워 둔다.
+            padding: EdgeInsets.fromLTRB(18, number == null ? 8 : 70, 18, 18),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
