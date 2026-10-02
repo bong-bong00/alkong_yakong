@@ -17,6 +17,9 @@ DEMO_SEED_ENABLED = os.getenv(
     "DEMO_SEED_ENABLED",
     "false",
 ).lower() == "true"
+PRESENTATION_SEED_ENABLED = os.getenv(
+    "PRESENTATION_SEED_ENABLED", "false" if _ON_RENDER else "true"
+).lower() == "true"
 
 E_DRUG_API_KEY = os.getenv("E_DRUG_API_KEY") or os.getenv("MFDS_SERVICE_KEY")
 DUR_API_KEY = os.getenv("DUR_API_KEY") or E_DRUG_API_KEY

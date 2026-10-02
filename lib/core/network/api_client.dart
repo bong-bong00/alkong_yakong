@@ -40,8 +40,13 @@ class ApiClient {
     String path, {
     required Map<String, dynamic> body,
     Duration timeout = _defaultTimeout,
+    Map<String, String> headers = const {},
   }) => _send(
-    () => _client.post(_uri(path), headers: _headers, body: jsonEncode(body)),
+    () => _client.post(
+      _uri(path),
+      headers: {..._headers, ...headers},
+      body: jsonEncode(body),
+    ),
     timeout: timeout,
   );
 
