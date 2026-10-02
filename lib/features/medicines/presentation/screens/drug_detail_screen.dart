@@ -7,6 +7,7 @@ import '../../../../core/constants/medicine_flow_colors.dart';
 import '../../../../core/mode/app_mode.dart';
 import '../../../../core/theme/medicine_flow_typography.dart';
 import '../../../../core/widgets/recovery_view.dart';
+import '../../../../core/widgets/senior_feedback.dart';
 import '../../../../core/widgets/medicine_flow_card.dart';
 import '../../../../core/widgets/senior_header.dart';
 import '../../application/user_medicines_controller.dart';
@@ -28,6 +29,12 @@ class _DrugDetailScreenState extends ConsumerState<DrugDetailScreen> {
   UserMedicine? _medicine;
   String? _error;
   bool _loading = true;
+
+  /// 지금 보고 있는 탭. 0 하는 일 · 1 주의 · 2 먹는 법.
+  ///
+  /// 한 화면에 다 쌓으면 아래쪽은 끝까지 안 내려가 안 읽힌다. 주의사항이
+  /// 그 아래에 묻히는 것이 가장 나쁘다.
+  int _tab = 0;
 
   @override
   void initState() {
@@ -83,7 +90,12 @@ class _DrugDetailScreenState extends ConsumerState<DrugDetailScreen> {
                     stillWorksTitle: '지금도 할 수 있는 것',
                     stillWorksBody: '오늘 홈에서 복약 기록은 그대로 쓸 수 있어요.',
                   )
-                : _DetailBody(medicine: _medicine!, easyMode: easyMode),
+                : _DetailBody(
+                    medicine: _medicine!,
+                    easyMode: easyMode,
+                    tab: _tab,
+                    onTabChanged: (index) => setState(() => _tab = index),
+                  ),
           ),
           // 읽다가 모르는 것이 생기면 그 자리에서 물어보게 한다. 약 이름을
           // 다시 고르게 하지 않는다 — 지금 보고 있는 약이 곧 그 약이다.
@@ -177,7 +189,16 @@ class _DetailBody extends StatelessWidget {
   final UserMedicine medicine;
   final bool easyMode;
 
-  const _DetailBody({required this.medicine, required this.easyMode});
+  /// 0 하는 일 · 1 주의 · 2 먹는 법.
+  final int tab;
+  final ValueChanged<int> onTabChanged;
+
+  const _DetailBody({
+    required this.medicine,
+    required this.easyMode,
+    required this.tab,
+    required this.onTabChanged,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -257,81 +278,148 @@ class _DetailBody extends StatelessWidget {
               ],
             ),
           ),
-          if (medicine.hasDetailContent) ...[
-            if (medicine.ingredientExplanation.trim().isNotEmpty) ...[
+          const SizedBox(height: 14),
+          // 시안 42 — 하는 일 · 주의 · 먹는 법 셋으로 갈라 한 번에 하나만 본다.
+          SeniorSegmented(
+            labels: const ['하는 일', '주의', '먹는 법'],
+            index: tab,
+            onChanged: onTabChanged,
+          ),
+          const SizedBox(height: 2),
+          if (tab == 0) ...[
+            if (medicine.hasDetailContent) ...[
+              if (medicine.ingredientExplanation.trim().isNotEmpty) ...[
+                const SizedBox(height: 12),
+                SeniorCard(
+                  padding: const EdgeInsets.all(22),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      IconTitle(
+                        icon: Icons.science_outlined,
+                        text: easyMode ? '이 성분은 어떤 역할을 하나요?' : '주성분 설명',
+                        style: AppText.cardTitle(size: 22),
+                      ),
+                      const SizedBox(height: 12),
+                      _EmphasizedBodyText(
+                        text: medicine.ingredientExplanation,
+                        highlight: medicine.ingredientHighlight,
+                        ingredient: medicine.ingredientName,
+                        fallbackHighlight: medicine.approvedUseSummary,
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+              if (medicine.treatmentUses.isNotEmpty ||
+                  medicine.approvedUseSummary.trim().isNotEmpty ||
+                  medicine.approvedUses.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                SeniorCard(
+                  padding: const EdgeInsets.all(22),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      IconTitle(
+                        icon: Icons.medical_information_outlined,
+                        text: '어떤 치료에 쓰이나요?',
+                        style: AppText.cardTitle(size: 22),
+                      ),
+                      if (medicine.treatmentUses.isNotEmpty)
+                        for (final use in medicine.treatmentUses) ...[
+                          const SizedBox(height: 12),
+                          Text(
+                            '· ${use.title}',
+                            style: AppText.body(
+                              size: 20,
+                              color: AppColors.detailEmphasis,
+                            ).copyWith(fontWeight: FontWeight.w800),
+                          ),
+                          if (use.description.isNotEmpty) ...[
+                            const SizedBox(height: 4),
+                            Padding(
+                              padding: const EdgeInsets.only(left: 14),
+                              child: Text(
+                                use.description,
+                                style: AppText.body(size: 20),
+                              ),
+                            ),
+                          ],
+                        ]
+                      else ...[
+                        if (medicine.approvedUseSummary.trim().isNotEmpty) ...[
+                          const SizedBox(height: 12),
+                          Text(
+                            medicine.approvedUseSummary,
+                            style: AppText.body(size: 20),
+                          ),
+                        ],
+                        for (final purpose in medicine.approvedUses) ...[
+                          const SizedBox(height: 8),
+                          Text('· $purpose', style: AppText.body(size: 20)),
+                        ],
+                      ],
+                      const SizedBox(height: 10),
+                      Text(
+                        '실제 처방 이유는 의료진에게 확인해 주세요.',
+                        style: AppText.caption(
+                          size: 18,
+                          color: AppColors.textSecondary,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+              if (extraOfficialUses.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                SeniorCard(
+                  padding: EdgeInsets.zero,
+                  child: Theme(
+                    data: Theme.of(
+                      context,
+                    ).copyWith(dividerColor: Colors.transparent),
+                    child: ExpansionTile(
+                      tilePadding: const EdgeInsets.symmetric(
+                        horizontal: 22,
+                        vertical: 6,
+                      ),
+                      childrenPadding: const EdgeInsets.fromLTRB(22, 0, 22, 22),
+                      title: Text(
+                        easyMode ? '더 자세한 사용 목적 보기' : '전체 허가 목적',
+                        style: AppText.cardTitle(size: 22),
+                      ),
+                      children: [
+                        for (final purpose in extraOfficialUses) ...[
+                          _OfficialPurposeText(purpose: purpose),
+                          const SizedBox(height: 8),
+                        ],
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ] else ...[
               const SizedBox(height: 12),
               SeniorCard(
-                padding: const EdgeInsets.all(22),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    IconTitle(
-                      icon: Icons.science_outlined,
-                      text: easyMode ? '이 성분은 어떤 역할을 하나요?' : '주성분 설명',
-                      style: AppText.cardTitle(size: 22),
-                    ),
-                    const SizedBox(height: 12),
-                    _EmphasizedBodyText(
-                      text: medicine.ingredientExplanation,
-                      highlight: medicine.ingredientHighlight,
-                      ingredient: medicine.ingredientName,
-                      fallbackHighlight: medicine.approvedUseSummary,
-                    ),
-                  ],
+                padding: const EdgeInsets.all(20),
+                child: Text(
+                  _detailStatusMessage(medicine.detailStatus),
+                  style: AppText.body(size: 20, color: AppColors.textSecondary),
                 ),
               ),
             ],
-            if (medicine.treatmentUses.isNotEmpty ||
-                medicine.approvedUseSummary.trim().isNotEmpty ||
-                medicine.approvedUses.isNotEmpty) ...[
+            if (medicine.detailSourceName.trim().isNotEmpty) ...[
               const SizedBox(height: 12),
               SeniorCard(
-                padding: const EdgeInsets.all(22),
+                padding: const EdgeInsets.all(20),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    IconTitle(
-                      icon: Icons.medical_information_outlined,
-                      text: '어떤 치료에 쓰이나요?',
-                      style: AppText.cardTitle(size: 22),
-                    ),
-                    if (medicine.treatmentUses.isNotEmpty)
-                      for (final use in medicine.treatmentUses) ...[
-                        const SizedBox(height: 12),
-                        Text(
-                          '· ${use.title}',
-                          style: AppText.body(
-                            size: 20,
-                            color: AppColors.detailEmphasis,
-                          ).copyWith(fontWeight: FontWeight.w800),
-                        ),
-                        if (use.description.isNotEmpty) ...[
-                          const SizedBox(height: 4),
-                          Padding(
-                            padding: const EdgeInsets.only(left: 14),
-                            child: Text(
-                              use.description,
-                              style: AppText.body(size: 20),
-                            ),
-                          ),
-                        ],
-                      ]
-                    else ...[
-                      if (medicine.approvedUseSummary.trim().isNotEmpty) ...[
-                        const SizedBox(height: 12),
-                        Text(
-                          medicine.approvedUseSummary,
-                          style: AppText.body(size: 20),
-                        ),
-                      ],
-                      for (final purpose in medicine.approvedUses) ...[
-                        const SizedBox(height: 8),
-                        Text('· $purpose', style: AppText.body(size: 20)),
-                      ],
-                    ],
-                    const SizedBox(height: 10),
+                    Text('정보 출처', style: AppText.label(size: 19)),
+                    const SizedBox(height: 6),
                     Text(
-                      '실제 처방 이유는 의료진에게 확인해 주세요.',
+                      '식약처 의약품 허가정보',
                       style: AppText.caption(
                         size: 18,
                         color: AppColors.textSecondary,
@@ -341,241 +429,136 @@ class _DetailBody extends StatelessWidget {
                 ),
               ),
             ],
-            if (extraOfficialUses.isNotEmpty) ...[
+            if ((medicine.purposeNotice ?? '').trim().isNotEmpty) ...[
               const SizedBox(height: 12),
               SeniorCard(
-                padding: EdgeInsets.zero,
-                child: Theme(
-                  data: Theme.of(
-                    context,
-                  ).copyWith(dividerColor: Colors.transparent),
-                  child: ExpansionTile(
-                    tilePadding: const EdgeInsets.symmetric(
-                      horizontal: 22,
-                      vertical: 6,
+                padding: const EdgeInsets.all(20),
+                child: Text(
+                  medicine.purposeNotice!,
+                  style: AppText.caption(
+                    size: 18,
+                    color: AppColors.textSecondary,
+                  ),
+                ),
+              ),
+            ],
+          ] else if (tab == 1) ...[
+            if (cautions.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              SeniorCard(
+                padding: const EdgeInsets.all(22),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    IconTitle(
+                      icon: TablerIcons.alert_triangle,
+                      color: AppColors.danger,
+                      text: '꼭 기억해 주세요',
+                      style: AppText.cardTitle(
+                        size: 22,
+                        color: AppColors.danger,
+                      ),
                     ),
-                    childrenPadding: const EdgeInsets.fromLTRB(22, 0, 22, 22),
-                    title: Text(
-                      easyMode ? '더 자세한 사용 목적 보기' : '전체 허가 목적',
+                    const SizedBox(height: 12),
+                    for (final caution in cautions) ...[
+                      Text(
+                        '· $caution',
+                        style: AppText.body(
+                          size: 20,
+                          color: AppColors.textBody,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                    ],
+                  ],
+                ),
+              ),
+            ],
+            if (medicine.interactionStatus == 'risk_found' &&
+                (medicine.interactionSummary ?? '').trim().isNotEmpty) ...[
+              const SizedBox(height: 12),
+              SeniorCard(
+                padding: const EdgeInsets.all(22),
+                borderColor: AppColors.danger,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    IconTitle(
+                      icon: TablerIcons.alert_triangle,
+                      color: AppColors.danger,
+                      text: '함께먹기 주의가 있어요',
+                      style: AppText.cardTitle(
+                        size: 22,
+                        color: AppColors.danger,
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    if (medicine.interactionPairLabel.trim().isNotEmpty) ...[
+                      Text(
+                        medicine.interactionPairLabel,
+                        style: AppText.body(size: 20),
+                      ),
+                      const SizedBox(height: 8),
+                    ],
+                    Text(
+                      medicine.interactionSummary!,
+                      style: AppText.body(size: 20),
+                    ),
+                    if (medicine.interactionRiskFactor.trim().isNotEmpty) ...[
+                      const SizedBox(height: 10),
+                      Text(
+                        '성분 위험요소: ${medicine.interactionRiskFactor}',
+                        style: AppText.label(size: 19),
+                      ),
+                    ],
+                    if (!medicine.interactionSummary!.contains('확인해')) ...[
+                      const SizedBox(height: 8),
+                      Text(
+                        '약국이나 병원에 한 번 확인해 주세요.',
+                        style: AppText.label(size: 19, color: AppColors.danger),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ],
+            if (medicine.askDoctorWhen.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              SeniorCard(
+                padding: const EdgeInsets.all(22),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    IconTitle(
+                      icon: Icons.contact_support_outlined,
+                      text: '언제 의료진에게 알려야 하나요?',
                       style: AppText.cardTitle(size: 22),
                     ),
-                    children: [
-                      for (final purpose in extraOfficialUses) ...[
-                        _OfficialPurposeText(purpose: purpose),
-                        const SizedBox(height: 8),
-                      ],
+                    const SizedBox(height: 12),
+                    for (final situation in medicine.askDoctorWhen) ...[
+                      Text('· $situation', style: AppText.body(size: 20)),
+                      const SizedBox(height: 8),
                     ],
-                  ),
+                  ],
+                ),
+              ),
+            ],
+            // 빈 탭을 그대로 두면 안 불러온 것인지 없는 것인지 모른다.
+            if (cautions.isEmpty &&
+                medicine.interactionStatus != 'risk_found' &&
+                medicine.askDoctorWhen.isEmpty) ...[
+              const SizedBox(height: 12),
+              SeniorCard(
+                padding: const EdgeInsets.all(22),
+                child: Text(
+                  '이 약에 따로 적힌 주의사항이 없어요.',
+                  style: AppText.body(size: 20, color: AppColors.textSecondary),
                 ),
               ),
             ],
           ] else ...[
             const SizedBox(height: 12),
-            SeniorCard(
-              padding: const EdgeInsets.all(20),
-              child: Text(
-                _detailStatusMessage(medicine.detailStatus),
-                style: AppText.body(size: 20, color: AppColors.textSecondary),
-              ),
-            ),
-          ],
-          if (cautions.isNotEmpty) ...[
-            const SizedBox(height: 12),
-            SeniorCard(
-              padding: const EdgeInsets.all(22),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  IconTitle(
-                    icon: TablerIcons.alert_triangle,
-                    color: AppColors.danger,
-                    text: '꼭 기억해 주세요',
-                    style: AppText.cardTitle(size: 22, color: AppColors.danger),
-                  ),
-                  const SizedBox(height: 12),
-                  for (final caution in cautions) ...[
-                    Text(
-                      '· $caution',
-                      style: AppText.body(size: 20, color: AppColors.textBody),
-                    ),
-                    const SizedBox(height: 8),
-                  ],
-                ],
-              ),
-            ),
-          ],
-          if (medicine.interactionStatus == 'risk_found' &&
-              (medicine.interactionSummary ?? '').trim().isNotEmpty) ...[
-            const SizedBox(height: 12),
-            SeniorCard(
-              padding: const EdgeInsets.all(22),
-              borderColor: AppColors.danger,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  IconTitle(
-                    icon: TablerIcons.alert_triangle,
-                    color: AppColors.danger,
-                    text: '함께먹기 주의가 있어요',
-                    style: AppText.cardTitle(size: 22, color: AppColors.danger),
-                  ),
-                  const SizedBox(height: 10),
-                  if (medicine.interactionPairLabel.trim().isNotEmpty) ...[
-                    Text(
-                      medicine.interactionPairLabel,
-                      style: AppText.body(size: 20),
-                    ),
-                    const SizedBox(height: 8),
-                  ],
-                  Text(
-                    medicine.interactionSummary!,
-                    style: AppText.body(size: 20),
-                  ),
-                  if (medicine.interactionRiskFactor.trim().isNotEmpty) ...[
-                    const SizedBox(height: 10),
-                    Text(
-                      '성분 위험요소: ${medicine.interactionRiskFactor}',
-                      style: AppText.label(size: 19),
-                    ),
-                  ],
-                  if (!medicine.interactionSummary!.contains('확인해')) ...[
-                    const SizedBox(height: 8),
-                    Text(
-                      '약국이나 병원에 한 번 확인해 주세요.',
-                      style: AppText.label(size: 19, color: AppColors.danger),
-                    ),
-                  ],
-                ],
-              ),
-            ),
-          ],
-          const SizedBox(height: 12),
-          SeniorCard(
-            padding: const EdgeInsets.all(22),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                IconTitle(
-                  icon: TablerIcons.clock,
-                  text: medicine.useType == MedicineUseType.eat
-                      ? '내가 처방받은 복용 방법'
-                      : '내가 처방받은 사용 방법',
-                  style: AppText.cardTitle(size: 22),
-                ),
-                const SizedBox(height: 12),
-                Text(
-                  '한 번에 ${medicine.doseAction} 양 ${medicine.dosageLabel}',
-                  style: AppText.body(size: 21),
-                ),
-                const SizedBox(height: 6),
-                Text(medicine.frequencyLabel, style: AppText.body(size: 21)),
-                if (medicine.administrationTimes.isNotEmpty) ...[
-                  const SizedBox(height: 6),
-                  Text(
-                    '시간: ${medicine.administrationTimes.join(' · ')}',
-                    style: AppText.caption(size: 18),
-                  ),
-                ],
-              ],
-            ),
-          ),
-          if (medicine.officialUsage.trim().isNotEmpty) ...[
-            const SizedBox(height: 12),
-            SeniorCard(
-              padding: EdgeInsets.zero,
-              child: Theme(
-                data: Theme.of(
-                  context,
-                ).copyWith(dividerColor: Colors.transparent),
-                child: ExpansionTile(
-                  tilePadding: const EdgeInsets.symmetric(
-                    horizontal: 22,
-                    vertical: 6,
-                  ),
-                  childrenPadding: const EdgeInsets.fromLTRB(22, 0, 22, 22),
-                  title: Text(
-                    easyMode ? '공식 복용 안내 보기' : '제품 공식 용법·용량',
-                    style: AppText.cardTitle(size: 22),
-                  ),
-                  children: [
-                    Align(
-                      alignment: Alignment.centerLeft,
-                      child: Text(
-                        medicine.officialUsageNotice.trim().isNotEmpty
-                            ? medicine.officialUsageNotice
-                            : '제품 설명서의 일반적인 사용법이에요. 실제로는 처방전과 의료진의 안내대로 복용하세요.',
-                        style: AppText.caption(
-                          size: 18,
-                          color: AppColors.textSecondary,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                    Align(
-                      alignment: Alignment.centerLeft,
-                      child: Text(
-                        formatOfficialUsage(medicine.officialUsage),
-                        style: AppText.body(size: 20),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ],
-          if (medicine.askDoctorWhen.isNotEmpty) ...[
-            const SizedBox(height: 12),
-            SeniorCard(
-              padding: const EdgeInsets.all(22),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  IconTitle(
-                    icon: Icons.contact_support_outlined,
-                    text: '언제 의료진에게 알려야 하나요?',
-                    style: AppText.cardTitle(size: 22),
-                  ),
-                  const SizedBox(height: 12),
-                  for (final situation in medicine.askDoctorWhen) ...[
-                    Text('· $situation', style: AppText.body(size: 20)),
-                    const SizedBox(height: 8),
-                  ],
-                ],
-              ),
-            ),
-          ],
-          if (medicine.detailSourceName.trim().isNotEmpty) ...[
-            const SizedBox(height: 12),
-            SeniorCard(
-              padding: const EdgeInsets.all(20),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('정보 출처', style: AppText.label(size: 19)),
-                  const SizedBox(height: 6),
-                  Text(
-                    '식약처 의약품 허가정보',
-                    style: AppText.caption(
-                      size: 18,
-                      color: AppColors.textSecondary,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-          if ((medicine.purposeNotice ?? '').trim().isNotEmpty) ...[
-            const SizedBox(height: 12),
-            SeniorCard(
-              padding: const EdgeInsets.all(20),
-              child: Text(
-                medicine.purposeNotice!,
-                style: AppText.caption(
-                  size: 18,
-                  color: AppColors.textSecondary,
-                ),
-              ),
-            ),
+            _DoseWayTab(medicine: medicine, easyMode: easyMode),
           ],
         ],
       ),
@@ -719,6 +702,96 @@ class _TagChip extends StatelessWidget {
         label,
         style: AppText.label(size: 18, color: AppColors.point),
       ),
+    );
+  }
+}
+
+/// 먹는 법 탭 — 내가 처방받은 복용 방법과 제품 공식 용법.
+class _DoseWayTab extends StatelessWidget {
+  final UserMedicine medicine;
+  final bool easyMode;
+
+  const _DoseWayTab({required this.medicine, required this.easyMode});
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        SeniorCard(
+          padding: const EdgeInsets.all(22),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              IconTitle(
+                icon: TablerIcons.clock,
+                text: medicine.useType == MedicineUseType.eat
+                    ? '내가 처방받은 복용 방법'
+                    : '내가 처방받은 사용 방법',
+                style: AppText.cardTitle(size: 22),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                '한 번에 ${medicine.doseAction} 양 ${medicine.dosageLabel}',
+                style: AppText.body(size: 21),
+              ),
+              const SizedBox(height: 6),
+              Text(medicine.frequencyLabel, style: AppText.body(size: 21)),
+              if (medicine.administrationTimes.isNotEmpty) ...[
+                const SizedBox(height: 6),
+                Text(
+                  '시간: ${medicine.administrationTimes.join(' · ')}',
+                  style: AppText.caption(size: 18),
+                ),
+              ],
+            ],
+          ),
+        ),
+        if (medicine.officialUsage.trim().isNotEmpty) ...[
+          const SizedBox(height: 12),
+          SeniorCard(
+            padding: EdgeInsets.zero,
+            child: Theme(
+              data: Theme.of(
+                context,
+              ).copyWith(dividerColor: Colors.transparent),
+              child: ExpansionTile(
+                tilePadding: const EdgeInsets.symmetric(
+                  horizontal: 22,
+                  vertical: 6,
+                ),
+                childrenPadding: const EdgeInsets.fromLTRB(22, 0, 22, 22),
+                title: Text(
+                  easyMode ? '공식 복용 안내 보기' : '제품 공식 용법·용량',
+                  style: AppText.cardTitle(size: 22),
+                ),
+                children: [
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      medicine.officialUsageNotice.trim().isNotEmpty
+                          ? medicine.officialUsageNotice
+                          : '제품 설명서의 일반적인 사용법이에요. 실제로는 처방전과 의료진의 안내대로 복용하세요.',
+                      style: AppText.caption(
+                        size: 18,
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      formatOfficialUsage(medicine.officialUsage),
+                      style: AppText.body(size: 20),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ],
     );
   }
 }
