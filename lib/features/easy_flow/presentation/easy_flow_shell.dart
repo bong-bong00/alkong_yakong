@@ -136,7 +136,24 @@ class _EasyFlowShellState extends ConsumerState<EasyFlowShell> {
                   ),
                 ),
               ),
-              const Positioned(top: 16, right: 18, child: ModeBadge()),
+              // 띄는 일반 화면 머리와 똑같은 틀에 둔다. 왼쪽은 비워 두고
+              // 자리만 똑같이 나눠 갖는다 — 그래야 두 화면의 단추가 같은
+              // 크기로, 같은 자리에 선다. (빈 자리는 손지 막지 않는다.)
+              const Positioned(
+                top: 0,
+                left: 0,
+                right: 0,
+                child: Padding(
+                  padding: EdgeInsets.fromLTRB(18, 16, 18, 14),
+                  child: Row(
+                    children: [
+                      Expanded(child: SizedBox(height: 56)),
+                      SizedBox(width: 10),
+                      Flexible(child: ModeBadge()),
+                    ],
+                  ),
+                ),
+              ),
             ],
           ),
         ),
