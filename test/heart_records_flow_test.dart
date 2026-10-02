@@ -433,8 +433,9 @@ void main() {
       expect(find.text('지난 기록 보기'), findsNothing);
       expect(find.widgetWithText(SeniorSegmented, '이번 주'), findsOneWidget);
       expect(find.widgetWithText(SeniorSegmented, '한 달'), findsOneWidget);
-      expect(find.text('지금 측정'), findsOneWidget);
-      expect(find.text('폴라 센서'), findsOneWidget);
+      // 연결과 측정은 단추 하나다. 따로 단 폴라 센서 칸은 없다.
+      expect(find.text('센서 연결하고 측정'), findsOneWidget);
+      expect(find.text('폴라 센서'), findsNothing);
       expect(find.textContaining('에게 바로 알려요'), findsNothing);
       expect(gets, 1);
       await tester.tap(find.text('한 달'));

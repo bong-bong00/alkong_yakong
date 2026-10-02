@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../medication/application/medication_controller.dart';
 import 'package:flutter_tabler_icons/flutter_tabler_icons.dart';
 import 'package:go_router/go_router.dart';
@@ -12,6 +13,7 @@ import '../../../../core/polar_pharmacist_ui/widgets/senior_card.dart';
 import '../../../../core/polar_pharmacist_ui/widgets/senior_feedback.dart';
 import '../../../../core/polar_pharmacist_ui/widgets/senior_header.dart';
 import '../../../medication/domain/medication_models.dart';
+import '../../application/heart_device.dart';
 import '../../application/heart_sensor.dart';
 import '../../data/heart_repository.dart';
 import '../../domain/heart_data.dart';
@@ -157,6 +159,25 @@ class _HeartScreenState extends State<HeartScreen> {
     if (mounted) await _load(quiet: true);
   }
 
+  /// 센서 화면을 거쳐 재러 간다. 연결하지 않고 나오셨으면 거기서
+  /// 멈춘다 — 안 참 센서로 측정 화면을 열어 두면 기다리기만 한다.
+  Future<void> _connectThenMeasure() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => PolarScreen(sensor: widget.sensor),
+      ),
+    );
+    if (!mounted) return;
+    final paired = ProviderScope.containerOf(
+      context,
+      listen: false,
+    ).read(heartDevicePairedProvider);
+    final connected =
+        widget.sensor?.status == HeartSensorStatus.streaming || paired;
+    if (!connected) return;
+    await _openMeasure();
+  }
+
   Future<void> _openMeasure() async {
     final measurementContext = _measurementContext;
     setState(() => _measurementContext = HeartMeasurementContext.general);
@@ -298,22 +319,23 @@ class _HeartScreenState extends State<HeartScreen> {
                       ),
                     ),
                     const SizedBox(height: 12),
-                    SeniorButton(
-                      label: '지금 측정',
-                      minHeight: 66,
-                      fontSize: 23,
-                      onPressed: () => unawaited(_openMeasure()),
-                    ),
-                  ],
-                  if (!_viewingOther) ...[
-                    const SizedBox(height: 12),
-                    _SensorRow(
-                      sensor: widget.sensor,
-                      onTap: () => Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (_) => PolarScreen(sensor: widget.sensor),
-                        ),
-                      ),
+                    // 연결과 측정을 나눔 이유가 없다. 재려고 들어왔으면
+                    // 연결은 거쳐 가는 길일 뿐이다.
+                    Consumer(
+                      builder: (context, ref, _) {
+                        final connected =
+                            widget.sensor?.status ==
+                                HeartSensorStatus.streaming ||
+                            ref.watch(heartDevicePairedProvider);
+                        return SeniorButton(
+                          label: connected ? '지금 측정' : '센서 연결하고 측정',
+                          minHeight: 66,
+                          fontSize: 23,
+                          onPressed: () => unawaited(
+                            connected ? _openMeasure() : _connectThenMeasure(),
+                          ),
+                        );
+                      },
                     ),
                   ],
                 ],
@@ -742,83 +764,6 @@ String _heartRateRange(int bpm) {
   if (bpm < 60) return '느린 범위';
   if (bpm <= 100) return '일반 범위';
   return '빠른 범위';
-}
-
-/// 센서 상태 한 줄.
-///
-/// 연결 여부·배터리·마지막 측정은 **센서가 말한 것만** 쓴다. 이 화면이
-/// 센서를 넘겨받지 않았으면 연결됐는지 모르므로 "끊김"이라고도 하지 않는다.
-class _SensorRow extends StatelessWidget {
-  final HeartSensor? sensor;
-  final VoidCallback onTap;
-
-  const _SensorRow({required this.sensor, required this.onTap});
-
-  /// 아는 것만 잇는다. 배터리도 마지막 측정도 없으면 아무 말도 만들지 않는다.
-  String _connectedLine(HeartSensor sensor) {
-    final lastReadAt = sensor.lastReadAt;
-    final parts = <String>[
-      if (sensor.battery != null) '배터리 ${sensor.battery}%',
-      if (lastReadAt != null)
-        '${DoseSlot.absoluteTime(lastReadAt)}에 측정한 것이 마지막이에요',
-    ];
-    return parts.isEmpty ? '연결되어 있어요' : parts.join(' · ');
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final sensor = this.sensor;
-    final connected = sensor?.status == HeartSensorStatus.streaming;
-    final String title;
-    final String caption;
-    if (sensor == null) {
-      title = '폴라 센서';
-      caption = '눌러서 연결하고 착용하는 방법을 봐요';
-    } else if (connected) {
-      title = '폴라 센서 연결됨';
-      caption = _connectedLine(sensor);
-    } else {
-      title = '폴라 센서 끊김';
-      caption = '센서를 착용하고 다시 연결해 주세요';
-    }
-
-    return SeniorCard(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 17),
-      onTap: onTap,
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Padding(
-            // 점은 제목 줄 높이에 맞춘다. 가운데 정렬하면 두 줄 사이에 낀다.
-            padding: const EdgeInsets.only(top: 7),
-            child: Container(
-              width: 14,
-              height: 14,
-              decoration: BoxDecoration(
-                color: connected ? AppColors.point : AppColors.strongLine,
-                borderRadius: BorderRadius.circular(7),
-              ),
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(title, style: AppText.cardTitle(size: 19)),
-                Text(caption, style: AppText.caption(size: 17.5)),
-              ],
-            ),
-          ),
-          const SizedBox(width: 10),
-          const Padding(
-            padding: EdgeInsets.only(top: 2),
-            child: SeniorChevron(),
-          ),
-        ],
-      ),
-    );
-  }
 }
 
 /// 아직 저장된 기록을 읽어오지 못했을 때.
