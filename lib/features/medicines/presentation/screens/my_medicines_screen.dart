@@ -248,8 +248,9 @@ class _GroupedMedicines extends StatelessWidget {
       children: [
         for (final type in MedicineUseType.values)
           if (medicines.any((medicine) => medicine.useType == type)) ...[
-            SeniorCard(
-              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+            // 묶음 이름은 박스로 두르지 않는다 — 박스는 약에만 쓴다.
+            Padding(
+              padding: const EdgeInsets.fromLTRB(4, 2, 4, 10),
               child: Row(
                 children: [
                   Icon(
@@ -262,11 +263,11 @@ class _GroupedMedicines extends StatelessWidget {
                       _ => Icons.medical_services_outlined,
                     },
                     color: AppColors.point,
-                    size: 25,
+                    size: 23,
                   ),
-                  const SizedBox(width: 10),
+                  const SizedBox(width: 8),
                   Expanded(
-                    child: Text(type.label, style: AppText.cardTitle(size: 20)),
+                    child: Text(type.label, style: AppText.label(size: 19)),
                   ),
                   Text(
                     '${medicines.where((medicine) => medicine.useType == type).length}가지',
@@ -278,7 +279,6 @@ class _GroupedMedicines extends StatelessWidget {
                 ],
               ),
             ),
-            const SizedBox(height: 10),
             for (final medicine in medicines.where(
               (medicine) => medicine.useType == type,
             )) ...[
