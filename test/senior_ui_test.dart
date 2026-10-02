@@ -1184,7 +1184,7 @@ void _homeTimelineTests() {
     // 약 이름은 홈에 늘어놓지 않는다 — 아래 칸에서 본다.
     expect(find.text('메트포르민'), findsNothing);
     // 심박기기를 안 쓰시면 그 자리는 연결 길이다.
-    expect(find.text('심박기기 연결'), findsOneWidget);
+    expect(find.text('센서 연결'), findsOneWidget);
   });
 
   testWidgets('심박기기를 쓰시면 아래 칸이 "약 보기"로 돌아온다', (tester) async {
@@ -1202,7 +1202,7 @@ void _homeTimelineTests() {
     await tester.pump();
 
     expect(find.text('약 보기'), findsOneWidget);
-    expect(find.text('심박기기 연결'), findsNothing);
+    expect(find.text('센서 연결'), findsNothing);
   });
 
   testWidgets('아직 드시지 않았으면 큰 단추가 "먹었어요"다', (tester) async {

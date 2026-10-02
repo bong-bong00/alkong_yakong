@@ -1140,10 +1140,9 @@ class _HomeTiles extends StatelessWidget {
         Expanded(
           child: onConnectDevice != null
               ? _tile(
-                  icon: TablerIcons.device_watch,
-                  label: '심박기기 연결',
+                  icon: TablerIcons.heart,
+                  label: '센서 연결',
                   onTap: onConnectDevice,
-                  fontSize: 18,
                 )
               : _tile(
                   icon: TablerIcons.pill,
