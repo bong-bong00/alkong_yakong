@@ -7,9 +7,6 @@ import 'package:flutter_tabler_icons/flutter_tabler_icons.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../../core/polar_pharmacist_ui/constants/app_colors.dart';
-// 흰 칸 위에 올라가는 칸의 그림자만 빌려 쓴다 — 집 안 다른 흰 칸들과
-// 같은 방식으로 띄우기 위해서다.
-import '../../../../core/widgets/senior_card.dart' as shadows;
 import '../../../../core/polar_pharmacist_ui/theme/app_typography.dart';
 import '../../../../core/polar_pharmacist_ui/widgets/senior_button.dart';
 import '../../../../core/polar_pharmacist_ui/widgets/senior_card.dart';
@@ -317,10 +314,17 @@ class _HeartScreenState extends State<HeartScreen> {
                         children: [
                           Text('측정 목적', style: AppText.cardTitle(size: 20)),
                           const SizedBox(height: 12),
-                          _PurposeChips(
-                            selected: _measurementContext,
-                            onChanged: (value) =>
-                                setState(() => _measurementContext = value),
+                          SeniorSegmented(
+                            labels: HeartMeasurementContext.values
+                                .map((context) => context.shortLabel)
+                                .toList(growable: false),
+                            index: HeartMeasurementContext.values.indexOf(
+                              _measurementContext,
+                            ),
+                            onChanged: (index) => setState(
+                              () => _measurementContext =
+                                  HeartMeasurementContext.values[index],
+                            ),
                           ),
                           const SizedBox(height: 16),
                           // 연결부터 확인하고 재러 간다. 차고 계신 줄 알았는데 끜겨 있었던 일이
@@ -767,55 +771,3 @@ String _heartRateRange(int bpm) {
 ///
 /// 화면은 그대로 보여주되 **이 숫자가 무엇인지** 먼저 밝힌다.
 /// 예시를 진짜 기록으로 읽고 나면 그것대로 판단의 근거가 된다.
-/// 측정 목적 세 칸. 붙여 두지 않고 한 칸씩 떨어뜨려 둔다 — 고를 것이
-/// 세개라는 것이 한눈에 보인다. 고른 칸만 파랑으로 채운다.
-class _PurposeChips extends StatelessWidget {
-  final HeartMeasurementContext selected;
-  final ValueChanged<HeartMeasurementContext> onChanged;
-
-  const _PurposeChips({required this.selected, required this.onChanged});
-
-  @override
-  Widget build(BuildContext context) {
-    final values = HeartMeasurementContext.values;
-    return Row(
-      children: [
-        for (int i = 0; i < values.length; i++) ...[
-          if (i > 0) const SizedBox(width: 10),
-          Expanded(child: _chip(values[i])),
-        ],
-      ],
-    );
-  }
-
-  Widget _chip(HeartMeasurementContext value) {
-    final picked = value == selected;
-    return Semantics(
-      button: true,
-      selected: picked,
-      child: GestureDetector(
-        onTap: () => onChanged(value),
-        child: Container(
-          constraints: const BoxConstraints(minHeight: 58),
-          alignment: Alignment.center,
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
-          decoration: BoxDecoration(
-            color: picked ? AppColors.point : AppColors.surface,
-            borderRadius: BorderRadius.circular(16),
-            // 큰 칸이 흰색이라 테를 두르면 줄만 남는다. 띄우는 것은
-            // 그림자가 한다 — 집 안 다른 흰 칸들과 같은 방식이다.
-            boxShadow: picked ? shadows.kAccentShadow : shadows.kRaisedShadow,
-          ),
-          child: Text(
-            value.shortLabel,
-            textAlign: TextAlign.center,
-            style: AppText.cardTitle(
-              size: 18.5,
-              color: picked ? Colors.white : AppColors.textSecondary,
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
