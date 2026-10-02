@@ -133,10 +133,17 @@ class _SeniorButtonState extends State<SeniorButton> {
     final label = Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Text(
-          widget.label,
-          textAlign: TextAlign.center,
-          style: AppText.button(size: widget.fontSize, color: _foreground),
+        // 한글은 낱자 단위로도 줄이 바뀐다. 그대로 두면 "복약 전 심박 측 /
+        // 정"처럼 끊긴다. 한 줄로 두고 자리가 모자랄 때만 글씨를 줄인다.
+        FittedBox(
+          fit: BoxFit.scaleDown,
+          child: Text(
+            widget.label,
+            textAlign: TextAlign.center,
+            maxLines: 1,
+            softWrap: false,
+            style: AppText.button(size: widget.fontSize, color: _foreground),
+          ),
         ),
         if (widget.subLabel != null) ...[
           const SizedBox(height: 4),
