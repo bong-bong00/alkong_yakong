@@ -292,7 +292,7 @@ class _MeasureScreenState extends State<MeasureScreen> {
                                 _lost
                                     ? '센서가 떨어졌어요'
                                     : _live
-                                    ? '폴라 센서로 측정하고 있어요'
+                                    ? '폴라 센서로\n측정하고 있어요'
                                     : '폴라 센서를 찾고 있어요',
                                 style: AppText.cardTitle(
                                   size: 19,
@@ -329,7 +329,6 @@ class _MeasureScreenState extends State<MeasureScreen> {
                     const SizedBox(height: 16),
                     SeniorButton(
                       label: '다시 측정',
-                      icon: TablerIcons.refresh,
                       minHeight: 70,
                       fontSize: 23,
                       onPressed: _restart,

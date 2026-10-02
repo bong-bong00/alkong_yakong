@@ -589,8 +589,8 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
     ).hasMatch(text);
     final requestText =
         isGeneralFreeInput &&
-              pendingQuestion != null &&
-              _looksLikeMedicineIdentity(text)
+            pendingQuestion != null &&
+            _looksLikeMedicineIdentity(text)
         ? '$text에 대해 다음 질문에 답해 주세요: $pendingQuestion'
         : text;
 
@@ -1083,12 +1083,7 @@ class _SubjectCard extends StatelessWidget {
   final VoidCallback? onTap;
   final VoidCallback? onClear;
 
-  const _SubjectCard({
-    super.key,
-    this.medicineName,
-    this.onTap,
-    this.onClear,
-  });
+  const _SubjectCard({super.key, this.medicineName, this.onTap, this.onClear});
 
   @override
   Widget build(BuildContext context) {
@@ -1105,7 +1100,12 @@ class _SubjectCard extends StatelessWidget {
             color: picked ? AppColors.pointTint : AppColors.secondaryFill,
             borderRadius: BorderRadius.circular(18),
           ),
-          padding: EdgeInsets.fromLTRB(20, picked ? 12 : 16, picked ? 12 : 18, picked ? 12 : 16),
+          padding: EdgeInsets.fromLTRB(
+            20,
+            picked ? 12 : 16,
+            picked ? 12 : 18,
+            picked ? 12 : 16,
+          ),
           child: Row(
             children: [
               Icon(
@@ -1727,7 +1727,10 @@ class _ChatBubble extends StatelessWidget {
                   if (speaker != null) ...[
                     Text(
                       speaker!,
-                      style: AppText.cardTitle(size: 18, color: AppColors.point),
+                      style: AppText.cardTitle(
+                        size: 18,
+                        color: AppColors.point,
+                      ),
                     ),
                     const SizedBox(height: 6),
                   ],

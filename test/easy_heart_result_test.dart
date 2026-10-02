@@ -89,6 +89,10 @@ class _RemainingMedication extends MedicationController {
 }
 
 void main() {
+  // 어느 시간대 약이 다음 차례인지는 시계가 정한다. 아침으로 못박아 둔다.
+  setUp(() => medicationNow = () => DateTime(2026, 10, 2, 8, 0));
+  tearDown(() => medicationNow = DateTime.now);
+
   testWidgets(
     'recording prevents repeated taps and reports failure with retry',
     (tester) async {
@@ -151,7 +155,7 @@ void main() {
     await rig.widgetWindow(tester);
     rig.api.succeed(0);
     await tester.pumpAndSettle();
-    await tester.tap(find.text('이제 약 드시기'));
+    await tester.tap(find.text('약 복용 시작'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('먹었어요'));
     await tester.pumpAndSettle();
@@ -192,7 +196,7 @@ void main() {
         await tester.tap(find.text('먹었어요'));
         await tester.pumpAndSettle();
         expect(find.textContaining('한참 지났어요'), findsNothing);
-        expect(find.text('그래도 먹었어요'), findsNothing);
+        expect(find.text('네 알겠어요'), findsNothing);
         expect(controller.recordedLate, !duplicate);
         if (duplicate) {
           expect(find.textContaining('드신 것으로 되어 있어요'), findsOneWidget);

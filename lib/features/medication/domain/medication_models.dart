@@ -7,6 +7,12 @@ library;
 import '../../medicines/domain/display_policy.dart';
 
 /// 하루 세 번의 복약 시간대.
+/// 지금 시각을 읽는 자리.
+///
+/// 어느 시간대 약을 드실 참인지 시계로 고르기 때문에, 시험은 시각을 정해
+/// 두고 봐야 한다. **앱 코드는 이 값을 바꾸지 않는다.**
+DateTime Function() medicationNow = DateTime.now;
+
 enum DoseSlot {
   morning('아침', 8),
   lunch('점심', 12),
@@ -317,12 +323,30 @@ class TodayMedication {
 
   bool get allTaken => takenCount == doses.length;
 
-  /// 아직 안 드신 첫 시간대. 다 드셨으면 null.
-  DoseEntry? get nextDose {
-    for (final dose in doses) {
-      if (!dose.taken) return dose;
+  /// 지금 드실 차례인 시간대. 다 드셨으면 null.
+  DoseEntry? get nextDose => nextDoseAt(medicationNow());
+
+  /// 안 드신 시간대 가운데 **지금 시각에 가장 가까운** 것.
+  ///
+  /// 앞에서부터 고르면 아침을 건너뛰고 점심에 "먹었어요"를 눌러도 아침이
+  /// 기록된다. 점심 약을 드셨는데 기록은 아침에 남으면, 그 뒤로 아침은
+  /// 영영 안 드신 것이 되고 점심은 두 번 드신 것이 된다.
+  DoseEntry? nextDoseAt(DateTime now) {
+    final pending = doses.where((dose) => !dose.taken).toList();
+    if (pending.isEmpty) return null;
+    final minutes = now.hour * 60 + now.minute;
+    DoseEntry nearest = pending.first;
+    var best = (nearest.slot.hour * 60 - minutes).abs();
+    for (final dose in pending.skip(1)) {
+      final gap = (dose.slot.hour * 60 - minutes).abs();
+      // 같은 거리면 앞선 시간대를 둔다. 10시에 아침과 점심이 같이 남아
+      // 있으면 아직 아침 약을 드실 참으로 본다.
+      if (gap < best) {
+        nearest = dose;
+        best = gap;
+      }
     }
-    return null;
+    return nearest;
   }
 
   DoseEntry doseOf(DoseSlot slot) {

@@ -511,9 +511,7 @@ class _PatientHomeScreenState extends ConsumerState<PatientHomeScreen> {
                       ),
                       if (usesDevice && next != null) ...[
                         const SizedBox(height: 14),
-                        _HeartSteps(
-                          beforeBpm: _beforeBpm[next.slot],
-                        ),
+                        _HeartSteps(beforeBpm: _beforeBpm[next.slot]),
                       ],
                       const SizedBox(height: 18),
                       // 남는 세로 자리를 그대로 받아 그 안에 맞춘다.
@@ -757,11 +755,7 @@ class _HeartSteps extends StatelessWidget {
   Widget build(BuildContext context) {
     final done = beforeBpm != null;
     final current = done ? 1 : 0;
-    final labels = [
-      done ? '먹기 전 $beforeBpm회' : '먹기 전 재기',
-      '먹었어요',
-      '먹은 뒤 재기',
-    ];
+    final labels = [done ? '먹기 전 $beforeBpm회' : '먹기 전 재기', '먹었어요', '먹은 뒤 재기'];
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
@@ -774,11 +768,7 @@ class _HeartSteps extends StatelessWidget {
         children: [
           for (int i = 0; i < labels.length; i++)
             Expanded(
-              child: _step(
-                index: i,
-                current: current,
-                label: labels[i],
-              ),
+              child: _step(index: i, current: current, label: labels[i]),
             ),
         ],
       ),
@@ -975,10 +965,10 @@ class _BigDoseButtonState extends State<_BigDoseButton>
             label: label,
             child: GestureDetector(
               onTap: widget.done
-              ? widget.onUndo
-              : widget.measureFirst
-              ? widget.onMeasure
-              : widget.onTake,
+                  ? widget.onUndo
+                  : widget.measureFirst
+                  ? widget.onMeasure
+                  : widget.onTake,
               child: ExcludeSemantics(
                 child: SizedBox(
                   width: outer,

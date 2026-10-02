@@ -214,7 +214,8 @@ void main() {
                 '선택약1정: 고혈압과 알코올, 술에 주의하세요. 수술은 별도 안내예요.',
       ),
     );
-    final spans = (answer.textSpan! as TextSpan).children!.whereType<TextSpan>();
+    final spans = (answer.textSpan! as TextSpan).children!
+        .whereType<TextSpan>();
     final emphasized = spans
         .where(
           (span) =>
@@ -295,8 +296,14 @@ void main() {
     await tester.pumpAndSettle();
     // 등록한 약과 이름으로 찾은 약이 한 자리에 함께 선다. 출처 딱지는 없앴다.
     expect(find.text('어떤 약이 궁금하세요?'), findsOneWidget);
-    expect(find.byKey(const ValueKey('medicine-selection-등록약정')), findsOneWidget);
-    expect(find.byKey(const ValueKey('medicine-selection-검색약정')), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('medicine-selection-등록약정')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('medicine-selection-검색약정')),
+      findsOneWidget,
+    );
     expect(find.text('등록된 약'), findsNothing);
     expect(find.text('검색한 약'), findsNothing);
     expect(tester.takeException(), isNull);

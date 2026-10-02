@@ -3,6 +3,8 @@ import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'heart_sensor.dart';
+
 /// 심박 기기를 쓰고 계신지.
 ///
 /// 홈은 이 값만 보고 흐름을 고른다 — 기기가 있으면 "먹기 전에 재고 → 먹고 →
@@ -43,5 +45,16 @@ class HeartDeviceController extends Notifier<bool> {
   }
 }
 
-final heartDevicePairedProvider =
-    NotifierProvider<HeartDeviceController, bool>(HeartDeviceController.new);
+/// 앱이 하나만 들고 쓰는 센서.
+///
+/// 화면마다 새로 만들면, 연결해 둔 채 뒤로 나갔다 들어올 때마다 처음부터
+/// 다시 붙어야 한다 — 어르신 눈에는 "연결이 또 끊겼다"로 보인다.
+final heartSensorProvider = Provider<HeartSensor>((ref) {
+  final sensor = HeartSensor();
+  ref.onDispose(sensor.dispose);
+  return sensor;
+});
+
+final heartDevicePairedProvider = NotifierProvider<HeartDeviceController, bool>(
+  HeartDeviceController.new,
+);

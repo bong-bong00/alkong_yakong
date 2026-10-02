@@ -385,7 +385,7 @@ class _EasyDoseFlowState extends ConsumerState<EasyDoseFlow> {
       title: '잘 측정했어요',
       body: [if (_before != null) EasyHeartResult(value: _before!)],
       primary: _EasyAction(
-        label: '이제 약 드시기',
+        label: '약 복용 시작',
         onPressed: () => _goTo(EasyDoseStep.take),
       ),
       secondaries: [_EasyAction(label: '뒤로', onPressed: _back)],
@@ -878,10 +878,7 @@ class _MedicineRow extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text(
-                medicine.displayName,
-                style: AppText.cardTitle(size: 21),
-              ),
+              Text(medicine.displayName, style: AppText.cardTitle(size: 21)),
               if (look.isNotEmpty) ...[
                 const SizedBox(height: 2),
                 Text(look, style: AppText.body(size: 17)),

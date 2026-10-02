@@ -150,7 +150,7 @@ void main() {
         isFalse,
       );
 
-      // "그래도 먹었어요"를 고르면 그때 기록된다.
+      // "네 알겠어요"를 고르면 그때 기록된다.
       await controller().takeAnyway(DoseSlot.dinner, now: late);
       expect(
         container.read(medicationProvider).doseOf(DoseSlot.dinner).taken,

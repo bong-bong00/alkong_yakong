@@ -203,14 +203,12 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
         children: [
           _choice(
             yesLabel,
-            icon: TablerIcons.check,
             selected: answer == 'y',
             onTap: () => setState(() => onAnswer('y')),
           ),
           const SizedBox(height: 12),
           _choice(
             noLabel,
-            icon: TablerIcons.x,
             selected: answer == 'n',
             onTap: () => setState(() => onAnswer('n')),
           ),
@@ -611,14 +609,12 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
               children: [
                 _choice(
                   '네',
-                  icon: TablerIcons.check,
                   selected: _pregnant == true,
                   onTap: () => setState(() => _pregnant = true),
                 ),
                 const SizedBox(height: 12),
                 _choice(
                   '아니요',
-                  icon: TablerIcons.x,
                   selected: _pregnant == false,
                   onTap: () => setState(() => _pregnant = false),
                 ),
@@ -793,7 +789,6 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
               _choice(
                 '네, 알려주세요',
                 sub: '다음 화면에서 번호를 적어요',
-                icon: TablerIcons.users,
                 selected: _guardianAnswer == 'y',
                 onTap: () => setState(() => _guardianAnswer = 'y'),
               ),
@@ -801,7 +796,6 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
               _choice(
                 '나중에 할게요',
                 sub: '내 정보에서 언제든 넣어요',
-                icon: TablerIcons.clock,
                 selected: _guardianAnswer == 'n',
                 onTap: () => setState(() {
                   _guardianAnswer = 'n';
@@ -1200,10 +1194,11 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
   }
 
   /// 큰 답 하나. 한 줄에 하나씩 쌓아 한 번에 하나씩 읽게 둔다.
+  /// 보기 한 칸. **아이콘은 두지 않는다** — 뜻이 겹치는 그림이 글보다 먼저
+  /// 눈에 들어와 무엇을 고르는지 흐려진다.
   Widget _choice(
     String label, {
     String? sub,
-    IconData? icon,
     required bool selected,
     required VoidCallback onTap,
   }) {
@@ -1225,14 +1220,6 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
             ),
             child: Row(
               children: [
-                if (icon != null) ...[
-                  Icon(
-                    icon,
-                    size: 34,
-                    color: selected ? Colors.white : AppColors.textPrimary,
-                  ),
-                  const SizedBox(width: 14),
-                ],
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,

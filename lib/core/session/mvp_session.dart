@@ -5,6 +5,7 @@ abstract final class MvpSession {
   static String userId = _definedUserId.isNotEmpty
       ? _definedUserId
       : 'mvp-user';
+
   /// 화면에서 부르는 이름. 내 정보를 읽어 오면 채워진다.
   static String userName = '';
   static String medicineCode = '';

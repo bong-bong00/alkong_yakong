@@ -970,7 +970,7 @@ class _PickerSheetState extends State<_PickerSheet> {
                   onChanged: (_) => setState(() {}),
                   style: AppText.body(size: 19),
                   decoration: InputDecoration(
-                    hintText: '검색하거나 직접 입력',
+                    hintText: '검색하거나 직접 추가',
                     prefixIcon: const Icon(Icons.search),
                     filled: true,
                     fillColor: kBackground,

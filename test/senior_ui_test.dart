@@ -204,8 +204,8 @@ void main() {
     expect(find.text('먹었어요'), findsOneWidget);
     await tester.tap(find.text('먹었어요'));
     await tester.pumpAndSettle();
-    if (find.text('그래도 먹었어요').evaluate().isNotEmpty) {
-      await tester.tap(find.text('그래도 먹었어요'));
+    if (find.text('네 알겠어요').evaluate().isNotEmpty) {
+      await tester.tap(find.text('네 알겠어요'));
       await tester.pumpAndSettle();
     }
 
@@ -412,8 +412,8 @@ void _easyModeTests() {
     await tester.tap(find.text('먹었어요'));
     await tester.pumpAndSettle();
     // 저녁 시간이 한참 지난 때에 돌리면 늦은 복약 시트가 먼저 뜬다.
-    if (find.text('그래도 먹었어요').evaluate().isNotEmpty) {
-      await tester.tap(find.text('그래도 먹었어요'));
+    if (find.text('네 알겠어요').evaluate().isNotEmpty) {
+      await tester.tap(find.text('네 알겠어요'));
       await tester.pumpAndSettle();
     }
     expect(find.text('한 번 더 측정해요'), findsNothing);
