@@ -387,7 +387,9 @@ class _PastMedicinesState extends State<_PastMedicines> {
               onTap: () => setState(() => _open = !_open),
             ),
             if (_open)
-              for (final medicine in widget.medicines)
+              for (final medicine in widget.medicines) ...[
+                // 제목 줄과 약 줄을 가는 선으로 가른다.
+                const SeniorDivider(),
                 SeniorListRow(
                   label: nameWithoutStrength(
                     medicine.displayName,
@@ -399,6 +401,7 @@ class _PastMedicinesState extends State<_PastMedicines> {
                   onTap: () =>
                       context.push('/medicines/${medicine.medicineCode}'),
                 ),
+              ],
           ],
         ),
       ),

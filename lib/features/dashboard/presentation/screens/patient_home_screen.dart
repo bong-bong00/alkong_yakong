@@ -962,7 +962,9 @@ class _BigDoseButtonState extends State<_BigDoseButton>
         // 가운데 단추 크기는 그대로 두고, 둘레 테만 넓게 편다. 위 칸과
         // 겹쳐도 비치는 색이라 칸과 테가 함께 보인다.
         final size = outer * 0.78;
-        final halo = outer * 1.14;
+        // 쉬고 있을 때는 단추보다 조금만 크다. 뛸 때(최대 1.09배) 커지는
+        // 만큼만 여유를 둔다.
+        final halo = size * 1.2;
         // 글자와 아이콘은 지름을 따라간다. 동그라미만 커지고 글자가
         // 그대로면 가운데가 비어 보인다.
         final labelSize = (size * 0.135).clamp(24.0, 34.0).toDouble();

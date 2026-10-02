@@ -100,7 +100,7 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
     _conversationId ??= DateTime.now().microsecondsSinceEpoch.toString();
     final title = _selectedMedicines.isEmpty
         ? '내 약 전체'
-        : _selectedMedicines.join(', ');
+        : _selectedMedicines.map(_shortName).join(', ');
     await _conversationStore.save(_conversationUserId, {
       'id': _conversationId,
       'title': title,
@@ -1318,6 +1318,8 @@ class _MedicinePickSheetState extends State<_MedicinePickSheet> {
           ],
           if (!searching) ...[
             const SizedBox(height: 18),
+            Text('복용중인 약', style: AppText.caption(size: 17.5)),
+            const SizedBox(height: 8),
             if (widget.medicines.isEmpty)
               Text(
                 '등록된 약이 없어요. 아래에서 약 이름으로 찾아보세요.',
@@ -1370,7 +1372,7 @@ class _MedicinePickSheetState extends State<_MedicinePickSheet> {
               onSubmitted: _searchNow,
               style: AppText.body(size: 20),
               decoration: InputDecoration(
-                hintText: '다른 약은 이름으로 찾기 (예: 타이레놀)',
+                hintText: '다른 약 검색 (예: 타이레놀)',
                 hintStyle: AppText.body(
                   size: 18,
                   color: AppColors.textTertiary,
@@ -1478,6 +1480,11 @@ class _DrugSearchCandidate {
   }
 }
 
+/// 지나간 대화 제목. 예전에 저장한 제목엔 용량이 붙어 있어
+/// 그릴 때 다시 떼어 낸다.
+String _conversationTitle(dynamic value) =>
+    (value?.toString() ?? '').split(', ').map(nameWithoutStrength).join(', ');
+
 String _conversationDate(dynamic value) {
   final date = DateTime.tryParse(value?.toString() ?? '')?.toLocal();
   if (date == null) return '';
@@ -1530,7 +1537,7 @@ class _PreviousConversationsScreen extends StatelessWidget {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              record['title'] as String,
+                              _conversationTitle(record['title']),
                               style: AppText.cardTitle(size: 21),
                               maxLines: 2,
                               overflow: TextOverflow.ellipsis,
@@ -1575,7 +1582,7 @@ class _PreviousConversationScreen extends StatelessWidget {
               padding: const EdgeInsets.all(20),
               children: [
                 Text(
-                  record['title'] as String,
+                  _conversationTitle(record['title']),
                   style: AppText.cardTitle(size: 21),
                 ),
                 const SizedBox(height: 16),
