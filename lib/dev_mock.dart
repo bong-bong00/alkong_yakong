@@ -135,6 +135,8 @@ UserMedicine _userMedicine({
   String maker = '바이엘코리아',
   String strength = '',
   int frequency = 1,
+  // 생김새. 서버의 dosage_form 자리에 적어 "작은 흰색 알약"처럼 보여 준다.
+  String look = '작은 흰색 알약',
 }) => UserMedicine(
   medicineCode: code,
   // 화면에 적는 이름에는 용량을 붙이지 않는다. 서버에서 온 약과 같은 규칙.
@@ -143,7 +145,7 @@ UserMedicine _userMedicine({
   manufacturer: maker,
   ingredientName: ingredient,
   ingredientStrength: strength,
-  dosageForm: '정제',
+  dosageForm: look,
   amount: '1알',
   frequencyPerDay: frequency,
   status: status,

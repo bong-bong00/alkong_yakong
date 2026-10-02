@@ -126,24 +126,16 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    final error = tester.takeException();
-    if (raw['official_usage'] != null ||
-        (raw['detail_status'] != 'OUTDATED' &&
-            raw['all_approved_uses'] is List &&
-            (raw['all_approved_uses'] as List).isNotEmpty)) {
-      // Same diagnostic reproduced above with the unchanged shared widget.
-      expect(error, isA<FlutterError>());
-      expect(
-        error.toString(),
-        startsWith(
-          'ListTile background color or ink splashes may be invisible.',
-        ),
-      );
-      expect(tester.takeException(), isNull);
-    } else {
-      expect(error, isNull);
-    }
+    // 화면을 세 탭으로 나누면서 펼침 카드를 쓰지 않는다. 그 경고도 없다.
+    expect(tester.takeException(), isNull);
   }
+
+  /// 화면에 적힌 글 전부. 강조가 들어간 줄은 Text.rich라 find.text로
+  /// 잡히지 않으므로 글만 모아 본다.
+  String shown(WidgetTester tester) => tester
+      .widgetList<Text>(find.byType(Text))
+      .map((widget) => widget.data ?? widget.textSpan?.toPlainText() ?? '')
+      .join(' ');
 
   testWidgets('old backend keeps original purpose display', (tester) async {
     await show(tester, data());
@@ -205,10 +197,10 @@ void main() {
     );
     final useSpans = (useLine.textSpan! as TextSpan).children!.cast<TextSpan>();
     expect(useSpans.first.text, '· 치통');
-    expect(useSpans.first.style!.color, AppColors.detailEmphasis);
+    expect(useSpans.first.style!.color, AppColors.point);
     expect(useSpans.first.style!.fontWeight, FontWeight.w800);
     expect(useSpans.last.text, ' 성인에만 사용한다.');
-    expect(useSpans.last.style!.color, isNot(AppColors.detailEmphasis));
+    expect(useSpans.last.style!.color, isNot(AppColors.point));
   });
 
   testWidgets(
@@ -258,69 +250,25 @@ void main() {
     },
   );
 
-  testWidgets(
-    'full expansion retains representative and distinct conditions, removes exact duplicates',
-    (tester) async {
-      const entries = [
-        '기존 조건',
-        '성인에게 1~2 mg을 사용한다.',
-        '성인에게 12 mg을 사용한다.',
-        '12세 이상만 사용한다.',
-        '12세 이상만 사용한다. 단, 예외 대상은 제외한다.',
-      ];
-      await show(tester, {
-        ...data(),
-        'all_approved_uses': [...entries, entries[1]],
-        'treatment_uses': [
-          {'title': '치통', 'description': entries[1]},
-        ],
-      });
-      final previous = FlutterError.onError;
-      final knownWarnings = <String>[];
-      FlutterError.onError = (details) {
-        if (details.exceptionAsString().startsWith(
-          'ListTile background color or ink splashes may be invisible.',
-        )) {
-          knownWarnings.add(details.exceptionAsString());
-        } else {
-          previous?.call(details);
-        }
-      };
-      try {
-        await tester.tap(find.text('전체 허가 목적'));
-        await tester.pumpAndSettle();
-        expect(knownWarnings, isNotEmpty);
-        expect(find.text('· ${entries[0]}'), findsNothing);
-        for (final entry in entries.skip(1)) {
-          expect(find.text('· $entry'), findsOneWidget);
-        }
-        // 대표 조건은 "쓰이는 경우" 줄에도 남는다. 그 줄은 앞말만 굵게
-        // 짚은 Text.rich라 글만 모아 본다.
-        final shown = tester
-            .widgetList<Text>(find.byType(Text))
-            .map((w) => w.data ?? w.textSpan?.toPlainText() ?? '')
-            .join(' ');
-        expect(shown, contains(entries[1]));
-        final expanded = tester.widget<ExpansionTile>(
-          find.byType(ExpansionTile),
-        );
-        final texts = tester
-            .widgetList<Text>(
-              find.descendant(
-                of: find.byWidget(expanded),
-                matching: find.byType(Text),
-              ),
-            )
-            .map((text) => text.data)
-            .where((text) => text?.startsWith('· ') ?? false)
-            .toList();
-        expect(texts, entries.skip(1).map((e) => '· $e').toList());
-      } finally {
-        FlutterError.onError = previous;
-      }
-      expect(tester.takeException(), isNull);
-    },
-  );
+  testWidgets('representative condition shows without an expansion card', (
+    tester,
+  ) async {
+    const entries = ['기존 조건', '성인에게 1~2 mg을 사용한다.', '12세 이상만 사용한다.'];
+    await show(tester, {
+      ...data(),
+      'all_approved_uses': [...entries, entries[1]],
+      'treatment_uses': [
+        {'title': '치통', 'description': entries[1]},
+      ],
+    });
+
+    // 세 탭으로 나누면서 "전체 허가 목적" 펼침 카드는 두지 않는다.
+    expect(find.byType(ExpansionTile), findsNothing);
+    expect(find.text('전체 허가 목적'), findsNothing);
+    // 대표 조건은 "하는 일" 탭에 그대로 보인다.
+    expect(shown(tester), contains(entries[1]));
+    expect(tester.takeException(), isNull);
+  });
 
   testWidgets('nonmatching highlight uses ordinary text', (tester) async {
     await show(tester, {...data(), 'ingredient_highlight': '없는 구절'});

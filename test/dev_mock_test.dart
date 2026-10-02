@@ -86,28 +86,27 @@ void main() {
         .map((widget) => widget.data ?? widget.textSpan?.toPlainText() ?? '')
         .join('\n');
 
-    // 하는 일 · 주의 둘로 가른다. 먹는 법은 "어떤 치료에 쓰이나요" 바로
-    // 아래가 제자리다 — 무슨 약인지 읽고 나면 다음에 궁금한 것이 어떻게
-    // 먹느냐이기 때문이다.
+    // 받은 화면대로 세 탭. 한 번에 한 묶음만 보여 준다.
     expect(find.text('하는 일'), findsOneWidget);
     expect(find.text('주의'), findsOneWidget);
-    expect(find.text('먹는 법'), findsNothing);
+    expect(find.text('먹는 법'), findsOneWidget);
 
-    // 프로필이 설명을 이미 말하므로 "주성분 설명" 칸은 두지 않는다.
+    // 설명 한 단락과 쓰이는 경우가 하는 일 탭에 선다.
     expect(shown(), isNot(contains('주성분 설명')));
     expect(shown(), contains('혈관을 막는 것을 예방'));
     expect(shown(), contains('심근경색'));
-    // 하는 일 탭에 쓰임과 먹는 법이 같이 선다.
-    expect(shown(), contains('어떤 치료에 쓰이나요?'));
-    expect(shown(), contains('복용 방법'));
-    expect(shown(), isNot(contains('내가 처방받은')));
-    expect(shown(), isNot(contains('함께먹기 주의가 있어요')));
+    expect(shown(), isNot(contains('와파린')));
 
     await tester.tap(find.text('주의'));
     await tester.pumpAndSettle();
-    expect(shown(), contains('함께먹기 주의가 있어요'));
     expect(shown(), contains('와파린'));
     expect(shown(), contains('피가 잘 멈추지 않을 수 있어요'));
+
+    await tester.tap(find.text('먹는 법'));
+    await tester.pumpAndSettle();
+    expect(shown(), contains('얼마나'));
+    expect(shown(), contains('언제'));
+    expect(shown(), contains('성분'));
 
     // 출처는 박스가 아니라 꼬리말 한 줄이다.
     expect(shown(), contains('정보 출처 · 식약처 의약품 허가정보'));
