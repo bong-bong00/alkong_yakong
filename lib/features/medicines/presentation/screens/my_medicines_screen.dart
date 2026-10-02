@@ -15,7 +15,7 @@ import '../../domain/user_medicine_models.dart';
 
 /// 내 약 — 활성 약 종류당 1행 (서버 `/medicines`).
 ///
-/// 시안 38. 맨 위에 "처방전 넣기"와 "AI 약사 질문"을 큰 두 칸으로 두고,
+/// 시안 38. 맨 위에 "처방전 등록"과 "AI 약사 상담"을 큰 두 칸으로 두고,
 /// 그 아래 지금 드시는 약을 쌓는다. 오늘 홈에서 내린 두 길이 여기 모인다.
 ///
 /// **뒤로 가는 머리띠는 두지 않는다.** 이 화면은 아래 탭에서 바로 열리는
@@ -89,7 +89,7 @@ class _MedicineList extends StatelessWidget {
               // 시안은 동그라미 안에 물음표를 둔다. 말풍선은 "대화"를
               // 말하지만 여기서 하는 일은 "묻는" 것이다.
               icon: TablerIcons.help_circle,
-              label: 'AI 약사 질문',
+              label: 'AI 약사 상담',
               onTap: () => context.push('/drug-explain'),
             ),
           ),

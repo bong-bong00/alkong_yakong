@@ -1308,9 +1308,16 @@ class _MedicinePickSheetState extends State<_MedicinePickSheet> {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          _searchField(),
+          if (searching) ...[
+            const SizedBox(height: 14),
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxHeight: 300),
+              child: _buildSearchContent(),
+            ),
+          ],
           if (!searching) ...[
-            Text('내 약', style: AppText.caption(size: 17.5)),
-            const SizedBox(height: 10),
+            const SizedBox(height: 18),
             if (widget.medicines.isEmpty)
               Text(
                 '등록된 약이 없어요. 아래에서 약 이름으로 찾아보세요.',
@@ -1335,51 +1342,45 @@ class _MedicinePickSheetState extends State<_MedicinePickSheet> {
                   ],
                 ],
               ),
-            const SizedBox(height: 20),
           ],
-          Text('다른 약은 이름으로 찾기', style: AppText.caption(size: 17.5)),
-          const SizedBox(height: 10),
-          Container(
-            decoration: BoxDecoration(
-              color: AppColors.surface,
-              borderRadius: BorderRadius.circular(18),
-              border: Border.all(color: AppColors.strongLine, width: 2),
-            ),
-            padding: const EdgeInsets.fromLTRB(20, 4, 20, 4),
-            child: Row(
-              children: [
-                const Icon(TablerIcons.search, size: 24),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: TextField(
-                    key: const Key('otherMedicineSearchField'),
-                    controller: _controller,
-                    textInputAction: TextInputAction.search,
-                    onChanged: _onQueryChanged,
-                    onSubmitted: _searchNow,
-                    style: AppText.body(size: 20),
-                    decoration: InputDecoration(
-                      hintText: '약 이름 적기 (예: 타이레놀)',
-                      hintStyle: AppText.body(
-                        size: 20,
-                        color: AppColors.textTertiary,
-                      ),
-                      border: InputBorder.none,
-                      isDense: true,
-                      contentPadding: const EdgeInsets.symmetric(vertical: 16),
-                    ),
-                  ),
+        ],
+      ),
+    );
+  }
+
+  /// 이름으로 찾는 칸. 무엇을 적는지는 칸 안에서 말한다.
+  Widget _searchField() {
+    return Container(
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: AppColors.strongLine, width: 2),
+      ),
+      padding: const EdgeInsets.fromLTRB(20, 4, 20, 4),
+      child: Row(
+        children: [
+          const Icon(TablerIcons.search, size: 24),
+          const SizedBox(width: 12),
+          Expanded(
+            child: TextField(
+              key: const Key('otherMedicineSearchField'),
+              controller: _controller,
+              textInputAction: TextInputAction.search,
+              onChanged: _onQueryChanged,
+              onSubmitted: _searchNow,
+              style: AppText.body(size: 20),
+              decoration: InputDecoration(
+                hintText: '다른 약은 이름으로 찾기 (예: 타이레놀)',
+                hintStyle: AppText.body(
+                  size: 18,
+                  color: AppColors.textTertiary,
                 ),
-              ],
+                border: InputBorder.none,
+                isDense: true,
+                contentPadding: const EdgeInsets.symmetric(vertical: 16),
+              ),
             ),
           ),
-          if (searching) ...[
-            const SizedBox(height: 14),
-            ConstrainedBox(
-              constraints: const BoxConstraints(maxHeight: 300),
-              child: _buildSearchContent(),
-            ),
-          ],
         ],
       ),
     );

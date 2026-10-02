@@ -969,7 +969,10 @@ class _BigDoseButtonState extends State<_BigDoseButton>
         final iconSize = (size * 0.24).clamp(44.0, 66.0).toDouble();
         final labelStyle = AppText.cardTitle(size: labelSize, color: ink);
 
-        return Center(
+        // 받은 자리의 가운데보다 조금 아래에 둔다. 위 칸과는 테가 겹치고,
+        // 손은 아래쪽에서 올라온다.
+        return Align(
+          alignment: const Alignment(0, 0.4),
           child: Semantics(
             button: true,
             label: label,
