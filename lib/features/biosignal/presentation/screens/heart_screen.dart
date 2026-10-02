@@ -314,17 +314,10 @@ class _HeartScreenState extends State<HeartScreen> {
                         children: [
                           Text('측정 목적', style: AppText.cardTitle(size: 20)),
                           const SizedBox(height: 12),
-                          SeniorSegmented(
-                            labels: HeartMeasurementContext.values
-                                .map((context) => context.shortLabel)
-                                .toList(growable: false),
-                            index: HeartMeasurementContext.values.indexOf(
-                              _measurementContext,
-                            ),
-                            onChanged: (index) => setState(
-                              () => _measurementContext =
-                                  HeartMeasurementContext.values[index],
-                            ),
+                          _PurposeTray(
+                            selected: _measurementContext,
+                            onChanged: (value) =>
+                                setState(() => _measurementContext = value),
                           ),
                           const SizedBox(height: 16),
                           // 연결부터 확인하고 재러 간다. 차고 계신 줄 알았는데 끜겨 있었던 일이
@@ -771,3 +764,60 @@ String _heartRateRange(int bpm) {
 ///
 /// 화면은 그대로 보여주되 **이 숫자가 무엇인지** 먼저 밝힌다.
 /// 예시를 진짜 기록으로 읽고 나면 그것대로 판단의 근거가 된다.
+/// 측정 목적 — 옆에 있는 "약 먹기 전" 칸과 같은 옵은 회색 한 칸 안에서
+/// 고른다. 같은 화면에서 같은 뜻의 칸이 서로 다른 회색이면 따로 놓인
+/// 것으로 읽힌다.
+class _PurposeTray extends StatelessWidget {
+  final HeartMeasurementContext selected;
+  final ValueChanged<HeartMeasurementContext> onChanged;
+
+  const _PurposeTray({required this.selected, required this.onChanged});
+
+  @override
+  Widget build(BuildContext context) {
+    final values = HeartMeasurementContext.values;
+    return Container(
+      padding: const EdgeInsets.all(5),
+      decoration: BoxDecoration(
+        color: AppColors.headerBg,
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Row(
+        children: [
+          for (int i = 0; i < values.length; i++) ...[
+            if (i > 0) const SizedBox(width: 8),
+            Expanded(child: _chip(values[i])),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _chip(HeartMeasurementContext value) {
+    final picked = value == selected;
+    return Semantics(
+      button: true,
+      selected: picked,
+      child: GestureDetector(
+        onTap: () => onChanged(value),
+        child: Container(
+          constraints: const BoxConstraints(minHeight: 54),
+          alignment: Alignment.center,
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+          decoration: BoxDecoration(
+            color: picked ? AppColors.point : Colors.transparent,
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Text(
+            value.shortLabel,
+            textAlign: TextAlign.center,
+            style: AppText.cardTitle(
+              size: 18.5,
+              color: picked ? Colors.white : AppColors.textSecondary,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
