@@ -26,7 +26,6 @@ import '../../../reminder/presentation/screens/alarm_settings_screen.dart';
 import '../../../medication/domain/medication_models.dart';
 import '../../../medication/presentation/widgets/dose_flow_sheets.dart';
 import '../../../easy_flow/domain/easy_flow.dart';
-import '../../../easy_flow/presentation/easy_flow_shell.dart';
 import '../../../medication/presentation/widgets/dose_guard_sheets.dart';
 import '../../../profile/application/current_user_controller.dart';
 import 'package:go_router/go_router.dart';
@@ -66,7 +65,6 @@ class PatientHomeScreen extends ConsumerStatefulWidget {
   final bool easyMode;
 
   /// 쉬운 모드에서 메뉴를 열 때.
-  final VoidCallback? onOpenMenu;
 
   const PatientHomeScreen({
     super.key,
@@ -80,7 +78,6 @@ class PatientHomeScreen extends ConsumerStatefulWidget {
     this.onMeasureBefore,
     this.onDone,
     this.easyMode = false,
-    this.onOpenMenu,
   });
 
   @override
@@ -424,7 +421,6 @@ class _PatientHomeScreenState extends ConsumerState<PatientHomeScreen> {
               userName: ref.watch(currentUserNameProvider),
               date: now,
               easyMode: widget.easyMode,
-              onOpenMenu: widget.onOpenMenu,
             ),
           Expanded(
             child: LayoutBuilder(
@@ -1174,14 +1170,12 @@ class HomeTopBar extends StatelessWidget {
   final String userName;
   final DateTime date;
   final bool easyMode;
-  final VoidCallback? onOpenMenu;
 
   const HomeTopBar({
     super.key,
     required this.userName,
     required this.date,
     this.easyMode = false,
-    this.onOpenMenu,
   });
 
   static const _weekdays = ['월', '화', '수', '목', '금', '토', '일'];
@@ -1213,12 +1207,7 @@ class HomeTopBar extends StatelessWidget {
           ),
           const SizedBox(width: 10),
           // 지금 어느 화면인지는 두 모드 모두에서 보여야 한다.
-          // 간편 화면에서는 그 옆에 메뉴 단추가 하나 더 붙는다.
           const Flexible(child: ModeBadge()),
-          if (easyMode && onOpenMenu != null) ...[
-            const SizedBox(width: 10),
-            EasyMenuButton(onTap: onOpenMenu!),
-          ],
         ],
       ),
     );

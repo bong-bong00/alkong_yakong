@@ -965,18 +965,15 @@ class _DoneSlotBox extends StatelessWidget {
         ? '없음'
         : taken
         ? _clock((dose.takenAt ?? DateTime.now()).toLocal())
-        : '아직';
-    // 드셨으면 ✓, 약이 있는데 안 드셨으면 ✗. 약이 없는 때는 표시하지 않는다.
-    final mark = empty
-        ? ''
-        : taken
-        ? '✓'
-        : '✗';
+        : '미복용';
+    // 드셨으면 ✓. 아직 안 드신 때에는 아무 표도 하지 않는다 — ✗는 그냥
+    // 지나간 약에 쓰는 표지, 이따 드실 약에 붙이면 혼낸 것처럼 읽힌다.
+    final mark = taken ? '✓' : '';
     final ink = taken
         ? AppColors.textPrimary
         : empty
         ? AppColors.slotPending
-        : AppColors.calendarMissedInk;
+        : AppColors.textSecondary;
 
     return Semantics(
       label: '${dose.slot.label} $value',
@@ -986,11 +983,9 @@ class _DoneSlotBox extends StatelessWidget {
           alignment: Alignment.center,
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 14),
           decoration: BoxDecoration(
-            color: taken
-                ? AppColors.pointRing
-                : empty
-                ? AppColors.sunken
-                : AppColors.calendarMissed,
+            // 안 드신 때는 붉은 면이 아니라 회색이다. 아직 드실 수 있는
+            // 약을 놓친 약처럼 칠하지 않는다.
+            color: taken ? AppColors.pointRing : AppColors.sunken,
             borderRadius: BorderRadius.circular(18),
           ),
           child: Column(

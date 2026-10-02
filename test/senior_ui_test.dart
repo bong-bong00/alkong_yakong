@@ -366,8 +366,9 @@ void _easyModeTests() {
     expect(find.byType(SeniorBottomNav), findsNothing);
     // 첫 걸음의 주 버튼 (명세서 76).
     expect(find.text('복약 전 심박 측정'), findsOneWidget);
-    // 아바타 자리가 메뉴 버튼으로 바뀐다.
-    expect(find.text('메뉴'), findsOneWidget);
+    // 메뉴 단추는 두지 않는다. 걸음을 따라가는 자리에 아무 데나 건너뛰는
+    // 문을 두면 어디까지 했는지 놓친다.
+    expect(find.text('메뉴'), findsNothing);
     // 시안대로 나가는 길을 이름으로 적는다. 지금이 간편 화면이라는 것은
     // 걸음 표시와 이 단추가 함께 말한다.
     expect(find.text('일반 화면으로'), findsOneWidget);
@@ -443,9 +444,14 @@ void _easyModeTests() {
     expect(showsEasyBar(EasyScreen.record), isTrue);
   });
 
-  test('메뉴에서 갈 수 있는 곳이 흐름보다 넓다', () {
-    // 한 줄로만 갈 수 있으면 그것대로 갇힌다.
-    expect(kEasyMenu.length, greaterThan(kEasyFlow.length));
+  test('간편 화면에서 나가는 길은 "일반 화면으로" 하나다', () {
+    // 메뉴를 없앴으니 갇히지 않는 길은 이것뿐이다. 여기서 사라지면
+    // 간편 화면에 들어온 분이 나올 방법이 없다.
+    final shell = File(
+      'lib/features/easy_flow/presentation/easy_flow_shell.dart',
+    ).readAsStringSync();
+    expect(shell.contains("label: '일반 화면으로'"), isTrue);
+    expect(shell.contains('EasyMenuButton('), isFalse);
   });
 }
 
@@ -506,10 +512,12 @@ void _forbiddenFeatureTests() {
   });
 
   test('보호자 연락은 스낵바로 알린다', () {
-    final dur = File(
-      'lib/features/dur_analysis/presentation/screens/dur_analysis_screen.dart',
+    // 전화를 걸지 못했으면 그렇다고 말해야 한다. 아무 말이 없으면 연락이
+    // 간 줄 안다.
+    final guardian = File(
+      'lib/features/dashboard/presentation/screens/guardian_home_screen.dart',
     ).readAsStringSync();
-    expect(dur.contains('showSeniorSnackbar'), isTrue);
+    expect(guardian.contains('showSeniorSnackbar'), isTrue);
   });
 
   test('알림은 시니어 스낵바 하나로만 띄운다', () {
