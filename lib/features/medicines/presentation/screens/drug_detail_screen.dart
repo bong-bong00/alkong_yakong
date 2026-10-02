@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:flutter_tabler_icons/flutter_tabler_icons.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../../core/constants/medicine_flow_colors.dart';
@@ -154,9 +153,19 @@ class _DetailBody extends StatelessWidget {
             radius: 26,
             padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 20),
             child: switch (tab) {
-              0 => _WorkTab(medicine: medicine),
               1 => _CautionTab(medicine: medicine, cautions: _cautions),
-              _ => _DosingTab(medicine: medicine),
+              // 무슨 약인지 읽고 나면 다음에 궁금한 것이 어떻게 먹느냐다.
+              // 한 탭에 이어서 둔다.
+              _ => Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  _WorkTab(medicine: medicine),
+                  const SizedBox(height: 16),
+                  const SeniorDivider(),
+                  const SizedBox(height: 16),
+                  _DosingTab(medicine: medicine),
+                ],
+              ),
             },
           ),
           // 출처는 박스에 담지 않는다. 읽을 거리가 아니라 꼬리말이다.
@@ -252,7 +261,7 @@ class _DetailTabs extends StatelessWidget {
     required this.cautionMark,
   });
 
-  static const _labels = ['하는 일', '주의', '먹는 법'];
+  static const _labels = ['약 소개', '주의'];
 
   @override
   Widget build(BuildContext context) {
@@ -657,9 +666,9 @@ class _AskAboutThisDrug extends StatelessWidget {
         child: GestureDetector(
           onTap: () => context.push('/drug-explain', extra: name),
           child: Container(
-            constraints: const BoxConstraints(minWidth: 64, minHeight: 64),
+            constraints: const BoxConstraints(minWidth: 56, minHeight: 56),
             alignment: Alignment.center,
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
             decoration: BoxDecoration(
               color: AppColors.surface,
               borderRadius: BorderRadius.circular(18),
@@ -668,19 +677,13 @@ class _AskAboutThisDrug extends StatelessWidget {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Icon(
-                  TablerIcons.help_circle,
-                  size: 22,
-                  color: AppColors.point,
-                ),
-                const SizedBox(height: 2),
                 Text(
                   '약사',
-                  style: AppText.cardTitle(size: 15, color: AppColors.point),
+                  style: AppText.cardTitle(size: 16, color: AppColors.point),
                 ),
                 Text(
                   '상담',
-                  style: AppText.cardTitle(size: 15, color: AppColors.point),
+                  style: AppText.cardTitle(size: 16, color: AppColors.point),
                 ),
               ],
             ),

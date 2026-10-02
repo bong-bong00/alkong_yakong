@@ -957,8 +957,11 @@ class _BigDoseButtonState extends State<_BigDoseButton>
         final outer = room
             .clamp(180.0, widget.compact ? 230.0 : 300.0)
             .toDouble();
-        final ring = outer * 0.11;
+        // 테는 넉넉히 둔다. 얇으면 뛰는 것이 보이지 않는다. 위 칸과 조금
+        // 겹쳐도 괜찮다 — 겹치는 쪽이 눈에 먼저 든다.
+        final ring = outer * 0.2;
         final size = outer - ring * 2;
+        final halo = outer * 1.12;
         // 글자와 아이콘은 지름을 따라간다. 동그라미만 커지고 글자가
         // 그대로면 가운데가 비어 보인다.
         final labelSize = (size * 0.135).clamp(24.0, 34.0).toDouble();
@@ -981,19 +984,25 @@ class _BigDoseButtonState extends State<_BigDoseButton>
                   height: outer,
                   child: Stack(
                     alignment: Alignment.center,
+                    // 테가 받은 자리 밖으로 조금 나가도 자르지 않는다.
+                    clipBehavior: Clip.none,
                     children: [
-                      AnimatedBuilder(
-                        animation: _pulse,
-                        builder: (context, child) => Transform.scale(
-                          scale: beating ? _pulse.value : 1.0,
-                          child: child,
-                        ),
-                        child: Container(
-                          width: outer,
-                          height: outer,
-                          decoration: const BoxDecoration(
-                            color: AppColors.pointRing,
-                            shape: BoxShape.circle,
+                      OverflowBox(
+                        maxWidth: halo,
+                        maxHeight: halo,
+                        child: AnimatedBuilder(
+                          animation: _pulse,
+                          builder: (context, child) => Transform.scale(
+                            scale: beating ? _pulse.value : 1.0,
+                            child: child,
+                          ),
+                          child: Container(
+                            width: halo,
+                            height: halo,
+                            decoration: const BoxDecoration(
+                              color: AppColors.pointRing,
+                              shape: BoxShape.circle,
+                            ),
                           ),
                         ),
                       ),
