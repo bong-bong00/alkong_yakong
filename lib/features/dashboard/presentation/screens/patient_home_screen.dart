@@ -13,12 +13,9 @@ import '../../../../core/widgets/senior_button.dart';
 import '../../../../core/widgets/senior_card.dart';
 import '../../../../core/widgets/senior_feedback.dart';
 import '../../../../core/widgets/senior_header.dart';
-import '../../../../core/widgets/senior_sheet.dart';
-import '../../../../core/widgets/senior_wheel.dart';
 import '../../../../core/network/api_client.dart';
 import '../../../guardian/application/guardians_provider.dart';
 import '../../../guardian/data/guardian_repository.dart';
-import '../../../medication/application/dose_times.dart';
 import '../../../biosignal/application/heart_device.dart';
 import '../../../biosignal/presentation/screens/polar_screen.dart';
 import '../../../medication/application/medication_controller.dart';
@@ -91,6 +88,10 @@ class PatientHomeScreen extends ConsumerStatefulWidget {
 class _PatientHomeScreenState extends ConsumerState<PatientHomeScreen> {
   /// 방금 기록한 시간대. 파란 띠로 알리고, X를 누르면 사라진다.
   DoseSlot? _recordedSlot;
+
+  /// 직접 고르신 때. 아침을 늦게 드셔도 그 때로 적힐 수 있게 한다.
+  /// 안 고르셨으면 아직 안 드신 가장 이른 때를 따른다.
+  DoseSlot? _pickedSlot;
 
   /// 드신 뒤 아직 안 재다 남은 시간대. 측정 화면을 닫고 나와도
   /// 홈에 재는 길이 남아 있어야 한다.
@@ -193,71 +194,6 @@ class _PatientHomeScreenState extends ConsumerState<PatientHomeScreen> {
       accept
           ? '${invite.name} 님이 이제 함께 볼 수 있어요'
           : '${invite.name} 님의 요청을 거절했어요',
-    );
-  }
-
-  /// 때 칸을 눌렀을 때 — 아침·점심·저녁이 몇 시인지 보여 주고 그 자리에서
-  /// 고친다.
-  ///
-  /// 여기서 고치는 것은 **화면에 적는 시각**이다. 소리로 울리는 시각은
-  /// "알림 시간"에서 따로 고른다.
-  Future<void> _showDoseTimes() async {
-    await SeniorSheet.show<void>(
-      context: context,
-      builder: (sheetContext) => Consumer(
-        builder: (consumerContext, sheetRef, _) {
-          final times = sheetRef.watch(doseTimesProvider);
-          return SeniorSheet(
-            title: '약 드시는 시간',
-            body: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                for (final slot in DoseSlot.values) ...[
-                  if (slot != DoseSlot.values.first) const SeniorDivider(),
-                  _SlotTimeRow(
-                    label: slot.label,
-                    clock: times.clock(slot),
-                    onTap: () => _changeDoseTime(sheetContext, slot),
-                  ),
-                ],
-              ],
-            ),
-            actions: [
-              SeniorButton(
-                label: '닫기',
-                kind: SeniorButtonKind.secondary,
-                minHeight: 66,
-                fontSize: 21,
-                onPressed: () => Navigator.of(sheetContext).pop(),
-              ),
-            ],
-          );
-        },
-      ),
-    );
-  }
-
-  /// 한 때의 시각을 바꾼다.
-  ///
-  /// **소리로 울리는 시각은 건드리지 않는다.** 여기서 고치는 것은 화면에
-  /// 적는 시각뿐이고, 알림은 "알림 시간"에서 따로 고른다.
-  Future<void> _changeDoseTime(BuildContext sheetContext, DoseSlot slot) async {
-    final times = ref.read(doseTimesProvider);
-    final current = times.of(slot);
-    final time = await showSeniorClockWheel(
-      context: sheetContext,
-      title: '${slot.label}, 몇 시에 드세요?',
-      initialMinutes: current,
-    );
-    if (time == null || time == current) return;
-    await ref
-        .read(doseTimesProvider.notifier)
-        .update(times.withTime(slot, time));
-
-    if (!mounted) return;
-    showSeniorSnackbar(
-      context,
-      '${slot.label}을 ${DoseTimes.clockOf(time)}로 바꿨어요',
     );
   }
 
@@ -405,6 +341,8 @@ class _PatientHomeScreenState extends ConsumerState<PatientHomeScreen> {
     // 눌렀는지 놓친다. 대신 맨 위에 파란 띠로 알린다.
     setState(() {
       _recordedSlot = slot;
+      // 다음 할 일로 저절로 옮긴다.
+      _pickedSlot = null;
     });
     // 기기를 쓰는 분은 드신 뒤에 한 번 더 잰다.
     if (ref.read(heartDevicePairedProvider)) {
@@ -459,6 +397,14 @@ class _PatientHomeScreenState extends ConsumerState<PatientHomeScreen> {
     final usesDevice = ref.watch(heartDevicePairedProvider);
     // 드신 뒤 재기가 남았으면 그것이 지금 할 일이다.
     final afterSlot = usesDevice ? _measureAfterSlot : null;
+    // 고르신 때가 있으면 그 때를, 없으면 아직 안 드신 가장 이른 때를
+    // 지금 할 일로 삼는다. 늦게 드셔도 아침은 아침으로 적힐 수 있어야 한다.
+    final pickedSlot = _pickedSlot ?? next?.slot;
+    final pickedDose = pickedSlot == null
+        ? null
+        : today.doses.where((dose) => dose.slot == pickedSlot).firstOrNull;
+    // 고른 때를 이미 드셨으면 단추는 되돌리기가 된다.
+    final pickedTaken = pickedDose?.taken ?? true;
 
     return Container(
       color: AppColors.pageBg,
@@ -544,14 +490,13 @@ class _PatientHomeScreenState extends ConsumerState<PatientHomeScreen> {
                       const SizedBox(height: 18),
                       _SlotChips(
                         today: today,
-                        next: next,
-                        times: ref.watch(doseTimesProvider),
-                        onSetTimes: _showDoseTimes,
+                        picked: pickedSlot,
+                        onPick: (slot) => setState(() => _pickedSlot = slot),
                       ),
                       const SizedBox(height: 8),
                       // 누를 수 있다는 것을 모르면 평생 못 누른다. 한 줄만 적는다.
                       Text(
-                        '아침/점심/저녁을 누르면 복약 시간을 바꿔요',
+                        '어느 때 약인지 고르고 먹었어요를 누르세요',
                         textAlign: TextAlign.left,
                         style: AppText.caption(size: 16),
                       ),
@@ -561,12 +506,12 @@ class _PatientHomeScreenState extends ConsumerState<PatientHomeScreen> {
                         duration: const Duration(milliseconds: 420),
                         curve: Curves.easeOutCubic,
                         alignment: Alignment.topCenter,
-                        child: usesDevice && (next != null || afterSlot != null)
+                        child: usesDevice && (!pickedTaken || afterSlot != null)
                             ? Padding(
                                 padding: const EdgeInsets.only(top: 14),
                                 child: _HeartSteps(
                                   beforeBpm:
-                                      _beforeBpm[next?.slot ?? afterSlot],
+                                      _beforeBpm[afterSlot ?? pickedSlot],
                                   afterPending: afterSlot != null,
                                 ),
                               )
@@ -577,12 +522,12 @@ class _PatientHomeScreenState extends ConsumerState<PatientHomeScreen> {
                       _Fill(
                         scrolls: scrolls,
                         child: _BigDoseButton(
-                          done: next == null,
+                          done: pickedTaken,
                           // 기기를 쓰는 분은 먹기 전에 먼저 잰다.
                           measureFirst:
-                              next != null &&
+                              !pickedTaken &&
                               usesDevice &&
-                              _beforeBpm[next.slot] == null,
+                              _beforeBpm[pickedSlot] == null,
                           // 드신 뒤 한 번 더 — 같은 단추로 같은 말을 한다.
                           measureAfter: afterSlot != null,
                           onMeasureAfter: afterSlot == null
@@ -592,15 +537,19 @@ class _PatientHomeScreenState extends ConsumerState<PatientHomeScreen> {
                               ? null
                               : () => setState(() => _measureAfterSlot = null),
                           compact:
-                              usesDevice && (next != null || afterSlot != null),
-                          onMeasure: next == null
+                              usesDevice && (!pickedTaken || afterSlot != null),
+                          onMeasure: pickedTaken || pickedSlot == null
                               ? null
-                              : () => _measureBefore(next.slot),
-                          onTake: next == null ? null : () => _take(next.slot),
-                          onUndo: next != null
+                              : () => _measureBefore(pickedSlot),
+                          onTake: pickedTaken || pickedSlot == null
+                              ? null
+                              : () => _take(pickedSlot),
+                          onUndo: !pickedTaken
                               ? null
                               : () => _undo(
-                                  _recordedSlot ?? today.doses.last.slot,
+                                  pickedSlot ??
+                                      _recordedSlot ??
+                                      today.doses.last.slot,
                                 ),
                         ),
                       ),
@@ -677,27 +626,26 @@ class _TodayHeadline extends StatelessWidget {
   }
 }
 
-/// 아침·점심·저녁 세 칸. 드신 때는 흰 칩에 체크, 다음 때는 파란 칩,
-/// 약이 없는 때는 회색 칩에 "없음".
+/// 아침·점심·저녁 세 칸. 누르면 그 때를 고른다.
 ///
-/// 칸 아래에 그 때가 몇 시인지 적는다. 셋 다 적는다 — 한 칸에만 적혀
-/// 있으면 왜 거기만 적혔는지 알 수 없다. 아직 시간을 맞춘 적이 없어도
-/// 기본 시각(아침 8시·점심 12시·저녁 6시)이 적힌다.
+/// 고른 때는 파란 칩, 드신 때는 흰 칩에 체크와 드신 시각, 약이 없는 때는
+/// 회색 칩에 "없음"이다.
+///
+/// 몇 시에 드시는지는 미리 정해 두지 않는다. 아침을 오후 네 시에 드셔도 그
+/// 시각이 그대로 적힐 뿐이다. 소리로 울리는 시각은 알림에서 따로 고른다.
 class _SlotChips extends StatelessWidget {
   final TodayMedication today;
-  final DoseEntry? next;
 
-  /// 약 드시는 시각 — 소리로 울리는 시각과는 따로 간다.
-  final DoseTimes times;
+  /// 지금 고른 때. 여기에 대고 "먹었어요"를 누른다.
+  final DoseSlot? picked;
 
-  /// 칸을 눌렀을 때 — "약 드시는 시간" 창을 연다.
-  final VoidCallback onSetTimes;
+  /// 칸을 눌렀을 때.
+  final ValueChanged<DoseSlot> onPick;
 
   const _SlotChips({
     required this.today,
-    required this.next,
-    required this.times,
-    required this.onSetTimes,
+    required this.picked,
+    required this.onPick,
   });
 
   @override
@@ -712,33 +660,47 @@ class _SlotChips extends StatelessWidget {
     );
   }
 
+  /// 드신 시각 — "16:00". 아직 안 드셨으면 빈 문자열이다.
+  static String _clock(DateTime? at) {
+    if (at == null) return '';
+    final hour = at.hour.toString().padLeft(2, '0');
+    final minute = at.minute.toString().padLeft(2, '0');
+    return '$hour:$minute';
+  }
+
   Widget _chip(DoseSlot slot) {
     final dose = today.doses.where((d) => d.slot == slot).firstOrNull;
-    final isNext = next?.slot == slot;
+    final isPicked = picked == slot;
     final taken = dose?.taken ?? false;
+    final clock = _clock(dose?.takenAt);
 
-    final under = dose == null ? '없음' : times.clock(slot);
+    final under = dose == null
+        ? '없음'
+        : taken
+        ? (clock.isEmpty ? '드셨어요' : clock)
+        : '아직';
     final background = dose == null
         ? AppColors.neutralFill
-        : isNext
+        : isPicked
         ? AppColors.pointFill
         : AppColors.surface;
     final foreground = dose == null
         ? AppColors.textSecondary
-        : isNext
+        : isPicked
         ? Colors.white
         : AppColors.point;
 
     return Semantics(
-      button: true,
+      button: dose != null,
+      selected: isPicked,
       label: dose == null
-          ? '${slot.label} 약 없음, 눌러서 시간 설정하기'
+          ? '${slot.label} 약 없음'
           : taken
-          ? '${slot.label} ${times.clock(slot)}, 드셨어요, 눌러서 시간 설정하기'
-          : '${slot.label} ${times.clock(slot)}, 눌러서 시간 설정하기',
+          ? '${slot.label} $under에 드셨어요, 누르면 고릅니다'
+          : '${slot.label} 아직 안 드셨어요, 누르면 고릅니다',
       child: ExcludeSemantics(
         child: GestureDetector(
-          onTap: onSetTimes,
+          onTap: dose == null ? null : () => onPick(slot),
           child: Stack(
             clipBehavior: Clip.none,
             children: [
@@ -1036,7 +998,7 @@ class _BigDoseButtonState extends State<_BigDoseButton>
     // 최대 치수를 천천히 옮긴다. 칸이 자라나는 만큼 동그라미가 줄며
     // 아래로 내려간다.
     return TweenAnimationBuilder<double>(
-      tween: Tween<double>(end: widget.compact ? 230.0 : 300.0),
+      tween: Tween<double>(end: widget.compact ? 252.0 : 300.0),
       duration: const Duration(milliseconds: 420),
       curve: Curves.easeOutCubic,
       builder: (context, cap, _) => LayoutBuilder(
@@ -1046,7 +1008,7 @@ class _BigDoseButtonState extends State<_BigDoseButton>
           // 가로는 양옆을 한 뼘씩 비워 둔다. 화면 폭을 꽉 채우면
           // 동그라미가 벽에 낀 것처럼 답답해 보인다.
           // 건너뛰는 줄이 붙으면 그만큼 동그라미 자리가 줄어든다.
-          final skipRoom = widget.measureAfter ? 52.0 : 0.0;
+          final skipRoom = widget.measureAfter ? 56.0 : 0.0;
           final room = math.min(
             (box.maxWidth.isFinite ? box.maxWidth : 320) - 56,
             (box.maxHeight.isFinite ? box.maxHeight : 320) - skipRoom,
@@ -1128,28 +1090,24 @@ class _BigDoseButtonState extends State<_BigDoseButton>
                                 height: size * 0.72,
                                 child: FittedBox(
                                   fit: BoxFit.scaleDown,
-                                  child: AnimatedSwitcher(
-                                    duration: const Duration(milliseconds: 260),
-                                    child: Column(
-                                      key: ValueKey(label),
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        // 재기 때는 그림을 두지 않는다 — 글자 두 줄이
-                                        // 이미 무엇을 하는지 말한다.
-                                        if (!measuring) ...[
-                                          Icon(
-                                            widget.done
-                                                ? TablerIcons.arrow_back_up
-                                                : TablerIcons.check,
-                                            size: iconSize,
-                                            color: ink,
-                                          ),
-                                          const SizedBox(height: 2),
-                                        ],
-                                        for (final line in lines)
-                                          Text(line, style: labelStyle),
+                                  child: Column(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      // 재기 때는 그림을 두지 않는다 — 글자 두 줄이
+                                      // 이미 무엇을 하는지 말한다.
+                                      if (!measuring) ...[
+                                        Icon(
+                                          widget.done
+                                              ? TablerIcons.arrow_back_up
+                                              : TablerIcons.check,
+                                          size: iconSize,
+                                          color: ink,
+                                        ),
+                                        const SizedBox(height: 2),
                                       ],
-                                    ),
+                                      for (final line in lines)
+                                        Text(line, style: labelStyle),
+                                    ],
                                   ),
                                 ),
                               ),
@@ -1409,43 +1367,3 @@ class HomeTopBar extends StatelessWidget {
 ///
 
 /// "약 드시는 시간" 창의 한 줄. 누르면 그 때의 시각을 바꾼다.
-class _SlotTimeRow extends StatelessWidget {
-  final String label;
-  final String clock;
-  final VoidCallback onTap;
-
-  const _SlotTimeRow({
-    required this.label,
-    required this.clock,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Semantics(
-      button: true,
-      label: '$label $clock, 누르면 바꿔요',
-      child: ExcludeSemantics(
-        child: GestureDetector(
-          onTap: onTap,
-          child: Container(
-            color: Colors.transparent,
-            constraints: const BoxConstraints(minHeight: 60),
-            child: Row(
-              children: [
-                Expanded(child: Text(label, style: AppText.label(size: 20))),
-                Text(clock, style: AppText.cardTitle(size: 21)),
-                const SizedBox(width: 8),
-                const Icon(
-                  Icons.expand_more_rounded,
-                  size: 24,
-                  color: AppColors.textTertiary,
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}

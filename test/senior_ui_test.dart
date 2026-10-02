@@ -1210,37 +1210,69 @@ void _homeTimelineTests() {
     );
     await tester.pump();
 
-    // 약이 없는 때는 "없음"으로. 몇 시인지는 셋 다 적는다 —
-    // 한 칸에만 적혀 있으면 왜 거기만 적혔는지 알 수 없다.
+    // 약이 없는 때는 "없음". 드신 때는 드신 시각을, 아직인 때는 "아직"을
+    // 적는다. 몇 시에 드시는지는 미리 정해 두지 않는다.
     expect(find.text('아침'), findsOneWidget);
     expect(find.text('없음'), findsOneWidget);
     expect(find.text('점심'), findsOneWidget);
-    final lunchChip = find.byWidgetPredicate(
-      (widget) =>
-          widget is Semantics &&
-          (widget.properties.label ?? '').startsWith('점심 12:00,') &&
-          (widget.properties.label ?? '').contains('눌러서 시간 설정하기'),
-    );
-    expect(
-      find.descendant(of: lunchChip, matching: find.text('12:00')),
-      findsOneWidget,
-    );
+    expect(find.text('드셨어요'), findsOneWidget);
     expect(find.text('저녁'), findsOneWidget);
-    final dinnerChip = find.byWidgetPredicate(
-      (widget) =>
-          widget is Semantics &&
-          (widget.properties.label ?? '').startsWith('저녁 18:00,') &&
-          (widget.properties.label ?? '').contains('눌러서 시간 설정하기'),
-    );
-    expect(
-      find.descendant(of: dinnerChip, matching: find.text('18:00')),
-      findsOneWidget,
-    );
+    expect(find.text('아직'), findsOneWidget);
+    // 시각을 미리 정해 두지 않으므로 칩에는 정해둔 시각이 없다.
+    expect(find.text('12:00'), findsNothing);
+    expect(find.text('18:00'), findsNothing);
 
-    // 약 이름은 홈에 늘어놓지 않는다 — 아래 칸에서 본다.
     expect(find.text('메트포르민'), findsNothing);
     // 심박기기를 안 쓰시면 그 자리는 연결 길이다.
     expect(find.text('센서 연결'), findsOneWidget);
+  });
+
+  testWidgets('때를 골라 그 시각으로 적는다', (tester) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          medicationProvider.overrideWith(_SeniorTestMedicationController.new),
+        ],
+        child: MaterialApp(
+          theme: AppTheme.build(),
+          home: const MediaQuery(
+            data: MediaQueryData(disableAnimations: true),
+            child: Scaffold(body: PatientHomeScreen()),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    // 기본은 아직 안 드신 저녁. 아침을 누르면 단추가 그쪽을 맡는다.
+    expect(find.text('먹었어요'), findsWidgets);
+    await tester.tap(find.text('아침'));
+    await tester.pumpAndSettle();
+    expect(find.text('취소하기'), findsOneWidget);
+
+    // 되돌리면 아침은 다시 "아직"이 된다.
+    await tester.tap(find.text('취소하기'));
+    await tester.pumpAndSettle();
+    expect(find.text('아직'), findsWidgets);
+
+    // 그 자리에서 다시 드시면 지금 시각이 적힌다.
+    await tester.tap(find.text('먹었어요').last);
+    await tester.pumpAndSettle();
+    if (find.text('네 알겠어요').evaluate().isNotEmpty) {
+      await tester.tap(find.text('네 알겠어요'));
+      await tester.pumpAndSettle();
+    }
+    final clock = RegExp(r'^\d{2}:\d{2}$');
+    expect(
+      find.byWidgetPredicate(
+        (widget) => widget is Text && clock.hasMatch(widget.data ?? ''),
+      ),
+      findsWidgets,
+    );
   });
 
   testWidgets('센서를 떼면 걸음 칸이 사라지고 동그라미가 다시 커진다', (tester) async {
