@@ -733,9 +733,11 @@ class _ChoiceBox extends StatelessWidget {
             alignment: Alignment.center,
             padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 12),
             decoration: BoxDecoration(
-              color: selected ? AppColors.pointFill : AppColors.surface,
+              color: selected ? AppColors.pointFill : AppColors.secondaryFill,
               borderRadius: BorderRadius.circular(16),
-              boxShadow: selected ? null : kCardShadow,
+              border: selected
+                  ? null
+                  : Border.all(color: AppColors.border, width: 1.5),
             ),
             child: Text(
               label,
@@ -780,9 +782,9 @@ class _PickRow extends StatelessWidget {
             constraints: const BoxConstraints(minHeight: 66),
             padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
             decoration: BoxDecoration(
-              color: AppColors.surface,
+              color: AppColors.secondaryFill,
               borderRadius: BorderRadius.circular(16),
-              boxShadow: kCardShadow,
+              border: Border.all(color: AppColors.border, width: 1.5),
             ),
             child: Row(
               children: [
