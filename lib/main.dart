@@ -170,7 +170,9 @@ final _router = GoRouter(
     ),
     GoRoute(
       path: '/drug-explain',
-      builder: (context, state) => const DrugExplainScreen(),
+      // 약 자세히에서 "이 약 물어보기"로 오면 그 약을 고른 채로 연다.
+      builder: (context, state) =>
+          DrugExplainScreen(initialMedicine: state.extra as String?),
     ),
   ],
 );
