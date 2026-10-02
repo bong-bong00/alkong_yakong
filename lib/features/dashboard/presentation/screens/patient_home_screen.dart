@@ -1065,16 +1065,19 @@ class _BigDoseButtonState extends State<_BigDoseButton>
                                   key: ValueKey(label),
                                   mainAxisSize: MainAxisSize.min,
                                   children: [
-                                    Icon(
-                                      widget.done
-                                          ? TablerIcons.arrow_back_up
-                                          : widget.measureFirst
-                                          ? TablerIcons.heart_filled
-                                          : TablerIcons.check,
-                                      size: iconSize,
-                                      color: ink,
-                                    ),
-                                    const SizedBox(height: 2),
+                                    // 재기 때는 그림을 두지 않는다 — 글자 두 줄이
+                                    // 이미 무엇을 하는지 말한다.
+                                    if (!widget.measureFirst ||
+                                        widget.done) ...[
+                                      Icon(
+                                        widget.done
+                                            ? TablerIcons.arrow_back_up
+                                            : TablerIcons.check,
+                                        size: iconSize,
+                                        color: ink,
+                                      ),
+                                      const SizedBox(height: 2),
+                                    ],
                                     Text(label, style: labelStyle),
                                     if (sub != null)
                                       Text(

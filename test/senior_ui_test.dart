@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:alkong_yakong/core/constants/app_colors.dart';
 import 'package:alkong_yakong/core/theme/app_theme.dart';
 import 'package:alkong_yakong/features/auth/presentation/screens/login_screen.dart';
 import 'package:alkong_yakong/features/auth/domain/exclusive_choice.dart';
@@ -1185,6 +1186,48 @@ void _homeTimelineTests() {
     expect(find.text('메트포르민'), findsNothing);
     // 심박기기를 안 쓰시면 그 자리는 연결 길이다.
     expect(find.text('센서 연결'), findsOneWidget);
+  });
+
+  testWidgets('센서를 떼면 걸음 칸이 사라지고 동그라미가 다시 커진다', (tester) async {
+    await tester.pumpWidget(
+      home(
+        paired: true,
+        doses: const [
+          DoseEntry(
+            slot: DoseSlot.dinner,
+            medicines: [Medicine(ingredient: '저녁정', amount: '1알')],
+          ),
+        ],
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    Size circle() => tester.getSize(
+      find
+          .byWidgetPredicate(
+            (widget) =>
+                widget is Container &&
+                widget.decoration is BoxDecoration &&
+                (widget.decoration as BoxDecoration).shape == BoxShape.circle &&
+                (widget.decoration as BoxDecoration).color ==
+                    AppColors.pointFill,
+          )
+          .first,
+    );
+
+    expect(find.text('먹기 전 재기'), findsOneWidget);
+    final small = circle().width;
+
+    // 센서를 떼면(연결 끊기) 걸음 칸이 접히고 그만큼 동그라미가
+    // 다시 커진다. 가는 길과 오는 길이 같아야 한다.
+    final element = tester.element(find.byType(PatientHomeScreen));
+    await ProviderScope.containerOf(
+      element,
+    ).read(heartDevicePairedProvider.notifier).set(false);
+    await tester.pumpAndSettle();
+
+    expect(find.text('먹기 전 재기'), findsNothing);
+    expect(circle().width, greaterThan(small));
   });
 
   testWidgets('심박기기를 쓰시면 아래 칸이 "약 보기"로 돌아온다', (tester) async {
