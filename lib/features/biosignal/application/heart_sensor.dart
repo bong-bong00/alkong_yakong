@@ -59,6 +59,7 @@ class HeartSensor extends ChangeNotifier {
   Timer? _baselineTimer;
   bool _isBaselineMeasuring = false;
   bool _connecting = false;
+  Completer<void>? _connectionSettled;
   bool _disposed = false;
   int _session = 0;
   bool _acceptSamples = false;
@@ -66,7 +67,7 @@ class HeartSensor extends ChangeNotifier {
   Timer? _progressTimer;
   Timer? _signalTimer;
   // Transport silence tolerance, not a medical BPM threshold.
-  static const Duration _signalTimeout = Duration(seconds: 10);
+  static const Duration _signalTimeout = Duration(seconds: 3);
   int _elapsedSeconds = 0;
   HeartSaveStatus _saveStatus = HeartSaveStatus.idle;
   int? _savedBpm;
@@ -143,6 +144,11 @@ class HeartSensor extends ChangeNotifier {
   }
 
   HeartSensorStatus get status => _status;
+
+  /// 진행 중 연결이 완료되거나 취소 처리를 끝낼 때까지 기다린다.
+  Future<void> get connectionSettled =>
+      _connectionSettled?.future ?? Future<void>.value();
+  bool get connectionInProgress => _connecting;
   int? get bpm => _bpm;
 
   /// 남은 배터리 (0~100). 기기가 아직 안 알려줬으면 null이다.
@@ -176,6 +182,8 @@ class HeartSensor extends ChangeNotifier {
   }) async {
     if (_disposed || _connecting) return;
     _connecting = true;
+    final connectionSettled = Completer<void>();
+    _connectionSettled = connectionSettled;
     _acceptSamples = false;
     beginMeasurement(measurementContext: measurementContext);
     _measurementActive = measure;
@@ -193,16 +201,34 @@ class HeartSensor extends ChangeNotifier {
       await _polar.stopStreaming();
       final previousDeviceId = _deviceId;
       if (previousDeviceId != null) {
+        // 심박 신호만 끊긴 경우 BLE 연결까지 끊고 다시 검색하면, SDK의
+        // 늦은 disconnect 이벤트가 새 스트림을 다시 닫을 수 있다. 먼저
+        // 현재 연결에서 HR 스트림만 다시 열고, 그것이 실패할 때만 실제
+        // 장치 검색·재연결로 내려간다.
+        try {
+          _acceptSamples = true;
+          await _polar.startHrStreaming(previousDeviceId);
+          if (_disposed || session != _session || !_acceptSamples) return;
+          _set(HeartSensorStatus.streaming);
+          _watchSignal();
+          return;
+        } catch (_) {
+          _acceptSamples = false;
+          await _polar.stopStreaming();
+        }
         try {
           await _polar.disconnectFromDevice(previousDeviceId);
         } catch (_) {
           // 이미 끊긴 기기여도 새 검색은 계속한다.
         }
+        // 검색이 실패해도 마지막으로 연결한 장치의 식별자는 유지한다.
+        // 다음 재시도가 주변의 다른 센서로 바뀌지 않도록 한다.
       }
 
       final deviceId = await _polar.findDeviceId(
         targetName: 'Polar Verity Sense',
-        targetDeviceId: PolarService.defaultDeviceId,
+        targetDeviceId: previousDeviceId ?? PolarService.defaultDeviceId,
+        allowNameFallback: previousDeviceId == null,
       );
       if (_disposed || session != _session) return;
       await _polar.connectToDevice(deviceId);
@@ -225,13 +251,26 @@ class HeartSensor extends ChangeNotifier {
       _set(HeartSensorStatus.failed);
     } finally {
       _connecting = false;
+      connectionSettled.complete();
     }
   }
 
   void _subscribeToPolarStreams() {
     _subscriptions.add(
       _polar.currentBpmStream.listen((bpm) {
-        if (_disposed || !_acceptSamples || bpm == null || bpm <= 0) return;
+        if (_disposed || !_acceptSamples) return;
+        if (bpm == null) {
+          if (_status == HeartSensorStatus.streaming &&
+              _measurementActive &&
+              _saveStatus == HeartSaveStatus.idle) {
+            _stopMeasurement(clearBaseline: true);
+            _elapsedSeconds = 0;
+            _watchSignal();
+            notifyListeners();
+          }
+          return;
+        }
+        if (bpm <= 0) return;
         // 데이터셋은 운영 기록과 따로 모은다.
         _datasetCollector.addPolarBpm(
           bpm,

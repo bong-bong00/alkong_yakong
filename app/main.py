@@ -10,6 +10,7 @@ from app.core.config import (
     CLOVA_OCR_API_URL,
     CLOVA_OCR_ENABLED,
     CLOVA_OCR_SECRET_KEY,
+    DEMO_SEED_ENABLED,
 )
 from app.database import DB_PATH
 from app.routes import (
@@ -26,6 +27,7 @@ from app.routes import (
 )
 from init_db import initialize_database
 from app.services.pharmacist.easy_category_db import initialize_easy_category_map_db
+from app.services.seed_mvp_medicines import ensure_mvp_demo_medicines
 from app.services.pharmacist.retrieve import start_background_medicine_detail_refresh
 from app.services.dur_sync_service import start_background_dur_sync
 
@@ -34,10 +36,10 @@ from app.services.dur_sync_service import start_background_dur_sync
 async def lifespan(_: FastAPI):
     initialize_database()
     initialize_easy_category_map_db()
-    # Demo medicines are explicit test fixtures, never production startup data.
-    if APP_ENV == "production":
-        start_background_medicine_detail_refresh()
-        start_background_dur_sync()
+    if DEMO_SEED_ENABLED:
+        ensure_mvp_demo_medicines()
+    start_background_medicine_detail_refresh()
+    start_background_dur_sync()
     yield
 
 
@@ -82,7 +84,7 @@ def health():
         "version": APP_VERSION,
         "environment": APP_ENV,
         "database": f"sqlite:{Path(DB_PATH).name}",
-        "demo_seed_enabled": False,
+        "demo_seed_enabled": DEMO_SEED_ENABLED,
         "ocr_engine": "clova-ocr-v2",
         "ocr_configured": bool(
             CLOVA_OCR_ENABLED and CLOVA_OCR_API_URL and CLOVA_OCR_SECRET_KEY

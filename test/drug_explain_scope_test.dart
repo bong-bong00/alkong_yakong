@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:alkong_yakong/core/polar_pharmacist_ui/constants/app_colors.dart';
 import 'package:alkong_yakong/core/network/api_client.dart';
 import 'package:alkong_yakong/core/session/mvp_session.dart';
 import 'package:alkong_yakong/features/drug_explain/drug_explain_screen.dart';
@@ -7,6 +8,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
   http.Response response(Object value) => http.Response(
@@ -28,7 +30,7 @@ void main() {
     }
     await tester.tap(option);
     await tester.pumpAndSettle();
-    await tester.tap(find.text('이 약으로 정하기'));
+    await tester.tap(find.text('선택'));
     await tester.pumpAndSettle();
   }
 
@@ -39,7 +41,227 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  setUp(() => MvpSession.userId = 'scope-user');
+  setUp(() {
+    MvpSession.userId = 'scope-user';
+    SharedPreferences.setMockInitialValues({});
+  });
+
+  testWidgets('같은 빠른 질문은 로컬 재사용, 최신 조회 실패는 이전 답변 표시', (tester) async {
+    var calls = 0;
+    var offline = false;
+    final client = MockClient((request) async {
+      if (request.url.path.endsWith('/cache-context')) {
+        return response({'verified': true, 'fingerprint': 'health-v1'});
+      }
+      if (request.method == 'POST') {
+        calls++;
+        if (offline) throw http.ClientException('offline');
+        return response({
+          'reply': '공식 안내를 확인했어요.',
+          'sources': ['식약처'],
+        });
+      }
+      return response({
+        'medicines': [
+          {
+            'medicine_code': '202400001',
+            'product_name': '약정',
+            'official_product_name': '약정',
+            'status': 'active',
+          },
+        ],
+      });
+    });
+    await tester.pumpWidget(
+      MaterialApp(
+        home: DrugExplainScreen(
+          apiClient: ApiClient(client: client),
+          medicationApiClient: ApiClient(client: client),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await pick(tester, '약 전체');
+    await tester.tap(find.text('제가 먹는 약 알려주세요').last);
+    await tester.pumpAndSettle();
+    expect(calls, 1);
+    await tester.tap(find.text('제가 먹는 약 알려주세요').last);
+    await tester.pumpAndSettle();
+    expect(calls, 1);
+    expect(find.textContaining('저장된 답변 ·'), findsOneWidget);
+    offline = true;
+    await tester.ensureVisible(find.text('최신 정보 확인'));
+    await tester.tap(find.text('최신 정보 확인'));
+    await tester.pumpAndSettle();
+    expect(calls, 2);
+    expect(find.textContaining('현재 약·건강정보는 다시 확인하지 않았어요.'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('최근 대화 전달과 출처 표시, 약 범위 변경 시 문맥 초기화', (tester) async {
+    final requests = <Map<String, dynamic>>[];
+    final client = MockClient((request) async {
+      if (request.method == 'POST') {
+        requests.add(jsonDecode(request.body) as Map<String, dynamic>);
+        return response({
+          'reply': '선택약1정의 공식 주의사항을 확인했어요.',
+          'sources': requests.length == 1 ? ['식약처 의약품 허가정보'] : [],
+          'conversation_medicines': [
+            {'medicine_code': '202400001', 'product_name': '선택약1정'},
+          ],
+          'resolved_message': requests.last['message'],
+          'resolved_intent': 'precautions',
+        });
+      }
+      return response({
+        'medicines': [
+          {
+            'medicine_code': '202400001',
+            'product_name': '선택약1정',
+            'official_product_name': '선택약1정',
+            'status': 'active',
+          },
+        ],
+      });
+    });
+    await tester.pumpWidget(
+      MaterialApp(
+        home: DrugExplainScreen(
+          apiClient: ApiClient(client: client),
+          medicationApiClient: ApiClient(client: client),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await ask(tester);
+    expect(requests.single['recent_history'], isEmpty);
+    expect(find.text('출처: 식약처 의약품 허가정보'), findsOneWidget);
+    final field = find.byType(TextField).last;
+    await tester.enterText(field, '그럼 술은?');
+    await tester.testTextInput.receiveAction(TextInputAction.send);
+    await tester.pumpAndSettle();
+    final history = requests.last['recent_history'] as List;
+    expect(history.length, 2);
+    expect(history.first['role'], 'user');
+    expect(history.last['role'], 'assistant');
+    expect(history.last['medicines'].single['product_name'], '선택약1정');
+    expect(history.last.containsKey('sources'), isFalse);
+    // Only the first, verified answer has a footer; the unverified reply has none.
+    expect(find.text('출처: 식약처 의약품 허가정보'), findsOneWidget);
+    await pick(tester, '약 전체');
+    await ask(tester);
+    expect(requests.last['recent_history'], isEmpty);
+    expect(tester.takeException(), isNull);
+  });
+
+  for (final count in [0, 1, 2]) {
+    testWidgets(
+      '건강 질문 버튼은 ${count == 0 ? '약 전체' : '$count개 선택'} 범위와 전용 intent를 보낸다',
+      (tester) async {
+        Map<String, dynamic>? sent;
+        if (count == 0) {
+          await tester.binding.setSurfaceSize(const Size(320, 900));
+          addTearDown(() => tester.binding.setSurfaceSize(null));
+        }
+        final client = MockClient((request) async {
+          if (request.method == 'POST') {
+            sent = jsonDecode(request.body) as Map<String, dynamic>;
+            return response({
+              'reply': '선택약1정: 고혈압과 알코올, 술에 주의하세요. 수술은 별도 안내예요.',
+              'health_highlight_terms': ['고혈압', '알코올', '술'],
+            });
+          }
+          return response({
+            'medicines': [
+              for (final index in [1, 2, 3])
+                {
+                  'medicine_code': '12345678$index',
+                  'product_name': '선택약$index정',
+                  'official_product_name': '선택약$index정',
+                  'status': 'active',
+                },
+            ],
+          });
+        });
+        await tester.pumpWidget(
+          MaterialApp(
+            builder: count == 0
+                ? (context, child) => MediaQuery(
+                    data: MediaQuery.of(
+                      context,
+                    ).copyWith(textScaler: const TextScaler.linear(2)),
+                    child: child!,
+                  )
+                : null,
+            home: DrugExplainScreen(
+              apiClient: ApiClient(client: client),
+              medicationApiClient: ApiClient(client: client),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        await pick(tester, count == 0 ? '약 전체' : '약 이름 선택');
+        if (count > 0) {
+          for (var index = 1; index <= count; index++) {
+            await tester.tap(
+              find.byKey(ValueKey('medicine-selection-선택약$index정')),
+            );
+          }
+          await tester.pumpAndSettle();
+          await tester.tap(find.text('$count개 선택'));
+          await tester.pumpAndSettle();
+        }
+        final button = find.widgetWithText(ChoiceChip, '내 건강 상태에서 주의할 점은?');
+        await tester.ensureVisible(button);
+        await tester.pumpAndSettle();
+        await tester.tap(button);
+        await tester.pumpAndSettle();
+        expect(sent, isNotNull);
+        expect(sent!['intent'], 'health_precautions');
+        expect(sent!['user_id'], 'scope-user');
+        expect(sent!['message'], contains('흡연과 음주'));
+        expect(sent!.containsKey('health_profile'), isFalse);
+        final answer = tester.widget<Text>(
+          find.byWidgetPredicate(
+            (widget) =>
+                widget is Text &&
+                widget.textSpan?.toPlainText() ==
+                    '선택약1정: 고혈압과 알코올, 술에 주의하세요. 수술은 별도 안내예요.',
+          ),
+        );
+        final spans = (answer.textSpan! as TextSpan).children!
+            .whereType<TextSpan>();
+        final emphasized = spans
+            .where(
+              (span) =>
+                  span.style?.color == AppColors.danger &&
+                  span.style?.fontWeight == FontWeight.w700,
+            )
+            .map((span) => span.text);
+        expect(emphasized, ['고혈압', '알코올', '술']);
+        expect(
+          spans
+              .where((span) => span.text?.contains('선택약1정') == true)
+              .every((span) => span.style?.color != AppColors.danger),
+          isTrue,
+        );
+        if (count == 1) {
+          expect(sent!['selected_medicine']['medicine_code'], '123456781');
+        } else if (count == 2) {
+          expect(
+            (sent!['selected_medicines'] as List).map(
+              (m) => m['medicine_code'],
+            ),
+            ['123456781', '123456782'],
+          );
+        } else {
+          expect(sent!.containsKey('selected_medicine'), isFalse);
+          expect(sent!.containsKey('selected_medicines'), isFalse);
+        }
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
 
   testWidgets('복수 선택은 선택한 두 약만 전달한다', (tester) async {
     Map<String, dynamic>? sent;
@@ -65,12 +287,12 @@ void main() {
       MaterialApp(
         home: DrugExplainScreen(
           apiClient: ApiClient(client: client),
-          medicineApiClient: ApiClient(client: client),
+          medicationApiClient: ApiClient(client: client),
         ),
       ),
     );
     await tester.pumpAndSettle();
-    await pick(tester, '여러 약 선택');
+    await pick(tester, '약 이름 선택');
     await tester.tap(find.byKey(const ValueKey('medicine-selection-선택약1정')));
     await tester.tap(find.byKey(const ValueKey('medicine-selection-선택약2정')));
     await tester.pumpAndSettle();
@@ -115,12 +337,19 @@ void main() {
       MaterialApp(
         home: DrugExplainScreen(
           apiClient: ApiClient(client: client),
-          medicineApiClient: ApiClient(client: client),
+          medicationApiClient: ApiClient(client: client),
         ),
       ),
     );
     await tester.pumpAndSettle();
     await tester.tap(find.text('바꾸기'));
+    await tester.pumpAndSettle();
+    final wheel = find.byType(ListWheelScrollView);
+    await tester.drag(wheel, const Offset(0, -200));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('약 이름 선택'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('선택'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('다른 약 검색하기'));
     await tester.pumpAndSettle();
@@ -134,12 +363,33 @@ void main() {
     await tester.pumpAndSettle();
     await ask(tester);
     expect(sent.last['selected_medicine']['medicine_code'], 'TEMP-1');
-    expect(sent.last['temporary_medicines'][0]['medicine_code'], 'TEMP-1');
+    // 단일 약은 selected_medicine에, 전체·복수 범위의 임시 약은 별도 목록에 전달한다.
+    expect(sent.last.containsKey('temporary_medicines'), isFalse);
     await pick(tester, '약 전체');
     await ask(tester);
     expect(sent.last.containsKey('selected_medicine'), isFalse);
     expect(sent.last.containsKey('selected_medicines'), isFalse);
     expect(sent.last['temporary_medicines'][0]['medicine_code'], 'TEMP-1');
-    expect((sent.last['current_medicines'] as List).length, 1);
+    expect(sent.last['user_id'], 'scope-user');
+    await pick(tester, '약 이름 선택');
+    expect(find.text('함께 확인할 약을 선택해 주세요.'), findsOneWidget);
+    expect(find.text('등록된 약'), findsNWidgets(2)); // 범례와 등록약 행
+    expect(find.text('검색한 약'), findsNWidgets(2)); // 범례와 검색약 행
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('medicine-selection-등록약정')),
+        matching: find.text('등록된 약'),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('medicine-selection-검색약정')),
+        matching: find.text('검색한 약'),
+      ),
+      findsOneWidget,
+    );
+    expect(find.text('상담용으로 추가했어요'), findsNothing);
+    expect(tester.takeException(), isNull);
   });
 }

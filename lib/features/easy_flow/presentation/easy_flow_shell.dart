@@ -17,7 +17,7 @@ import 'easy_dose_flow.dart';
 import '../../medication/domain/medication_models.dart';
 import '../../medication/presentation/screens/dose_done_screen.dart';
 import '../../medicines/presentation/screens/my_medicines_screen.dart';
-import '../../medicines/presentation/screens/pharmacist_chat_screen.dart';
+import '../../drug_explain/drug_explain_screen.dart';
 import '../../prescription/presentation/screens/prescription_screen.dart';
 import '../../prescription/presentation/screens/schedule_days_screen.dart';
 import '../../profile/application/current_user_controller.dart';
@@ -58,6 +58,10 @@ class _EasyFlowShellState extends ConsumerState<EasyFlowShell> {
   }
 
   void _goTo(EasyScreen screen) {
+    if (screen == EasyScreen.chat) {
+      context.push('/drug-explain');
+      return;
+    }
     if (screen == _screen) return;
     setState(() {
       _history.add(_screen);
@@ -154,7 +158,7 @@ class _EasyFlowShellState extends ConsumerState<EasyFlowShell> {
       case EasyScreen.scheduleDays:
         return ScheduleDaysScreen(onConfirmed: () => _goTo(EasyScreen.today));
       case EasyScreen.chat:
-        return const PharmacistChatScreen();
+        return const DrugExplainScreen();
       case EasyScreen.measure:
         return const MeasureScreen(returnToPreviousScreen: true);
       case EasyScreen.myInfo:

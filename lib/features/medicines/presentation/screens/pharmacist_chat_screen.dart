@@ -2,12 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_tabler_icons/flutter_tabler_icons.dart';
 
-import '../../../../core/constants/app_colors.dart';
-import '../../../../core/theme/app_typography.dart';
-import '../../../../core/widgets/senior_card.dart';
-import '../../../../core/widgets/senior_header.dart';
-import '../../../../core/widgets/senior_sheet.dart';
-import '../../../../core/widgets/senior_button.dart';
+import '../../../../core/polar_pharmacist_ui/constants/app_colors.dart';
+import '../../../../core/polar_pharmacist_ui/theme/app_typography.dart';
+import '../../../../core/polar_pharmacist_ui/widgets/senior_card.dart';
+import '../../../../core/polar_pharmacist_ui/widgets/senior_header.dart';
+import '../../../../core/polar_pharmacist_ui/widgets/senior_sheet.dart';
+import '../../../../core/polar_pharmacist_ui/widgets/senior_button.dart';
 import '../../../profile/application/current_user_controller.dart';
 import '../../application/user_medicines_controller.dart';
 import '../../domain/drug_info.dart';
@@ -119,7 +119,7 @@ class _PharmacistChatScreenState extends ConsumerState<PharmacistChatScreen> {
     final showSuggestions = _messages.length == 1;
 
     return Scaffold(
-      backgroundColor: AppColors.pageBg,
+      backgroundColor: AppColors.bg,
       body: Column(
         children: [
           SeniorHeader(

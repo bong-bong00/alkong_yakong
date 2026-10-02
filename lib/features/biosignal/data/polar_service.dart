@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:polar/polar.dart';
 
 double? averageValidHeartRates(Iterable<int> samples) {
@@ -20,7 +21,10 @@ double? heartRateChangePercent({
 class PolarService {
   PolarService({Polar? polar}) : _polar = polar ?? Polar() {
     debugPrint('[POLAR_SERVICE] initialized');
-    _disconnectSubscription = _polar.deviceDisconnected.listen((_) {
+    _disconnectSubscription = _polar.deviceDisconnected.listen((event) {
+      // 실제 BLE 연결이 끊겼다면 이전 기능 준비 상태를 재사용하지 않는다.
+      // 다음 재시도는 기존 스트림 재개에 실패한 뒤 장치를 다시 찾는다.
+      _availableFeatures.remove(event.info.deviceId);
       unawaited(stopStreaming());
     });
   }
@@ -41,9 +45,14 @@ class PolarService {
   StreamSubscription<dynamic>? _disconnectSubscription;
   int _streamGeneration = 0;
   Timer? _averageTimer;
+  Timer? _invalidSignalTimer;
+  static const _invalidSignalGrace = Duration(seconds: 2);
   bool _isAverageMonitoring = false;
   bool _isDisposed = false;
   bool _acceptBpmEvents = false;
+  bool _hasValidHeartRate = false;
+  String? _lastSignalFlags;
+  final Stopwatch _signalClock = Stopwatch();
 
   Stream<int?> get currentBpmStream => _currentBpmController.stream;
   Stream<double?> get averageBpmStream => _averageBpmController.stream;
@@ -60,22 +69,71 @@ class PolarService {
     required String targetName,
     required String targetDeviceId,
     Duration timeout = const Duration(seconds: 20),
+    bool allowNameFallback = true,
   }) async {
     debugPrint('[POLAR_SERVICE] search start');
+    final found = Completer<PolarDeviceInfo>();
+    StreamSubscription<PolarDeviceInfo>? subscription;
+    Timer? timer;
+    var seenCount = 0;
+    var matchingCount = 0;
     try {
-      final device = await _polar
-          .searchForDevice()
-          .firstWhere(
-            (device) =>
-                device.name == targetName || device.deviceId == targetDeviceId,
-          )
-          .timeout(timeout);
+      subscription = _polar.searchForDevice().listen(
+        (device) {
+          seenCount++;
+          final name = device.name.trim();
+          final matchesName =
+              name == targetName ||
+              (targetName == 'Polar Verity Sense' &&
+                  (name == 'Polar Sense' ||
+                      name.startsWith('Polar Sense ') ||
+                      name.startsWith('Polar Verity Sense ')));
+          final matches =
+              device.deviceId == targetDeviceId ||
+              (allowNameFallback && matchesName);
+          if (!matches) return;
+          matchingCount++;
+          if (device.isConnectable && !found.isCompleted) {
+            found.complete(device);
+          }
+        },
+        onError: (Object error, StackTrace stack) {
+          if (!found.isCompleted) found.completeError(error, stack);
+        },
+        onDone: () {
+          if (!found.isCompleted) {
+            found.completeError(StateError('search ended without target'));
+          }
+        },
+      );
+      timer = Timer(timeout, () {
+        if (!found.isCompleted) {
+          found.completeError(
+            TimeoutException('device search timed out', timeout),
+          );
+        }
+      });
+      final device = await found.future;
       debugPrint('[POLAR_SERVICE] device found');
       return device.deviceId;
     } catch (error) {
-      debugPrint('[POLAR_SERVICE] search failed');
+      final category = error is TimeoutException
+          ? 'timeout'
+          : error is PlatformException
+          ? 'native_scan_error'
+          : error is StateError
+          ? 'no_target'
+          : 'scan_error';
+      debugPrint(
+        '[POLAR_SERVICE] search failed category=$category '
+        'error_type=${error.runtimeType} seen_count=$seenCount '
+        'matching_count=$matchingCount',
+      );
       _emitError(error);
       rethrow;
+    } finally {
+      timer?.cancel();
+      await subscription?.cancel();
     }
   }
 
@@ -140,6 +198,11 @@ class PolarService {
     await stopStreaming();
     _bpmSamples.clear();
     _acceptBpmEvents = true;
+    _hasValidHeartRate = false;
+    _lastSignalFlags = null;
+    _signalClock
+      ..reset()
+      ..start();
     final generation = _streamGeneration;
     debugPrint('[POLAR_SERVICE] hr stream start');
 
@@ -149,11 +212,35 @@ class PolarService {
           (data) {
             if (generation != _streamGeneration) return;
             for (final sample in data.samples) {
-              final bpm = sample.hr;
-              if (bpm <= 0) continue;
-              if (!_acceptBpmEvents) {
+              if (!_acceptBpmEvents) continue;
+              // Log transitions only: no BPM, device ID or patient information.
+              final flags =
+                  'positive_hr=${sample.hr > 0} '
+                  'contact_supported=${sample.contactStatusSupported} '
+                  'contact=${sample.contactStatus}';
+              if (flags != _lastSignalFlags) {
+                _lastSignalFlags = flags;
+                debugPrint(
+                  '[POLAR_SERVICE] signal flags '
+                  'elapsed_ms=${_signalClock.elapsedMilliseconds} $flags',
+                );
+              }
+              if (sample.contactStatusSupported && !sample.contactStatus) {
+                _waitForSignalRecovery('skin contact lost');
                 continue;
               }
+              final bpm = sample.hr;
+              if (bpm <= 0) {
+                // Initial zero is not a successful measurement. Once HR was
+                // acquired, confirm persistent invalidity with a short grace.
+                if (_hasValidHeartRate) {
+                  _waitForSignalRecovery('heart rate signal invalid');
+                }
+                continue;
+              }
+              _invalidSignalTimer?.cancel();
+              _invalidSignalTimer = null;
+              _hasValidHeartRate = true;
               if (_isAverageMonitoring) {
                 _bpmSamples.add(bpm);
               }
@@ -190,8 +277,12 @@ class PolarService {
 
   Future<void> stopStreaming() async {
     _streamGeneration++;
+    _invalidSignalTimer?.cancel();
+    _invalidSignalTimer = null;
     debugPrint('[POLAR_SERVICE] stopStreaming requested');
     _acceptBpmEvents = false;
+    _hasValidHeartRate = false;
+    _signalClock.stop();
     _averageTimer?.cancel();
     _averageTimer = null;
     _isAverageMonitoring = false;
@@ -231,6 +322,38 @@ class PolarService {
     if (!_averageBpmController.isClosed) {
       _averageBpmController.add(null);
     }
+  }
+
+  void _invalidateMeasurement(String reason) {
+    debugPrint(
+      '[POLAR_SERVICE] $reason '
+      'elapsed_ms=${_signalClock.elapsedMilliseconds}',
+    );
+    _acceptBpmEvents = false;
+    _averageTimer?.cancel();
+    _averageTimer = null;
+    _isAverageMonitoring = false;
+    _bpmSamples.clear();
+    _emitMeasurementReset();
+    _emitError(StateError(reason));
+  }
+
+  void _waitForSignalRecovery(String reason) {
+    if (_invalidSignalTimer != null) return;
+    // Do not save or display stale readings during the grace interval.
+    _averageTimer?.cancel();
+    _averageTimer = null;
+    _isAverageMonitoring = false;
+    _bpmSamples.clear();
+    _emitMeasurementReset();
+    final generation = _streamGeneration;
+    _invalidSignalTimer = Timer(_invalidSignalGrace, () {
+      _invalidSignalTimer = null;
+      if (_isDisposed || generation != _streamGeneration || !_acceptBpmEvents) {
+        return;
+      }
+      _invalidateMeasurement(reason);
+    });
   }
 
   Future<void> dispose() async {

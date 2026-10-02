@@ -2,27 +2,30 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
-import '../../core/constants/app_colors.dart';
+import '../../core/polar_pharmacist_ui/constants/app_colors.dart';
 import '../../core/network/api_client.dart';
 import '../../core/network/api_config.dart';
 import '../../core/session/mvp_session.dart';
-import '../../core/theme/app_typography.dart';
-import '../../core/widgets/senior_button.dart';
-import '../../core/widgets/senior_card.dart';
-import '../../core/widgets/senior_feedback.dart';
-import '../../core/widgets/senior_header.dart';
-import '../../core/widgets/senior_sheet.dart';
-import '../../core/widgets/senior_wheel.dart';
+import '../../core/polar_pharmacist_ui/theme/app_typography.dart';
+import '../../core/polar_pharmacist_ui/widgets/senior_button.dart';
+import '../../core/polar_pharmacist_ui/widgets/senior_card.dart';
+import '../../core/polar_pharmacist_ui/widgets/senior_feedback.dart';
+import '../../core/polar_pharmacist_ui/widgets/senior_header.dart';
+import '../../core/polar_pharmacist_ui/widgets/senior_sheet.dart';
+import '../../core/polar_pharmacist_ui/widgets/senior_wheel.dart';
 import '../medicines/domain/display_policy.dart';
+import 'conversation_store.dart';
+import 'answer_cache.dart';
 
 class DrugExplainScreen extends StatefulWidget {
-  /// AI 약사 Render로만 요청을 보낸다.
   final ApiClient? apiClient;
+  final ApiClient? medicationApiClient;
 
-  /// 실제 복용약은 약 데이터 Render에서 읽는다.
-  final ApiClient? medicineApiClient;
-
-  const DrugExplainScreen({super.key, this.apiClient, this.medicineApiClient});
+  const DrugExplainScreen({
+    super.key,
+    this.apiClient,
+    this.medicationApiClient,
+  });
 
   @override
   State<DrugExplainScreen> createState() => _DrugExplainScreenState();
@@ -30,8 +33,8 @@ class DrugExplainScreen extends StatefulWidget {
 
 class _DrugExplainScreenState extends State<DrugExplainScreen>
     with WidgetsBindingObserver {
-  late final ApiClient _chatApiClient;
-  late final ApiClient _medicineApiClient;
+  late final ApiClient _apiClient;
+  late final ApiClient _medicationApiClient;
   final TextEditingController _chatController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
   final FocusNode _chatFocusNode = FocusNode();
@@ -39,30 +42,196 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
   bool _isLoading = false;
   bool _isLoadingMedicines = false;
   String? _selectedKeyword;
-  String? _selectedMedicine;
-  _DrugSearchCandidate? _selectedOfficialMedicine;
   final List<String> _selectedMedicines = [];
-  final Map<String, _DrugSearchCandidate> _temporaryMedicinesByCode = {};
+  String? _pendingGeneralQuestion;
+  bool _isAllMedicinesSelected = false;
   final Map<String, _DrugSearchCandidate> _officialMedicinesByName = {};
-  final List<Map<String, String>> _currentMedicines = [];
+  final Set<String> _confirmedOfficialProductNames = {};
+  final Map<String, _DrugSearchCandidate> _temporaryMedicinesByCode = {};
+  final Set<String> _registeredMedicineCodes = {};
   String? _medicineLoadError;
   final List<String> _medicines = [];
   final List<Map<String, dynamic>> _messages = [];
+  int _conversationStart = 0;
+  final _conversationStore = PharmacistConversationStore();
+  late final String _conversationUserId = MvpSession.userId;
+  String? _conversationId;
+  final _answerCache = PharmacistAnswerCache();
+  String? _healthFingerprint;
+  String? _medicineFingerprint;
+  DateTime? _contextVerifiedAt;
+
+  Future<void> _refreshCacheContext() async {
+    _healthFingerprint = null;
+    _contextVerifiedAt = null;
+    try {
+      final result = await _apiClient.get(
+        '/api/v1/drug-explain/cache-context?user_id=${Uri.encodeComponent(_conversationUserId)}',
+      );
+      if (result is Map &&
+          result['verified'] == true &&
+          result['fingerprint'] is String) {
+        _healthFingerprint = result['fingerprint'] as String;
+        _contextVerifiedAt = DateTime.now();
+      }
+    } catch (_) {
+      // Unknown health state permits historical viewing, never automatic reuse.
+    }
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && !_isLoading) {
+      _medicineFingerprint = null;
+      unawaited(_loadMedicines());
+      unawaited(_refreshCacheContext());
+    }
+  }
+
+  Future<void> _saveConversation() async {
+    final messages = _messages
+        .skip(_conversationStart)
+        .where((message) => message['createdAt'] != null)
+        .toList();
+    if (!messages.any((message) => message['isMe'] == true)) return;
+    _conversationId ??= DateTime.now().microsecondsSinceEpoch.toString();
+    final title = _isAllMedicinesSelected
+        ? '약 전체'
+        : _selectedMedicines.isEmpty
+        ? '일반 질문'
+        : _selectedMedicines.join(', ');
+    await _conversationStore.save(_conversationUserId, {
+      'id': _conversationId,
+      'title': title,
+      'updatedAt': DateTime.now().toIso8601String(),
+      'messages': messages,
+      'allMedicines': _isAllMedicinesSelected,
+      'pendingQuestion': _pendingGeneralQuestion,
+      'selected': _selectedMedicines
+          .map(
+            (name) => {
+              'name': name,
+              'product_name': _officialMedicinesByName[name]?.itemName ?? name,
+              'medicine_code': _officialMedicinesByName[name]?.itemSeq,
+            },
+          )
+          .toList(),
+      'temporary': _temporaryMedicinesByCode.values
+          .map(
+            (medicine) => {
+              'item_name': medicine.itemName,
+              'item_seq': medicine.itemSeq,
+            },
+          )
+          .toList(),
+    });
+  }
+
+  Future<void> _openPreviousConversations() async {
+    if (_isLoading || _isLoadingMedicines) return;
+    try {
+      final records = await _conversationStore.load(_conversationUserId);
+      if (!mounted) return;
+      final conversation = await Navigator.of(context)
+          .push<Map<String, dynamic>>(
+            MaterialPageRoute(
+              builder: (_) => _PreviousConversationsScreen(records: records),
+            ),
+          );
+      if (!mounted || conversation == null) return;
+      setState(() {
+        _messages
+          ..clear()
+          ..addAll(
+            (conversation['messages'] as List).map(
+              (item) => Map<String, dynamic>.from(item as Map),
+            ),
+          );
+        _conversationStart = 0;
+        _conversationId = conversation['id'] as String;
+        _isAllMedicinesSelected = conversation['allMedicines'] == true;
+        _selectedMedicines.clear();
+        // Keep current registered medicines. Old search selections are not registered.
+        for (final candidate in _temporaryMedicinesByCode.values) {
+          if (!_registeredMedicineCodes.contains(candidate.itemSeq)) {
+            _medicines.remove(candidate.itemName);
+            _officialMedicinesByName.remove(candidate.itemName);
+          }
+        }
+        _temporaryMedicinesByCode.clear();
+        for (final item in conversation['temporary'] as List? ?? []) {
+          final candidate = _DrugSearchCandidate.fromJson(
+            Map<String, dynamic>.from(item as Map),
+          );
+          if (candidate.itemSeq != null) {
+            _temporaryMedicinesByCode[candidate.itemSeq!] = candidate;
+          }
+          _officialMedicinesByName[candidate.itemName] = candidate;
+          if (!_medicines.contains(candidate.itemName)) {
+            _medicines.add(candidate.itemName);
+          }
+        }
+        for (final item in conversation['selected'] as List? ?? []) {
+          final name = item['name'] as String;
+          _selectedMedicines.add(name);
+          _officialMedicinesByName[name] = _DrugSearchCandidate(
+            itemName: item['product_name'] as String,
+            itemSeq: item['medicine_code'] as String?,
+          );
+          if (!_medicines.contains(name)) _medicines.add(name);
+        }
+        _pendingGeneralQuestion = conversation['pendingQuestion'] as String?;
+        _selectedKeyword = null;
+        _chatController.clear();
+      });
+      _scrollToBottom();
+    } catch (_) {
+      if (mounted) {
+        showSeniorSnackbar(
+          context,
+          '이전 대화를 불러오지 못했어요. 다시 시도해 주세요.',
+          error: true,
+        );
+      }
+    }
+  }
+
+  String? get _selectedMedicine =>
+      _selectedMedicines.length == 1 ? _selectedMedicines.single : null;
+
+  bool get _hasMultipleMedicines => _selectedMedicines.length >= 2;
+
+  List<String> get _selectedRequestMedicineNames => _selectedMedicines
+      .map((name) => _officialMedicinesByName[name]?.itemName ?? name)
+      .toList(growable: false);
+
+  _DrugSearchCandidate? get _selectedOfficialMedicine {
+    final medicine = _selectedMedicine;
+    return medicine == null ? null : _officialMedicinesByName[medicine];
+  }
 
   static const List<Map<String, String>> _suggestions = [
     {
       'label': '이 약은 무슨 약이에요?',
       'prompt': '{medicine}이 무슨 약인지 쉬운 말로 알려주세요.',
-      'intent': 'efficacy',
+      'intent': 'overview',
     },
     {
-      'label': '언제 먹어야 해요?',
-      'prompt': '{medicine}을 언제 어떻게 먹어야 하는지 쉬운 말로 알려주세요.',
+      'label': '언제 어떻게 사용하나요?',
+      'prompt': '{medicine}을 언제 어떻게 사용하는지 쉬운 말로 알려주세요.',
       'intent': 'dosage',
     },
   ];
 
-  /// 약을 선택한 뒤 일곱 가지 질문 중 필요한 것을 고른다.
+  static const Map<String, String> _healthPrompt = {
+    'label': '내 건강 상태에서 주의할 점은?',
+    'prompt':
+        '내 건강 상태에서 이 약을 먹을 때 주의할 점은? 등록한 질환, 과거력, 알레르기, 흡연과 음주 정보를 참고해 선택 범위의 약을 확인해 주세요.',
+    'display': '내 건강 상태에서 주의할 점은?',
+    'intent': 'health_precautions',
+  };
+
+  /// 약을 선택한 뒤 필요한 질문을 고른다.
   static const List<Map<String, String>> _keywordPrompts = [
     {
       'label': '어디에 쓰는 약인가요?',
@@ -70,27 +239,20 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
       'intent': 'efficacy',
     },
     {
-      'label': '어떻게 먹나요?',
-      'prompt': '이 약은 보통 어떻게 먹나요? 제가 등록한 복용 방법과 제품의 일반적인 사용법을 구분해서 알려주세요.',
-      'display': '이 약은 보통 어떻게 먹나요?',
+      'label': '어떻게 사용하나요?',
+      'prompt': '이 약은 보통 어떻게 사용하나요? 제가 등록한 사용 방법과 제품의 일반적인 사용법을 구분해서 알려주세요.',
+      'display': '이 약은 보통 어떻게 사용하나요?',
       'intent': 'dosage',
     },
     {
       'label': '무엇을 조심해야 하나요?',
-      'prompt': '이 약을 먹을 때 무엇을 조심해야 하나요?',
+      'prompt': '이 약을 사용할 때 무엇을 조심해야 하나요?',
       'intent': 'precautions',
     },
     {
-      'label': '먹고 불편하면 어떻게 하나요?',
-      'prompt': '이 약을 먹고 불편한 증상이 생기면 어떻게 해야 하나요?',
+      'label': '사용 뒤 증상이 생기면?',
+      'prompt': '이 약을 사용한 뒤 평소와 다른 증상이 생기면 어떻게 해야 하나요?',
       'intent': 'side_effects',
-    },
-    {
-      'label': '다른 약과 함께 먹어도 되나요?',
-      'prompt':
-          '이 약을 제가 먹고 있는 약들과 같이 먹어도 되는지 확인해 주세요. 같은 성분이나 비슷한 역할의 약이 겹치는지도 알려주세요.',
-      'display': '다른 약과 함께 먹어도 되나요?',
-      'intent': 'combination',
     },
     {
       'label': '나이에 따라 조심할 점',
@@ -102,22 +264,82 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
       'prompt': '임신 중에 이 약을 사용할 때 조심할 점이 있나요?',
       'intent': 'pregnancy',
     },
+    _healthPrompt,
+  ];
+
+  static const List<Map<String, String>> _allMedicinePrompts = [
+    {
+      'label': '제가 먹는 약 알려주세요',
+      'prompt': '제가 현재 먹는 약 전체를 쉬운 말로 알려주세요.',
+      'display': '제가 먹는 약 알려주세요',
+      'intent': 'overview',
+    },
+    {
+      'label': '같이 먹어도 괜찮나요?',
+      'prompt': '제가 현재 먹는 약 전체를 같이 먹을 때 주의할 점이 있는지 확인해 주세요.',
+      'display': '같이 먹어도 괜찮나요?',
+      'intent': 'combination',
+    },
+    {
+      'label': '같은 성분의 약이 있나요?',
+      'prompt': '제가 현재 먹는 약 전체에서 같은 성분이나 비슷한 역할이 겹치는 약이 있는지 확인해 주세요.',
+      'display': '같은 성분의 약이 있나요?',
+      'intent': 'duplicate',
+    },
+    {
+      'label': '약마다 주의할 점은요?',
+      'prompt': '제가 현재 먹는 약마다 공식 자료에서 확인되는 주의할 점을 알려주세요.',
+      'display': '약마다 주의할 점은요?',
+      'intent': 'precautions',
+    },
+    _healthPrompt,
+  ];
+
+  static const List<Map<String, String>> _selectedMedicinePrompts = [
+    {
+      'label': '선택한 약 알려주세요',
+      'prompt': '{medicines} 각각이 무슨 약인지 쉬운 말로 알려주세요.',
+      'display': '선택한 약 알려주세요',
+      'intent': 'overview',
+    },
+    {
+      'label': '같이 먹어도 괜찮나요?',
+      'prompt': '{medicines}을 함께 사용할 때 주의할 점이 있는지 확인해 주세요.',
+      'display': '같이 먹어도 괜찮나요?',
+      'intent': 'combination',
+    },
+    {
+      'label': '같은 성분의 약이 있나요?',
+      'prompt': '{medicines} 사이에 같은 성분이나 비슷한 역할이 겹치는지 확인해 주세요.',
+      'display': '같은 성분의 약이 있나요?',
+      'intent': 'duplicate',
+    },
+    {
+      'label': '약마다 주의할 점은요?',
+      'prompt': '{medicines} 각각의 공식 자료에서 확인되는 주의할 점을 알려주세요.',
+      'display': '약마다 주의할 점은요?',
+      'intent': 'precautions',
+    },
+    _healthPrompt,
   ];
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _chatApiClient = widget.apiClient ?? ApiClient();
-    _medicineApiClient =
-        widget.medicineApiClient ??
+    _apiClient = widget.apiClient ?? ApiClient();
+    _medicationApiClient =
+        widget.medicationApiClient ??
         ApiClient(baseUrl: ApiConfig.localFeatureBaseUrl);
     // 초기 안내 메시지 추가
     _messages.add({
       'isMe': false,
-      'text': '안녕하세요! 약에 대해 궁금한 것을 편하게 물어보세요.\n어려운 말은 쉬운 말로 바꿔서 알려드릴게요.',
+      'text': '안녕하세요, 선생님! 약에 대해 궁금한 것을 편하게 물어보세요.\n어려운 말은 쉬운 말로 바꿔서 알려드릴게요.',
     });
-    WidgetsBinding.instance.addPostFrameCallback((_) => _loadMedicines());
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      unawaited(_loadMedicines());
+      unawaited(_refreshCacheContext());
+    });
   }
 
   @override
@@ -142,27 +364,37 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
     final intent = keyword['intent'];
     if (label == null || prompt == null || intent == null) return;
 
-    final medicine = _selectedMedicines.length > 1
-        ? _selectedMedicines.join(', ')
-        : _selectedMedicine;
-    if (medicine == null || medicine.isEmpty) {
-      showSeniorSnackbar(context, '먼저 궁금한 약을 선택해주세요.', error: true);
+    if (_isAllMedicinesSelected && !_allMedicinePrompts.contains(keyword)) {
       return;
     }
+    if (_hasMultipleMedicines && !_selectedMedicinePrompts.contains(keyword)) {
+      return;
+    }
+    if (!_isAllMedicinesSelected && _selectedMedicines.isEmpty) return;
+
+    final requestPrompt = _hasMultipleMedicines
+        ? prompt.replaceAll(
+            '{medicines}',
+            _selectedRequestMedicineNames.join(', '),
+          )
+        : prompt;
 
     setState(() => _selectedKeyword = label);
     await _sendMessage(
-      message: prompt,
-      displayMessage: keyword['display'] ?? prompt,
+      message: requestPrompt,
+      displayMessage: keyword['display'] ?? requestPrompt,
       intent: intent,
     );
   }
 
   Future<void> _loadMedicines() async {
+    _medicineFingerprint = null;
     final names = <String>[];
     final officialMedicines = <String, _DrugSearchCandidate>{};
     final ambiguousNames = <String>{};
     final namesByCode = <String, String>{};
+    final officialNamesByCode = <String, String>{};
+    final namesByNormalizedName = <String, String>{};
 
     String firstText(Iterable<dynamic> values) {
       for (final value in values) {
@@ -182,12 +414,19 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
       final name = (label ?? officialName).trim();
       final code = codeValue?.toString().trim() ?? '';
       if (code.isNotEmpty) {
+        if (officialName.isNotEmpty) officialNamesByCode[code] = officialName;
         final oldName = namesByCode[code];
         if (oldName != null && oldName != name) {
           names.remove(oldName);
           officialMedicines.remove(oldName);
         }
         namesByCode[code] = name;
+      } else if (name.isNotEmpty) {
+        final normalizedName = name
+            .replaceAll(RegExp(r'\s+'), '')
+            .toLowerCase();
+        if (namesByNormalizedName.containsKey(normalizedName)) return;
+        namesByNormalizedName[normalizedName] = name;
       }
       addName(name);
       if (name.isEmpty ||
@@ -206,31 +445,6 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
         itemName: officialName,
         itemSeq: code,
       );
-    }
-
-    void addCurrentMedicine(dynamic raw) {
-      if (raw is! Map) return;
-      final code = raw['medicine_code']?.toString().trim() ?? '';
-      final productName = firstText([
-        raw['official_product_name'],
-        raw['product_name'],
-        raw['display_name'],
-      ]);
-      final ingredient = firstText([raw['ingredient_name'], raw['ingredient']]);
-      addMedicine(
-        productName,
-        code,
-        label: compactProductName(productName, ingredient: ingredient),
-      );
-      if (code.isEmpty || productName.isEmpty) return;
-      if (_currentMedicines.any((item) => item['medicine_code'] == code)) {
-        return;
-      }
-      _currentMedicines.add({
-        'medicine_code': code,
-        'product_name': productName,
-        'ingredient': ingredient,
-      });
     }
 
     for (final item in MvpSession.latestOcrItems) {
@@ -263,6 +477,9 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
         _officialMedicinesByName
           ..clear()
           ..addAll(officialMedicines);
+        _confirmedOfficialProductNames
+          ..clear()
+          ..addAll(officialNamesByCode.values);
         _medicineLoadError = names.isEmpty ? '로그인 후 내 약을 불러올 수 있어요.' : null;
       });
       return;
@@ -273,45 +490,64 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
       _medicineLoadError = null;
     });
     try {
-      // OCR·홈·약 자세히와 같은 약 데이터 Render를 원본으로 쓴다.
-      // AI 약사 Render의 SQLite 약 목록을 읽으면 두 서버의 약이 어긋난다.
-      final response = await _medicineApiClient.get(
+      final response = await _medicationApiClient.get(
         '/api/v1/users/${Uri.encodeComponent(userId)}/medicines',
       );
-      if (response is! Map || response['medicines'] is! List) {
-        throw const ApiException('내 약 목록을 읽을 수 없습니다.');
+      final payload = Map<String, dynamic>.from(response as Map);
+      final medicines = payload['medicines'];
+      if (medicines is! List) {
+        throw const FormatException('medicines must be a list');
       }
-      _currentMedicines.clear();
-      // 성공한 원본 조회는 OCR 임시 목록을 대체한다. 같은 코드의 짧은 이름과
-      // 공식 이름이 별도 선택지로 남거나 과거 OCR 약이 섞이지 않게 한다.
+      final rows = medicines.map(PharmacistAnswerCache.canonical).toList()
+        ..sort();
+      _medicineFingerprint = PharmacistAnswerCache.canonical(rows);
+      // 성공한 약 데이터 Render 조회가 OCR 임시 목록을 대체하도록 한다.
       names.clear();
       officialMedicines.clear();
       ambiguousNames.clear();
       namesByCode.clear();
-      for (final medicine in response['medicines'] as List) {
-        addCurrentMedicine(medicine);
+      officialNamesByCode.clear();
+      namesByNormalizedName.clear();
+      for (final medicine in medicines) {
+        if (medicine is Map &&
+            (medicine['status']?.toString() ?? 'active') == 'active') {
+          final officialName = firstText([
+            medicine['official_product_name'],
+            medicine['product_name'],
+            medicine['display_name'],
+          ]);
+          final ingredient = firstText([
+            medicine['ingredient_name'],
+            medicine['ingredient'],
+          ]);
+          addMedicine(
+            officialName,
+            medicine['medicine_code'],
+            label: compactProductName(officialName, ingredient: ingredient),
+          );
+        }
       }
+      final registeredCodes = namesByCode.keys.toSet();
       for (final medicine in _temporaryMedicinesByCode.values) {
-        if (!names.contains(medicine.itemName)) names.add(medicine.itemName);
-        officialMedicines[medicine.itemName] = medicine;
+        addMedicine(medicine.itemName, medicine.itemSeq);
       }
       if (!mounted) return;
       setState(() {
+        _registeredMedicineCodes
+          ..clear()
+          ..addAll(registeredCodes);
         _medicines
           ..clear()
           ..addAll(names);
         _officialMedicinesByName
           ..clear()
           ..addAll(officialMedicines);
-        if (_selectedMedicine == null &&
-            _selectedMedicines.isEmpty &&
-            names.length == 1) {
-          _selectedMedicine = names.first;
-        }
-        _selectedOfficialMedicine = _officialMedicinesByName[_selectedMedicine];
+        _confirmedOfficialProductNames
+          ..clear()
+          ..addAll(officialNamesByCode.values);
         _medicineLoadError = names.isEmpty ? '등록된 처방/복용약이 없습니다.' : null;
       });
-    } on ApiException catch (error) {
+    } on ApiException {
       if (!mounted) return;
       setState(() {
         _medicines
@@ -320,7 +556,10 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
         _officialMedicinesByName
           ..clear()
           ..addAll(officialMedicines);
-        _medicineLoadError = names.isEmpty ? _apiError(error) : null;
+        _confirmedOfficialProductNames
+          ..clear()
+          ..addAll(officialNamesByCode.values);
+        _medicineLoadError = _medicineLoadFailureMessage;
       });
     } catch (_) {
       if (!mounted) return;
@@ -331,7 +570,10 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
         _officialMedicinesByName
           ..clear()
           ..addAll(officialMedicines);
-        _medicineLoadError = names.isEmpty ? '내 약을 불러오지 못했습니다.' : null;
+        _confirmedOfficialProductNames
+          ..clear()
+          ..addAll(officialNamesByCode.values);
+        _medicineLoadError = '내 약을 불러오지 못했습니다.';
       });
     } finally {
       if (mounted) setState(() => _isLoadingMedicines = false);
@@ -340,46 +582,29 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
 
   Future<void> _pickSubject() async {
     if (_isLoading) return;
-    // 첫 칸은 "약 전체". 그 뒤로 내가 먹는 약이 온다.
-    final options = <String>['약 전체', ..._medicines, '여러 약 선택'];
-    final current = _selectedMedicine == null
-        ? 0
-        : options.indexOf(_selectedMedicine!);
+    const options = <String>['일반 질문', '약 전체', '약 이름 선택'];
+    final current = _selectedMedicines.isNotEmpty
+        ? 2
+        : (_isAllMedicinesSelected ? 1 : 0);
     final picked = await showSeniorWheel(
       context: context,
       title: '어떤 약을 물어볼까요?',
       options: options,
-      selectedIndex: current < 0 ? 0 : current,
-      confirmLabel: '이 약으로 정하기',
-      extraButtons: [
-        Builder(
-          builder: (dialogContext) => SeniorButton(
-            label: '다른 약 검색하기',
-            kind: SeniorButtonKind.secondary,
-            minHeight: 60,
-            fontSize: 19,
-            // -1은 "목록에 없는 약을 찾아보겠다"는 뜻이다.
-            onPressed: () => Navigator.of(dialogContext).pop(-1),
-          ),
-        ),
-      ],
+      selectedIndex: current,
+      confirmLabel: '선택',
     );
     if (!mounted || picked == null) return;
-    if (picked < 0) {
-      await _enterOtherMedicine();
-      return;
-    }
-    if (picked == options.length - 1) {
+    if (picked == 2) {
       await _pickMedicines();
       return;
     }
-    final name = picked == 0 ? null : options[picked];
+    final isAllMedicines = picked == 1;
     setState(() {
-      _selectedMedicine = name;
       _selectedMedicines.clear();
-      _selectedOfficialMedicine = name == null
-          ? null
-          : _officialMedicinesByName[name];
+      _conversationStart = _messages.length;
+      _conversationId = null;
+      _isAllMedicinesSelected = isAllMedicines;
+      _pendingGeneralQuestion = null;
       _selectedKeyword = null;
     });
   }
@@ -389,31 +614,44 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
       context: context,
       builder: (_) => _MedicineSelectionSheet(
         medicines: _medicines,
-        selectedMedicines: _selectedMedicines.isNotEmpty
-            ? _selectedMedicines
-            : [?_selectedMedicine],
+        selectedMedicines: _selectedMedicines,
+        searchedMedicines: _medicines.where((name) {
+          final code = _officialMedicinesByName[name]?.itemSeq;
+          return code != null &&
+              _temporaryMedicinesByCode.containsKey(code) &&
+              !_registeredMedicineCodes.contains(code);
+        }).toSet(),
       ),
     );
     if (!mounted || result == null) return;
+    if (result.searchOther) {
+      setState(() {
+        _conversationStart = _messages.length;
+        _conversationId = null;
+        _selectedMedicines
+          ..clear()
+          ..addAll(result.medicines);
+      });
+      await _enterOtherMedicine(addToSelection: true);
+      return;
+    }
+    if (result.medicines.isEmpty) return;
     setState(() {
       _selectedMedicines
         ..clear()
         ..addAll(result.medicines);
-      _selectedMedicine = result.medicines.length == 1
-          ? result.medicines.first
-          : null;
-      _selectedOfficialMedicine = _officialMedicinesByName[_selectedMedicine];
+      _conversationStart = _messages.length;
+      _conversationId = null;
+      _isAllMedicinesSelected = false;
+      _pendingGeneralQuestion = null;
       _selectedKeyword = null;
     });
-    if (result.searchOther) await _enterOtherMedicine(addToSelection: true);
   }
 
   Future<void> _askSuggestion(Map<String, String> suggestion) async {
     if (_isLoading) return;
     // 약을 아직 안 골랐으면 "제가 먹는 약"으로 물어본다. 되묻지 않는다.
-    final medicine = _selectedMedicines.length > 1
-        ? _selectedMedicines.join(', ')
-        : _selectedMedicine?.trim();
+    final medicine = _selectedMedicine?.trim();
     final subject = (medicine == null || medicine.isEmpty)
         ? '제가 먹는 약'
         : medicine;
@@ -426,26 +664,26 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
   Future<void> _enterOtherMedicine({bool addToSelection = false}) async {
     final medicine = await SeniorSheet.show<_DrugSearchCandidate>(
       context: context,
-      builder: (_) => _OtherMedicineDialog(apiClient: _chatApiClient),
+      builder: (_) => _OtherMedicineDialog(apiClient: _apiClient),
     );
     if (!mounted || medicine == null) return;
     setState(() {
       if (!_medicines.contains(medicine.itemName)) {
         _medicines.add(medicine.itemName);
       }
-      _officialMedicinesByName[medicine.itemName] = medicine;
-      final code = medicine.itemSeq;
+      final code = medicine.itemSeq?.trim();
       if (code != null && code.isNotEmpty) {
         _temporaryMedicinesByCode[code] = medicine;
       }
+      _officialMedicinesByName[medicine.itemName] = medicine;
+      _conversationStart = _messages.length;
+      _conversationId = null;
       if (!addToSelection) _selectedMedicines.clear();
       if (!_selectedMedicines.contains(medicine.itemName)) {
         _selectedMedicines.add(medicine.itemName);
       }
-      _selectedMedicine = _selectedMedicines.length == 1
-          ? medicine.itemName
-          : null;
-      _selectedOfficialMedicine = _officialMedicinesByName[_selectedMedicine];
+      _isAllMedicinesSelected = false;
+      _pendingGeneralQuestion = null;
       _selectedKeyword = null;
     });
   }
@@ -466,29 +704,95 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
     String? message,
     String? displayMessage,
     String? intent,
+    bool forceRefresh = false,
   }) async {
     if (_isLoading) return;
 
     final text = (message ?? _chatController.text).trim();
     if (text.isEmpty) return;
+    final pendingQuestion = _pendingGeneralQuestion;
+    final isGeneralFreeInput =
+        message == null &&
+        _selectedMedicines.isEmpty &&
+        !_isAllMedicinesSelected;
+    final isFollowup = RegExp(
+      r'^(그럼|그러면|그 약|이 약|그건)|번째\s*약|요약|짧게|간단히',
+    ).hasMatch(text);
+    final requestText = _hasMultipleMedicines && message == null && !isFollowup
+        ? '${_selectedRequestMedicineNames.join(', ')}에 대해 다음 질문에 답해 주세요: $text'
+        : isGeneralFreeInput &&
+              pendingQuestion != null &&
+              _looksLikeMedicineIdentity(text)
+        ? '$text에 대해 다음 질문에 답해 주세요: $pendingQuestion'
+        : text;
 
+    final previousMessages = _messages
+        .skip(_conversationStart)
+        .where(
+          (entry) =>
+              entry['isMe'] == true || entry['conversationMedicines'] != null,
+        )
+        .toList();
+    final recentHistory = previousMessages
+        .skip(previousMessages.length > 6 ? previousMessages.length - 6 : 0)
+        .map((entry) {
+          final content = (entry['contextText'] ?? entry['text']).toString();
+          return {
+            'role': entry['isMe'] == true ? 'user' : 'assistant',
+            'content': content.length > 4000
+                ? content.substring(0, 4000)
+                : content,
+            if (entry['intent'] != null) 'intent': entry['intent'],
+            if (entry['scope'] != null) 'scope': entry['scope'],
+            'medicines': entry['conversationMedicines'] ?? const [],
+          };
+        })
+        .toList(growable: false);
+    final questionIndex = _messages.length;
     setState(() {
-      _messages.add({'isMe': true, 'text': displayMessage ?? text});
+      _messages.add({
+        'isMe': true,
+        'createdAt': DateTime.now().toIso8601String(),
+        'text': displayMessage ?? text,
+        'contextText': requestText,
+        'intent': intent,
+        'scope': _isAllMedicinesSelected
+            ? 'all'
+            : _selectedMedicines.isNotEmpty
+            ? 'selection'
+            : 'general',
+      });
       _isLoading = true;
       _selectedKeyword = null;
     });
     if (message == null) _chatController.clear();
     _scrollToBottom();
 
+    Map<String, dynamic>? historicalAnswer;
     try {
+      if (forceRefresh ||
+          (_contextVerifiedAt != null &&
+              DateTime.now().difference(_contextVerifiedAt!) >=
+                  const Duration(minutes: 5))) {
+        await Future.wait([_loadMedicines(), _refreshCacheContext()]);
+      }
+      final officialProductNames = _selectedMedicines.isNotEmpty
+          ? _selectedMedicines
+                .map((name) => _officialMedicinesByName[name]?.itemName)
+                .whereType<String>()
+                .toList(growable: false)
+          : <String>{
+              ..._confirmedOfficialProductNames,
+              ..._temporaryMedicinesByCode.values.map(
+                (medicine) => medicine.itemName,
+              ),
+            }.toList(growable: false);
       // TODO: 실제 AI 챗봇 API 엔드포인트로 변경 필요
       // 현재는 기존 약물 설명 API 구조를 임시로 챗봇 응답처럼 활용하도록 구성
       final body = <String, dynamic>{
         'user_id': MvpSession.userId,
-        'message': text,
-        // AI 약사 Render는 약을 저장하지 않는다. 매 질문마다 약 데이터
-        // Render의 현재 복용약 전체를 전달해 함께먹기 판단에만 사용한다.
-        'current_medicines': _currentMedicines,
+        'message': requestText,
+        'recent_history': recentHistory,
       };
       if (intent != null) body['intent'] = intent;
       final selectedOfficial = _selectedOfficialMedicine;
@@ -498,7 +802,7 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
           'product_name': selectedOfficial.itemName,
         };
       }
-      if (_selectedMedicines.length > 1) {
+      if (_hasMultipleMedicines) {
         body['selected_medicines'] = _selectedMedicines
             .map((name) {
               final official = _officialMedicinesByName[name];
@@ -509,14 +813,13 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
             })
             .toList(growable: false);
       }
-      final isAll = _selectedMedicine == null && _selectedMedicines.isEmpty;
-      final temporaryMedicines = _temporaryMedicinesByCode.values.where(
-        (medicine) =>
-            isAll ||
-            _selectedMedicines.contains(medicine.itemName) ||
-            _selectedMedicine == medicine.itemName,
-      );
-      if (temporaryMedicines.isNotEmpty) {
+      final temporaryMedicines = _isAllMedicinesSelected
+          ? _temporaryMedicinesByCode.values
+          : _temporaryMedicinesByCode.values.where(
+              (medicine) => _selectedMedicines.contains(medicine.itemName),
+            );
+      if ((_isAllMedicinesSelected || _hasMultipleMedicines) &&
+          temporaryMedicines.isNotEmpty) {
         body['temporary_medicines'] = temporaryMedicines
             .map(
               (medicine) => {
@@ -526,32 +829,139 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
             )
             .toList(growable: false);
       }
-      final response = await _chatApiClient.post(
-        '/api/v1/drug-explain/chat', // 가상의 챗봇 엔드포인트
-        body: body,
+      final requestKey = PharmacistAnswerCache.canonical({
+        ...body,
+        'scope': _isAllMedicinesSelected ? 'all' : 'selection',
+        'recent_history':
+            message == null || isFollowup || pendingQuestion != null
+            ? recentHistory
+            : [],
+      });
+      historicalAnswer = await _answerCache.find(
+        _conversationUserId,
+        requestKey,
       );
-
+      final contextFresh =
+          _contextVerifiedAt != null &&
+          DateTime.now().difference(_contextVerifiedAt!) <
+              const Duration(minutes: 5);
+      final cacheContext =
+          _healthFingerprint != null &&
+              _medicineFingerprint != null &&
+              contextFresh
+          ? PharmacistAnswerCache.canonical([
+              _healthFingerprint,
+              _medicineFingerprint,
+            ])
+          : null;
+      final saved = !forceRefresh && cacheContext != null
+          ? await _answerCache.find(
+              _conversationUserId,
+              requestKey,
+              context: cacheContext,
+              maxAge: const Duration(minutes: 15),
+            )
+          : null;
+      final response =
+          saved?['response'] ??
+          await _apiClient.post('/api/v1/drug-explain/chat', body: body);
       final data = Map<String, dynamic>.from(response as Map);
+      if (saved == null) {
+        try {
+          await _answerCache.save(
+            _conversationUserId,
+            requestKey,
+            cacheContext ?? 'unverified',
+            data,
+          );
+        } catch (_) {
+          /* Storage failure must not discard a received answer. */
+        }
+      }
       final reply = data['reply']?.toString() ?? '응답을 받아오지 못했습니다.';
+      final asksForMedicine = reply.contains('물어볼 약을 선택하거나 제품명·성분명을 알려주세요');
+      final generalCoffeeQuestion = _isGeneralCoffeeMedicineQuestion(text);
 
       if (!mounted) return;
       setState(() {
-        _messages.add({'isMe': false, 'text': _plainAiReply(reply)});
+        _messages[questionIndex]['contextText'] =
+            data['resolved_message'] ?? requestText;
+        _messages[questionIndex]['intent'] = data['resolved_intent'] ?? intent;
+        if (data['resolved_scope'] != null) {
+          _messages[questionIndex]['scope'] = data['resolved_scope'];
+        }
+        if (isGeneralFreeInput) {
+          _pendingGeneralQuestion = asksForMedicine
+              ? (pendingQuestion ?? text)
+              : generalCoffeeQuestion
+              ? text
+              : null;
+        }
+        _messages.add({
+          'isMe': false,
+          'createdAt': DateTime.now().toIso8601String(),
+          'text': _plainAiReply(reply),
+          if (saved != null)
+            'cacheNotice':
+                '저장된 답변 · ${_conversationDate(saved['savedAt'].toString())}',
+          if (saved != null) 'refreshQuestion': text,
+          if (saved != null) 'refreshIntent': intent,
+          'sources':
+              (data['sources'] as List?)?.whereType<String>().toList(
+                growable: false,
+              ) ??
+              const <String>[],
+          'conversationMedicines': data['conversation_medicines'] ?? const [],
+          'officialProductNames': officialProductNames,
+          'isHealthReply':
+              (data['resolved_intent'] ?? intent) == 'health_precautions',
+          'healthHighlightTerms':
+              (data['resolved_intent'] ?? intent) == 'health_precautions'
+              ? (data['health_highlight_terms'] as List?)
+                        ?.whereType<String>()
+                        .toList(growable: false) ??
+                    const <String>[]
+              : const <String>[],
+        });
       });
     } on ApiException catch (error) {
       if (!mounted) return;
       setState(() {
+        final unavailable =
+            error.statusCode == null ||
+            error.statusCode == 408 ||
+            (error.statusCode ?? 0) >= 500;
+        final old = unavailable ? historicalAnswer : null;
+        final response = old?['response'] as Map?;
         _messages.add({
           'isMe': false,
-          'text': '죄송합니다. 오류가 발생했어요.\n${_apiError(error)}',
+          'text': response?['reply'] == null
+              ? _chatFailureMessage
+              : _plainAiReply(response!['reply'].toString()),
+          if (old != null)
+            'cacheNotice':
+                '연결을 확인하지 못해 이전 답변을 보여드려요.\n${_conversationDate(old['savedAt'].toString())} 저장 · 현재 약·건강정보는 다시 확인하지 않았어요.',
+          if (response != null) 'sources': response['sources'] ?? [],
+          'createdAt': DateTime.now().toIso8601String(),
         });
       });
     } catch (error) {
       if (!mounted) return;
       setState(() {
-        _messages.add({'isMe': false, 'text': '통신 중 문제가 발생했습니다.\n다시 시도해주세요.'});
+        _messages.add({
+          'isMe': false,
+          'text': '통신 중 문제가 발생했습니다.\n다시 시도해주세요.',
+          'createdAt': DateTime.now().toIso8601String(),
+        });
       });
     } finally {
+      try {
+        await _saveConversation();
+      } catch (_) {
+        if (mounted) {
+          showSeniorSnackbar(context, '답변은 받았지만 대화를 저장하지 못했어요.', error: true);
+        }
+      }
       if (mounted) {
         setState(() => _isLoading = false);
         _scrollToBottom();
@@ -559,16 +969,38 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
     }
   }
 
-  Widget _buildKeywordBar() {
+  bool _looksLikeMedicineIdentity(String text) {
+    return RegExp(
+      r'[0-9A-Za-z가-힣]{2,}(?:정|캡슐|연질|시럽|주사|액|패치|크림|산)(?=과|와|은|는|이|가|을|를|에|의|도|만|,|\s|$)',
+    ).hasMatch(text.trim());
+  }
+
+  bool _isGeneralCoffeeMedicineQuestion(String text) {
+    final normalized = text.toLowerCase().replaceAll(RegExp(r'\s+'), '');
+    final mentionsCoffee =
+        normalized.contains('커피') || normalized.contains('카페인');
+    final mentionsMedicine =
+        normalized.contains('약') ||
+        normalized.contains('복용') ||
+        normalized.contains('먹');
+    return mentionsCoffee &&
+        mentionsMedicine &&
+        !_looksLikeMedicineIdentity(text);
+  }
+
+  Widget _buildKeywordBar(List<Map<String, String>> prompts) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 18, 20, 0),
+      padding: const EdgeInsets.fromLTRB(20, 4, 20, 0),
       child: LayoutBuilder(
         builder: (context, constraints) => Scrollbar(
           child: SingleChildScrollView(
-            key: ValueKey(_selectedMedicine),
+            key: ValueKey(
+              _selectedMedicine ??
+                  (_isAllMedicinesSelected ? 'all-medicines' : 'general'),
+            ),
             scrollDirection: Axis.horizontal,
             child: Row(
-              children: _keywordPrompts.map((keyword) {
+              children: prompts.map((keyword) {
                 final label = keyword['label']!;
                 final selected = label == _selectedKeyword;
                 return Padding(
@@ -587,7 +1019,7 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
                         size: 19,
                         color: selected ? Colors.white : AppColors.textBody,
                       ),
-                      backgroundColor: AppColors.pageBg,
+                      backgroundColor: AppColors.surface,
                       selectedColor: AppColors.point,
                       side: BorderSide(
                         color: selected
@@ -616,13 +1048,24 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
   @override
   Widget build(BuildContext context) {
     // 아직 아무것도 안 물어봤을 때만 예시 질문을 보여준다.
-    final showSuggestions = _messages.length <= 1;
-    final subject = _selectedMedicines.length > 1
-        ? _selectedMedicines.join(', ')
-        : _selectedMedicine?.trim();
+    final largeText = MediaQuery.textScalerOf(context).scale(16) > 24;
+    final historyButton = TextButton(
+      onPressed: _isLoading || _isLoadingMedicines
+          ? null
+          : _openPreviousConversations,
+      child: const Text('이전 대화', style: TextStyle(fontSize: 16)),
+    );
+    final showSuggestions =
+        _messages.length <= 1 && _selectedMedicines.length == 1;
+    final subject = _selectedMedicine?.trim();
+    final subjectLabel = _hasMultipleMedicines
+        ? '${_selectedMedicines.first} 외 ${_selectedMedicines.length - 1}개'
+        : subject?.isNotEmpty == true
+        ? subject!
+        : (_isAllMedicinesSelected ? '약 전체' : '일반 질문');
 
     return Scaffold(
-      backgroundColor: AppColors.pageBg,
+      backgroundColor: AppColors.bg,
       body: SafeArea(
         child: Column(
           children: [
@@ -635,18 +1078,26 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
-                          '무엇이든 물어보세요',
-                          style: AppText.screenTitle(size: 24),
+                        FittedBox(
+                          fit: BoxFit.scaleDown,
+                          alignment: Alignment.centerLeft,
+                          child: Text(
+                            '무엇이든 물어보세요',
+                            style: AppText.screenTitle(size: 24),
+                          ),
                         ),
                         const SizedBox(height: 2),
-                        Text(
-                          '약 이야기를 쉬운 말로 알려드려요',
-                          style: AppText.caption(size: 16.5),
-                        ),
+                        if (largeText)
+                          historyButton
+                        else
+                          Text(
+                            '약 이야기를 쉬운 말로 알려드려요',
+                            style: AppText.caption(size: 16.5),
+                          ),
                       ],
                     ),
                   ),
+                  if (!largeText) historyButton,
                 ],
               ),
             ),
@@ -664,9 +1115,7 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
                           Text('물어볼 약', style: AppText.caption(size: 17.5)),
                           const SizedBox(height: 2),
                           Text(
-                            (subject == null || subject.isEmpty)
-                                ? '약 전체'
-                                : subject,
+                            subjectLabel,
                             style: AppText.cardTitle(size: 22),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
@@ -713,10 +1162,42 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
                     ScrollViewKeyboardDismissBehavior.onDrag,
                 children: [
                   for (final message in _messages) ...[
+                    if (message['cacheNotice'] != null)
+                      Text(
+                        message['cacheNotice'].toString(),
+                        style: AppText.caption(size: 14),
+                      ),
                     _ChatBubble(
                       text: message['text'] as String,
                       isMe: message['isMe'] as bool,
+                      sources:
+                          (message['sources'] as List?)
+                              ?.whereType<String>()
+                              .toList(growable: false) ??
+                          const [],
+                      isHealthReply: message['isHealthReply'] == true,
+                      healthHighlightTerms:
+                          (message['healthHighlightTerms'] as List?)
+                              ?.whereType<String>()
+                              .toList(growable: false) ??
+                          const [],
+                      officialProductNames:
+                          (message['officialProductNames'] as List?)
+                              ?.whereType<String>()
+                              .toList(growable: false) ??
+                          const [],
                     ),
+                    if (message['refreshQuestion'] != null)
+                      TextButton(
+                        onPressed: _isLoading
+                            ? null
+                            : () => _sendMessage(
+                                message: message['refreshQuestion'].toString(),
+                                intent: message['refreshIntent'] as String?,
+                                forceRefresh: true,
+                              ),
+                        child: const Text('최신 정보 확인'),
+                      ),
                     const SizedBox(height: 12),
                   ],
                   if (_isLoadingMedicines) ...[
@@ -761,25 +1242,37 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
                 ],
               ),
             ),
-            // 빠른 질문은 약을 고른 뒤에만 내놓는다. 무엇에 대한 질문인지
-            // 정해지지 않으면 눌러도 되묻게 된다.
-            if (subject != null && subject.isNotEmpty) _buildKeywordBar(),
+            if (!_isLoadingMedicines &&
+                (_isAllMedicinesSelected || _selectedMedicines.isNotEmpty))
+              _buildKeywordBar(
+                _isAllMedicinesSelected
+                    ? _allMedicinePrompts
+                    : _hasMultipleMedicines
+                    ? _selectedMedicinePrompts
+                    : _keywordPrompts,
+              ),
             Padding(
               padding: const EdgeInsets.fromLTRB(20, 10, 20, 14),
               child: Row(
                 children: [
                   Expanded(
                     child: Container(
+                      key: const ValueKey('pharmacist-chat-input'),
                       constraints: const BoxConstraints(minHeight: 60),
+                      alignment: Alignment.center,
                       decoration: BoxDecoration(
                         color: AppColors.surface,
-                        borderRadius: BorderRadius.circular(31),
-                        boxShadow: kCardShadow,
+                        borderRadius: BorderRadius.circular(30),
+                        border: Border.all(
+                          color: AppColors.strongLine,
+                          width: 2,
+                        ),
                       ),
                       padding: const EdgeInsets.symmetric(horizontal: 20),
                       child: TextField(
                         controller: _chatController,
                         focusNode: _chatFocusNode,
+                        textAlignVertical: TextAlignVertical.center,
                         textInputAction: TextInputAction.send,
                         onSubmitted: (_) => _sendMessage(),
                         style: AppText.body(size: 20),
@@ -791,6 +1284,9 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
                           ),
                           border: InputBorder.none,
                           isDense: true,
+                          contentPadding: const EdgeInsets.symmetric(
+                            vertical: 12,
+                          ),
                         ),
                       ),
                     ),
@@ -843,10 +1339,12 @@ class _MedicineSelectionResult {
 class _MedicineSelectionSheet extends StatefulWidget {
   final List<String> medicines;
   final List<String> selectedMedicines;
+  final Set<String> searchedMedicines;
 
   const _MedicineSelectionSheet({
     required this.medicines,
     required this.selectedMedicines,
+    required this.searchedMedicines,
   });
 
   @override
@@ -865,10 +1363,19 @@ class _MedicineSelectionSheetState extends State<_MedicineSelectionSheet> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Text(
-            '여러 약을 함께 확인하려면 두 개 이상 선택하세요.',
+            '함께 확인할 약을 선택해 주세요.',
             style: AppText.body(size: 18, color: AppColors.textBody),
           ),
           const SizedBox(height: 10),
+          const Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              _MedicineSourceBadge(isSearched: false),
+              _MedicineSourceBadge(isSearched: true),
+            ],
+          ),
+          const SizedBox(height: 14),
           for (final medicine in widget.medicines)
             Material(
               color: Colors.transparent,
@@ -885,6 +1392,15 @@ class _MedicineSelectionSheetState extends State<_MedicineSelectionSheet> {
                   });
                 },
                 title: Text(medicine, style: AppText.label(size: 19)),
+                subtitle: Padding(
+                  padding: const EdgeInsets.only(top: 6, bottom: 6),
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: _MedicineSourceBadge(
+                      isSearched: widget.searchedMedicines.contains(medicine),
+                    ),
+                  ),
+                ),
                 activeColor: AppColors.point,
                 checkColor: Colors.white,
                 controlAffinity: ListTileControlAffinity.leading,
@@ -920,6 +1436,30 @@ class _MedicineSelectionSheetState extends State<_MedicineSelectionSheet> {
           ),
         ),
       ],
+    );
+  }
+}
+
+class _MedicineSourceBadge extends StatelessWidget {
+  final bool isSearched;
+
+  const _MedicineSourceBadge({required this.isSearched});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: isSearched ? AppColors.bg : AppColors.pointTint,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Text(
+        isSearched ? '검색한 약' : '등록된 약',
+        style: AppText.body(
+          size: 15,
+          color: isSearched ? AppColors.textBody : AppColors.point,
+        ),
+      ),
     );
   }
 }
@@ -1185,11 +1725,170 @@ class _DrugSearchCandidate {
   }
 }
 
+String _conversationDate(dynamic value) {
+  final date = DateTime.tryParse(value?.toString() ?? '')?.toLocal();
+  if (date == null) return '';
+  String two(int number) => number.toString().padLeft(2, '0');
+  return '${date.year}.${two(date.month)}.${two(date.day)} ${two(date.hour)}:${two(date.minute)}';
+}
+
+class _PreviousConversationsScreen extends StatelessWidget {
+  final List<Map<String, dynamic>> records;
+  const _PreviousConversationsScreen({required this.records});
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    backgroundColor: AppColors.bg,
+    body: SafeArea(
+      child: Column(
+        children: [
+          const SeniorBackHeader(title: '이전 대화'),
+          Expanded(
+            child: records.isEmpty
+                ? Center(
+                    child: Text(
+                      '아직 저장된 대화가 없어요.',
+                      style: AppText.caption(size: 18),
+                    ),
+                  )
+                : ListView.separated(
+                    padding: const EdgeInsets.all(20),
+                    itemCount: records.length,
+                    separatorBuilder: (_, _) => const SizedBox(height: 14),
+                    itemBuilder: (context, index) {
+                      final record = records[index];
+                      final messages = record['messages'] as List;
+                      final first = messages.firstWhere(
+                        (item) => item['isMe'] == true,
+                      );
+                      return SeniorCard(
+                        onTap: () async {
+                          final resume = await Navigator.of(context).push<bool>(
+                            MaterialPageRoute(
+                              builder: (_) =>
+                                  _PreviousConversationScreen(record: record),
+                            ),
+                          );
+                          if (resume == true && context.mounted) {
+                            Navigator.of(context).pop(record);
+                          }
+                        },
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              record['title'] as String,
+                              style: AppText.cardTitle(size: 21),
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              _conversationDate(record['updatedAt']),
+                              style: AppText.caption(size: 16),
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              first['text'] as String,
+                              style: AppText.label(size: 18),
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
+          ),
+        ],
+      ),
+    ),
+  );
+}
+
+class _PreviousConversationScreen extends StatelessWidget {
+  final Map<String, dynamic> record;
+  const _PreviousConversationScreen({required this.record});
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    backgroundColor: AppColors.bg,
+    body: SafeArea(
+      child: Column(
+        children: [
+          const SeniorBackHeader(title: '이전 대화'),
+          Expanded(
+            child: ListView(
+              padding: const EdgeInsets.all(20),
+              children: [
+                Text(
+                  record['title'] as String,
+                  style: AppText.cardTitle(size: 21),
+                ),
+                const SizedBox(height: 16),
+                for (final message in record['messages'] as List) ...[
+                  if (message['cacheNotice'] != null)
+                    Text(
+                      message['cacheNotice'].toString(),
+                      style: AppText.caption(size: 14),
+                    ),
+                  Text(
+                    _conversationDate(
+                      message['createdAt'] ?? record['updatedAt'],
+                    ),
+                    style: AppText.caption(size: 14),
+                  ),
+                  const SizedBox(height: 6),
+                  _ChatBubble(
+                    text: message['text'] as String,
+                    isMe: message['isMe'] == true,
+                    sources: (message['sources'] as List? ?? [])
+                        .whereType<String>()
+                        .toList(),
+                    isHealthReply: message['isHealthReply'] == true,
+                    healthHighlightTerms:
+                        (message['healthHighlightTerms'] as List? ?? [])
+                            .whereType<String>()
+                            .toList(),
+                    officialProductNames:
+                        (message['officialProductNames'] as List? ?? [])
+                            .whereType<String>()
+                            .toList(),
+                  ),
+                  const SizedBox(height: 12),
+                ],
+              ],
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.all(20),
+            child: SeniorButton(
+              label: '이어서 대화하기',
+              onPressed: () => Navigator.of(context).pop(true),
+            ),
+          ),
+        ],
+      ),
+    ),
+  );
+}
+
 class _ChatBubble extends StatelessWidget {
   final bool isMe;
   final String text;
+  final List<String> officialProductNames;
+  final bool isHealthReply;
+  final List<String> healthHighlightTerms;
+  final List<String> sources;
 
-  const _ChatBubble({required this.isMe, required this.text});
+  const _ChatBubble({
+    required this.isMe,
+    required this.text,
+    this.officialProductNames = const [],
+    this.isHealthReply = false,
+    this.healthHighlightTerms = const [],
+    this.sources = const [],
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -1220,12 +1919,38 @@ class _ChatBubble extends StatelessWidget {
                   ),
                 ],
               ),
-              child: Text(
-                text,
-                style: AppText.body(
-                  size: 20,
-                  color: isMe ? Colors.white : AppColors.textPrimary,
-                ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text.rich(
+                    TextSpan(
+                      children: _officialProductNameSpans(
+                        text,
+                        isMe
+                            ? const []
+                            : isHealthReply
+                            ? healthHighlightTerms
+                            : officialProductNames,
+                        AppText.body(
+                          size: 20,
+                          color: isMe ? Colors.white : AppColors.textPrimary,
+                        ),
+                        emphasisColor: isHealthReply
+                            ? AppColors.danger
+                            : AppColors.detailEmphasis,
+                        healthWarningsOnly: isHealthReply,
+                      ),
+                    ),
+                  ),
+                  if (!isMe && sources.isNotEmpty) ...[
+                    const SizedBox(height: 12),
+                    Text(
+                      '출처: ${sources.join(' · ')}',
+                      style: AppText.caption(size: 14),
+                    ),
+                  ],
+                ],
               ),
             ),
           ),
@@ -1236,11 +1961,132 @@ class _ChatBubble extends StatelessWidget {
   }
 }
 
-String _apiError(ApiException error) {
-  return error.statusCode == null
-      ? error.message
-      : '${error.message} (HTTP ${error.statusCode})';
+List<TextSpan> _officialProductNameSpans(
+  String text,
+  List<String> officialProductNames,
+  TextStyle baseStyle, {
+  Color emphasisColor = AppColors.detailEmphasis,
+  bool healthWarningsOnly = false,
+}) {
+  final names =
+      officialProductNames
+          .map((name) => name.trim())
+          .where((name) => name.isNotEmpty)
+          .toSet()
+          .toList()
+        ..sort((left, right) => right.length.compareTo(left.length));
+  if (names.isEmpty) return [TextSpan(text: text, style: baseStyle)];
+
+  final matches = <({int start, int end})>[];
+  var cursor = 0;
+  while (cursor < text.length) {
+    ({int start, int end})? next;
+    for (final name in names) {
+      var start = text.indexOf(name, cursor);
+      while (start >= 0 &&
+          (!_hasOfficialProductNameBoundary(text, start, name) ||
+              (healthWarningsOnly && !_isHealthWarningSentence(text, start)))) {
+        start = text.indexOf(name, start + 1);
+      }
+      if (start < 0) continue;
+      final candidate = (start: start, end: start + name.length);
+      if (next == null ||
+          candidate.start < next.start ||
+          (candidate.start == next.start && candidate.end > next.end)) {
+        next = candidate;
+      }
+    }
+    if (next == null) break;
+    matches.add(next);
+    cursor = next.end;
+  }
+  if (matches.isEmpty) return [TextSpan(text: text, style: baseStyle)];
+
+  final spans = <TextSpan>[];
+  cursor = 0;
+  for (final match in matches) {
+    if (match.start > cursor) {
+      spans.add(
+        TextSpan(text: text.substring(cursor, match.start), style: baseStyle),
+      );
+    }
+    spans.add(
+      TextSpan(
+        text: text.substring(match.start, match.end),
+        style: baseStyle.copyWith(
+          color: emphasisColor,
+          fontWeight: FontWeight.w700,
+        ),
+      ),
+    );
+    cursor = match.end;
+  }
+  if (cursor < text.length) {
+    spans.add(TextSpan(text: text.substring(cursor), style: baseStyle));
+  }
+  return spans;
 }
+
+bool _isHealthWarningSentence(String text, int start) {
+  final delimiters = RegExp(r'[.!?。\n]');
+  var sentenceStart = 0;
+  var sentenceEnd = text.length;
+  for (final match in delimiters.allMatches(text)) {
+    if (match.start < start) {
+      sentenceStart = match.end;
+    } else {
+      sentenceEnd = match.start;
+      break;
+    }
+  }
+  return !RegExp(
+    r'확인(?:하지|되지|할 수).*(?:못|않)|정보.*(?:없어|없음)|안내.*찾지 못|가족력|가족의',
+  ).hasMatch(text.substring(sentenceStart, sentenceEnd));
+}
+
+bool _hasOfficialProductNameBoundary(String text, int start, String name) {
+  final word = RegExp(r'[A-Za-z0-9가-힣_]');
+  if (start > 0 && word.hasMatch(text[start - 1])) return false;
+  final end = start + name.length;
+  if (end >= text.length || !word.hasMatch(text[end])) return true;
+
+  const particles = [
+    '에게',
+    '께서',
+    '처럼',
+    '보다',
+    '에서',
+    '으로',
+    '은',
+    '는',
+    '이',
+    '가',
+    '을',
+    '를',
+    '과',
+    '와',
+    '의',
+    '에',
+    '로',
+    '도',
+    '만',
+  ];
+  for (final particle in particles) {
+    if (!text.startsWith(particle, end)) continue;
+    final afterParticle = end + particle.length;
+    if (afterParticle >= text.length || !word.hasMatch(text[afterParticle])) {
+      return true;
+    }
+  }
+  return false;
+}
+
+const _medicineLoadFailureMessage = '지금은 등록한 약을 불러오지 못했어요.\n잠시 후 다시 시도해 주세요.';
+
+const _chatFailureMessage =
+    '지금은 답변을 불러오지 못했어요.\n'
+    '잠시 후 다시 시도해 주세요.\n'
+    '약의 사용 방법을 임의로 바꾸지는 마세요.';
 
 String _plainAiReply(String value) {
   var text = value.replaceAll('\r\n', '\n').replaceAll('\r', '\n');
@@ -1249,8 +2095,17 @@ String _plainAiReply(String value) {
     '',
   );
   text = text.replaceAll(
+    RegExp(r'^[ \t]*(?:-{3,}|\*{3,}|_{3,})[ \t]*$', multiLine: true),
+    '',
+  );
+  text = text.replaceAll(
     RegExp(r'^[ \t]{0,3}#{1,6}[ \t]+', multiLine: true),
     '',
+  );
+  text = text.replaceAll(RegExp(r'^[ \t]{0,3}>+[ \t]?', multiLine: true), '');
+  text = text.replaceAll(
+    RegExp(r'^[ \t]{0,3}\d+[.)][ \t]+', multiLine: true),
+    '• ',
   );
   text = text.replaceAll(
     RegExp(r'^[ \t]{0,3}[-*+][ \t]+', multiLine: true),
@@ -1272,5 +2127,14 @@ String _plainAiReply(String value) {
     RegExp(r'(?<![A-Za-z0-9가-힣_])_([^_\s\n](?:[^_\n]*?[^_\s\n])?)_(?!_)'),
     (match) => match.group(1)!,
   );
-  return text.replaceAll('`', '').replaceAll(RegExp(r'\n{3,}'), '\n\n').trim();
+  text = text.replaceAllMapped(
+    RegExp(r'\[([^\]\n]+)\]\([^\s)]+(?:\s+"[^"]*")?\)'),
+    (match) => match.group(1)!,
+  );
+  text = text.replaceAll('`', '');
+  text = text
+      .split('\n')
+      .map((line) => line.replaceAll(RegExp(r'[ \t]{3,}'), ' ').trimRight())
+      .join('\n');
+  return text.replaceAll(RegExp(r'\n{3,}'), '\n\n').trim();
 }

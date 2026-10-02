@@ -1,4 +1,5 @@
 import json
+import re
 from collections import Counter
 from typing import Any
 
@@ -55,6 +56,145 @@ EXPLICIT_QUESTION_INTENTS = frozenset(
     }
 )
 
+UNRELATED_QUESTION_REPLY = (
+    "저는 약에 관한 질문을 도와드려요. "
+    "복용법이나 주의사항을 물어봐 주세요."
+)
+AMBIGUOUS_QUESTION_REPLY = (
+    "약에 관한 질문인지 한 번만 더 알려주세요. "
+    "궁금한 약 이름이나 복용법·주의사항 중 무엇을 묻는지 적어 주세요."
+)
+MEDICINE_SELECTION_REQUIRED_REPLY = (
+    "약마다 답이 달라요. "
+    "물어볼 약을 선택하거나 제품명·성분명을 알려주세요."
+)
+
+
+def classify_question_scope(message: str, *, has_medicine_context: bool = False) -> str:
+    """Classify free text without treating selection alone as a medicine question."""
+    normalized = "".join(str(message or "").lower().split())
+    if not normalized:
+        return "ambiguous"
+
+    product_identity = bool(
+        re.search(
+            r"[0-9a-z가-힣]{2,}(?:정|캡슐|연질|시럽|주사|액|패치|크림|산)"
+            r"(?=과|와|은|는|이|가|을|를|에|의|도|만|,|\s|$)",
+            normalized,
+        )
+    )
+    medicine_terms = (
+        "약",
+        "복용",
+        "투여",
+        "처방",
+        "성분",
+        "부작용",
+        "이상반응",
+        "용량",
+        "금기",
+        "상호작용",
+        "같이먹",
+        "함께먹",
+        "알약",
+        "캡슐",
+        "연고",
+        "주사",
+        "보관",
+    )
+    has_medicine_topic = product_identity or any(
+        term in normalized for term in medicine_terms
+    )
+    if not has_medicine_topic:
+        unrelated_terms = (
+            "날씨",
+            "기온",
+            "우산",
+            "맛집",
+            "뉴스",
+            "축구",
+            "야구",
+            "영화",
+            "음악",
+        )
+        if any(term in normalized for term in unrelated_terms):
+            return "unrelated"
+        # Short, relevant questions may omit the selected medicine's name.
+        contextual_terms = (
+            "술", "음주", "알코올", "커피", "카페인", "음식", "우유", "자몽",
+            "효과", "효능", "주의", "조심", "먹", "사용", "임신", "임부",
+            "알레르기", "흡연", "건강", "질환", "병력", "당뇨", "고혈압",
+            "졸림", "어지", "두통", "증상", "요약", "짧게", "간단히", "쉽게",
+        )
+        if has_medicine_context and any(term in normalized for term in contextual_terms):
+            return "medicine_specific"
+        return "ambiguous"
+
+    if any(term in normalized for term in ("깜빡", "잊었", "놓쳐", "보관", "저장")):
+        return "general_medication"
+
+    medicine_specific_terms = (
+        "부작용",
+        "이상반응",
+        "몇번",
+        "용량",
+        "어떻게먹",
+        "복용법",
+        "사용법",
+        "같이먹",
+        "함께먹",
+        "먹어도돼",
+        "무슨약",
+        "어디에쓰",
+        "커피",
+        "카페인",
+        "음료",
+        "음식",
+        "우유",
+        "자몽",
+        "술",
+        "음주",
+    )
+    matched_specific_terms = [
+        term for term in medicine_specific_terms if term in normalized
+    ]
+    beverage_terms = ("커피", "카페인", "음료", "우유", "자몽", "술", "음주")
+    has_beverage_term = any(term in normalized for term in beverage_terms)
+    if matched_specific_terms and not product_identity:
+        first_term_index = min(normalized.find(term) for term in matched_specific_terms)
+        prefix = normalized[:first_term_index]
+        generic_prefixes = ("약", "이약", "일반약", "보통약", "먹는약", "복용중인약")
+        product_identity = len(prefix) >= 2 and not prefix.startswith(
+            generic_prefixes
+        )
+    if matched_specific_terms:
+        if has_beverage_term and not product_identity:
+            return "general_medication"
+        return "medicine_specific" if product_identity else "needs_medicine"
+
+    if product_identity:
+        return "medicine_specific"
+
+    return "general_medication"
+
+
+def build_general_medication_prompt(message: str) -> str:
+    return f"""
+당신은 고령 사용자를 위한 의약품 일반 질문 도우미입니다.
+질문의 답을 첫 문장에 쓰고 보통 2~3문장으로 마치세요.
+공백과 줄바꿈을 포함해 최대 600자, 보통 300~450자로 작성하세요. 기계적으로 자르지 말고 필수 안전 조건을 보존하세요.
+특정 약의 제품명·성분·처방 정보가 없으므로 개인 복용량, 복용 시점, 안전 여부를 추정하지 마세요.
+특정 제품에 따라 답이 달라지면 약을 선택하거나 이름을 알려 달라고 짧게 물으세요.
+음식이나 커피·카페인·음료와 약을 함께 사용하는 일반 질문은, 약마다 다를 수 있다는
+짧은 일반 안내를 먼저 제공한 뒤 구체적인 확인을 위해 약 이름을 알려 달라고 요청하세요.
+이 경우 답변 전체를 약 이름 요청 한 문장만으로 대체하지 마세요.
+복용량을 두 배로 늘리거나 임의로 중단하라는 지시를 하지 마세요.
+반복되는 서론·인사·맺음말은 쓰지 마세요.
+
+[사용자 질문]
+{message}
+""".strip()
+
 
 def general_conversation_reply(message: str) -> str | None:
     normalized = "".join(ch for ch in str(message or "").lower() if ch.isalnum())
@@ -92,6 +232,11 @@ def classify_question(message: str) -> set[str]:
     if any(term in normalized for term in ("부작용", "이상반응")):
         intents.add("side_effects")
     if any(term in normalized for term in ("주의", "경고", "조심")):
+        intents.add("precautions")
+    if any(
+        term in normalized
+        for term in ("커피", "카페인", "음료", "음식", "우유", "자몽", "술", "음주")
+    ):
         intents.add("precautions")
     if any(term in normalized for term in ("어떻게먹", "복용법", "사용법", "용법", "몇번")):
         intents.add("usage")
@@ -304,7 +449,9 @@ def build_grounded_chat_prompt(
 - 공식정보에 없는 내용을 사실처럼 만들지 마세요.
 - 질문에 대한 핵심 답을 첫 문장에 쉬운 말로 쓰세요. 한 문장에는 한 가지 내용만 담고, 짧은 문장과 짧은 문단을 쓰세요. 선택한 제품명은 필요할 때만 쓰고 보통은 "이 약"이라고 하세요.
 - 최종 답변은 일반 텍스트로만 쓰세요. Markdown 제목(#), 굵게(**), 기울임(*), 목록 기호(- 또는 *), 백틱, 표, HTML 태그를 쓰지 마세요. 구분이 꼭 필요하면 평범한 제목과 줄바꿈만 쓰세요.
-- 기본 답변은 핵심 답 1~2문장과 필요한 설명 1~3개 짧은 문단으로 간결하게 쓰세요. 같은 뜻을 반복하지 말고, 긴 공식 문장을 첫 답변에 그대로 나열하지 마세요. 다만 공식 조건·금지·심각한 위험은 길이를 줄이려고 빼지 마세요.
+- 모든 답변은 공백·줄바꿈을 포함해 최대 600자, 보통 300~450자로 작성하세요. 필요한 내용만 짧은 문장과 짧은 문단으로 쓰고 같은 뜻의 반복, 일반적인 인사, 질문과 관련 없는 공식정보, 긴 맺음말은 빼세요. 공식 조건·금지·심각한 위험은 보존하세요.
+- 일반 질문은 보통 2~3문장으로 답하세요. precautions·side_effects는 가장 중요한 내용부터 핵심 3~4문장으로 답하세요. 약 전체 질문은 확인된 약마다 핵심 1문장을 우선하고, 특정 약을 누락하지 않은 채 반복되는 설명과 공통 안내는 한 번만 쓰세요. 이는 작성 목표이며 글자 수에 맞춰 문장을 기계적으로 자르지 마세요.
+- 숫자·용량·단위·횟수·기간·연령·금지·예외 조건과 확인하지 못한 약·검사 범위는 분량 목표보다 우선합니다. 이를 빼거나 의미를 약하게 만들어 짧게 맞추지 마세요.
 - 답변은 핵심 답, 필요한 공식 근거, 사용자가 확인하거나 주의할 행동 순서로 작성하세요. 질문에 충분히 답한 경우 억지로 문장을 늘리지 마세요.
 - overview 질문에는 확인된 공식정보 안에서 이 약의 대표 역할과 주로 사용하는 경우를 먼저 설명하세요. 중요한 주의사항이 제공된 경우 가장 중요한 한 가지를 짧게 덧붙이되, 자료에 없는 주의사항을 만들지 마세요.
 - efficacy 질문에는 공식적으로 어떤 증상이나 질환에 사용하는지 설명하고, 사용자 개인에게 효과가 있다고 단정하지 마세요.
@@ -330,6 +477,8 @@ def build_grounded_chat_prompt(
 - 문맥이 불분명하거나 정확하게 풀어 설명하기 어려우면 추측하지 말고, 해당 설명을 확인하기 어렵다고 알리며 의료적 판단을 단정하지 마세요. 설명이 어렵다는 이유로 공식 자료가 없다고 답하지 마세요. 공식 자료가 없는 경우에만 자료가 없다고 알리세요.
 - 공식 자료의 일반 사용법은 일반 안내임을 분명히 하세요. 실제 등록 처방 정보가 제공된 경우에만 해당 처방에 근거해 설명하세요. 개인 처방 정보 없이 개인 복용량을 새로 정하지 말고, 일반 사용법을 개인 처방처럼 표현하지 마세요.
 - 답변에 LLM, API, schema, prompt, Gemini 같은 내부 개발 용어를 출력하지 마세요. "안전합니다", "복용해도 됩니다"처럼 근거 없는 확정 표현을 사용하지 마세요.
+- 정상 완료된 0건 안내 뒤에 "이 결과만으로 안전하다고 판단할 수 없어요" 또는 "모든 약 사용이 안전하다고 단정할 수 없어요" 같은 일반적인 문구를 붙이지 마세요. 추가 상담 안내가 실제로 필요하면 "더 궁금하시면 의사나 약사와 상담해 주세요."라고 한 번만 쓰세요.
+- 조회 실패·분석 미완료·약 식별 실패에서는 확인하지 못한 범위를 분명히 말하고 0건이나 안전으로 표현하지 마세요. 복용 결정을 위해 상담이 필요하면 "복용 전 의사나 약사와 상담해 주세요."라고 안내하세요.
 - 제공된 근거가 있는 경우에만, 구분이 실제로 필요할 때 "쉽게 말하면", "꼭 확인할 점"처럼 평범한 제목을 쓰세요.
 - 해당 근거가 없거나 확인할 수 없는 항목은 제목과 내용을 만들지 마세요.
 - 제목 아래에는 제공된 공식정보 또는 서버 DUR 결과만 설명하고, 원문의 의미를 바꾸지 마세요.

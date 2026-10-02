@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
@@ -5,7 +7,8 @@ import '../../../../core/constants/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../core/widgets/senior_button.dart';
 import '../../../../core/widgets/senior_card.dart';
-import '../../../prescription/presentation/screens/add_medicine_screen.dart';
+import '../../../medication/application/medication_controller.dart';
+import '../../../prescription/presentation/widgets/family_request_sheet.dart';
 
 /// 5g — 첫 사용 · 가족이 대신 설정.
 ///
@@ -19,13 +22,11 @@ class FirstRunScreen extends StatelessWidget {
   // TODO: 가족에게 SMS/카카오톡 초대 링크 발송 → 가족이 자기 기기에서
   //       촬영·확인 → 어르신 앱에 "약이 등록됐어요" 알림.
   void _askFamily(BuildContext context) {
-    Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (_) => AddMedicineScreen(
-          familyAsked: true,
-          onPick: (_) {},
-          onGoHome: () => context.go('/'),
-        ),
+    // 어르신 전화기에서 할 일은 없다. 자녀분이 보호자 앱에서 넣어 준다.
+    unawaited(
+      showFamilyRequestSheet(
+        context,
+        guardianTitle: resolveGuardianTitle(context, ''),
       ),
     );
   }

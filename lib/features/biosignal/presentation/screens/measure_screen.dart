@@ -4,13 +4,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_tabler_icons/flutter_tabler_icons.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../../../core/constants/app_colors.dart';
-import '../../../../core/theme/app_typography.dart';
-import '../../../../core/widgets/senior_button.dart';
-import '../../../../core/widgets/senior_card.dart';
-import '../../../../core/widgets/senior_feedback.dart';
-import '../../../../core/widgets/recovery_view.dart';
-import '../../../../core/widgets/senior_header.dart';
+import '../../../../core/polar_pharmacist_ui/constants/app_colors.dart';
+import '../../../../core/polar_pharmacist_ui/theme/app_typography.dart';
+import '../../../../core/polar_pharmacist_ui/widgets/senior_button.dart';
+import '../../../../core/polar_pharmacist_ui/widgets/senior_card.dart';
+import '../../../../core/polar_pharmacist_ui/widgets/senior_feedback.dart';
+import '../../../../core/polar_pharmacist_ui/widgets/recovery_view.dart';
+import '../../../../core/polar_pharmacist_ui/widgets/senior_header.dart';
 import '../../../medication/domain/medication_models.dart';
 import '../../application/heart_sensor.dart';
 import '../../domain/heart_data.dart';
@@ -26,6 +26,7 @@ class MeasureScreen extends StatefulWidget {
   final HeartSensor? sensor;
   final HeartMeasurementContext measurementContext;
   final bool returnToPreviousScreen;
+  final bool returnToCaller;
   final Future<void> Function()? onSaved;
 
   const MeasureScreen({
@@ -34,6 +35,7 @@ class MeasureScreen extends StatefulWidget {
     this.sensor,
     this.measurementContext = HeartMeasurementContext.general,
     this.returnToPreviousScreen = false,
+    this.returnToCaller = false,
     this.onSaved,
   });
 
@@ -87,6 +89,13 @@ class _MeasureScreenState extends State<MeasureScreen> {
       _sensor.status == HeartSensorStatus.failed;
 
   Future<void> _leaveMeasurement() async {
+    // 폴라 화면에서 Navigator.push로 연 측정 화면은 먼저 닫는다.
+    // 현재 GoRouter 주소로 go하면 그 위의 측정 화면이 남을 수 있다.
+    final navigator = Navigator.of(context);
+    if (navigator.canPop()) {
+      await navigator.maybePop();
+      return;
+    }
     final router = widget.returnToPreviousScreen
         ? GoRouter.maybeOf(context)
         : null;
@@ -94,31 +103,49 @@ class _MeasureScreenState extends State<MeasureScreen> {
       router.go('/biosignal');
       return;
     }
-    await Navigator.of(context).maybePop();
+    await navigator.maybePop();
   }
 
   @override
   void initState() {
     super.initState();
     _sensor.addListener(_onSensor);
-    if (_ownsSensor) {
-      unawaited(_sensor.start(measurementContext: widget.measurementContext));
-    } else {
+    unawaited(_prepareMeasurement());
+  }
+
+  Future<void> _prepareMeasurement() async {
+    // 공유 센서의 연결 중에는 세션을 초기화하지 않는다. 취소 후 재진입도
+    // 이전 연결 시도의 정리가 끝나면 현재 화면에서 새로 시작한다.
+    if (_sensor.connectionInProgress) {
+      await _sensor.connectionSettled;
+      if (!mounted) return;
+    }
+    if (_sensor.status == HeartSensorStatus.streaming) {
       _sensor.beginMeasurement(measurementContext: widget.measurementContext);
+    } else {
+      await _sensor.start(measurementContext: widget.measurementContext);
     }
   }
 
   /// 처음부터 다시 잰다. 센서가 붙어 있지 않으면 다시 붙인다.
   void _restart() {
     if (_live) {
-      _sensor.beginMeasurement();
+      _sensor.beginMeasurement(measurementContext: widget.measurementContext);
     } else {
-      unawaited(_sensor.start());
+      unawaited(_prepareMeasurement());
     }
   }
 
   void _onSensor() {
-    if (mounted) setState(() {});
+    if (!mounted) return;
+    if (widget.returnToCaller && _done && !_openingSaved) {
+      _openingSaved = true;
+      // 쉬운 흐름은 저장 성공을 확인한 뒤 해당 단계의 결과로 바로 돌아간다.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) Navigator.of(context).pop(true);
+      });
+    }
+    setState(() {});
   }
 
   @override
@@ -139,7 +166,7 @@ class _MeasureScreenState extends State<MeasureScreen> {
   /// 아무 값도 나오지 않는다. 그 자리에서 다시 붙는 방법을 알려준다.
   Widget _recovery() {
     return RecoveryView(
-      title: '지금은 심장 박동을\n재지 못하고 있어요',
+      title: '지금은 심장 박동을\n측정하지 못하고 있어요',
       reassurance: '센서의 심박 신호를 확인하지 못했어요. ',
       reassuranceEmphasis: '센서 연결을 확인해 주세요.',
       steps: const [
@@ -151,12 +178,9 @@ class _MeasureScreenState extends State<MeasureScreen> {
       onAction: _restart,
       stillWorksTitle: '약 알림은 그대로 와요',
       stillWorksBody: '센서가 끊겨도 복약 알림에는 영향이 없어요.',
-      helperText: '자동 연락은 지원하지 않아요',
-      // 어르신 화면에서 밖으로 전화를 걸지 않는다.
-      onCallHelper: () => showSeniorSnackbar(context, '필요하면 보호자에게 직접 연락해 주세요.'),
       footnote: _sensor.lastReadAt == null
           ? null
-          : '마지막으로 잰 시각 · 오늘 '
+          : '마지막으로 측정한 시각 · 오늘 '
                 '${DoseSlot.absoluteTime(_sensor.lastReadAt!)}',
     );
   }
@@ -171,7 +195,7 @@ class _MeasureScreenState extends State<MeasureScreen> {
         !_saveFailed &&
         _sensor.saveStatus != HeartSaveStatus.saving) {
       return Scaffold(
-        backgroundColor: AppColors.pageBg,
+        backgroundColor: AppColors.bg,
         body: Column(
           children: [
             SeniorBackHeader(title: '심박수 관리', onBack: _leaveMeasurement),
@@ -182,7 +206,7 @@ class _MeasureScreenState extends State<MeasureScreen> {
     }
 
     return Scaffold(
-      backgroundColor: AppColors.pageBg,
+      backgroundColor: AppColors.bg,
       body: Column(
         children: [
           SeniorBackHeader(
@@ -264,7 +288,7 @@ class _MeasureScreenState extends State<MeasureScreen> {
                                 _lost
                                     ? '센서가 떨어졌어요'
                                     : _live
-                                    ? '폴라 센서로 재고 있어요'
+                                    ? '폴라 센서로 측정하고 있어요'
                                     : '폴라 센서를 찾고 있어요',
                                 style: AppText.cardTitle(
                                   size: 19,
@@ -340,11 +364,14 @@ class _MeasureScreenState extends State<MeasureScreen> {
                             savedAt: savedAt,
                             measurementContext: _sensor.savedMeasurementContext,
                             guardianTitle: widget.guardianTitle,
+                            returnToCaller: widget.returnToCaller,
                             returnToPreviousScreen:
                                 widget.returnToPreviousScreen,
                           ),
                         );
-                        final router = widget.returnToPreviousScreen
+                        final router =
+                            widget.returnToPreviousScreen &&
+                                !widget.returnToCaller
                             ? GoRouter.maybeOf(context)
                             : null;
                         if (router != null) {
@@ -470,7 +497,7 @@ class _NoValueCard extends StatelessWidget {
             steps: [
               '인터넷 연결을 확인해 주세요',
               if (unknown) '서버에는 이미 저장되었을 수 있어요',
-              '다시 재기는 새 측정을 시작해요',
+              '다시 측정하기는 새 측정을 시작해요',
             ],
           ),
         ],
@@ -578,6 +605,8 @@ class _ResultCard extends StatelessWidget {
               ),
             ],
           ),
+          const SizedBox(height: 12),
+          Text('준비 시간을 포함해 받은 심박수의 범위예요.', style: AppText.body(size: 18)),
         ],
       ),
     );

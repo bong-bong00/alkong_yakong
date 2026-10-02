@@ -9,6 +9,7 @@ import '../../../easy_flow/presentation/easy_flow_shell.dart';
 import '../../../../core/widgets/senior_bottom_nav.dart';
 import '../../../../core/widgets/senior_feedback.dart';
 import '../../../biosignal/presentation/screens/measure_screen.dart';
+import '../../../biosignal/domain/heart_data.dart';
 import '../../../medicines/presentation/screens/my_medicines_screen.dart';
 import '../../../profile/presentation/screens/mypage_screen.dart';
 import 'medication_record_screen.dart';
@@ -74,8 +75,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             },
             onMeasure: (_) => Navigator.of(context).push(
               MaterialPageRoute(
-                builder: (_) =>
-                    const MeasureScreen(returnToPreviousScreen: true),
+                builder: (_) => const MeasureScreen(
+                  returnToPreviousScreen: true,
+                  measurementContext: HeartMeasurementContext.afterMedication,
+                ),
               ),
             ),
           ),

@@ -308,3 +308,27 @@ MyMedicineCard resolveMyMedicineCard({
   var spoken = cardSpokenOf(shortExplanation) ?? cardSpokenOf(easyCategory);
   return MyMedicineCard(name: name, purposeLabel: purpose, spoken: spoken);
 }
+
+/// 약 이름에서 끝에 붙은 용량을 뗀다 — "아스피린 100mg" → "아스피린".
+///
+/// 용량은 "한 번에 한 알", "500mg" 처럼 따로 적히는 자리가 있다. 이름에
+/// 또 적으면 같은 말이 두 번 나오고, 좁은 칸에서는 두 줄로 접힌다.
+/// [strength]를 알면 그것부터 떼고, 모르면 끝의 숫자＋단위를 뗀다.
+String nameWithoutStrength(String name, {String strength = ''}) {
+  final trimmed = name.trim();
+  final dose = strength.trim();
+  if (dose.isNotEmpty && trimmed.toLowerCase().endsWith(dose.toLowerCase())) {
+    final cut = trimmed.substring(0, trimmed.length - dose.length).trim();
+    if (cut.isNotEmpty) return cut;
+  }
+  final cut = trimmed
+      .replaceFirst(
+        RegExp(
+          r'[\s·]*\d+(\.\d+)?\s*(mg|밀리그램|mcg|㎍|g|ml|㎖|iu|%)\s*$',
+          caseSensitive: false,
+        ),
+        '',
+      )
+      .trim();
+  return cut.isEmpty ? trimmed : cut;
+}

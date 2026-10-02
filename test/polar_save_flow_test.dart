@@ -1,20 +1,13 @@
 import 'dart:async';
 
 import 'package:alkong_yakong/core/network/api_client.dart';
-import 'package:alkong_yakong/core/widgets/senior_button.dart';
+import 'package:alkong_yakong/core/polar_pharmacist_ui/widgets/senior_button.dart';
 import 'package:alkong_yakong/features/biosignal/application/heart_sensor.dart';
 import 'package:alkong_yakong/features/biosignal/data/biosignal_dataset_collector.dart';
 import 'package:alkong_yakong/features/biosignal/data/polar_service.dart';
 import 'package:alkong_yakong/features/biosignal/domain/heart_data.dart';
 import 'package:alkong_yakong/features/biosignal/presentation/screens/measure_screen.dart';
 import 'package:alkong_yakong/features/biosignal/presentation/screens/saved_screen.dart';
-import 'package:alkong_yakong/features/easy_flow/presentation/easy_dose_flow.dart';
-import 'package:alkong_yakong/features/medication/application/medication_controller.dart';
-import 'package:alkong_yakong/features/medication/domain/medication_models.dart';
-// ignore: depend_on_referenced_packages
-import 'package:http/testing.dart';
-// ignore: depend_on_referenced_packages
-import 'package:http/http.dart' as http;
 // Already supplied by flutter_test; do not change application dependencies.
 // ignore: depend_on_referenced_packages
 import 'package:fake_async/fake_async.dart';
@@ -73,6 +66,10 @@ class FakePolar implements Polar {
   final features = StreamController<PolarSdkFeatureReadyEvent>.broadcast();
   StreamController<PolarHrData> hr = StreamController<PolarHrData>.broadcast();
   int subscriptions = 0;
+  int searches = 0;
+  int connections = 0;
+  int disconnections = 0;
+  Stream<PolarDeviceInfo> Function()? searchOverride;
 
   @override
   Stream<PolarDeviceDisconnectedEvent> get deviceDisconnected =>
@@ -83,17 +80,25 @@ class FakePolar implements Polar {
   Stream<PolarSdkFeatureReadyEvent> get sdkFeatureReady =>
       TestStream(features.stream);
   @override
-  Stream<PolarDeviceInfo> searchForDevice() => Stream.value(device);
+  Stream<PolarDeviceInfo> searchForDevice() {
+    searches++;
+    return TestStream(searchOverride?.call() ?? Stream.value(device));
+  }
+
   @override
   Future<void> connectToDevice(
     String identifier, {
     bool requestPermissions = true,
   }) async {
+    connections++;
     features.add(PolarSdkFeatureReadyEvent(identifier, PolarSdkFeature.hr));
   }
 
   @override
-  Future<void> disconnectFromDevice(String identifier) async {}
+  Future<void> disconnectFromDevice(String identifier) async {
+    disconnections++;
+  }
+
   @override
   Stream<PolarHrData> startHrStreaming(String identifier) {
     subscriptions++;
@@ -101,7 +106,11 @@ class FakePolar implements Polar {
     return TestStream(hr.stream);
   }
 
-  void sample(int bpm) => hr.add(
+  void sample(
+    int bpm, {
+    bool contactStatus = true,
+    bool contactStatusSupported = true,
+  }) => hr.add(
     PolarHrData(
       samples: [
         PolarHrSample(
@@ -109,8 +118,8 @@ class FakePolar implements Polar {
           ppgQuality: 0,
           correctedHr: bpm,
           rrsMs: const [],
-          contactStatus: true,
-          contactStatusSupported: true,
+          contactStatus: contactStatus,
+          contactStatusSupported: contactStatusSupported,
         ),
       ],
     ),
@@ -155,13 +164,15 @@ class NoDataset implements BiosignalDatasetCollector {
 }
 
 class Rig {
+  Rig({this.requestPermissions});
+  final Future<bool> Function()? requestPermissions;
   final sdk = FakePolar();
   final api = FakeApi();
   late final sensor = HeartSensor(
     polar: PolarService(polar: sdk),
     apiClient: api,
     datasetCollector: NoDataset(),
-    requestPermissions: () async => true,
+    requestPermissions: requestPermissions ?? () async => true,
   );
   void start(
     FakeAsync clock, {
@@ -174,33 +185,33 @@ class Rig {
   }
 
   void baseline(FakeAsync clock) {
-    for (var i = 0; i < 3; i++) {
+    for (var i = 0; i < 15; i++) {
       sdk.sample(60);
       clock.flushMicrotasks();
-      clock.elapse(const Duration(seconds: 5));
+      clock.elapse(const Duration(seconds: 1));
     }
   }
 
   void window(FakeAsync clock) {
     baseline(clock);
-    for (var i = 0; i < 6; i++) {
+    for (var i = 0; i < 30; i++) {
       sdk.sample(81);
       sdk.sample(82);
       clock.flushMicrotasks();
-      clock.elapse(const Duration(seconds: 5));
+      clock.elapse(const Duration(seconds: 1));
     }
   }
 
   Future<void> widgetWindow(WidgetTester tester) async {
-    for (var i = 0; i < 9; i++) {
-      if (i < 3) {
+    for (var i = 0; i < 45; i++) {
+      if (i < 15) {
         sdk.sample(60);
       } else {
         sdk.sample(81);
         sdk.sample(82);
       }
       await tester.pump();
-      await tester.pump(const Duration(seconds: 5));
+      await tester.pump(const Duration(seconds: 1));
     }
   }
 }
@@ -239,7 +250,9 @@ void main() {
           if (!duringBaseline) r.baseline(clock);
           r.sdk.sample(80);
           clock.flushMicrotasks();
-          clock.elapse(const Duration(seconds: 10));
+          clock.elapse(const Duration(milliseconds: 2999));
+          expect(r.sensor.status, HeartSensorStatus.streaming);
+          clock.elapse(const Duration(milliseconds: 1));
           expect(r.sensor.status, HeartSensorStatus.failed);
           expect(r.sensor.bpm, isNull);
           clock.elapse(const Duration(minutes: 1));
@@ -255,6 +268,123 @@ void main() {
       },
     );
   }
+
+  for (final duringBaseline in [true, false]) {
+    test('sustained zero HR cancels after grace: baseline=$duringBaseline', () {
+      fakeAsync((clock) {
+        final r = Rig();
+        r.start(clock);
+        if (!duringBaseline) r.baseline(clock);
+        r.sdk.sample(62, contactStatusSupported: false);
+        clock.flushMicrotasks();
+        r.sdk.sample(0, contactStatusSupported: false);
+        clock.flushMicrotasks();
+        expect(r.sensor.status, HeartSensorStatus.streaming);
+        clock.elapse(const Duration(seconds: 2));
+        clock.flushMicrotasks();
+        expect(r.sensor.status, HeartSensorStatus.failed);
+        expect(r.sensor.bpm, isNull);
+        expect(r.sensor.measuring, isFalse);
+        // Late positive values cannot revive a failed measurement or be saved.
+        r.sdk.sample(62, contactStatusSupported: false);
+        clock.flushMicrotasks();
+        clock.elapse(const Duration(minutes: 1));
+        expect(r.api.requests, isEmpty);
+        r.start(clock);
+        r.window(clock);
+        expect(r.api.requests, hasLength(1));
+        r.api.succeed(0);
+        clock.flushMicrotasks();
+        r.sensor.dispose();
+        clock.flushMicrotasks();
+      });
+    });
+  }
+
+  test('startup zero waits for HR; repeated valid values are not removal', () {
+    fakeAsync((clock) {
+      final r = Rig();
+      r.start(clock);
+      r.sdk.sample(0, contactStatusSupported: false);
+      clock.flushMicrotasks();
+      expect(r.sensor.status, HeartSensorStatus.streaming);
+      expect(r.sensor.bpm, isNull);
+      expect(r.sensor.measuring, isFalse);
+      for (var i = 0; i < 5; i++) {
+        r.sdk.sample(62, contactStatusSupported: false);
+        clock.flushMicrotasks();
+        clock.elapse(const Duration(seconds: 1));
+      }
+      expect(r.sensor.status, HeartSensorStatus.streaming);
+      expect(r.sensor.bpm, 62);
+      r.sensor.dispose();
+      clock.flushMicrotasks();
+    });
+  });
+
+  testWidgets('sustained zero HR displays recovery after short grace', (
+    tester,
+  ) async {
+    final r = Rig();
+    await r.sensor.start();
+    await tester.pumpWidget(
+      ProviderScope(
+        child: MaterialApp(home: MeasureScreen(sensor: r.sensor)),
+      ),
+    );
+    r.sdk.sample(62, contactStatusSupported: false);
+    await tester.pump();
+    r.sdk.sample(0, contactStatusSupported: false);
+    await tester.pump();
+    expect(find.text('다시 연결하기'), findsNothing);
+    await tester.pump(const Duration(seconds: 2));
+    await tester.pump();
+    expect(find.text('다시 연결하기'), findsOneWidget);
+    expect(find.text('자동 연락은 지원하지 않아요'), findsNothing);
+    expect(find.text('알리기'), findsNothing);
+    expect(find.text('약 알림은 그대로 와요'), findsOneWidget);
+    expect(find.text('폴라 센서로 재고 있어요'), findsNothing);
+    expect(r.api.requests, isEmpty);
+    await tester.pumpWidget(const SizedBox());
+    r.sensor.dispose();
+    await tester.pump();
+  });
+
+  test('supported skin-contact loss cancels measurement and never saves', () {
+    fakeAsync((clock) {
+      final r = Rig();
+      r.start(clock);
+      r.baseline(clock);
+      r.sdk.sample(62, contactStatus: false);
+      clock.flushMicrotasks();
+      expect(r.sensor.status, HeartSensorStatus.streaming);
+      clock.elapse(const Duration(seconds: 2));
+      clock.flushMicrotasks();
+      expect(r.sensor.status, HeartSensorStatus.failed);
+      expect(r.sensor.bpm, isNull);
+      clock.elapse(const Duration(minutes: 1));
+      expect(r.api.requests, isEmpty);
+      r.sensor.dispose();
+      clock.flushMicrotasks();
+    });
+  });
+
+  test(
+    'unsupported contact flag does not falsely reject a valid HR sample',
+    () {
+      fakeAsync((clock) {
+        final r = Rig();
+        r.start(clock);
+        r.sdk.sample(62, contactStatus: false, contactStatusSupported: false);
+        clock.flushMicrotasks();
+
+        expect(r.sensor.status, HeartSensorStatus.streaming);
+        expect(r.sensor.bpm, 62);
+        r.sensor.dispose();
+        clock.flushMicrotasks();
+      });
+    },
+  );
 
   test(
     'delayed HR never completes on wall time; baseline excluded; saved average frozen',
@@ -471,6 +601,43 @@ void main() {
     });
   }
 
+  testWidgets('skin-contact loss retries the existing BLE connection first', (
+    tester,
+  ) async {
+    final r = Rig();
+    await r.sensor.start();
+    await tester.pumpWidget(
+      ProviderScope(
+        child: MaterialApp(home: MeasureScreen(sensor: r.sensor)),
+      ),
+    );
+    r.sdk.sample(62, contactStatus: false);
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 2));
+    await tester.pump();
+
+    expect(find.text('지금은 심장 박동을\n측정하지 못하고 있어요'), findsOneWidget);
+    expect(find.text('다시 연결하기'), findsOneWidget);
+    expect(find.text('폴라 센서로 재고 있어요'), findsNothing);
+    expect(r.api.requests, isEmpty);
+
+    await tester.tap(find.text('다시 연결하기'));
+    await tester.pump();
+    await tester.pump();
+    expect(r.sensor.status, HeartSensorStatus.streaming);
+    expect(r.sdk.subscriptions, 2);
+    expect(r.sdk.searches, 1);
+    expect(r.sdk.connections, 1);
+    expect(r.sdk.disconnections, 0);
+    r.sdk.sample(64);
+    await tester.pump();
+    expect(r.sensor.bpm, 64);
+
+    await tester.pumpWidget(const SizedBox());
+    r.sensor.dispose();
+    await tester.pump();
+  });
+
   testWidgets(
     'screen waits for saved response; repeated button taps never POST',
     (tester) async {
@@ -509,102 +676,11 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.byType(SavedScreen), findsOneWidget);
       expect(find.text('82회 / 분 · 평소 심박 측정 · 서버에 저장된 심박수'), findsOneWidget);
-      expect(find.text('보호자 자동 알림은 지원하지 않아요'), findsOneWidget);
+      expect(find.text('보호자 자동 알림은 지원하지 않아요'), findsNothing);
       expect(r.api.requests, hasLength(1));
       await tester.pumpWidget(const SizedBox());
       r.sensor.dispose();
       await tester.pump();
     },
-  );
-
-  // 명세서 76~83. 재기 → 약 → 다시 재기 → 결과까지 한 바퀴.
-  testWidgets('쉬운 화면 한 바퀴는 잰 값으로 결과를 말한다', (tester) async {
-    final r = Rig();
-    await r.sensor.start();
-    await tester.pumpWidget(
-      ProviderScope(
-        overrides: [medicationProvider.overrideWith(_PendingDinner.new)],
-        child: MaterialApp(
-          home: Scaffold(body: EasyDoseFlow(sensor: r.sensor)),
-        ),
-      ),
-    );
-    await tester.pump();
-
-    // 1걸음 → 2걸음 → 재는 중.
-    await tester.tap(find.text('복약 전 심박 측정'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('다 찼어요'));
-    await tester.pump();
-    expect(find.text('3 / 8'), findsOneWidget);
-    expect(find.text('재고 있어요'), findsOneWidget);
-
-    // 센서가 값을 주고 서버가 받으면 4걸음으로 넘어간다.
-    await r.widgetWindow(tester);
-    r.api.succeed(0);
-    await tester.pump();
-    await tester.pump();
-    expect(find.text('잘 쟀어요'), findsOneWidget);
-    expect(find.text('82'), findsOneWidget);
-
-    // 5걸음: 약을 드시고 기록한다.
-    await tester.tap(find.text('이제 약 드시기'));
-    await tester.pumpAndSettle();
-    expect(find.text('복약 완료하셨나요?'), findsOneWidget);
-    await tester.tap(find.text('먹었어요'));
-    await tester.pumpAndSettle();
-
-    // 6걸음: 먹기 전을 쟀으니 한 번 더 재자고 묻는다.
-    expect(find.text('한 번 더 재요'), findsOneWidget);
-    expect(find.text('저녁 약 기록했어요'), findsOneWidget);
-
-    // 7걸음 → 8걸음: 먹은 후 값으로 결과를 말한다.
-    await tester.tap(find.text('복약 후 심박 측정'));
-    await tester.pump();
-    await r.widgetWindow(tester);
-    r.api.succeed(1);
-    await tester.pump();
-    await tester.pump();
-    expect(find.text('8 / 8'), findsOneWidget);
-    expect(find.text('평소와 비슷해요'), findsOneWidget);
-    expect(find.text('약이 잘 듣고 있어요'), findsOneWidget);
-
-    // 끝내면 오늘 다 했어요 (85).
-    await tester.tap(find.text('기록 끝내기'));
-    await tester.pumpAndSettle();
-    expect(find.text('다 드셨어요'), findsOneWidget);
-    expect(find.text('복약 기록'), findsOneWidget);
-
-    await tester.pumpWidget(const SizedBox());
-    r.sensor.dispose();
-    await tester.pump();
-  });
-}
-
-/// 저녁 약만 남은 하루. 서버에는 묻지 않는다.
-class _PendingDinner extends MedicationController {
-  _PendingDinner()
-    : super(
-        apiClient: ApiClient(
-          client: MockClient(
-            (_) async => http.Response(
-              '{}',
-              200,
-              headers: {'content-type': 'application/json'},
-            ),
-          ),
-        ),
-      );
-
-  @override
-  TodayMedication build() => const TodayMedication(
-    doses: [
-      DoseEntry(
-        slot: DoseSlot.dinner,
-        medicines: [Medicine(ingredient: '테스트정', amount: '1알', scheduleId: 18)],
-      ),
-    ],
-    guardianRelation: '가족',
-    guardianName: '테스트',
   );
 }

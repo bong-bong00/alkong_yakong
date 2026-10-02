@@ -1,18 +1,20 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:alkong_yakong/core/polar_pharmacist_ui/constants/app_colors.dart';
 import 'package:alkong_yakong/core/network/api_client.dart';
 import 'package:alkong_yakong/core/theme/app_theme.dart';
-import 'package:alkong_yakong/core/widgets/senior_button.dart';
-import 'package:alkong_yakong/core/widgets/senior_card.dart';
-import 'package:alkong_yakong/core/widgets/senior_feedback.dart';
-import 'package:alkong_yakong/core/widgets/senior_header.dart';
+import 'package:alkong_yakong/core/polar_pharmacist_ui/widgets/senior_button.dart';
+import 'package:alkong_yakong/core/polar_pharmacist_ui/widgets/senior_card.dart';
+import 'package:alkong_yakong/core/polar_pharmacist_ui/widgets/senior_feedback.dart';
+import 'package:alkong_yakong/core/polar_pharmacist_ui/widgets/senior_header.dart';
 import 'package:alkong_yakong/features/biosignal/data/heart_repository.dart';
 import 'package:alkong_yakong/features/biosignal/domain/heart_data.dart';
 import 'package:alkong_yakong/features/biosignal/domain/heart_time.dart';
 import 'package:alkong_yakong/features/biosignal/presentation/screens/heart_screen.dart';
 import 'package:alkong_yakong/features/biosignal/presentation/screens/measure_screen.dart';
 import 'package:alkong_yakong/features/biosignal/presentation/screens/monthly_heart_screen.dart';
+import 'package:alkong_yakong/features/biosignal/presentation/screens/polar_screen.dart';
 import 'package:alkong_yakong/features/biosignal/presentation/screens/saved_screen.dart';
 import 'package:alkong_yakong/features/medication/domain/medication_models.dart';
 import 'package:flutter/material.dart';
@@ -335,8 +337,16 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(find.text('복약 전 90회/분 · 복약 후 91회/분'), findsOneWidget);
-      expect(find.text('비교 가능한 주는 1주예요.'), findsOneWidget);
+      expect(find.text('1회/분 높았어요', skipOffstage: false), findsOneWidget);
+      expect(find.text('복약 전  90회/분', skipOffstage: false), findsOneWidget);
+      expect(find.text('복약 후  91회/분', skipOffstage: false), findsOneWidget);
+      expect(find.text('일반 범위', skipOffstage: false), findsNWidgets(2));
+      expect(find.text('비교 기록 1주', skipOffstage: false), findsOneWidget);
+      expect(
+        find.text('아직 경향을 판단하기 어려워요', skipOffstage: false),
+        findsOneWidget,
+      );
+      expect(find.textContaining('약의 영향으로 단정할 수 없어요.'), findsOneWidget);
       expect(find.text('주별 평균'), findsOneWidget);
       expect(find.text('단위: 회/분 · 비교 가능한 주 1주'), findsOneWidget);
       expect(find.text('복약 전 평균'), findsOneWidget);
@@ -345,6 +355,51 @@ void main() {
       expect(find.textContaining('비슷했어요'), findsNothing);
       expect(find.textContaining('효과'), findsNothing);
       expect(find.textContaining('약 때문에'), findsNothing);
+    },
+  );
+
+  testWidgets(
+    'monthly summary classifies averages and emphasizes after value',
+    (tester) async {
+      final data = monthlyData([
+        HeartReading(
+          id: 1,
+          bpm: 54,
+          measuredAt: DateTime(2026, 9, 28, 16),
+          measurementContext: HeartMeasurementContext.beforeMedication,
+        ),
+        HeartReading(
+          id: 2,
+          bpm: 64,
+          measuredAt: DateTime(2026, 9, 28, 16, 1),
+          measurementContext: HeartMeasurementContext.afterMedication,
+        ),
+      ]);
+
+      await tester.pumpWidget(
+        wrap(MonthlyHeartScreen(data: data, now: DateTime(2026, 9, 30))),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('복약 후 평균 심박수가', skipOffstage: false), findsOneWidget);
+      expect(find.text('10회/분 높았어요', skipOffstage: false), findsOneWidget);
+      expect(find.text('복약 전  54회/분', skipOffstage: false), findsOneWidget);
+      expect(find.text('복약 후  64회/분', skipOffstage: false), findsOneWidget);
+      expect(find.text('느린 범위', skipOffstage: false), findsOneWidget);
+      expect(find.text('일반 범위', skipOffstage: false), findsOneWidget);
+
+      final afterValue = tester.widget<Text>(
+        find.byKey(const Key('weekly-after-value'), skipOffstage: false),
+      );
+      expect(afterValue.data, '64');
+      expect(afterValue.style?.color, AppColors.point);
+
+      final valuesLabel = tester.widget<Text>(
+        find.byKey(const Key('weekly-values-label'), skipOffstage: false),
+      );
+      final spans = (valuesLabel.textSpan as TextSpan).children!;
+      expect((spans.last as TextSpan).text, '후 64');
+      expect((spans.last as TextSpan).style?.color, AppColors.point);
     },
   );
 
@@ -385,10 +440,7 @@ void main() {
       addTearDown(tester.view.resetDevicePixelRatio);
       await tester.pumpWidget(
         MediaQuery(
-          data: const MediaQueryData(
-            textScaler: TextScaler.linear(1.3),
-            disableAnimations: true,
-          ),
+          data: const MediaQueryData(textScaler: TextScaler.linear(1.3)),
           child: wrap(
             MonthlyHeartScreen(data: data, now: DateTime(2026, 9, 28)),
           ),
@@ -422,10 +474,7 @@ void main() {
         addTearDown(tester.view.resetDevicePixelRatio);
         await tester.pumpWidget(
           MediaQuery(
-            data: const MediaQueryData(
-              textScaler: TextScaler.linear(1.3),
-              disableAnimations: true,
-            ),
+            data: const MediaQueryData(textScaler: TextScaler.linear(1.3)),
             child: wrap(
               MonthlyHeartScreen(data: data, now: DateTime(2026, 9, 28)),
             ),
@@ -494,16 +543,13 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.textContaining('98회/분'), findsWidgets);
       expect(find.text('평소 심박 측정'), findsWidgets);
-      // 기록만 있고 비교할 짝이 없으면 아무 비교도 말하지 않는다.
-      // (설명 문구는 명세서에 없어 걷어냈다.)
-      expect(find.textContaining('비교'), findsNothing);
-      expect(find.text('먹기 전'), findsNothing);
+      expect(find.textContaining('비교할 자료는 부족'), findsNothing);
       expect(find.text('지난 기록 보기'), findsNothing);
       expect(find.widgetWithText(SeniorSegmented, '이번 주'), findsOneWidget);
       expect(find.widgetWithText(SeniorSegmented, '한 달'), findsOneWidget);
-      expect(find.text('지금 재기'), findsOneWidget);
-      expect(find.text('심박 센서'), findsOneWidget);
-      expect(find.text('빠르면 가족에게'), findsOneWidget);
+      expect(find.text('지금 측정'), findsOneWidget);
+      expect(find.text('폴라 센서'), findsOneWidget);
+      expect(find.textContaining('에게 바로 알려요'), findsNothing);
       expect(gets, 1);
       await tester.tap(find.text('한 달'));
       await tester.pumpAndSettle();
@@ -549,14 +595,20 @@ void main() {
       await tester.pumpWidget(wrap(HeartScreen(repository: repository)));
       await tester.pumpAndSettle();
 
-      final todayCard = find
-          .ancestor(
-            of: find.text('평소 심박 측정'),
-            matching: find.byType(SeniorCard),
-          )
-          .first;
+      final todayCard = find.ancestor(
+        of: find.text('오늘 측정'),
+        matching: find.byType(SeniorCard),
+      );
       expect(
         find.descendant(of: todayCard, matching: find.text('92회/분')),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(of: todayCard, matching: find.text('평소 심박 측정')),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(of: todayCard, matching: find.text('일반 범위')),
         findsOneWidget,
       );
       expect(
@@ -567,9 +619,77 @@ void main() {
         findsOneWidget,
       );
       expect(
-        find.descendant(of: todayCard, matching: find.text('오늘은 아직 재지 않았어요')),
+        find.descendant(of: todayCard, matching: find.text('오늘은 아직 측정하지 않았어요')),
         findsNothing,
       );
+    },
+  );
+
+  testWidgets(
+    'today medication comparison shows ranges, difference, and caveat',
+    (tester) async {
+      tester.view.physicalSize = const Size(320, 700);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final now = DateTime.now();
+      final repository = HeartRepository(
+        apiClient: ApiClient(
+          client: MockClient(
+            (_) async => http.Response(
+              jsonEncode({
+                'today': {'before': 54, 'after': 64},
+                'today_slot_label': '복약',
+                'before_at': '16:00',
+                'after_at': '16:01',
+                'week': [],
+                'month': [],
+                'period_date':
+                    '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}',
+                'readings': [],
+              }),
+              200,
+              headers: {'content-type': 'application/json'},
+            ),
+          ),
+        ),
+      );
+
+      await tester.pumpWidget(
+        MediaQuery(
+          data: const MediaQueryData(textScaler: TextScaler.linear(1.3)),
+          child: wrap(HeartScreen(repository: repository)),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final todayCard = find.ancestor(
+        of: find.text('오늘 측정'),
+        matching: find.byType(SeniorCard),
+      );
+      expect(
+        find.descendant(of: todayCard, matching: find.text('느린 범위')),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(of: todayCard, matching: find.text('일반 범위')),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: todayCard,
+          matching: find.text('약 먹은 후 10회/분 높았어요'),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: todayCard,
+          matching: find.text('한 번 비교로 약의 영향을 단정할 수는 없어요.'),
+        ),
+        findsOneWidget,
+      );
+      expect(tester.takeException(), isNull);
     },
   );
 
@@ -599,8 +719,9 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('평소 심박 측정'), findsWidgets);
-      expect(find.text('74회/분'), findsOneWidget);
-      expect(find.text('오늘은 아직 재지 않았어요'), findsNothing);
+      // 오늘 칸과 저장된 기록 줄에 같은 숫자가 한 번씩 적힌다.
+      expect(find.text('74회/분'), findsWidgets);
+      expect(find.text('오늘은 아직 측정하지 않았어요'), findsNothing);
     },
   );
 
@@ -657,8 +778,8 @@ void main() {
       );
       await tester.pumpAndSettle();
       expect(find.text('아직 측정 기록이 없어요'), findsOneWidget);
-      await tester.ensureVisible(find.text('지금 재기'));
-      await tester.tap(find.text('지금 재기'));
+      await tester.ensureVisible(find.text('지금 측정'));
+      await tester.tap(find.text('지금 측정'));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 400));
       await rig.widgetWindow(tester);
@@ -673,8 +794,9 @@ void main() {
       await tester.ensureVisible(find.text('확인했어요'));
       await tester.tap(find.text('확인했어요'));
       await tester.pumpAndSettle();
-      await tester.scrollUntilVisible(find.text('82회/분'), -250);
-      expect(find.text('82회/분'), findsOneWidget);
+      await tester.scrollUntilVisible(find.text('82회/분').first, -250);
+      // 오늘 칸과 저장된 기록 줄에 같은 숫자가 한 번씩 적힌다.
+      expect(find.text('82회/분'), findsWidgets);
       expect(gets, greaterThanOrEqualTo(2));
       expect(rig.api.requests, hasLength(1));
       await tester.pumpWidget(const SizedBox());
@@ -732,11 +854,12 @@ void main() {
         await tester.tap(find.text('홈에서 심박수 관리 열기'));
         await tester.pumpAndSettle();
         if (purpose != HeartMeasurementContext.general) {
-          await tester.ensureVisible(find.text(purpose.label));
-          await tester.tap(find.text(purpose.label));
+          // 고르는 칸은 짧은 이름으로 선다.
+          await tester.ensureVisible(find.text(purpose.shortLabel));
+          await tester.tap(find.text(purpose.shortLabel));
         }
-        await tester.ensureVisible(find.text('지금 재기'));
-        await tester.tap(find.text('지금 재기'));
+        await tester.ensureVisible(find.text('지금 측정'));
+        await tester.tap(find.text('지금 측정'));
         await tester.pump();
         await tester.pump(const Duration(milliseconds: 400));
         await rig.widgetWindow(tester);
@@ -804,8 +927,8 @@ void main() {
         );
         await tester.tap(find.text('홈에서 심박수 관리 열기'));
         await tester.pumpAndSettle();
-        await tester.ensureVisible(find.text('지금 재기'));
-        await tester.tap(find.text('지금 재기'));
+        await tester.ensureVisible(find.text('지금 측정'));
+        await tester.tap(find.text('지금 측정'));
         await tester.pump(const Duration(milliseconds: 400));
         await rig.widgetWindow(tester);
         if (saveFailure.rejected) {
@@ -887,8 +1010,9 @@ void main() {
       expect(find.byType(HeartScreen), findsOneWidget);
       expect(find.byType(MeasureScreen), findsNothing);
       expect(find.byType(SavedScreen), findsNothing);
-      await tester.scrollUntilVisible(find.text('82회/분'), -250);
-      expect(find.text('82회/분'), findsOneWidget);
+      await tester.scrollUntilVisible(find.text('82회/분').first, -250);
+      // 오늘 칸과 저장된 기록 줄에 같은 숫자가 한 번씩 적힌다.
+      expect(find.text('82회/분'), findsWidgets);
       expect(gets, greaterThanOrEqualTo(1));
       expect(rig.api.requests, hasLength(1));
 
@@ -897,6 +1021,71 @@ void main() {
       await tester.pump();
     },
   );
+
+  for (final useBack in [false, true]) {
+    testWidgets(
+      'Polar search measurement exits with back=$useBack under GoRouter',
+      (tester) async {
+        final rig = Rig();
+        final router = GoRouter(
+          initialLocation: '/biosignal',
+          routes: [
+            GoRoute(
+              path: '/biosignal',
+              builder: (context, _) => Scaffold(
+                body: TextButton(
+                  onPressed: () => Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (_) => PolarScreen(sensor: rig.sensor),
+                    ),
+                  ),
+                  child: const Text('센서 화면 열기'),
+                ),
+              ),
+            ),
+          ],
+        );
+        addTearDown(router.dispose);
+        await tester.pumpWidget(
+          ProviderScope(child: MaterialApp.router(routerConfig: router)),
+        );
+        await tester.tap(find.text('센서 화면 열기'));
+        await tester.pumpAndSettle();
+        await tester.ensureVisible(find.text('기기 찾기'));
+        await tester.tap(find.text('기기 찾기'));
+        await tester.pumpAndSettle();
+        expect(rig.sdk.searches, 1);
+        await tester.ensureVisible(find.text('지금 측정'));
+        await tester.tap(find.text('지금 측정'));
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 400));
+        rig.sdk.sample(62);
+        await tester.pump();
+        expect(find.byType(MeasureScreen), findsOneWidget);
+        if (useBack) {
+          await tester.tap(
+            find.descendant(
+              of: find.byType(MeasureScreen),
+              matching: find.byType(SeniorBackButton),
+            ),
+          );
+        } else {
+          await tester.ensureVisible(find.text('그만두기'));
+          await tester.tap(find.text('그만두기'));
+        }
+        await tester.pumpAndSettle();
+        expect(find.byType(MeasureScreen), findsNothing);
+        expect(find.byType(PolarScreen), findsOneWidget);
+        expect(rig.sensor.measuring, isFalse);
+        expect(rig.api.requests, isEmpty);
+        await tester.pump(const Duration(seconds: 50));
+        expect(rig.api.requests, isEmpty);
+        await tester.pumpWidget(const SizedBox());
+        rig.sensor.dispose();
+        await tester.pump();
+      },
+    );
+  }
 
   testWidgets('real GoRouter cancellation returns to heart without saving', (
     tester,
@@ -919,8 +1108,8 @@ void main() {
     );
     await tester.tap(find.text('홈에서 심박수 관리 열기'));
     await tester.pumpAndSettle();
-    await tester.ensureVisible(find.text('지금 재기'));
-    await tester.tap(find.text('지금 재기'));
+    await tester.ensureVisible(find.text('지금 측정'));
+    await tester.tap(find.text('지금 측정'));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 400));
     expect(find.byType(MeasureScreen), findsOneWidget);
@@ -955,12 +1144,12 @@ void main() {
         wrap(HeartScreen(repository: repository, sensor: rig.sensor)),
       );
       await tester.pumpAndSettle();
-      await tester.ensureVisible(find.text('복약 전 측정'));
-      await tester.tap(find.text('복약 전 측정'));
-      await tester.ensureVisible(find.text('지금 재기'));
+      await tester.ensureVisible(find.text('복약 전'));
+      await tester.tap(find.text('복약 전'));
+      await tester.ensureVisible(find.text('지금 측정'));
       final startButton = tester.widget<SeniorButton>(
         find.ancestor(
-          of: find.text('지금 재기'),
+          of: find.text('지금 측정'),
           matching: find.byType(SeniorButton),
         ),
       );
@@ -975,14 +1164,14 @@ void main() {
       expect(
         find.descendant(
           of: find.byType(MeasureScreen),
-          matching: find.text('복약 후 측정'),
+          matching: find.text('복약 후'),
         ),
         findsNothing,
       );
       tester.state<NavigatorState>(find.byType(Navigator)).pop();
       await tester.pumpAndSettle();
       final selector = tester.widget<SeniorSegmented>(
-        find.widgetWithText(SeniorSegmented, '평소 심박 측정'),
+        find.widgetWithText(SeniorSegmented, '평소'),
       );
       expect(selector.index, 0);
       expect(rig.sensor.measurementContext, HeartMeasurementContext.general);
@@ -1008,10 +1197,7 @@ void main() {
           child: MaterialApp(
             theme: AppTheme.build(),
             home: MediaQuery(
-              data: const MediaQueryData(
-                textScaler: TextScaler.linear(1.3),
-                disableAnimations: true,
-              ),
+              data: const MediaQueryData(textScaler: TextScaler.linear(1.3)),
               child: HeartScreen(repository: repository),
             ),
           ),
@@ -1019,9 +1205,10 @@ void main() {
       );
       await tester.pumpAndSettle();
       await tester.scrollUntilVisible(find.text('측정 목적'), -200);
-      expect(find.text('평소 심박 측정'), findsOneWidget);
-      expect(find.text('복약 전 측정'), findsOneWidget);
-      expect(find.text('복약 후 측정'), findsOneWidget);
+      // 고르는 칸은 짧은 이름으로 한 줄에 선다.
+      expect(find.text('평소'), findsOneWidget);
+      expect(find.text('복약 전'), findsOneWidget);
+      expect(find.text('복약 후'), findsOneWidget);
       expect(tester.takeException(), isNull);
     });
   }

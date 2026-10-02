@@ -9,10 +9,12 @@ import '../../../core/widgets/senior_button.dart';
 import '../../../core/widgets/senior_card.dart';
 import '../../biosignal/application/heart_sensor.dart';
 import '../../biosignal/domain/heart_data.dart';
+import '../../biosignal/presentation/screens/measure_screen.dart';
 import '../../medication/application/medication_controller.dart';
 import '../../medication/domain/medication_models.dart';
 import '../../medication/presentation/widgets/dose_guard_sheets.dart';
 import '../../reminder/application/alarm_preferences.dart';
+import 'easy_heart_result.dart';
 
 /// 쉬운 화면의 복약 한 바퀴 (명세서 76~85).
 ///
@@ -84,9 +86,6 @@ class EasyDoseFlow extends ConsumerStatefulWidget {
 }
 
 class _EasyDoseFlowState extends ConsumerState<EasyDoseFlow> {
-  /// 재는 시간. 측정 화면과 같은 값을 쓴다.
-  static const int _measureSeconds = 45;
-
   EasyDoseStep _step = EasyDoseStep.time;
   final List<EasyDoseStep> _history = <EasyDoseStep>[];
 
@@ -96,16 +95,18 @@ class _EasyDoseFlowState extends ConsumerState<EasyDoseFlow> {
 
   /// 이 바퀴에서 기록한 시간대. 되돌릴 때 쓴다.
   DoseSlot? _recordedSlot;
+  DoseSlot? _flowSlot;
+  bool _recording = false;
+  String? _recordError;
 
   HeartSensor? _sensor;
   bool _ownsSensor = false;
 
   /// 센서가 값을 알려 줬을 때 setState를 빌드 중에 부르지 않으려는 자리.
-  bool _sensorUpdatePending = false;
+  bool _measurementOpening = false;
 
   @override
   void dispose() {
-    _sensor?.removeListener(_onSensor);
     if (_ownsSensor) _sensor?.dispose();
     super.dispose();
   }
@@ -115,14 +116,17 @@ class _EasyDoseFlowState extends ConsumerState<EasyDoseFlow> {
   void _goTo(EasyDoseStep step) {
     if (step == _step) return;
     setState(() {
-      _history.add(_step);
+      if (_step != EasyDoseStep.measureBefore &&
+          _step != EasyDoseStep.measureAfter) {
+        _history.add(_step);
+      }
       if (_history.length > 20) _history.removeAt(0);
       _step = step;
     });
   }
 
   void _back() {
-    if (_history.isEmpty) return;
+    if (_recording || _history.isEmpty) return;
     final previous = _history.removeLast();
     // 재던 중으로 되돌아가면 처음부터 다시 잰다.
     setState(() => _step = previous);
@@ -138,57 +142,47 @@ class _EasyDoseFlowState extends ConsumerState<EasyDoseFlow> {
 
   // ── 심박수 재기 ────────────────────────────────────────
 
-  void _startMeasuring(HeartMeasurementContext context) {
-    final existing = _sensor ?? widget.sensor;
-    if (existing == null) {
-      final sensor = HeartSensor();
-      _sensor = sensor;
-      _ownsSensor = true;
-      sensor.addListener(_onSensor);
-      unawaited(sensor.start(measurementContext: context));
-      return;
-    }
-    if (_sensor == null) {
-      _sensor = existing;
-      existing.addListener(_onSensor);
-    }
-    if (existing.status == HeartSensorStatus.streaming) {
-      existing.beginMeasurement(measurementContext: context);
-    } else {
-      unawaited(existing.start(measurementContext: context));
-    }
-  }
-
-  void _onSensor() {
-    if (!mounted || _sensorUpdatePending) return;
-    _sensorUpdatePending = true;
-    // 센서는 빌드 중에도 값을 던진다. 한 틱 미뤄서 받는다.
-    scheduleMicrotask(() {
-      _sensorUpdatePending = false;
-      if (!mounted) return;
-      setState(() {});
-      _afterSensorUpdate();
-    });
-  }
-
-  /// 저장까지 끝났으면 다음 걸음으로 넘어간다.
-  void _afterSensorUpdate() {
-    final sensor = _sensor;
-    if (sensor == null) return;
-    if (sensor.saveStatus != HeartSaveStatus.saved) return;
+  Future<void> _startMeasuring(
+    HeartMeasurementContext measurementContext,
+  ) async {
+    if (_measurementOpening) return;
+    _measurementOpening = true;
+    final sensor = _sensor ?? widget.sensor ?? HeartSensor();
+    if (_sensor == null) _ownsSensor = widget.sensor == null;
+    _sensor = sensor;
+    // 연결과 측정 초기화는 MeasureScreen 한 곳에서 수행한다.
+    // 여기서 start()를 먼저 호출하면 화면의 초기화가 진행 중 연결을 무효화한다.
+    final confirmed = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (_) => MeasureScreen(
+          sensor: sensor,
+          measurementContext: measurementContext,
+          returnToPreviousScreen: true,
+          returnToCaller: true,
+        ),
+      ),
+    );
+    if (!mounted) return;
+    _measurementOpening = false;
+    final before =
+        measurementContext == HeartMeasurementContext.beforeMedication;
     final bpm = sensor.savedBpm;
-    if (bpm == null) return;
-
-    if (_step == EasyDoseStep.measureBefore) {
-      setState(() => _before = bpm);
-      _goTo(EasyDoseStep.beforeDone);
-    } else if (_step == EasyDoseStep.measureAfter) {
-      setState(() => _after = bpm);
-      _goTo(EasyDoseStep.result);
+    if (confirmed == true &&
+        sensor.saveStatus == HeartSaveStatus.saved &&
+        bpm != null) {
+      setState(() {
+        if (before) {
+          _before = bpm;
+        } else {
+          _after = bpm;
+        }
+      });
+      _goTo(before ? EasyDoseStep.beforeDone : EasyDoseStep.result);
+    } else {
+      _goTo(before ? EasyDoseStep.wear : EasyDoseStep.afterAsk);
     }
   }
 
-  /// 재는 것을 그만둔다. 복약은 그대로 이어 간다.
   void _stopMeasuring(EasyDoseStep next) {
     _sensor?.stop();
     _goTo(next);
@@ -197,30 +191,44 @@ class _EasyDoseFlowState extends ConsumerState<EasyDoseFlow> {
   // ── 복약 기록 ──────────────────────────────────────────
 
   Future<void> _record(DoseSlot slot) async {
-    final controller = ref.read(medicationProvider.notifier);
-    final outcome = await controller.take(slot);
-    if (!mounted) return;
+    if (_recording) return;
+    setState(() {
+      _recording = true;
+      _recordError = null;
+    });
+    try {
+      final controller = ref.read(medicationProvider.notifier);
+      final outcome = await controller.take(slot);
+      if (!mounted) return;
 
-    switch (outcome) {
-      case DoseCheckOutcome.alreadyTaken:
-        await showDuplicateDoseSheet(
-          context: context,
-          dose: ref.read(medicationProvider).doseOf(slot),
-          onUndo: () => controller.undo(slot),
-        );
-        return;
-      case DoseCheckOutcome.tooLate:
-        final proceed = await showLateDoseSheet(context: context, slot: slot);
-        if (!proceed || !mounted) return;
-        await controller.takeAnyway(slot);
-        if (!mounted) return;
-      case DoseCheckOutcome.recorded:
-        break;
+      switch (outcome) {
+        case DoseCheckOutcome.alreadyTaken:
+          await showDuplicateDoseSheet(
+            context: context,
+            dose: ref.read(medicationProvider).doseOf(slot),
+            onUndo: () => controller.undo(slot),
+          );
+          return;
+        case DoseCheckOutcome.tooLate:
+          // 5/8 confirms a dose already taken; it is not advice to take one now.
+          // Keep duplicate detection above, but don't block recording a late dose.
+          await controller.takeAnyway(slot);
+          if (!mounted) return;
+        case DoseCheckOutcome.recorded:
+          break;
+      }
+
+      setState(() => _recordedSlot = slot);
+      // 센서를 차고 재 뒀으면 먹은 뒤에도 한 번 잰다. 안 쟀으면 묻지 않는다.
+      _goTo(_before == null ? EasyDoseStep.allDone : EasyDoseStep.afterAsk);
+    } catch (_) {
+      if (!mounted) return;
+      setState(
+        () => _recordError = '저장 여부를 확인하지 못했어요.\n인터넷 연결을 확인하고 다시 눌러 주세요.',
+      );
+    } finally {
+      if (mounted) setState(() => _recording = false);
     }
-
-    setState(() => _recordedSlot = slot);
-    // 센서를 차고 재 뒀으면 먹은 뒤에도 한 번 잰다. 안 쟀으면 묻지 않는다.
-    _goTo(_before == null ? EasyDoseStep.allDone : EasyDoseStep.afterAsk);
   }
 
   void _undoRecord() {
@@ -269,7 +277,9 @@ class _EasyDoseFlowState extends ConsumerState<EasyDoseFlow> {
       case EasyDoseStep.beforeDone:
         return _beforeDone();
       case EasyDoseStep.take:
-        return _take(next ?? dose);
+        return _take(
+          _flowSlot == null ? (next ?? dose) : today.doseOf(_flowSlot!),
+        );
       case EasyDoseStep.afterAsk:
         return _afterAsk();
       case EasyDoseStep.measureAfter:
@@ -291,21 +301,29 @@ class _EasyDoseFlowState extends ConsumerState<EasyDoseFlow> {
       step: EasyDoseStep.time,
       lead: '${dose.slot.label} 약',
       title: '드실 시간이에요',
-      subtitle: '약 드시기 전에 심박부터 재요',
+      subtitle: '약 드시기 전에 심박부터 측정해요',
       body: [_MedicineCard(medicines: dose.medicines)],
       primary: _EasyAction(
         label: '복약 전 심박 측정',
-        icon: Icons.favorite_rounded,
-        onPressed: () => _goTo(EasyDoseStep.wear),
+        onPressed: () => _beginDose(dose.slot, EasyDoseStep.wear),
       ),
       secondaries: [
         _EasyAction(
-          label: '안 잴래요',
-          icon: Icons.skip_next_rounded,
-          onPressed: () => _goTo(EasyDoseStep.take),
+          label: '안 할래요',
+          onPressed: () => _beginDose(dose.slot, EasyDoseStep.take),
         ),
       ],
     );
+  }
+
+  /// Freeze the current dose slot when leaving step 1.
+  void _beginDose(DoseSlot slot, EasyDoseStep next) {
+    _flowSlot = slot;
+    _before = null;
+    _after = null;
+    _recordedSlot = null;
+    _recordError = null;
+    _goTo(next);
   }
 
   /// 77 · 심박 센서를 차 주세요.
@@ -313,39 +331,26 @@ class _EasyDoseFlowState extends ConsumerState<EasyDoseFlow> {
     return _EasyStepPage(
       step: EasyDoseStep.wear,
       lead: '심박 센서를',
-      title: '차 주세요',
+      title: '착용해 주세요',
       body: [
         SeniorCard(
           radius: 26,
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
-          child: SizedBox(
-            height: 120,
-            child: Center(
-              child: Text(
-                '차는 모습 그림 자리',
-                style: AppText.label(size: 17, color: AppColors.textSecondary),
-              ),
-            ),
-          ),
+          child: const EasySensorWearIllustration(),
         ),
         const SizedBox(height: 12),
-        const _NumberedCard(lines: ['팔꿈치 위에 차요', '동그란 면이 살에 닿게', '밴드를 조금 조여요']),
+        const _NumberedCard(
+          lines: ['팔꿈치 위에 착용해요', '동그란 면이 살에 닿게', '밴드를 조금 조여요'],
+        ),
       ],
       primary: _EasyAction(
-        label: '다 찼어요',
-        icon: Icons.check_rounded,
+        label: '다 착용했어요',
         onPressed: () {
           _goTo(EasyDoseStep.measureBefore);
           _startMeasuring(HeartMeasurementContext.beforeMedication);
         },
       ),
-      secondaries: [
-        _EasyAction(
-          label: '뒤로',
-          icon: Icons.arrow_back_rounded,
-          onPressed: _back,
-        ),
-      ],
+      secondaries: [_EasyAction(label: '뒤로', onPressed: _back)],
     );
   }
 
@@ -354,95 +359,36 @@ class _EasyDoseFlowState extends ConsumerState<EasyDoseFlow> {
     required EasyDoseStep step,
     required String lead,
     required EasyDoseStep next,
-  }) {
-    final sensor = _sensor;
-    final elapsed = sensor?.elapsedSeconds ?? 0;
-    final remaining = (_measureSeconds - elapsed).clamp(0, _measureSeconds);
-    final lost =
-        sensor != null &&
-        (sensor.status == HeartSensorStatus.disconnected ||
-            sensor.status == HeartSensorStatus.failed);
-
-    return _EasyStepPage(
-      step: step,
-      lead: lead,
-      title: '재고 있어요',
-      body: [
-        Center(child: _MeasureRing(seconds: remaining)),
-        const SizedBox(height: 22),
-        Center(
-          child: Text(
-            lost ? '센서를 가슴에 다시 대주세요' : '움직이지 말고 가만히 계세요',
-            textAlign: TextAlign.center,
-            style: AppText.label(
-              size: 20,
-              color: lost ? AppColors.danger : AppColors.textBody,
-            ),
-          ),
-        ),
-      ],
-      secondaries: [
-        _EasyAction(
-          label: '그만 재기',
-          icon: Icons.close_rounded,
-          onPressed: () => _stopMeasuring(next),
-        ),
-      ],
-    );
-  }
+  }) => _EasyStepPage(
+    step: step,
+    lead: lead,
+    title: '심박수 측정',
+    body: const [],
+    primary: _EasyAction(
+      label: '지금 측정',
+      onPressed: () => _startMeasuring(
+        step == EasyDoseStep.measureBefore
+            ? HeartMeasurementContext.beforeMedication
+            : HeartMeasurementContext.afterMedication,
+      ),
+    ),
+    secondaries: [
+      _EasyAction(label: '측정 그만하기', onPressed: () => _stopMeasuring(next)),
+    ],
+  );
 
   /// 79 · 먹기 전 잘 쟀어요.
   Widget _beforeDone() {
     return _EasyStepPage(
       step: EasyDoseStep.beforeDone,
       lead: '먹기 전 심박',
-      title: '잘 쟀어요',
-      body: [
-        SeniorCard(
-          radius: 26,
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 22),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              Text(
-                '먹기 전',
-                style: AppText.label(size: 18, color: AppColors.textSecondary),
-              ),
-              const SizedBox(height: 6),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Text('${_before ?? '–'}', style: AppText.hero(size: 64)),
-                  const SizedBox(width: 6),
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 8),
-                    child: Text(
-                      '회',
-                      style: AppText.cardTitle(
-                        size: 22,
-                        color: AppColors.textBody,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
-      ],
+      title: '잘 측정했어요',
+      body: [if (_before != null) EasyHeartResult(value: _before!)],
       primary: _EasyAction(
         label: '이제 약 드시기',
-        icon: Icons.medication_rounded,
         onPressed: () => _goTo(EasyDoseStep.take),
       ),
-      secondaries: [
-        _EasyAction(
-          label: '뒤로',
-          icon: Icons.arrow_back_rounded,
-          onPressed: _back,
-        ),
-      ],
+      secondaries: [_EasyAction(label: '뒤로', onPressed: _back)],
     );
   }
 
@@ -452,18 +398,23 @@ class _EasyDoseFlowState extends ConsumerState<EasyDoseFlow> {
       step: EasyDoseStep.take,
       lead: '이 약을 드시고',
       title: '복약 완료하셨나요?',
-      body: [_MedicineCard(medicines: dose.medicines)],
+      body: [
+        _MedicineCard(medicines: dose.medicines),
+        if (_recordError != null) ...[
+          const SizedBox(height: 12),
+          Text(_recordError!, style: AppText.body(size: 18)),
+        ],
+      ],
       primary: _EasyAction(
-        label: '먹었어요',
-        icon: Icons.check_rounded,
-        onPressed: () => unawaited(_record(dose.slot)),
+        label: _recording
+            ? '기록 중…'
+            : _recordError != null
+            ? '다시 저장하기'
+            : '먹었어요',
+        onPressed: _recording ? null : () => unawaited(_record(dose.slot)),
       ),
       secondaries: [
-        _EasyAction(
-          label: '뒤로',
-          icon: Icons.arrow_back_rounded,
-          onPressed: _back,
-        ),
+        _EasyAction(label: '뒤로', onPressed: _recording ? null : _back),
       ],
     );
   }
@@ -474,7 +425,7 @@ class _EasyDoseFlowState extends ConsumerState<EasyDoseFlow> {
     return _EasyStepPage(
       step: EasyDoseStep.afterAsk,
       lead: '잘하셨어요',
-      title: '한 번 더 재요',
+      title: '한 번 더 측정해요',
       body: [
         SeniorCard(
           radius: 26,
@@ -500,7 +451,12 @@ class _EasyDoseFlowState extends ConsumerState<EasyDoseFlow> {
                       ),
                     ),
                     const SizedBox(height: 2),
-                    Text('센서는 그대로 차고 계세요', style: AppText.body(size: 20)),
+                    Text('센서는 그대로 착용하고 계세요', style: AppText.body(size: 20)),
+                    const SizedBox(height: 8),
+                    Text(
+                      '복약 후 심박수를 기록해요. 약의 효과를 판정하는 검사는 아니에요.',
+                      style: AppText.body(size: 18),
+                    ),
                   ],
                 ),
               ),
@@ -510,21 +466,15 @@ class _EasyDoseFlowState extends ConsumerState<EasyDoseFlow> {
       ],
       primary: _EasyAction(
         label: '복약 후 심박 측정',
-        icon: Icons.favorite_rounded,
         onPressed: () {
           _goTo(EasyDoseStep.measureAfter);
           _startMeasuring(HeartMeasurementContext.afterMedication);
         },
       ),
       secondaries: [
+        _EasyAction(label: '뒤로', onPressed: _back),
         _EasyAction(
-          label: '뒤로',
-          icon: Icons.arrow_back_rounded,
-          onPressed: _back,
-        ),
-        _EasyAction(
-          label: '안 잴래요',
-          icon: Icons.skip_next_rounded,
+          label: '안 할래요',
           onPressed: () => _goTo(EasyDoseStep.allDone),
         ),
       ],
@@ -538,99 +488,16 @@ class _EasyDoseFlowState extends ConsumerState<EasyDoseFlow> {
     // 둘 중 하나라도 없으면 비교하지 않는다.
     if (before == null || after == null) return _allDone(today);
 
-    // 100회를 넘으면 빠른 쪽으로 말한다. 그 아래는 평소와 비슷하다고 본다.
-    final fast = after > 100;
-
     return _EasyStepPage(
       step: EasyDoseStep.result,
-      lead: fast ? '고장이 아니에요' : '심박수가',
-      title: fast ? '조금 빨라요' : '평소와 비슷해요',
-      body: [
-        SeniorCard(
-          radius: 26,
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
-          child: Row(
-            children: [
-              Expanded(
-                child: _ResultValue(
-                  label: '먹기 전',
-                  value: before,
-                  labelColor: AppColors.textSecondary,
-                  valueColor: AppColors.textTertiary,
-                ),
-              ),
-              const Padding(
-                padding: EdgeInsets.symmetric(horizontal: 6),
-                child: Icon(
-                  Icons.arrow_forward_rounded,
-                  size: 32,
-                  color: AppColors.strongLine,
-                ),
-              ),
-              Expanded(
-                child: _ResultValue(
-                  label: '먹은 후',
-                  value: after,
-                  labelColor: fast ? AppColors.danger : AppColors.point,
-                  valueColor: fast ? AppColors.danger : AppColors.point,
-                ),
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 12),
-        if (!fast)
-          SeniorCard(
-            radius: 26,
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
-            child: Text(
-              '약이 잘 듣고 있어요',
-              style: AppText.label(size: 19, color: AppColors.textPrimary),
-            ),
-          )
-        else ...[
-          const _NumberedCard(
-            lines: ['의자에 앉아 쉬세요', '물 한 잔 드세요', '10분 뒤에 다시 재요'],
-          ),
-          // 가족이 등록돼 있을 때만 알렸다고 말한다.
-          if (today.hasGuardian) ...[
-            const SizedBox(height: 12),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 15),
-              decoration: BoxDecoration(
-                color: AppColors.textPrimary,
-                borderRadius: BorderRadius.circular(18),
-              ),
-              child: Row(
-                children: [
-                  const Icon(Icons.send_rounded, size: 24, color: Colors.white),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Text(
-                      '${today.guardianTitle}께 자동으로 알렸어요',
-                      style: AppText.label(size: 18, color: Colors.white),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ],
-      ],
+      lead: '복약 전후 심박수',
+      title: '측정값을 비교해요',
+      body: [EasyHeartResult(before: before, value: after)],
       primary: _EasyAction(
-        label: fast ? '알겠어요' : '기록 끝내기',
-        icon: Icons.check_rounded,
+        label: '기록 끝내기',
         onPressed: () => _goTo(EasyDoseStep.allDone),
       ),
-      secondaries: fast
-          ? const []
-          : [
-              _EasyAction(
-                label: '뒤로',
-                icon: Icons.arrow_back_rounded,
-                onPressed: _back,
-              ),
-            ],
+      secondaries: [_EasyAction(label: '뒤로', onPressed: _back)],
     );
   }
 
@@ -654,7 +521,6 @@ class _EasyDoseFlowState extends ConsumerState<EasyDoseFlow> {
           ? null
           : _EasyAction(
               label: '다시 불러오기',
-              icon: Icons.refresh_rounded,
               onPressed: () => unawaited(
                 ref.read(medicationProvider.notifier).refreshFromServer(),
               ),
@@ -665,13 +531,28 @@ class _EasyDoseFlowState extends ConsumerState<EasyDoseFlow> {
   /// 85 · 오늘 다 했어요.
   Widget _allDone(TodayMedication today) {
     final alarm = ref.watch(alarmPreferencesProvider);
-    final firstHour = alarm.ringingHours.isEmpty
+    final firstHour = alarm.ringingTimes.isEmpty
         ? null
-        : alarm.ringingHours.first;
+        : alarm.ringingTimes.first;
 
+    final scheduled = today.doses
+        .where((dose) => dose.medicines.isNotEmpty)
+        .toList();
+    final allTaken =
+        today.fetchStatus == MedicationFetchStatus.ready &&
+        scheduled.isNotEmpty &&
+        scheduled.every((dose) => dose.taken);
     return _EasyStepPage(
-      lead: '오늘 약을',
-      title: '다 드셨어요',
+      lead: allTaken
+          ? '오늘 약을'
+          : _recordedSlot != null
+          ? '이번 복약을'
+          : '복약 기록을',
+      title: allTaken
+          ? '다 드셨어요'
+          : _recordedSlot != null
+          ? '기록했어요'
+          : '확인해 주세요',
       body: [
         SeniorCard(
           radius: 26,
@@ -701,7 +582,7 @@ class _EasyDoseFlowState extends ConsumerState<EasyDoseFlow> {
             ],
           ),
         ),
-        if (firstHour != null) ...[
+        if (allTaken && firstHour != null) ...[
           const SizedBox(height: 12),
           SeniorCard(
             radius: 26,
@@ -828,43 +709,69 @@ class _EasyStepPage extends StatelessWidget {
         if (primary != null || secondaries.isNotEmpty)
           Padding(
             padding: const EdgeInsets.fromLTRB(18, 0, 18, 14),
-            child: Column(
+            child: _bottomButtons(),
+          ),
+      ],
+    );
+  }
+}
+
+/// 아래 단추 묶음.
+///
+/// 할 일 하나와 건너뛰는 길 하나뿐이면 좌우로 나란히 둔다 — 건너뛰는
+/// 쪽을 더 작게 왼쪽에 두어, 손이 큰 쪽(오른쪽)으로 가게 한다.
+extension on _EasyStepPage {
+  Widget _bottomButtons() {
+    final main = primary;
+    final side = secondaries;
+
+    Widget big(_EasyAction action) => SeniorButton(
+      label: action.label,
+      minHeight: 76,
+      fontSize: 23,
+      radius: 18,
+      elevated: true,
+      onPressed: action.onPressed,
+    );
+
+    Widget small(_EasyAction action) => SeniorButton(
+      label: action.label,
+      kind: SeniorButtonKind.card,
+      minHeight: 62,
+      fontSize: 19,
+      radius: 18,
+      onPressed: action.onPressed,
+    );
+
+    if (main != null && side.length == 1) {
+      return IntrinsicHeight(
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Expanded(flex: 2, child: small(side.first)),
+            const SizedBox(width: 10),
+            Expanded(flex: 3, child: big(main)),
+          ],
+        ),
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (main != null) ...[
+          big(main),
+          if (side.isNotEmpty) const SizedBox(height: 12),
+        ],
+        if (side.isNotEmpty)
+          IntrinsicHeight(
+            child: Row(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                if (primary case final _EasyAction action) ...[
-                  SeniorButton(
-                    label: action.label,
-                    icon: action.icon,
-                    minHeight: 76,
-                    fontSize: 24,
-                    radius: 18,
-                    elevated: true,
-                    onPressed: action.onPressed,
-                  ),
-                  if (secondaries.isNotEmpty) const SizedBox(height: 12),
+                for (int i = 0; i < side.length; i++) ...[
+                  if (i > 0) const SizedBox(width: 10),
+                  Expanded(child: small(side[i])),
                 ],
-                if (secondaries.isNotEmpty)
-                  IntrinsicHeight(
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        for (int i = 0; i < secondaries.length; i++) ...[
-                          if (i > 0) const SizedBox(width: 10),
-                          Expanded(
-                            child: SeniorButton(
-                              label: secondaries[i].label,
-                              icon: secondaries[i].icon,
-                              kind: SeniorButtonKind.card,
-                              minHeight: 62,
-                              fontSize: 20,
-                              radius: 18,
-                              onPressed: secondaries[i].onPressed,
-                            ),
-                          ),
-                        ],
-                      ],
-                    ),
-                  ),
               ],
             ),
           ),
@@ -876,14 +783,9 @@ class _EasyStepPage extends StatelessWidget {
 /// 버튼 하나에 필요한 것.
 class _EasyAction {
   final String label;
-  final IconData icon;
   final VoidCallback? onPressed;
 
-  const _EasyAction({
-    required this.label,
-    required this.icon,
-    required this.onPressed,
-  });
+  const _EasyAction({required this.label, required this.onPressed});
 }
 
 /// 여덟 걸음 표시 (명세서 76~84).
@@ -976,7 +878,10 @@ class _MedicineRow extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text(medicine.displayName, style: AppText.cardTitle(size: 21)),
+              Text(
+                medicine.displayName,
+                style: AppText.cardTitle(size: 21),
+              ),
               if (look.isNotEmpty) ...[
                 const SizedBox(height: 2),
                 Text(look, style: AppText.body(size: 17)),
@@ -1039,92 +944,6 @@ class _NumberedCard extends StatelessWidget {
             ),
           ],
         ],
-      ),
-    );
-  }
-}
-
-/// 재는 동안 남은 시간을 보여 주는 동그라미 (명세서 78·82).
-class _MeasureRing extends StatelessWidget {
-  final int seconds;
-
-  const _MeasureRing({required this.seconds});
-
-  @override
-  Widget build(BuildContext context) {
-    return Semantics(
-      label: '$seconds초 남았어요',
-      child: ExcludeSemantics(
-        child: Container(
-          width: 230,
-          height: 230,
-          alignment: Alignment.center,
-          decoration: const BoxDecoration(
-            color: AppColors.pointRing,
-            shape: BoxShape.circle,
-          ),
-          child: Container(
-            width: 196,
-            height: 196,
-            alignment: Alignment.center,
-            decoration: const BoxDecoration(
-              color: AppColors.surface,
-              shape: BoxShape.circle,
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Icon(
-                  Icons.favorite_rounded,
-                  size: 44,
-                  color: AppColors.point,
-                ),
-                const SizedBox(height: 6),
-                Row(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    Text('$seconds', style: AppText.bigTime(size: 36)),
-                    Text('초', style: AppText.bigTime(size: 36)),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// 결과 값 한 쪽 (명세서 83·84).
-class _ResultValue extends StatelessWidget {
-  final String label;
-  final int value;
-  final Color labelColor;
-  final Color valueColor;
-
-  const _ResultValue({
-    required this.label,
-    required this.value,
-    required this.labelColor,
-    required this.valueColor,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Semantics(
-      label: '$label $value회',
-      child: ExcludeSemantics(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(label, style: AppText.label(size: 17, color: labelColor)),
-            const SizedBox(height: 4),
-            Text('$value', style: AppText.hero(size: 48, color: valueColor)),
-          ],
-        ),
       ),
     );
   }

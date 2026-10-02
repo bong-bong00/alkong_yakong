@@ -24,7 +24,7 @@ void main() {
 
     test('켜면 고른 시각마다 정시에 예약한다', () {
       final plan = ReminderPlan.forPrefs(
-        const AlarmPreferences(repeatOnce: false, hours: [8, 13, 18]),
+        const AlarmPreferences(repeatOnce: false, times: [480, 780, 1080]),
       );
 
       expect(plan.map((r) => r.id), [
@@ -36,25 +36,39 @@ void main() {
       expect([plan[1].hour, plan[1].minute], [13, 0]);
       expect([plan[2].hour, plan[2].minute], [18, 0]);
       expect(plan[0].title, '약 드실 시간이에요');
-      expect(plan[0].body, '오전 8시 약을 물과 함께 드세요.');
-      expect(plan[2].body, '오후 6시 약을 물과 함께 드세요.');
+      expect(plan[0].body, '08:00 약을 물과 함께 드세요.');
+      expect(plan[2].body, '18:00 약을 물과 함께 드세요.');
     });
 
     test('시각은 겹치지 않고 순서대로 선다', () {
-      const prefs = AlarmPreferences(hours: [18, 8, 8]);
-      expect(prefs.hours, [8, 18]);
-      expect(const AlarmPreferences(hours: []).hours, [8]);
+      const prefs = AlarmPreferences(times: [1080, 480, 480]);
+      expect(prefs.times, [480, 1080]);
+      expect(const AlarmPreferences(times: []).times, [480]);
+    });
+
+    test('분까지 고른 시각을 그대로 예약한다', () {
+      final plan = ReminderPlan.forPrefs(
+        // 09:30 · 21:05
+        const AlarmPreferences(repeatOnce: false, times: [570, 1265]),
+      );
+      expect([plan[0].hour, plan[0].minute], [9, 30]);
+      expect([plan[1].hour, plan[1].minute], [21, 5]);
+      expect(plan[0].body, '09:30 약을 물과 함께 드세요.');
+      expect(AlarmPreferences.clock(1265), '21:05');
     });
 
     test('마지막 한 개는 지워지지 않는다', () {
-      const prefs = AlarmPreferences(hours: [9]);
-      expect(prefs.withoutHour(9).hours, [9]);
-      expect(const AlarmPreferences(hours: [9, 21]).withoutHour(9).hours, [21]);
+      const prefs = AlarmPreferences(times: [540]);
+      expect(prefs.withoutTime(540).times, [540]);
+      expect(
+        const AlarmPreferences(times: [540, 1260]).withoutTime(540).times,
+        [1260],
+      );
     });
 
     test('10분 뒤 한 번 더를 켜면 두 배, 다시 알림은 10분 뒤', () {
       final plan = ReminderPlan.forPrefs(
-        const AlarmPreferences(hours: [7, 20]),
+        const AlarmPreferences(times: [420, 1200]),
       );
       final byId = {for (final r in plan) r.id: r};
 
@@ -80,7 +94,7 @@ void main() {
       expect([morningAgain.hour, morningAgain.minute], [7, 10]);
       expect([eveningAgain.hour, eveningAgain.minute], [20, 10]);
       expect(morningAgain.body, contains('아직 안 드셨다면 지금 드세요.'));
-      expect(eveningAgain.body, startsWith('오후 8시'));
+      expect(eveningAgain.body, startsWith('20:00'));
     });
   });
 
@@ -145,7 +159,7 @@ void main() {
 
     container.read(alarmPreferencesProvider);
     await pumpEventQueue();
-    expect(fake.synced.single.hours, [9]);
+    expect(fake.synced.single.times, [540]);
 
     await container
         .read(alarmPreferencesProvider.notifier)

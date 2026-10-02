@@ -5,12 +5,12 @@ import '../../../medication/application/medication_controller.dart';
 import 'package:flutter_tabler_icons/flutter_tabler_icons.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../../../core/constants/app_colors.dart';
-import '../../../../core/theme/app_typography.dart';
-import '../../../../core/widgets/senior_button.dart';
-import '../../../../core/widgets/senior_card.dart';
-import '../../../../core/widgets/senior_feedback.dart';
-import '../../../../core/widgets/senior_header.dart';
+import '../../../../core/polar_pharmacist_ui/constants/app_colors.dart';
+import '../../../../core/polar_pharmacist_ui/theme/app_typography.dart';
+import '../../../../core/polar_pharmacist_ui/widgets/senior_button.dart';
+import '../../../../core/polar_pharmacist_ui/widgets/senior_card.dart';
+import '../../../../core/polar_pharmacist_ui/widgets/senior_feedback.dart';
+import '../../../../core/polar_pharmacist_ui/widgets/senior_header.dart';
 import '../../../medication/domain/medication_models.dart';
 import '../../application/heart_sensor.dart';
 import '../../data/heart_repository.dart';
@@ -74,8 +74,6 @@ class _HeartScreenState extends State<HeartScreen> {
   bool _reloadFailed = false;
   bool _failed = false;
 
-  /// 보호자 알림 스위치. 기록이 아니라 설정이라 기록과 따로 든다.
-  bool _notifyGuardian = true;
   HeartMeasurementContext _measurementContext = HeartMeasurementContext.general;
 
   /// 다른 사람(어르신)의 기록을 보는 중인지. 그러면 이 전화기로 재지 않는다.
@@ -193,38 +191,34 @@ class _HeartScreenState extends State<HeartScreen> {
   Widget build(BuildContext context) {
     final data = _data;
     return Scaffold(
-      backgroundColor: AppColors.pageBg,
+      backgroundColor: AppColors.bg,
       body: Column(
         children: [
           SeniorHeader(
-            background: AppColors.pageBg,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 Row(
                   children: [
                     SeniorBackButton(
+                      // 쌓여서 열렸으면 그 자리로 돌아가고, 바꿔치워져
+                      // 열렸으면(돌아갈 자리가 없으면) 홈으로 간다.
                       onTap: widget.routeBasedMeasurement
-                          ? () => context.go('/')
+                          ? () {
+                              final router = GoRouter.maybeOf(context);
+                              if (router != null && router.canPop()) {
+                                router.pop();
+                              } else {
+                                context.go('/');
+                              }
+                            }
                           : null,
                     ),
                     const SizedBox(width: 14),
                     Expanded(
-                      child: Text.rich(
-                        TextSpan(
-                          children: [
-                            TextSpan(
-                              text: '오늘 ',
-                              style: AppText.screenTitle(
-                                size: 24,
-                              ).copyWith(fontWeight: FontWeight.w500),
-                            ),
-                            TextSpan(
-                              text: '심박수',
-                              style: AppText.screenTitle(size: 24),
-                            ),
-                          ],
-                        ),
+                      child: Text(
+                        '심박수 관리',
+                        style: AppText.screenTitle(size: 24),
                       ),
                     ),
                   ],
@@ -290,7 +284,7 @@ class _HeartScreenState extends State<HeartScreen> {
                           const SizedBox(height: 12),
                           SeniorSegmented(
                             labels: HeartMeasurementContext.values
-                                .map((context) => context.label)
+                                .map((context) => context.shortLabel)
                                 .toList(growable: false),
                             index: HeartMeasurementContext.values.indexOf(
                               _measurementContext,
@@ -305,46 +299,23 @@ class _HeartScreenState extends State<HeartScreen> {
                     ),
                     const SizedBox(height: 12),
                     SeniorButton(
-                      label: '지금 재기',
-                      icon: Icons.favorite_rounded,
-                      minHeight: 72,
+                      label: '지금 측정',
+                      minHeight: 66,
                       fontSize: 23,
                       onPressed: () => unawaited(_openMeasure()),
                     ),
                   ],
-                  const SizedBox(height: 12),
-                  IntrinsicHeight(
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        if (!_viewingOther) ...[
-                          Expanded(
-                            child: _SensorTile(
-                              sensor: widget.sensor,
-                              onTap: () => Navigator.of(context).push(
-                                MaterialPageRoute(
-                                  builder: (_) =>
-                                      PolarScreen(sensor: widget.sensor),
-                                ),
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                        ],
-                        Expanded(
-                          child: _NotifyTile(
-                            guardianTitle: resolveGuardianTitle(
-                              context,
-                              widget.guardianTitle,
-                            ),
-                            value: _notifyGuardian,
-                            onChanged: (v) =>
-                                setState(() => _notifyGuardian = v),
-                          ),
+                  if (!_viewingOther) ...[
+                    const SizedBox(height: 12),
+                    _SensorRow(
+                      sensor: widget.sensor,
+                      onTap: () => Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => PolarScreen(sensor: widget.sensor),
                         ),
-                      ],
+                      ),
                     ),
-                  ),
+                  ],
                 ],
               ),
             ),
@@ -475,7 +446,7 @@ class _EmptyCard extends StatelessWidget {
           Text(
             viewingOther
                 ? '센서로 측정하고 나면 여기에 약 먹기 전·후 값이 남아요.'
-                : '약 드시기 전과 드신 뒤에 한 번씩 재면\n여기에 남아요.',
+                : '약 드시기 전과 드신 뒤에 한 번씩 측정하면\n여기에 남아요.',
             textAlign: TextAlign.center,
             style: AppText.body(size: 18, color: AppColors.textSecondary),
           ),
@@ -490,13 +461,16 @@ class _TodayCard extends StatelessWidget {
   final HeartData data;
   const _TodayCard({required this.data});
 
-  /// 잰 쪽 시각만 잇는다. 둘 다 없으면 이 줄을 그리지 않는다.
+  /// 잰 시각만 짧게. 둘 다 없으면 이 줄을 그리지 않는다.
+  ///
+  /// "오후 5시 52분 · 오후 6시 40분에 측정했어요"는 숫자를 가린다.
+  /// 화살표 하나로 전·후를 잇는다.
   String? _measuredLine() {
     final parts = [
       if (data.today.before != null && data.beforeAt.isNotEmpty) data.beforeAt,
       if (data.today.after != null && data.afterAt.isNotEmpty) data.afterAt,
     ];
-    return parts.isEmpty ? null : '${parts.join(' · ')}에 쟀어요';
+    return parts.isEmpty ? null : '측정 ${parts.join(' → ')}';
   }
 
   @override
@@ -518,14 +492,29 @@ class _TodayCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // 오늘 잰 것이 없으면 "저녁 약"이라고 붙일 근거도 없다.
-          if (hasMedicationReading && data.todaySlotLabel.isNotEmpty) ...[
-            Text(
-              data.todaySlotLabel,
-              style: AppText.label(size: 17, color: AppColors.textSecondary),
-            ),
-            const SizedBox(height: 10),
-          ],
+          Row(
+            children: [
+              Expanded(child: Text('오늘 측정', style: AppText.cardTitle())),
+              // 오늘 잰 것이 없으면 "저녁 약"이라고 붙일 근거도 없다.
+              if (hasMedicationReading && data.todaySlotLabel.isNotEmpty)
+                // Flexible로 두면 남은 폭을 제목과 반씩 나눠 가져
+                // 때 이름이 화면 한가운데로 밀려난다. 폭 상한만 건다.
+                ConstrainedBox(
+                  constraints: BoxConstraints(
+                    maxWidth: MediaQuery.sizeOf(context).width * 0.45,
+                  ),
+                  child: Text(
+                    data.todaySlotLabel,
+                    textAlign: TextAlign.end,
+                    style: AppText.label(
+                      size: 17,
+                      color: AppColors.textTertiary,
+                    ),
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 14),
           if (!measuredToday)
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
@@ -534,7 +523,7 @@ class _TodayCard extends StatelessWidget {
                 borderRadius: BorderRadius.circular(16),
               ),
               child: Text(
-                '오늘은 아직 재지 않았어요',
+                '오늘은 아직 측정하지 않았어요',
                 style: AppText.label(size: 18.5, color: AppColors.textPrimary),
               ),
             )
@@ -543,26 +532,28 @@ class _TodayCard extends StatelessWidget {
               children: [
                 Expanded(
                   child: _ValueBox(
-                    label: '먹기 전',
+                    label: '약 먹기 전',
                     value: today.before,
-                    labelColor: AppColors.textSecondary,
-                    valueColor: AppColors.heartBefore,
+                    background: AppColors.sunken,
+                    labelColor: AppColors.textTertiary,
+                    valueColor: AppColors.textPrimary,
                   ),
                 ),
                 const Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 6),
+                  padding: EdgeInsets.symmetric(horizontal: 10),
                   child: ExcludeSemantics(
                     child: Icon(
                       TablerIcons.arrow_right,
-                      size: 34,
-                      color: AppColors.strongLine,
+                      size: 30,
+                      color: AppColors.point,
                     ),
                   ),
                 ),
                 Expanded(
                   child: _ValueBox(
-                    label: '먹은 후',
+                    label: '약 먹은 후',
                     value: today.after,
+                    background: AppColors.pointTint,
                     labelColor: AppColors.point,
                     valueColor: AppColors.point,
                   ),
@@ -596,6 +587,8 @@ class _TodayCard extends StatelessWidget {
                           '${reading.bpm}회/분',
                           style: AppText.emphasis(size: 24),
                         ),
+                        const SizedBox(height: 4),
+                        _HeartRateRangeLabel(value: reading.bpm),
                       ],
                     ),
                   ),
@@ -608,21 +601,53 @@ class _TodayCard extends StatelessWidget {
             ),
           ],
           if (drop != null) ...[
-            const SizedBox(height: 16),
-            const SeniorDivider(),
             const SizedBox(height: 14),
-            Text(
-              _summaryLine(drop, today.after),
-              style: AppText.label(
-                size: 19,
-                color: AppColors.textPrimary,
-                weight: FontWeight.w700,
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+              decoration: BoxDecoration(
+                color: AppColors.sunken,
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: Row(
+                children: [
+                  ExcludeSemantics(
+                    child: Icon(
+                      drop > 0
+                          ? TablerIcons.trending_down
+                          : TablerIcons.trending_up,
+                      size: 24,
+                      color: AppColors.point,
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      drop > 0
+                          ? '약 먹은 후 $drop회/분 낮았어요'
+                          : drop < 0
+                          ? '약 먹은 후 ${-drop}회/분 높았어요'
+                          : '약 먹기 전과 같은 수치예요',
+                      style: AppText.label(
+                        size: 18.5,
+                        color: AppColors.textPrimary,
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
           ],
           if (measuredLine != null) ...[
             const SizedBox(height: 10),
             Text(measuredLine, style: AppText.caption(size: 17)),
+          ],
+          // 다짐글은 하나만 둔다. 셋을 쌓으면 아무것도 읽지 않는다.
+          if (today.before != null && today.after != null) ...[
+            const SizedBox(height: 6),
+            Text(
+              '한 번 비교로 약의 영향을 단정할 수는 없어요.',
+              style: AppText.caption(size: 16),
+            ),
           ],
         ],
       ),
@@ -633,152 +658,164 @@ class _TodayCard extends StatelessWidget {
 class _ValueBox extends StatelessWidget {
   final String label;
   final int? value;
+  final Color background;
   final Color labelColor;
   final Color valueColor;
 
   const _ValueBox({
     required this.label,
     required this.value,
+    required this.background,
     required this.labelColor,
     required this.valueColor,
   });
 
   @override
   Widget build(BuildContext context) {
+    final range = value == null ? null : _heartRateRange(value!);
     return Semantics(
-      label: value == null ? '$label 재지 못했어요' : '$label $value회',
+      label: value == null ? '$label 측정하지 못했어요' : '$label $value회, $range',
       child: ExcludeSemantics(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(label, style: AppText.label(size: 17, color: labelColor)),
-            const SizedBox(height: 4),
-            Text(
-              value?.toString() ?? '–',
-              style: AppText.hero(size: 52, color: valueColor),
-            ),
-          ],
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          decoration: BoxDecoration(
+            color: background,
+            borderRadius: BorderRadius.circular(18),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(label, style: AppText.label(size: 17.5, color: labelColor)),
+              const SizedBox(height: 6),
+              Text(
+                value?.toString() ?? '–',
+                style: AppText.hero(size: 44, color: valueColor),
+              ),
+              if (value != null) ...[
+                const SizedBox(height: 5),
+                _HeartRateRangeLabel(
+                  value: value!,
+                  color: valueColor,
+                  background: AppColors.surface,
+                ),
+              ],
+            ],
+          ),
         ),
       ),
     );
   }
 }
 
-/// 심박수 한 줄 요약 (명세서 52).
-///
-/// "정상 범위예요"는 먹은 후 값이 60~100일 때만 붙인다.
-/// 범위를 벗어난 값에 정상이라고 말하면 안심할 근거를 지어내는 것이다.
-String _summaryLine(int drop, int? after) {
-  final change = drop > 0
-      ? '$drop회 낮아졌어요'
-      : drop < 0
-      ? '${-drop}회 높아졌어요'
-      : '먹기 전과 같은 수치예요';
-  final inRange = after != null && after >= 60 && after <= 100;
-  return inRange ? '$change · 정상 범위예요' : change;
+class _HeartRateRangeLabel extends StatelessWidget {
+  final int value;
+  final Color? color;
+  final Color? background;
+
+  const _HeartRateRangeLabel({
+    required this.value,
+    this.color,
+    this.background,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
+      decoration: BoxDecoration(
+        color: background ?? AppColors.pointTint,
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        _heartRateRange(value),
+        style: AppText.caption(
+          size: 16,
+          color: color ?? AppColors.textSecondary,
+        ),
+      ),
+    );
+  }
 }
 
-/// 심박 센서 칸 (명세서 52). 네모 한 칸에 이름과 상태만 둔다.
+String _heartRateRange(int bpm) {
+  if (bpm < 60) return '느린 범위';
+  if (bpm <= 100) return '일반 범위';
+  return '빠른 범위';
+}
+
+/// 센서 상태 한 줄.
 ///
-/// 연결 여부·배터리는 **센서가 말한 것만** 쓴다. 이 화면이 센서를
-/// 넘겨받지 않았으면 연결됐는지 모르므로 "끊김"이라고도 하지 않는다.
-class _SensorTile extends StatelessWidget {
+/// 연결 여부·배터리·마지막 측정은 **센서가 말한 것만** 쓴다. 이 화면이
+/// 센서를 넘겨받지 않았으면 연결됐는지 모르므로 "끊김"이라고도 하지 않는다.
+class _SensorRow extends StatelessWidget {
   final HeartSensor? sensor;
   final VoidCallback onTap;
 
-  const _SensorTile({required this.sensor, required this.onTap});
+  const _SensorRow({required this.sensor, required this.onTap});
+
+  /// 아는 것만 잇는다. 배터리도 마지막 측정도 없으면 아무 말도 만들지 않는다.
+  String _connectedLine(HeartSensor sensor) {
+    final lastReadAt = sensor.lastReadAt;
+    final parts = <String>[
+      if (sensor.battery != null) '배터리 ${sensor.battery}%',
+      if (lastReadAt != null)
+        '${DoseSlot.absoluteTime(lastReadAt)}에 측정한 것이 마지막이에요',
+    ];
+    return parts.isEmpty ? '연결되어 있어요' : parts.join(' · ');
+  }
 
   @override
   Widget build(BuildContext context) {
     final sensor = this.sensor;
     final connected = sensor?.status == HeartSensorStatus.streaming;
-    final String state;
+    final String title;
+    final String caption;
     if (sensor == null) {
-      state = '눌러서 연결하기';
+      title = '폴라 센서';
+      caption = '눌러서 연결하고 착용하는 방법을 봐요';
     } else if (connected) {
-      state = sensor.battery == null ? '연결됨' : '연결됨 · ${sensor.battery}%';
+      title = '폴라 센서 연결됨';
+      caption = _connectedLine(sensor);
     } else {
-      state = '연결 안 됨';
+      title = '폴라 센서 끊김';
+      caption = '센서를 착용하고 다시 연결해 주세요';
     }
 
     return SeniorCard(
-      radius: 22,
-      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 18),
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 17),
       onTap: onTap,
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(minHeight: 90),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisAlignment: MainAxisAlignment.end,
-          children: [
-            Text('심박 센서', style: AppText.cardTitle(size: 19)),
-            const SizedBox(height: 4),
-            Text(
-              state,
-              style: AppText.label(
-                size: 17,
-                color: connected ? AppColors.point : AppColors.textTertiary,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            // 점은 제목 줄 높이에 맞춘다. 가운데 정렬하면 두 줄 사이에 낀다.
+            padding: const EdgeInsets.only(top: 7),
+            child: Container(
+              width: 14,
+              height: 14,
+              decoration: BoxDecoration(
+                color: connected ? AppColors.point : AppColors.strongLine,
+                borderRadius: BorderRadius.circular(7),
               ),
             ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-/// 심박수가 빠르면 보호자에게 알리는 칸 (명세서 52).
-/// 칸 전체가 켜고 끄는 단추다 — 작은 스위치보다 짚기 쉽다.
-class _NotifyTile extends StatelessWidget {
-  final String guardianTitle;
-  final bool value;
-  final ValueChanged<bool> onChanged;
-
-  const _NotifyTile({
-    required this.guardianTitle,
-    required this.value,
-    required this.onChanged,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Semantics(
-      toggled: value,
-      button: true,
-      label: '심박수가 빠를 때 $guardianTitle에게 알리기',
-      child: ExcludeSemantics(
-        child: SeniorCard(
-          radius: 22,
-          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 18),
-          onTap: () => onChanged(!value),
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(minHeight: 90),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Icon(
-                  value
-                      ? Icons.notifications_active_rounded
-                      : Icons.notifications_off_rounded,
-                  size: 32,
-                  color: AppColors.textPrimary,
-                ),
-                const SizedBox(height: 10),
-                Text('빠르면 가족에게', style: AppText.cardTitle(size: 19)),
-                const SizedBox(height: 4),
-                Text(
-                  value ? '알림 켜짐' : '알림 꺼짐',
-                  style: AppText.label(
-                    size: 17,
-                    color: value ? AppColors.point : AppColors.textTertiary,
-                  ),
-                ),
+                Text(title, style: AppText.cardTitle(size: 19)),
+                Text(caption, style: AppText.caption(size: 17.5)),
               ],
             ),
           ),
-        ),
+          const SizedBox(width: 10),
+          const Padding(
+            padding: EdgeInsets.only(top: 2),
+            child: SeniorChevron(),
+          ),
+        ],
       ),
     );
   }

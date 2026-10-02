@@ -16,8 +16,12 @@ from app.services import chat_context_service, gemini_service
 from app.services.mfds_drug_permission import client as permission_client
 from app.services.mfds_drug_permission import db as permission_db
 from app.services.chat_context_service import (
+    AMBIGUOUS_QUESTION_REPLY,
+    MEDICINE_SELECTION_REQUIRED_REPLY,
+    UNRELATED_QUESTION_REPLY,
     build_grounded_chat_prompt,
     classify_question,
+    classify_question_scope,
     general_conversation_reply,
     is_safety_question,
     load_latest_dur_context,
@@ -70,6 +74,328 @@ def _chat_response(text, *, finish_reason="STOP", candidates=True):
 
 
 class ChatContextTest(unittest.TestCase):
+    def test_unselected_question_scope_distinguishes_general_specific_and_unrelated(self):
+        self.assertEqual(
+            classify_question_scope("약 복용을 깜빡하면 어떻게 하나요?"),
+            "general_medication",
+        )
+        self.assertEqual(
+            classify_question_scope("비 오는 날 약 보관은 어떻게 하나요?"),
+            "general_medication",
+        )
+        self.assertEqual(classify_question_scope("부작용은 무엇인가요?"), "needs_medicine")
+        self.assertEqual(
+            classify_question_scope("아스피린 부작용은 무엇인가요?"),
+            "medicine_specific",
+        )
+        self.assertEqual(classify_question_scope("오늘 날씨 어때?"), "unrelated")
+        self.assertEqual(classify_question_scope("오늘 뭐하지?"), "ambiguous")
+        self.assertEqual(
+            classify_question_scope("환인아캄프로세이트정"),
+            "medicine_specific",
+        )
+        self.assertEqual(
+            classify_question_scope("환인아캄프로세이트정과 커피를 같이 마셔도 괜찮아?"),
+            "medicine_specific",
+        )
+        self.assertEqual(
+            classify_question_scope("약 먹고 커피랑 마셔도 괜찮아?"),
+            "general_medication",
+        )
+        self.assertIn(
+            "precautions",
+            classify_question("환인아캄프로세이트정과 커피를 같이 마셔도 괜찮아?"),
+        )
+
+    def test_unselected_coffee_questions_give_general_guidance_before_requesting_name(self):
+        fake_client = MagicMock()
+        fake_client.__enter__.return_value = fake_client
+        fake_client.__exit__.return_value = False
+        reply = (
+            "커피는 약에 따라 효과나 부작용에 영향을 줄 수 있어요. "
+            "정확한 확인을 위해 드시는 약 이름을 알려주세요."
+        )
+        with (
+            patch.object(gemini_service, "GEMINI_API_KEY", "configured"),
+            patch("google.genai.Client", return_value=fake_client),
+            patch.object(
+                gemini_service,
+                "_generate_complete_chat_reply",
+                return_value=reply,
+            ) as generate,
+            patch(
+                "app.services.external_api_service.search_drug_info_by_name"
+            ) as official_search,
+        ):
+            for question in (
+                "커피랑 약이랑 같이 먹어도 괜찮아?",
+                "약 먹고 커피랑 마셔도 괜찮아?",
+            ):
+                with self.subTest(question=question):
+                    self.assertEqual(
+                        gemini_service.generate_chat_response(
+                            question,
+                            user_id="synthetic-user",
+                        ),
+                        reply,
+                    )
+
+        self.assertEqual(generate.call_count, 2)
+        for call in generate.call_args_list:
+            prompt = call.kwargs["prompt"]
+            self.assertIn("짧은 일반 안내를 먼저 제공", prompt)
+            self.assertIn("답변 전체를 약 이름 요청 한 문장만으로 대체하지 마세요", prompt)
+        official_search.assert_not_called()
+
+    def test_named_coffee_question_uses_exact_official_product_context(self):
+        fake_client = MagicMock()
+        fake_client.__enter__.return_value = fake_client
+        fake_client.__exit__.return_value = False
+        with (
+            patch.object(gemini_service, "GEMINI_API_KEY", "configured"),
+            patch("google.genai.Client", return_value=fake_client),
+            patch.object(
+                gemini_service,
+                "_generate_content_with_retry",
+                return_value=SimpleNamespace(
+                    parsed={"drug_names": ["환인아캄프로세이트정"]}
+                ),
+            ),
+            patch(
+                "app.services.external_api_service.search_drug_info_by_name",
+                return_value={
+                    "match_type": "exact",
+                    "items": [
+                        {
+                            "medicine_code": "101",
+                            "product_name": "환인아캄프로세이트정",
+                            "cautions": "공식 주의사항",
+                            "source": "식약처",
+                        }
+                    ],
+                },
+            ) as official_search,
+            patch.object(
+                gemini_service,
+                "_generate_complete_chat_reply",
+                return_value="공식 주의사항을 기준으로 확인한 답변이에요.",
+            ) as generate,
+        ):
+            reply = gemini_service.generate_chat_response(
+                "환인아캄프로세이트정과 커피를 마셔도 돼?",
+                user_id="synthetic-user",
+            )
+
+        self.assertIn("공식 주의사항", reply)
+        official_search.assert_called_once_with("환인아캄프로세이트정")
+        grounded_prompt = generate.call_args.kwargs["prompt"]
+        self.assertIn("환인아캄프로세이트정", grounded_prompt)
+        self.assertIn("공식 주의사항", grounded_prompt)
+
+    def test_named_coffee_question_distinguishes_not_found_from_lookup_failure(self):
+        extracted = SimpleNamespace(parsed={"drug_names": ["없는제품정"]})
+        for search_result, expected in (
+            ({"match_type": "none", "items": []}, "제품명을 식약처 공식정보에서 확인하지 못했어요"),
+            (RuntimeError("lookup failed"), "공식정보를 조회하는 중 문제가 생겼어요"),
+        ):
+            with (
+                self.subTest(expected=expected),
+                patch.object(gemini_service, "GEMINI_API_KEY", "configured"),
+                patch("google.genai.Client"),
+                patch.object(
+                    gemini_service,
+                    "_generate_content_with_retry",
+                    return_value=extracted,
+                ),
+                patch(
+                    "app.services.external_api_service.search_drug_info_by_name",
+                    side_effect=(
+                        search_result
+                        if isinstance(search_result, Exception)
+                        else None
+                    ),
+                    return_value=(
+                        None if isinstance(search_result, Exception) else search_result
+                    ),
+                ),
+            ):
+                reply = gemini_service.generate_chat_response(
+                    "없는제품정과 커피를 마셔도 돼?",
+                    user_id="synthetic-user",
+                )
+            self.assertIn(expected, reply)
+            self.assertNotIn("안전", reply)
+
+    def test_named_coffee_question_does_not_hide_partial_lookup_failure_as_not_found(self):
+        extracted = SimpleNamespace(
+            parsed={"drug_names": ["없는제품정", "조회오류정"]}
+        )
+
+        def search(name):
+            if name == "조회오류정":
+                raise RuntimeError("lookup failed")
+            return {"match_type": "none", "items": []}
+
+        with (
+            patch.object(gemini_service, "GEMINI_API_KEY", "configured"),
+            patch("google.genai.Client"),
+            patch.object(
+                gemini_service,
+                "_generate_content_with_retry",
+                return_value=extracted,
+            ),
+            patch(
+                "app.services.external_api_service.search_drug_info_by_name",
+                side_effect=search,
+            ),
+        ):
+            reply = gemini_service.generate_chat_response(
+                "없는제품정과 조회오류정을 커피와 마셔도 돼?",
+                user_id="synthetic-user",
+            )
+
+        self.assertIn("공식정보를 조회하는 중 문제가 생겼어요", reply)
+        self.assertNotIn("제품명을 식약처 공식정보에서 확인하지 못했어요", reply)
+        self.assertNotIn("안전", reply)
+
+    def test_two_exact_free_text_medicines_are_the_explicit_dur_scope(self):
+        fake_client = MagicMock()
+        fake_client.__enter__.return_value = fake_client
+        fake_client.__exit__.return_value = False
+        extracted = _chat_response(
+            '{"drug_names":["환인아캄프로세이트정","유한메토트렉세이트정"]}'
+        )
+
+        def official_result(name):
+            code = "101" if name.startswith("환인") else "202"
+            return {
+                "match_type": "exact",
+                "items": [
+                    {
+                        "medicine_code": code,
+                        "product_name": name,
+                        "ingredient": f"성분-{code}",
+                    }
+                ],
+            }
+
+        with (
+            patch.object(gemini_service, "GEMINI_API_KEY", "configured"),
+            patch("google.genai.Client", return_value=fake_client),
+            patch.object(
+                gemini_service,
+                "_generate_content_with_retry",
+                return_value=extracted,
+            ),
+            patch(
+                "app.services.external_api_service.search_drug_info_by_name",
+                side_effect=official_result,
+            ),
+            patch(
+                "app.services.medication_feature_dur_client.load_remote_combination_context",
+                return_value={
+                    "status": "current",
+                    "items": [],
+                    "has_risk": False,
+                    "reason": None,
+                    "checked_types": ["병용금기", "중복성분", "효능군중복"],
+                    "zero_result_types": ["병용금기", "중복성분", "효능군중복"],
+                },
+            ) as remote_dur,
+        ):
+            reply = gemini_service.generate_chat_response(
+                "환인아캄프로세이트정과 유한메토트렉세이트정을 같이 먹어도 괜찮아?",
+                user_id="synthetic-user",
+            )
+
+        self.assertIn("함께 먹으면 안 되는 조합은 확인되지 않았어요", reply)
+        self.assertIsNone(remote_dur.call_args.kwargs["selected_medicine"])
+        self.assertFalse(remote_dur.call_args.kwargs["include_current_medicines"])
+        self.assertEqual(
+            remote_dur.call_args.kwargs["additional_medicines"],
+            [
+                {"medicine_code": "101", "product_name": "환인아캄프로세이트정"},
+                {"medicine_code": "202", "product_name": "유한메토트렉세이트정"},
+            ],
+        )
+
+    def test_unselected_non_medicine_and_missing_medicine_return_before_lookup(self):
+        with (
+            patch.object(gemini_service, "GEMINI_API_KEY", "configured"),
+            patch(
+                "app.services.external_api_service.search_drug_info_by_name"
+            ) as official_search,
+            patch(
+                "app.services.medication_feature_dur_client.load_remote_current_medicines"
+            ) as current_medicines,
+        ):
+            weather = gemini_service.generate_chat_response(
+                "오늘 날씨 어때?", user_id="synthetic-user"
+            )
+            missing = gemini_service.generate_chat_response(
+                "부작용은 무엇인가요?", user_id="synthetic-user"
+            )
+            ambiguous = gemini_service.generate_chat_response(
+                "오늘 뭐하지?", user_id="synthetic-user"
+            )
+
+        self.assertEqual(weather, UNRELATED_QUESTION_REPLY)
+        self.assertEqual(missing, MEDICINE_SELECTION_REQUIRED_REPLY)
+        self.assertEqual(ambiguous, AMBIGUOUS_QUESTION_REPLY)
+        official_search.assert_not_called()
+        current_medicines.assert_not_called()
+
+    def test_unselected_general_medicine_question_uses_short_general_prompt_only(self):
+        fake_client = MagicMock()
+        fake_client.__enter__.return_value = fake_client
+        fake_client.__exit__.return_value = False
+        short_reply = (
+            "약 복용을 잊었다면 임의로 두 배를 먹지 마세요. "
+            "약마다 대처가 다르므로 약 이름을 알려주거나 약사에게 확인하세요."
+        )
+        with (
+            patch.object(gemini_service, "GEMINI_API_KEY", "configured"),
+            patch("google.genai.Client", return_value=fake_client),
+            patch.object(
+                gemini_service,
+                "_generate_complete_chat_reply",
+                return_value=short_reply,
+            ) as generate,
+            patch(
+                "app.services.external_api_service.search_drug_info_by_name"
+            ) as official_search,
+            patch(
+                "app.services.medication_feature_dur_client.load_remote_current_medicines"
+            ) as current_medicines,
+        ):
+            reply = gemini_service.generate_chat_response(
+                "약 복용을 깜빡하면 어떻게 하나요?",
+                user_id="synthetic-user",
+            )
+
+        self.assertEqual(reply, short_reply)
+        prompt = generate.call_args.kwargs["prompt"]
+        self.assertIn("보통 2~3문장", prompt)
+        self.assertIn("개인 복용량", prompt)
+        official_search.assert_not_called()
+        current_medicines.assert_not_called()
+
+    def test_explicit_single_question_without_identity_is_not_treated_as_all_medicines(self):
+        with (
+            patch.object(gemini_service, "GEMINI_API_KEY", None),
+            patch(
+                "app.services.medication_feature_dur_client.load_remote_current_medicines"
+            ) as current_medicines,
+        ):
+            reply = gemini_service.generate_chat_response(
+                "이 약은 어디에 쓰는 약인가요?",
+                user_id="synthetic-user",
+                intent="efficacy",
+            )
+
+        self.assertIn("식약처 공식정보", reply)
+        current_medicines.assert_not_called()
+
     def test_chat_request_contract_accepts_overview_and_existing_intents(self):
         existing = (
             "efficacy",
@@ -110,10 +436,20 @@ class ChatContextTest(unittest.TestCase):
             message="기존 앱 질문",
         )
         self.assertIsNone(legacy.selected_medicine)
+        self.assertEqual(legacy.selected_medicines, [])
+        self.assertEqual(legacy.temporary_medicines, [])
         self.assertIsNone(legacy.intent)
         self.assertEqual(
             set(DrugExplainChatRequest.model_fields),
-            {"user_id", "message", "selected_medicine", "intent"},
+            {
+                "user_id",
+                "message",
+                "selected_medicine",
+                "selected_medicines",
+                "temporary_medicines",
+                "intent",
+                "recent_history",
+            },
         )
 
     def test_chat_endpoint_accepts_overview_and_rejects_unknown_intent(self):
@@ -127,16 +463,44 @@ class ChatContextTest(unittest.TestCase):
                 "medicine_code": "202400001",
                 "product_name": "공식허가약정",
             },
+            "selected_medicines": [
+                {
+                    "medicine_code": "202400001",
+                    "product_name": "공식허가약정",
+                },
+                {
+                    "medicine_code": "202400002",
+                    "product_name": "화면선택약정",
+                },
+            ],
+            "temporary_medicines": [
+                {
+                    "medicine_code": "202400002",
+                    "product_name": "화면임시약정",
+                }
+            ],
             "intent": "overview",
         }
         with patch.object(
             gemini_service,
             "generate_chat_response",
             return_value="공식정보에 근거한 개요예요.",
-        ):
+        ) as generate:
             response = client.post("/api/v1/drug-explain/chat", json=payload)
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json(), {"reply": "공식정보에 근거한 개요예요."})
+        self.assertEqual(response.json()["reply"], "공식정보에 근거한 개요예요.")
+        self.assertEqual(response.json()["sources"], [])
+        self.assertEqual(
+            generate.call_args.kwargs["selected_medicines"],
+            [
+                {"medicine_code": "202400001", "product_name": "공식허가약정"},
+                {"medicine_code": "202400002", "product_name": "화면선택약정"},
+            ],
+        )
+        self.assertEqual(
+            generate.call_args.kwargs["temporary_medicines"],
+            [{"medicine_code": "202400002", "product_name": "화면임시약정"}],
+        )
 
         payload["intent"] = "unknown-intent"
         response = client.post("/api/v1/drug-explain/chat", json=payload)
@@ -557,7 +921,8 @@ class ChatContextTest(unittest.TestCase):
             e_drug_result=None,
         )
         self.assertIn("성분이나 비슷한 효과가 겹친다는 정보를 확인한 공식 자료에서는 찾지 못했어요", reply)
-        self.assertIn("모든 위험이 없다는 뜻은 아니에요", reply)
+        self.assertIn("더 궁금하시면 의사나 약사와 상담해 주세요.", reply)
+        self.assertNotIn("모든 위험이 없다는 뜻은 아니에요", reply)
         self.assertEqual(
             analyze.call_args.kwargs["risk_types"],
             {"중복성분", "효능군중복"},
@@ -705,12 +1070,18 @@ class ChatContextTest(unittest.TestCase):
                 intent="combination",
             )
         self.assertIn(
-            "지금 드시는 약 중에 함께 먹으면 안 되는 조합은 확인되지 않았어요.",
+            "확인한 약들 사이에서 함께 먹으면 안 되는 조합은 확인되지 않았어요.",
             reply,
         )
-        self.assertIn("안전하다고 단정할 수는 없어요", reply)
+        self.assertIn("더 궁금한 점이 있으면 의사나 약사와 상담해 주세요.", reply)
+        self.assertNotIn("안전하다고 단정", reply)
         load_medicines.assert_called_once_with(user_id="U1")
-        remote_dur.assert_called_once_with(user_id="U1", selected_medicine=None)
+        remote_dur.assert_called_once_with(
+            user_id="U1",
+            selected_medicine=None,
+            additional_medicines=[],
+            requested_types={"병용금기", "중복성분", "효능군중복"},
+        )
         local_dur.assert_not_called()
 
     def test_all_medicine_overview_reports_each_verified_and_unverified_medicine(self):
@@ -754,11 +1125,14 @@ class ChatContextTest(unittest.TestCase):
                 side_effect=[
                     SimpleNamespace(parsed={"drug_names": []}),
                     _chat_response(
-                        "코다론정은 공식 효능을 확인했어요. "
-                        "유한메토트렉세이트정은 공식정보를 확인하지 못했어요."
+                        "현재 복용약 확인 범위: 코다론정은 확인했고 "
+                        "유한메토트렉세이트정은 확인하지 못했어요."
+                    ),
+                    _chat_response(
+                        "코다론정은 공식 효능을 확인했어요."
                     ),
                 ],
-            ),
+            ) as generate,
         ):
             reply = gemini_service.generate_chat_response(
                 "제가 현재 먹는 약 전체를 쉬운 말로 알려주세요.",
@@ -767,13 +1141,62 @@ class ChatContextTest(unittest.TestCase):
                 intent="overview",
             )
 
-        self.assertIn("코다론정: 공식정보를 확인했어요.", reply)
-        self.assertIn(
-            "유한메토트렉세이트정: 공식정보를 끝까지 확인하지 못했어요.",
-            reply,
-        )
+        self.assertEqual(generate.call_count, 3)
+        self.assertIn("일부 약은 공식정보를 확인하지 못해 답변에서 제외했어요.", reply)
         self.assertIn("코다론정은 공식 효능", reply)
-        self.assertIn("유한메토트렉세이트정은 공식정보를 확인하지 못했어요", reply)
+        self.assertNotIn("현재 복용약 확인 범위", reply)
+        self.assertNotIn("유한메토트렉세이트정", reply)
+
+    def test_all_medicine_overview_merges_ai_screen_temporary_medicine(self):
+        registered = {
+            "status": "current",
+            "items": [{"medicine_code": "100", "product_name": "코다론정"}],
+            "reason": None,
+        }
+
+        def official(*, medicine_code):
+            names = {"100": "코다론정", "200": "유한메토트렉세이트정"}
+            return {
+                "medicine_code": medicine_code,
+                "product_name": names[medicine_code],
+                "efficacy": f"{names[medicine_code]} 공식 효능",
+            }
+
+        fake_client = MagicMock()
+        fake_client.__enter__.return_value = fake_client
+        fake_client.__exit__.return_value = False
+        with (
+            patch.object(gemini_service, "GEMINI_API_KEY", "configured"),
+            patch("google.genai.Client", return_value=fake_client),
+            patch(
+                "app.services.medication_feature_dur_client.load_remote_current_medicines",
+                return_value=registered,
+            ),
+            patch(
+                "app.services.external_api_service.fetch_e_drug_info",
+                side_effect=official,
+            ),
+            patch.object(
+                gemini_service,
+                "_generate_content_with_retry",
+                side_effect=[
+                    SimpleNamespace(parsed={"drug_names": []}),
+                    _chat_response("코다론정과 유한메토트렉세이트정의 공식 효능을 알려드려요."),
+                ],
+            ),
+        ):
+            reply = gemini_service.generate_chat_response(
+                "제가 현재 먹는 약 전체를 쉬운 말로 알려주세요.",
+                user_id="U1",
+                selected_medicine=None,
+                temporary_medicines=[
+                    {"medicine_code": "200", "product_name": "유한메토트렉세이트정"}
+                ],
+                intent="overview",
+            )
+
+        self.assertIn("코다론정", reply)
+        self.assertIn("유한메토트렉세이트정", reply)
 
     def test_all_medicine_precautions_retries_missing_product_with_larger_budget(self):
         medicines = {
@@ -825,8 +1248,18 @@ class ChatContextTest(unittest.TestCase):
             )
 
         self.assertEqual(generate.call_count, 3)
-        for call in generate.call_args_list[1:]:
-            self.assertEqual(call.kwargs["config"]["max_output_tokens"], 1024)
+        self.assertEqual(
+            generate.call_args_list[1].kwargs["config"]["max_output_tokens"],
+            1024,
+        )
+        self.assertEqual(
+            generate.call_args_list[2].kwargs["config"]["max_output_tokens"],
+            1024,
+        )
+        all_medicine_prompt = generate.call_args_list[1].kwargs["contents"]
+        self.assertIn("약마다 핵심 1~2문장", all_medicine_prompt)
+        self.assertIn("공통 안내는 한 번만", all_medicine_prompt)
+        self.assertIn("특정 약을 누락하지 마세요", all_medicine_prompt)
         for expected in ("코다론정", "유한메토트렉세이트정", "1일 2회", "만 12세 미만", "사용하면 안"):
             self.assertIn(expected, reply)
 
@@ -954,9 +1387,157 @@ class ChatContextTest(unittest.TestCase):
                 intent="duplicate",
             )
 
-        remote_dur.assert_called_once_with(user_id="U1", selected_medicine=None)
+        remote_dur.assert_called_once_with(
+            user_id="U1",
+            selected_medicine=None,
+            additional_medicines=[],
+            requested_types={"중복성분"},
+        )
         local_latest.assert_not_called()
         self.assertNotIn("복용 중인 약이 바뀌어", reply)
+        self.assertIn(
+            "확인한 약들 사이에서 같은 성분의 중복은 확인되지 않았어요.",
+            reply,
+        )
+        self.assertIn("더 궁금한 점이 있으면 의사나 약사와 상담해 주세요.", reply)
+
+    def test_selected_medicines_combination_uses_exact_selected_scope(self):
+        selected = [
+            {"medicine_code": "100", "product_name": "코다론정"},
+            {"medicine_code": "200", "product_name": "유한메토트렉세이트정"},
+        ]
+        fake_client = MagicMock()
+        fake_client.__enter__.return_value = fake_client
+        fake_client.__exit__.return_value = False
+
+        def official(*, medicine_code):
+            name = "코다론정" if medicine_code == "100" else "유한메토트렉세이트정"
+            return {
+                "medicine_code": medicine_code,
+                "product_name": name,
+                "ingredient": f"{name} 공식성분",
+            }
+
+        with (
+            patch.object(gemini_service, "GEMINI_API_KEY", "configured"),
+            patch("google.genai.Client", return_value=fake_client),
+            patch(
+                "app.services.external_api_service.fetch_e_drug_info",
+                side_effect=official,
+            ) as fetch,
+            patch(
+                "app.services.external_api_service.search_drug_info_by_name",
+            ) as name_search,
+            patch(
+                "app.services.medication_feature_dur_client.load_remote_combination_context",
+                return_value={
+                    "status": "current",
+                    "items": [],
+                    "has_risk": False,
+                    "reason": None,
+                    "checked_types": ["병용금기", "중복성분", "효능군중복"],
+                    "zero_result_types": ["병용금기", "중복성분", "효능군중복"],
+                },
+            ) as remote_dur,
+        ):
+            reply = gemini_service.generate_chat_response(
+                "코다론정, 유한메토트렉세이트정을 함께 사용할 때 주의할 점이 있나요?",
+                user_id="U1",
+                selected_medicines=selected,
+                intent="combination",
+            )
+
+        self.assertEqual(
+            [call.kwargs["medicine_code"] for call in fetch.call_args_list],
+            ["100", "200"],
+        )
+        name_search.assert_not_called()
+        remote_dur.assert_called_once_with(
+            user_id="U1",
+            selected_medicine=None,
+            additional_medicines=selected,
+            requested_types={"병용금기", "중복성분", "효능군중복"},
+            include_current_medicines=False,
+        )
+        self.assertIn(
+            "확인한 약들 사이에서 함께 먹으면 안 되는 조합은 확인되지 않았어요.",
+            reply,
+        )
+
+    def test_selected_medicines_duplicate_preserves_found_warning(self):
+        selected = [
+            {"medicine_code": "100", "product_name": "첫번째약정"},
+            {"medicine_code": "200", "product_name": "두번째약정"},
+        ]
+        warning = "두 약에 같은 공식성분이 있어 중복 복용을 확인해야 해요."
+        fake_client = MagicMock()
+        fake_client.__enter__.return_value = fake_client
+        fake_client.__exit__.return_value = False
+
+        with (
+            patch.object(gemini_service, "GEMINI_API_KEY", "configured"),
+            patch("google.genai.Client", return_value=fake_client),
+            patch(
+                "app.services.external_api_service.fetch_e_drug_info",
+                side_effect=lambda *, medicine_code: {
+                    "medicine_code": medicine_code,
+                    "product_name": "첫번째약정" if medicine_code == "100" else "두번째약정",
+                    "ingredient": "같은 공식성분",
+                },
+            ),
+            patch(
+                "app.services.medication_feature_dur_client.load_remote_combination_context",
+                return_value={
+                    "status": "current",
+                    "items": [{"type": "중복성분", "reason": warning}],
+                    "has_risk": True,
+                    "reason": None,
+                    "checked_types": ["중복성분"],
+                    "zero_result_types": [],
+                },
+            ) as remote_dur,
+            patch.object(
+                gemini_service,
+                "_generate_content_with_retry",
+                return_value=_chat_response(warning),
+            ),
+        ):
+            reply = gemini_service.generate_chat_response(
+                "선택한 두 약에 같은 성분이 있나요?",
+                user_id="U1",
+                selected_medicines=selected,
+                intent="duplicate",
+            )
+
+        remote_dur.assert_called_once_with(
+            user_id="U1",
+            selected_medicine=None,
+            additional_medicines=selected,
+            requested_types={"중복성분"},
+            include_current_medicines=False,
+        )
+        self.assertIn(warning, reply)
+
+    def test_selected_medicines_with_missing_identity_stays_incomplete(self):
+        with (
+            patch.object(gemini_service, "GEMINI_API_KEY", "configured"),
+            patch(
+                "app.services.medication_feature_dur_client.load_remote_combination_context",
+            ) as remote_dur,
+        ):
+            reply = gemini_service.generate_chat_response(
+                "선택한 두 약을 같이 먹어도 되나요?",
+                user_id="U1",
+                selected_medicines=[
+                    {"medicine_code": "100", "product_name": "확인약정"},
+                    {"medicine_code": "", "product_name": "코드없는약"},
+                ],
+                intent="combination",
+            )
+
+        remote_dur.assert_not_called()
+        self.assertIn("공식 제품명과 코드를 확인하지 못한 약", reply)
+        self.assertNotIn("확인한 약들 사이에서", reply)
 
     def test_combination_zero_does_not_hide_duplicate_warning(self):
         selected = {"medicine_code": "202400001", "product_name": "공식허가약정"}
@@ -1081,17 +1662,22 @@ class ChatContextTest(unittest.TestCase):
             ),
         ):
             reply = gemini_service.generate_chat_response(
-                "제가 먹는 약을 같이 먹어도 괜찮나요?",
+                "제가 현재 먹는 약 전체를 같이 먹을 때 확인해 주세요.",
                 user_id="U1",
                 selected_medicine=None,
-                intent=None,
+                intent="combination",
             )
         self.assertIn(
-            "지금 드시는 약 중에 함께 먹으면 안 되는 조합은 확인되지 않았어요.",
+            "확인한 약들 사이에서 함께 먹으면 안 되는 조합은 확인되지 않았어요.",
             reply,
         )
         load_medicines.assert_called_once_with(user_id="U1")
-        remote_dur.assert_called_once_with(user_id="U1", selected_medicine=None)
+        remote_dur.assert_called_once_with(
+            user_id="U1",
+            selected_medicine=None,
+            additional_medicines=[],
+            requested_types={"병용금기", "중복성분", "효능군중복"},
+        )
 
     def test_combination_incomplete_or_unknown_risk_is_not_zero_match(self):
         selected = {"medicine_code": "202400001", "product_name": "공식허가약정"}
@@ -1122,6 +1708,56 @@ class ChatContextTest(unittest.TestCase):
                     )
                 self.assertIn("모두 확인하지 못했어요", reply)
                 self.assertNotIn("정보를 찾지 못했어요. 이것만으로", reply)
+
+    def test_consultation_request_retains_partial_warning_in_actual_reply_path(self):
+        from app.services import medication_feature_dur_client as remote_dur
+
+        selected = {"medicine_code": "100", "product_name": "공식허가약정"}
+        verified = {**selected, "ingredient": "공식성분 100mg"}
+        condition = "1~2 mg 사용 시 금지. 65세 이상은 예외 조건을 확인하세요."
+        match = {
+            "type": "병용금기", "reason": condition,
+            "medicine_names_a": ["공식허가약정"],
+            "medicine_names_b": ["두번째약정"],
+        }
+        def response(payload):
+            result = MagicMock()
+            result.json.return_value = payload
+            return result
+
+        for names in (["공식허가약정", "두번째약정"], ["공식허가약정"]):
+            with (
+                self.subTest(names=names),
+                patch.object(gemini_service, "GEMINI_API_KEY", "configured"),
+                patch("google.genai.Client"),
+                patch("app.services.external_api_service.fetch_e_drug_info", return_value=None),
+                patch.object(gemini_service, "_with_official_permission_ingredient", return_value=verified),
+                patch.object(gemini_service, "_generate_content_with_retry",
+                             return_value=SimpleNamespace(parsed={"drug_names": []})),
+                patch.object(remote_dur, "MEDICATION_FEATURE_BASE_URL", "https://med.example"),
+                patch.object(remote_dur.requests, "get", return_value=response({"medicines": [
+                    {"medicine_code": "100", "product_name": "공식허가약정", "status": "active"},
+                    {"medicine_code": "200", "product_name": "두번째약정", "status": "active"},
+                ]})),
+                patch.object(remote_dur.requests, "post", return_value=response({
+                    "assessment_status": "RISK_FOUND", "analysis_complete": False,
+                    "incomplete": True, "incomplete_types": ["병용금기"],
+                    "has_risk": True, "matches": [match], "medicine_names": names,
+                })) as post,
+            ):
+                reply = gemini_service.generate_chat_response(
+                    "같이 먹어도 괜찮나요?", user_id="U1",
+                    selected_medicine=selected, intent="combination",
+                )
+            self.assertEqual(post.call_args.kwargs["json"]["analysis_purpose"], "consultation")
+            self.assertEqual(post.call_args.kwargs["json"]["medicine_codes"], ["100", "200"])
+            self.assertIn(condition, reply)
+            self.assertIn("공식허가약정", reply)
+            self.assertIn("두번째약정", reply)
+            self.assertIn("모두 확인하지 못했어요", reply)
+            self.assertIn("복용 전 의사나 약사와 상담해 주세요", reply)
+            self.assertLess(reply.index(condition), reply.index("모두 확인하지 못했어요"))
+            self.assertNotIn("조합은 확인되지 않았어요", reply)
 
     def test_duplicate_dur_failure_is_not_reported_as_zero_match(self):
         selected = {"medicine_code": "202400001", "product_name": "공식허가약정"}
@@ -1583,17 +2219,37 @@ class ChatContextTest(unittest.TestCase):
         for rule in (
             "핵심 답을 첫 문장에",
             "한 문장에는 한 가지 내용",
+            "일반 질문은 보통 2~3문장",
+            "precautions·side_effects는 가장 중요한 내용부터 핵심 3~4문장",
+            "약 전체 질문은 확인된 약마다 핵심 1문장",
+            "글자 수에 맞춰 문장을 기계적으로 자르지 마세요",
+            "일반적인 인사, 질문과 관련 없는 공식정보, 긴 맺음말",
             "일반 텍스트로만",
             "Markdown 제목(#)",
             "HTML 태그를 쓰지 마세요",
-            "긴 공식 문장을 첫 답변에 그대로 나열하지 마세요",
             "공식 조건·금지·심각한 위험",
             "공식 효능 자료에 확인된 의미 안에서",
             "개인 처방 정보 없이 개인 복용량을 새로 정하지 말고",
             "정상적으로 확인한 0건과 자료 부족·조회 실패·미완료를 혼동하지 마세요",
+            "더 궁금하시면 의사나 약사와 상담해 주세요.",
+            "복용 전 의사나 약사와 상담해 주세요.",
         ):
             self.assertIn(rule, prompt)
         self.assertNotIn("DUR 안내, 다음 안내", prompt)
+
+    def test_prompt_sets_target_length_without_dropping_safety(self):
+        prompt = build_grounded_chat_prompt(
+            message="현재 약마다 주의할 점을 알려주세요.",
+            intents={"precautions"},
+            official_contexts=[
+                {"product_name": "약가정", "cautions": "만 12세 미만은 사용하면 안 됨"},
+                {"product_name": "약나정", "cautions": "1일 2회 조건을 확인해야 함"},
+            ],
+            dur_result={"status": "not_required", "items": []},
+        )
+        self.assertIn("숫자·용량·단위·횟수·기간·연령·금지·예외 조건", prompt)
+        self.assertIn("확인하지 못한 약·검사 범위는 분량 목표보다 우선", prompt)
+        self.assertIn("이를 빼거나 의미를 약하게 만들어", prompt)
 
     def test_plain_chat_reply_removes_only_markup_and_is_idempotent(self):
         raw = (
@@ -1673,8 +2329,50 @@ class ChatContextTest(unittest.TestCase):
         self.assertEqual(generate.call_count, 2)
         retry_prompt = generate.call_args_list[1].kwargs["contents"]
         self.assertIn("처음부터 다시 작성", retry_prompt)
+        self.assertIn("일반 질문은 보통 2~3문장", retry_prompt)
+        self.assertIn("주의사항·부작용은 핵심 3~4문장", retry_prompt)
+        self.assertIn("약 전체는 확인된 약마다 핵심 1문장", retry_prompt)
+        self.assertIn("기계적으로 자르지 마세요", retry_prompt)
         self.assertIn("숫자, 용량, 단위, 횟수, 기간, 연령", retry_prompt)
+        self.assertIn("확인하지 못한 약과 실제 검사 범위", retry_prompt)
         self.assertNotIn("1~2 mg을 사용하지만", retry_prompt)
+        self.assertEqual(
+            generate.call_args_list[0].kwargs["config"]["max_output_tokens"],
+            512,
+        )
+        self.assertEqual(
+            generate.call_args_list[1].kwargs["config"]["max_output_tokens"],
+            1024,
+        )
+
+    def test_max_tokens_retry_can_expand_from_1024_to_2048(self):
+        first = _chat_response(
+            "공식 주의사항을 설명하지만",
+            finish_reason="MAX_TOKENS",
+        )
+        second = _chat_response(
+            "공식 주의사항을 확인했으며, 처방받은 사용 방법을 따라야 해요."
+        )
+        with patch.object(
+            gemini_service,
+            "_generate_content_with_retry",
+            side_effect=[first, second],
+        ) as generate:
+            reply = gemini_service._generate_complete_chat_reply(
+                MagicMock(),
+                prompt="공식 주의사항을 설명하세요.",
+                max_output_tokens=1024,
+            )
+
+        self.assertEqual(reply, second.text)
+        self.assertEqual(
+            generate.call_args_list[0].kwargs["config"]["max_output_tokens"],
+            1024,
+        )
+        self.assertEqual(
+            generate.call_args_list[1].kwargs["config"]["max_output_tokens"],
+            2048,
+        )
 
     def test_second_incomplete_reply_returns_fallback_without_joining(self):
         first = _chat_response("첫 번째 잘린 답변은", finish_reason="MAX_TOKENS")
@@ -1779,7 +2477,7 @@ class ChatContextTest(unittest.TestCase):
         self.assertEqual(generate.call_count, 2)
         self.assertEqual(reply, second.text)
 
-    def test_still_unexplained_retry_uses_safe_fallback(self):
+    def test_still_unexplained_retry_returns_complete_answer(self):
         with patch.object(
             gemini_service,
             "_generate_content_with_retry",
@@ -1793,6 +2491,42 @@ class ChatContextTest(unittest.TestCase):
                 prompt="주의사항을 설명하세요.",
             )
         self.assertEqual(generate.call_count, 2)
+        self.assertEqual(reply, "QT 연장을 확인해야 해요.")
+
+    def test_methotrexate_villus_term_does_not_discard_complete_retry(self):
+        first = _chat_response(
+            "유한메토트렉세이트정은 융모성 질환 치료에 사용하는 약입니다."
+        )
+        second = _chat_response(
+            "유한메토트렉세이트정은 융모성 질환 치료에 사용하는 약이에요. "
+            "치료 중에는 의료진의 검사를 따라야 해요."
+        )
+        with patch.object(
+            gemini_service,
+            "_generate_content_with_retry",
+            side_effect=[first, second],
+        ) as generate:
+            reply = gemini_service._generate_complete_chat_reply(
+                MagicMock(),
+                prompt="공식 효능을 설명하세요.",
+                required_medicine_names=("유한메토트렉세이트정",),
+            )
+        self.assertEqual(generate.call_count, 2)
+        self.assertEqual(reply, second.text)
+
+    def test_jargon_does_not_override_other_retry_safety_failures(self):
+        with patch.object(
+            gemini_service,
+            "_generate_content_with_retry",
+            side_effect=[
+                _chat_response("QT 연장이 나타날 수 있어요."),
+                _chat_response("QT 연장은", finish_reason="MAX_TOKENS"),
+            ],
+        ):
+            reply = gemini_service._generate_complete_chat_reply(
+                MagicMock(),
+                prompt="주의사항을 설명하세요.",
+            )
         self.assertEqual(reply, gemini_service.INCOMPLETE_CHAT_REPLY)
 
     def test_official_names_are_not_rejected_as_unexplained_jargon(self):
@@ -1874,11 +2608,49 @@ class ChatContextTest(unittest.TestCase):
                     "확인되지 않았어요" in zero or "찾지 못했어요" in zero
                 )
                 self.assertNotIn("다시 시도", zero)
+                self.assertNotIn("안전하다고", zero)
+                expected_consultation = (
+                    "더 궁금한 점이 있으면 의사나 약사와 상담해 주세요."
+                    if intent in {"combination", "duplicate"}
+                    else "더 궁금하시면 의사나 약사와 상담해 주세요."
+                )
+                self.assertIn(expected_consultation, zero)
                 for reply in (missing, stale, zero):
                     for jargon in ("DUR", "병용금기", "연령금기", "임부금기", "효능군중복"):
                         self.assertNotIn(jargon, reply)
                     self.assertNotIn("안전합니다", reply)
                     self.assertNotIn("복용해도 됩니다", reply)
+
+    def test_duplicate_incomplete_and_malformed_are_not_described_as_changed(self):
+        incomplete = gemini_service._dur_context_unavailable_reply(
+            {"duplicate"}, "incomplete"
+        )
+        malformed = gemini_service._dur_context_unavailable_reply(
+            {"duplicate"}, "malformed"
+        )
+
+        self.assertIn("끝까지 완료하지 못했어요", incomplete)
+        self.assertIn("결과를 확인하지 못했어요", malformed)
+        self.assertNotIn("복용 중인 약이 바뀌어", incomplete)
+        self.assertNotIn("복용 중인 약이 바뀌어", malformed)
+        self.assertNotIn("겹치는 약이 없다고", malformed)
+
+    def test_all_medicine_combination_failure_avoids_single_medicine_wording(self):
+        all_medicines = gemini_service._dur_context_unavailable_reply(
+            {"combination"},
+            "incomplete",
+            all_medicines=True,
+        )
+        selected_medicine = gemini_service._dur_context_unavailable_reply(
+            {"combination"},
+            "incomplete",
+        )
+
+        self.assertIn("현재 복용약 전체", all_medicines)
+        self.assertIn("복용 전 의사나 약사와 상담해 주세요.", all_medicines)
+        self.assertNotIn("안전하다고 판단할 수 없어요", all_medicines)
+        self.assertNotIn("선택한 약", all_medicines)
+        self.assertIn("선택한 약", selected_medicine)
 
     def test_completed_zero_messages_are_specific_to_checked_type_and_scope(self):
         all_combination = gemini_service._dur_no_match_reply(
@@ -1924,7 +2696,7 @@ class ChatContextTest(unittest.TestCase):
             },
         )
         self.assertIn(
-            "지금 드시는 약 중에 함께 먹으면 안 되는 조합은 확인되지 않았어요.",
+            "확인한 약들 사이에서 함께 먹으면 안 되는 조합은 확인되지 않았어요.",
             all_combination,
         )
         self.assertIn(
@@ -1953,6 +2725,8 @@ class ChatContextTest(unittest.TestCase):
         self.assertNotIn("확인된 나이를 기준으로", age)
         self.assertIn("임신 여부를 확인할 수 없어", pregnancy)
         self.assertNotIn("임신 중 사용하면 안 되는 약은 확인되지 않았어요", pregnancy)
+        self.assertIn("복용 전 의사나 약사와 상담해 주세요.", age)
+        self.assertIn("복용 전 의사나 약사와 상담해 주세요.", pregnancy)
 
     def test_not_pregnant_user_does_not_receive_personal_pregnancy_zero_result(self):
         result = {
@@ -2000,12 +2774,12 @@ class ChatContextTest(unittest.TestCase):
         self.assertIn("식약처 공식정보", general_conversation_reply("무슨 기능이 있어?"))
         self.assertIsNone(general_conversation_reply("이 약 같이 먹어도 돼?"))
 
-    def test_general_rules_bypass_gemini_and_safety_fallback_remains(self):
+    def test_general_rules_and_unselected_safety_question_bypass_gemini(self):
         with patch.object(gemini_service, "GEMINI_API_KEY", None):
             greeting = gemini_service.generate_chat_response("안녕", user_id="U1")
             safety = gemini_service.generate_chat_response("같이 먹어도 돼?", user_id="U1")
         self.assertIn("안녕하세요", greeting)
-        self.assertIn("현재 복용약으로 다시 확인", safety)
+        self.assertEqual(safety, MEDICINE_SELECTION_REQUIRED_REPLY)
         self.assertNotIn("타이레놀", safety)
 
         with (

@@ -51,6 +51,16 @@ class _FakeHeartRepository extends HeartRepository {
 
 /// 붙어 있다고만 말하고 배터리·측정값은 아직 안 준 센서.
 class _StreamingSensor extends HeartSensor {
+  int startCalls = 0;
+  @override
+  Future<void> start({
+    bool measure = true,
+    HeartMeasurementContext measurementContext =
+        HeartMeasurementContext.general,
+  }) async {
+    startCalls++;
+  }
+
   @override
   HeartSensorStatus get status => HeartSensorStatus.streaming;
 }
@@ -183,8 +193,8 @@ void main() {
     await tester.pumpAndSettle();
     // 기록보다 시트가 먼저다. 띠를 차고 계시면 심박수를 잴 기회이기 때문이다.
     expect(find.textContaining('심박 센서를'), findsOneWidget);
-    expect(find.text('차고 있어요 · 재기'), findsOneWidget);
-    expect(find.text('안 차고 있어요 · 복약만 기록'), findsOneWidget);
+    expect(find.text('착용했어요 · 측정'), findsOneWidget);
+    expect(find.text('착용 안 했어요 · 복약만 기록'), findsOneWidget);
     expect(find.text('그만두기'), findsOneWidget);
   });
 
@@ -217,7 +227,7 @@ void main() {
 
     await tester.tap(find.text('먹었어요'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('안 차고 있어요 · 복약만 기록'));
+    await tester.tap(find.text('착용 안 했어요 · 복약만 기록'));
     await tester.pumpAndSettle();
     if (find.text('그래도 먹었어요').evaluate().isNotEmpty) {
       await tester.tap(find.text('그래도 먹었어요'));
@@ -349,14 +359,14 @@ void _easyModeTests() {
     // 1걸음 → 2걸음: 가슴 띠 차는 방법을 먼저 보여 준다.
     await tester.tap(find.text('복약 전 심박 측정'));
     await tester.pumpAndSettle();
-    expect(find.text('차 주세요'), findsOneWidget);
+    expect(find.text('착용해 주세요'), findsOneWidget);
     expect(find.text('2 / 8'), findsOneWidget);
-    expect(find.text('팔꿈치 위에 차요'), findsOneWidget);
+    expect(find.text('팔꿈치 위에 착용해요'), findsOneWidget);
 
     // 첫 걸음의 "안 잴래요"를 고르면 재는 걸음을 건너뛴다.
     await tester.tap(find.text('뒤로'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('안 잴래요'));
+    await tester.tap(find.text('안 할래요'));
     await tester.pumpAndSettle();
     expect(find.text('복약 완료하셨나요?'), findsOneWidget);
     expect(find.text('5 / 8'), findsOneWidget);
@@ -364,7 +374,12 @@ void _easyModeTests() {
     // 심박수를 안 쟀으면 먹은 뒤에 재자고 묻지 않는다.
     await tester.tap(find.text('먹었어요'));
     await tester.pumpAndSettle();
-    expect(find.text('한 번 더 재요'), findsNothing);
+    // 저녁 시간이 한참 지난 때에 돌리면 늦은 복약 시트가 먼저 뜬다.
+    if (find.text('그래도 먹었어요').evaluate().isNotEmpty) {
+      await tester.tap(find.text('그래도 먹었어요'));
+      await tester.pumpAndSettle();
+    }
+    expect(find.text('한 번 더 측정해요'), findsNothing);
     expect(find.text('다 드셨어요'), findsOneWidget);
     expect(find.text('복약 기록'), findsOneWidget);
   });
@@ -466,6 +481,9 @@ void _forbiddenFeatureTests() {
     for (final file in dartFiles()) {
       final path = file.path.replaceAll(r'\', '/');
       if (path.endsWith('core/widgets/senior_feedback.dart')) continue;
+      if (path.endsWith('polar_pharmacist_ui/widgets/senior_feedback.dart')) {
+        continue;
+      }
       final text = file.readAsStringSync();
       expect(
         text.contains('showSnackBar('),
@@ -509,7 +527,7 @@ void _signupTests() {
     await tester.tap(find.text('다음'));
     await tester.pump();
     expect(find.byType(SnackBar), findsOneWidget);
-    expect(find.text('어떤 분인지 골라주세요'), findsOneWidget);
+    expect(find.text('어떤 분이신지 골라주세요'), findsOneWidget);
     // 오류가 떠도 화면은 그대로다 — 다음으로 넘어가지 않는다.
     expect(find.text('어떤 분이신가요?'), findsOneWidget);
   });
@@ -598,11 +616,14 @@ void _signupTests() {
     await tester.tap(find.text('다음'));
     await tester.pumpAndSettle();
 
-    // 4걸음 · 키·몸무게·혈액형.
+    // 4걸음 · 키·몸무게·혈액형. 안 적어도 넘어갈 수 있는 단계라
+    // 아래 단추가 "저장 후 다음"이고 그 아래 "넘어가기"가 붙는다.
     expect(find.text('혈액형'), findsOneWidget);
+    expect(find.text('넘어가기'), findsOneWidget);
     expect(tester.takeException(), isNull);
 
-    await tester.tap(find.text('다음'));
+    // 아무것도 안 적었으면 "넘어가기"로 지나간다.
+    await tester.tap(find.text('넘어가기'));
     await tester.pumpAndSettle();
 
     // 5걸음 · 임신 (여성일 때만 나온다). 네/아니요로 먼저 묻는다.
@@ -670,15 +691,15 @@ void _sensorTests() {
     child: MaterialApp(theme: AppTheme.build(), home: child),
   );
 
-  testWidgets('밖에서 센서를 넣어 주면 화면이 따로 붙지 않는다 (27)', (tester) async {
-    // 넣어 준 센서는 start()를 부르지 않았으므로 idle 그대로다.
-    final sensor = HeartSensor();
+  testWidgets('이미 연결된 공유 센서는 재연결 없이 측정을 시작한다 (27)', (tester) async {
+    final sensor = _StreamingSensor();
     addTearDown(sensor.dispose);
 
     await tester.pumpWidget(wrap(MeasureScreen(sensor: sensor)));
 
-    expect(sensor.status, HeartSensorStatus.idle);
-    expect(find.text('폴라 센서를 찾고 있어요'), findsOneWidget);
+    expect(sensor.status, HeartSensorStatus.streaming);
+    expect(sensor.startCalls, 0);
+    expect(sensor.measurementContext, HeartMeasurementContext.general);
   });
 
   testWidgets('센서가 아직 값을 못 줘도 화면은 그려진다 (27)', (tester) async {
@@ -743,7 +764,7 @@ void _sensorTests() {
     await tester.tap(find.text('다시 불러오기'));
     await tester.pump();
     await tester.pump();
-    expect(find.text('먹기 전'), findsOneWidget);
+    expect(find.text('약 먹기 전'), findsOneWidget);
     expect(find.text('78'), findsOneWidget);
     expect(find.text('72'), findsOneWidget);
   });
@@ -1082,10 +1103,32 @@ void _homeTimelineTests() {
     );
     await tester.pump();
 
-    // 약이 없는 때는 "없음"으로, 드실 차례는 시각까지 적는다.
-    expect(find.text('아침 없음'), findsOneWidget);
+    // 약이 없는 때는 "없음"으로. 몇 시인지는 셋 다 적는다 —
+    // 한 칸에만 적혀 있으면 왜 거기만 적혔는지 알 수 없다.
+    expect(find.text('아침'), findsOneWidget);
+    expect(find.text('없음'), findsOneWidget);
     expect(find.text('점심'), findsOneWidget);
-    expect(find.text('저녁 6:00'), findsOneWidget);
+    final lunchChip = find.byWidgetPredicate(
+      (widget) =>
+          widget is Semantics &&
+          (widget.properties.label ?? '').startsWith('점심 12:00,') &&
+          (widget.properties.label ?? '').contains('눌러서 시간 설정하기'),
+    );
+    expect(
+      find.descendant(of: lunchChip, matching: find.text('12:00')),
+      findsOneWidget,
+    );
+    expect(find.text('저녁'), findsOneWidget);
+    final dinnerChip = find.byWidgetPredicate(
+      (widget) =>
+          widget is Semantics &&
+          (widget.properties.label ?? '').startsWith('저녁 18:00,') &&
+          (widget.properties.label ?? '').contains('눌러서 시간 설정하기'),
+    );
+    expect(
+      find.descendant(of: dinnerChip, matching: find.text('18:00')),
+      findsOneWidget,
+    );
 
     // 약 이름은 홈에 늘어놓지 않는다 — "약 보기"에서 본다.
     expect(find.text('메트포르민'), findsNothing);
@@ -1111,7 +1154,8 @@ void _homeTimelineTests() {
 
     expect(find.textContaining('2번 남았어요'), findsOneWidget);
     expect(find.text('먹었어요'), findsOneWidget);
-    expect(find.text('30분 뒤'), findsOneWidget);
+    // 알림 화면으로 가는 네모 칸. 맞춰 둔 시각만 적는다(자명종 그림이 있다).
+    expect(find.text('08:00'), findsWidgets);
   });
 
   test('접고 펴는 버튼에 화살표 장식을 붙이지 않는다', () {
@@ -1434,10 +1478,20 @@ void _colorTokenTests() {
       // 정의한 파일 자신이 위반으로 잡힌다.
       final path = file.path.replaceAll(r'\', '/');
       if (path.endsWith('core/constants/app_colors.dart')) continue;
+      if (path.endsWith('polar_pharmacist_ui/constants/app_colors.dart')) {
+        continue;
+      }
       // OCR·약 자세히는 합의된 이전 화면 색 토큰을 따로 유지한다.
       if (path.endsWith('core/constants/medicine_flow_colors.dart')) continue;
       if (path.endsWith(
         'features/prescription/presentation/screens/prescription_screen.dart',
+      )) {
+        continue;
+      }
+      // 착용 그림은 화면 색이 아니라 그림 물감이다 — 살색·센서 몸통처럼
+      // 다른 화면과 나눠 쓸 수 없는 색이라 토큰으로 옮기지 않는다.
+      if (path.endsWith(
+        'features/easy_flow/presentation/easy_heart_result.dart',
       )) {
         continue;
       }

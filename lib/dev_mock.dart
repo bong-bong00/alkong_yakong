@@ -27,6 +27,7 @@ import 'features/medicines/application/user_medicines_controller.dart';
 import 'features/medicines/domain/user_medicine_models.dart';
 import 'features/prescription/presentation/screens/prescription_history_screen.dart';
 import 'features/profile/application/current_user_controller.dart';
+import 'features/profile/data/user_repository.dart';
 import 'features/profile/domain/user_profile.dart';
 
 /// 켜면 서버 대신 가짜 데이터로 화면을 채운다.
@@ -197,7 +198,7 @@ List<UserMedicine> _mockMedicines() => [
     highlight: '혈관을 막는 것을 예방',
     uses: const [
       TreatmentUse(title: '심근경색', description: '·뇌경색 재발 예방'),
-      TreatmentUse(title: '혈전', description: '이 걱정되는 경우'),
+      TreatmentUse(title: '혈전', description: '이 생기기 쉬운 분'),
     ],
     conflictWith: '와파린',
     conflictWhy: '두 약 모두 피를 묽게 해서, 같이 드시면 피가 잘 멈추지 않을 수 있어요.',
@@ -239,23 +240,78 @@ class _MockUserMedicines extends UserMedicinesController {
 
 // ── 내 정보 ───────────────────────────────────────────────
 
+/// 어르신 본인.
+UserProfile _patientProfile() => UserProfile(
+  id: 'mock-patient',
+  name: '김복자',
+  role: 'patient',
+  phone: '010-1234-5678',
+  birthDate: DateTime(1958, 4, 3),
+  gender: 'female',
+  heightCm: 156,
+  weightKg: 54,
+  bloodType: 'B형',
+  smoking: '안 폈어요',
+  drinking: '안 마셔요',
+  allergies: const ['페니실린'],
+  diseases: const ['고혈압', '당뇨'],
+);
+
+/// 돌보는 가족.
+UserProfile _guardianProfile() => UserProfile(
+  id: 'mock-guardian',
+  name: '김지안',
+  role: 'guardian',
+  phone: '010-2345-6789',
+  birthDate: DateTime(1988, 7, 21),
+  gender: 'female',
+);
+
+/// 지금 들어와 있는 사람. 가짜 로그인이 정해 준다.
+UserProfile _signedIn = _patientProfile();
+
 class _MockUser extends CurrentUserController {
   @override
-  Future<UserProfile?> build() async => UserProfile(
-    id: 'mock-patient',
-    name: '김복자',
-    role: 'patient',
-    phone: '010-1234-5678',
-    birthDate: DateTime(1958, 4, 3),
-    gender: 'female',
-    heightCm: 156,
-    weightKg: 54,
-    bloodType: 'B형',
-    smoking: 'never',
-    drinking: 'never',
-    allergies: const ['페니실린'],
-    diseases: const ['고혈압', '당뇨'],
-  );
+  Future<UserProfile?> build() async => _signedIn;
+}
+
+/// 서버에 묻지 않는 가짜 로그인.
+///
+/// 보호자 번호(010-2345-6789)로 들어오면 보호자 화면이, 그 밖의 번호면
+/// 어르신 화면이 열린다. 비밀번호는 보지 않는다 — 화면 확인용이다.
+class _MockUserRepository implements UserRepository {
+  @override
+  Future<UserProfile> login({
+    required String phone,
+    required String password,
+  }) async {
+    final digits = phone.replaceAll(RegExp(r'[^0-9]'), '');
+    _signedIn = digits.endsWith('23456789')
+        ? _guardianProfile()
+        : _patientProfile();
+    return _signedIn;
+  }
+
+  @override
+  Future<UserProfile> fetch(String userId) async =>
+      userId == 'mock-guardian' ? _guardianProfile() : _signedIn;
+
+  @override
+  Future<UserProfile> update(
+    String userId,
+    Map<String, dynamic> changes,
+  ) async {
+    return _signedIn;
+  }
+
+  @override
+  Future<UserProfile> signUp(Map<String, dynamic> body) async => _signedIn;
+
+  @override
+  Future<void> delete(String userId) async {}
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
 // ── 기록 ──────────────────────────────────────────────────
@@ -493,6 +549,7 @@ ApiClient _silentApi() => ApiClient(
 List<Override> devMockOverrides({bool force = false}) {
   if (!mockData && !force) return const [];
   return [
+    userRepositoryProvider.overrideWith((ref) => _MockUserRepository()),
     medicationProvider.overrideWith(_MockMedication.new),
     userMedicinesProvider.overrideWith(_MockUserMedicines.new),
     currentUserProvider.overrideWith(_MockUser.new),

@@ -11,6 +11,7 @@ import '../../../../dev_mock.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../core/widgets/senior_card.dart';
 import '../../../../core/widgets/senior_header.dart';
+import '../../../../core/widgets/senior_wheel.dart';
 import '../../../medication/application/medication_controller.dart';
 import '../../../medication/domain/medication_models.dart';
 import '../widgets/day_dose_detail.dart';
@@ -78,6 +79,9 @@ class MonthCalendarScreen extends ConsumerStatefulWidget {
   /// 보호자가 볼 어르신 id. null이면 로그인한 본인의 기록이다.
   final String? patientUserId;
 
+  /// 열자마자 눌려 있을 날. 한 주 칸에서 날짜를 눌러 들어올 때 쓴다.
+  final int? initialDay;
+
   const MonthCalendarScreen({
     super.key,
     this.month,
@@ -86,6 +90,7 @@ class MonthCalendarScreen extends ConsumerStatefulWidget {
     this.leadingBlanks,
     this.missed,
     this.patientUserId,
+    this.initialDay,
   });
 
   @override
@@ -111,6 +116,7 @@ class _MonthCalendarScreenState extends ConsumerState<MonthCalendarScreen> {
     final now = DateTime.now();
     _year = widget.year ?? now.year;
     _month = widget.month ?? now.month;
+    _pickedDay = widget.initialDay;
     _days = widget.days ?? _emptyMonth(_year, _month);
     _leadingBlanks =
         widget.leadingBlanks ?? DateTime(_year, _month, 1).weekday - 1;
@@ -224,9 +230,21 @@ class _MonthCalendarScreenState extends ConsumerState<MonthCalendarScreen> {
     }
   }
 
-  /// 한 달 앞뒤로 옮긴다. 누른 날과 이번 달 기록은 새로 읽는다.
-  void _shiftMonth(int step) {
-    final moved = DateTime(_year, _month + step, 1);
+  /// 굴림판으로 달을 고른다. 몇 달이든 한 번에 건너뛴다.
+  Future<void> _pickMonth() async {
+    final picked = await showSeniorMonthWheel(
+      context: context,
+      initialYear: _year,
+      initialMonth: _month,
+    );
+    if (picked == null || !mounted) return;
+    if (picked.year == _year && picked.month == _month) return;
+    _goToMonth(picked.year, picked.month);
+  }
+
+  /// 그 달로 옮긴다. 누른 날과 그 달 기록은 새로 읽는다.
+  void _goToMonth(int year, int month) {
+    final moved = DateTime(year, month, 1);
     setState(() {
       _year = moved.year;
       _month = moved.month;
@@ -325,41 +343,47 @@ class _MonthCalendarScreenState extends ConsumerState<MonthCalendarScreen> {
                               // 달 이름 한 줄과 앞뒤로 옮기는 두 단추.
                               // 글자를 키운 기기에서는 줄이 접히지 않고
                               // 글자 크기가 줄어든다.
-                              Row(
-                                children: [
-                                  Flexible(
-                                    child: FittedBox(
-                                      fit: BoxFit.scaleDown,
-                                      alignment: Alignment.centerLeft,
-                                      child: Text(
-                                        '$_year년 $_month월',
-                                        maxLines: 1,
-                                        style: AppText.cardTitle(size: 21),
+                              // 달 이름을 누르면 년·월 굴림판이 올라온다.
+                              // 한 칸씩 미는 단추로는 작년 봄까지 열 번을
+                              // 눌러야 한다.
+                              Semantics(
+                                button: true,
+                                label: '$_year년 $_month월, 눌러서 다른 달 보기',
+                                child: ExcludeSemantics(
+                                  child: GestureDetector(
+                                    onTap: _pickMonth,
+                                    behavior: HitTestBehavior.opaque,
+                                    child: Container(
+                                      constraints: const BoxConstraints(
+                                        minHeight: 48,
                                       ),
-                                    ),
-                                  ),
-                                  const SizedBox(width: 10),
-                                  Flexible(
-                                    child: FittedBox(
-                                      fit: BoxFit.scaleDown,
-                                      alignment: Alignment.centerRight,
+                                      alignment: Alignment.centerLeft,
                                       child: Row(
-                                        mainAxisSize: MainAxisSize.min,
                                         children: [
-                                          _MonthStep(
-                                            label: '이전 달',
-                                            onTap: () => _shiftMonth(-1),
+                                          Flexible(
+                                            child: FittedBox(
+                                              fit: BoxFit.scaleDown,
+                                              alignment: Alignment.centerLeft,
+                                              child: Text(
+                                                '$_year년 $_month월',
+                                                maxLines: 1,
+                                                style: AppText.cardTitle(
+                                                  size: 21,
+                                                ),
+                                              ),
+                                            ),
                                           ),
                                           const SizedBox(width: 6),
-                                          _MonthStep(
-                                            label: '다음 달',
-                                            onTap: () => _shiftMonth(1),
+                                          const Icon(
+                                            Icons.expand_more_rounded,
+                                            size: 26,
+                                            color: AppColors.textSecondary,
                                           ),
                                         ],
                                       ),
                                     ),
                                   ),
-                                ],
+                                ),
                               ),
                               const SizedBox(height: 14),
                               Row(
@@ -429,37 +453,6 @@ class _MonthCalendarScreenState extends ConsumerState<MonthCalendarScreen> {
                   ),
           ),
         ],
-      ),
-    );
-  }
-}
-
-/// 달을 앞뒤로 옮기는 작은 단추 (명세서 48의 "이전 달"·"다음 달").
-class _MonthStep extends StatelessWidget {
-  final String label;
-  final VoidCallback onTap;
-
-  const _MonthStep({required this.label, required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    return Semantics(
-      button: true,
-      label: label,
-      child: ExcludeSemantics(
-        child: GestureDetector(
-          onTap: onTap,
-          child: Container(
-            constraints: const BoxConstraints(minHeight: 44),
-            alignment: Alignment.center,
-            padding: const EdgeInsets.symmetric(horizontal: 12),
-            decoration: BoxDecoration(
-              color: AppColors.sunken,
-              borderRadius: BorderRadius.circular(14),
-            ),
-            child: Text(label, style: AppText.label(size: 16)),
-          ),
-        ),
       ),
     );
   }
