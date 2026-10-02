@@ -11,6 +11,7 @@ import '../../biosignal/application/heart_sensor.dart';
 import '../../biosignal/domain/heart_data.dart';
 import '../../biosignal/presentation/screens/measure_screen.dart';
 import '../../medication/application/medication_controller.dart';
+import '../../medicines/domain/display_policy.dart';
 import '../../medication/domain/medication_models.dart';
 import '../../medication/presentation/widgets/dose_guard_sheets.dart';
 import '../../reminder/application/alarm_preferences.dart';
@@ -878,7 +879,10 @@ class _MedicineRow extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text(medicine.displayName, style: AppText.cardTitle(size: 21)),
+              Text(
+                nameWithoutStrength(medicine.displayName),
+                style: AppText.cardTitle(size: 21),
+              ),
               if (look.isNotEmpty) ...[
                 const SizedBox(height: 2),
                 Text(look, style: AppText.body(size: 17)),

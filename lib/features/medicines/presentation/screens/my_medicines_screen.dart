@@ -315,7 +315,10 @@ class _MedicineCard extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  medicine.displayName,
+                  nameWithoutStrength(
+                    medicine.displayName,
+                    strength: medicine.ingredientStrength,
+                  ),
                   style: AppText.cardTitle(size: 21),
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,

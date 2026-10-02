@@ -454,7 +454,10 @@ class _PrescriptionScreenState extends ConsumerState<PrescriptionScreen> {
     final rows = [
       for (final medicine in medicines)
         if (arrived.contains(medicine.medicineCode))
-          {'name': medicine.displayName, 'dose': medicine.amount},
+          {
+            'name': nameWithoutStrength(medicine.displayName),
+            'dose': medicine.amount,
+          },
     ];
     if (rows.isEmpty) return false;
 

@@ -5,6 +5,7 @@ import '../../../../core/theme/app_typography.dart';
 import '../../../../core/widgets/app_logo.dart';
 import '../../../../core/widgets/senior_button.dart';
 import '../../../medication/domain/medication_models.dart';
+import '../../../medicines/domain/display_policy.dart';
 
 /// 5b — 잠금화면 알림.
 ///
@@ -103,7 +104,8 @@ class LockScreenAlert extends StatelessWidget {
                       Padding(
                         padding: const EdgeInsets.only(bottom: 4),
                         child: Text(
-                          '${medicine.displayName} ${medicine.amount}',
+                          '${nameWithoutStrength(medicine.displayName)} '
+                          '${medicine.amount}',
                           style: AppText.label(
                             size: 18.5,
                             color: AppColors.textPrimary,

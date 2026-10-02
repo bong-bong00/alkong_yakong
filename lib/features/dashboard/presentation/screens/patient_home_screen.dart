@@ -32,6 +32,7 @@ import '../../../profile/application/current_user_controller.dart';
 import 'package:go_router/go_router.dart';
 import '../../../medicines/application/family_medicine_inbox.dart';
 import '../../../medicines/application/user_medicines_controller.dart';
+import '../../../medicines/domain/display_policy.dart';
 
 /// 12 / 15 · 오늘 · 홈.
 ///
@@ -297,7 +298,10 @@ class _PatientHomeScreenState extends ConsumerState<PatientHomeScreen> {
     final rows = [
       for (final medicine in medicines)
         if (arrived.contains(medicine.medicineCode))
-          {'name': medicine.displayName, 'dose': medicine.amount},
+          {
+            'name': nameWithoutStrength(medicine.displayName),
+            'dose': medicine.amount,
+          },
     ];
     if (rows.isEmpty) return;
 
