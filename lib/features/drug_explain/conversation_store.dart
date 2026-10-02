@@ -32,4 +32,14 @@ class PharmacistConversationStore {
       throw StateError('Conversation could not be saved');
     }
   }
+
+  Future<void> delete(String userId, String conversationId) async {
+    if (userId.trim().isEmpty || conversationId.trim().isEmpty) return;
+    final records = await load(userId);
+    records.removeWhere((item) => item['id'] == conversationId);
+    final preferences = await SharedPreferences.getInstance();
+    if (!await preferences.setString(_key(userId), jsonEncode(records))) {
+      throw StateError('Conversation could not be deleted');
+    }
+  }
 }

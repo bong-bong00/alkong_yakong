@@ -85,6 +85,136 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  test('delete only removes the selected conversation for its user', () async {
+    final store = PharmacistConversationStore();
+    for (final user in ['A', 'B']) {
+      for (final id in ['1', '2']) {
+        await store.save(user, {
+          'id': id,
+          'updatedAt': '2026-10-02T12:00:00',
+          'messages': [],
+        });
+      }
+    }
+    await store.delete('A', '1');
+    await store.delete('A', 'missing');
+    expect((await PharmacistConversationStore().load('A')).single['id'], '2');
+    expect(await store.load('B'), hasLength(2));
+    await store.delete('A', '2');
+    expect(await store.load('A'), isEmpty);
+  });
+
+  testWidgets(
+    'history delete can be cancelled and persists after confirmation',
+    (tester) async {
+      final store = PharmacistConversationStore();
+      await store.save('history-user', {
+        'id': 'delete-test',
+        'title': '삭제할 대화',
+        'updatedAt': '2026-10-02T12:00:00',
+        'messages': [
+          {'isMe': true, 'text': '이 약의 주의사항은?'},
+        ],
+      });
+      final api = ApiClient(
+        client: MockClient(
+          (_) async => http.Response(
+            jsonEncode({'medicines': []}),
+            200,
+            headers: {'content-type': 'application/json; charset=utf-8'},
+          ),
+        ),
+      );
+      await tester.pumpWidget(
+        MaterialApp(
+          home: DrugExplainScreen(apiClient: api, medicationApiClient: api),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('이전 대화'));
+      await tester.pumpAndSettle();
+      final delete = find.byKey(
+        const ValueKey('delete-conversation-delete-test'),
+      );
+      await tester.tap(delete);
+      await tester.pumpAndSettle();
+      expect(find.text('이 대화를 삭제할까요?'), findsOneWidget);
+      await tester.tap(find.text('취소'));
+      await tester.pumpAndSettle();
+      expect(await store.load('history-user'), hasLength(1));
+      expect(find.text('삭제할 대화'), findsOneWidget);
+      await tester.tap(delete);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('삭제'));
+      await tester.pumpAndSettle();
+      expect(find.text('아직 저장된 대화가 없어요.'), findsOneWidget);
+      expect(await PharmacistConversationStore().load('history-user'), isEmpty);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets('deleting the active conversation starts a fresh history', (
+    tester,
+  ) async {
+    final store = PharmacistConversationStore();
+    await store.save('history-user', {
+      'id': 'active',
+      'title': '현재 대화',
+      'updatedAt': '2026-10-02T12:00:00',
+      'selected': [],
+      'temporary': [],
+      'messages': [
+        {'isMe': true, 'text': '이전 질문', 'createdAt': '2026-10-02T12:00:00'},
+        {'isMe': false, 'text': '이전 답변', 'createdAt': '2026-10-02T12:00:01'},
+      ],
+    });
+    Map<String, dynamic>? sent;
+    final api = ApiClient(
+      client: MockClient((request) async {
+        if (request.method == 'POST') {
+          sent = jsonDecode(request.body) as Map<String, dynamic>;
+        }
+        return http.Response(
+          jsonEncode(
+            request.method == 'POST' ? {'reply': '새 답변'} : {'medicines': []},
+          ),
+          200,
+          headers: {'content-type': 'application/json; charset=utf-8'},
+        );
+      }),
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        home: DrugExplainScreen(apiClient: api, medicationApiClient: api),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('이전 대화'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('현재 대화'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('이어서 대화하기'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('이전 대화'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('delete-conversation-active')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('삭제'));
+    await tester.pumpAndSettle();
+    tester.state<NavigatorState>(find.byType(Navigator)).pop();
+    await tester.pumpAndSettle();
+    expect(find.text('이전 질문'), findsNothing);
+    await tester.enterText(find.byType(TextField).last, '새 약의 주의사항은?');
+    await tester.testTextInput.receiveAction(TextInputAction.send);
+    await tester.pumpAndSettle();
+    expect(sent!['recent_history'], isEmpty);
+    final records = await store.load('history-user');
+    expect(records, hasLength(1));
+    expect(records.single['id'], isNot('active'));
+    expect(records.single['messages'], hasLength(2));
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('save, reopen, preview sources and continue with history', (
     tester,
   ) async {

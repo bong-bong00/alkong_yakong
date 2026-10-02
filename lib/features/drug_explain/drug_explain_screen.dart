@@ -135,7 +135,20 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
       final conversation = await Navigator.of(context)
           .push<Map<String, dynamic>>(
             MaterialPageRoute(
-              builder: (_) => _PreviousConversationsScreen(records: records),
+              builder: (_) => _PreviousConversationsScreen(
+                records: records,
+                userId: _conversationUserId,
+                onDeleted: (id) {
+                  if (!mounted || id != _conversationId) return;
+                  setState(() {
+                    _conversationId = null;
+                    _conversationStart = 0;
+                    _messages.clear();
+                    _pendingGeneralQuestion = null;
+                    _chatController.clear();
+                  });
+                },
+              ),
             ),
           );
       if (!mounted || conversation == null) return;
@@ -1525,9 +1538,61 @@ String _conversationDate(dynamic value) {
   return '${date.year}.${two(date.month)}.${two(date.day)} ${two(date.hour)}:${two(date.minute)}';
 }
 
-class _PreviousConversationsScreen extends StatelessWidget {
+class _PreviousConversationsScreen extends StatefulWidget {
   final List<Map<String, dynamic>> records;
-  const _PreviousConversationsScreen({required this.records});
+  final String userId;
+  final ValueChanged<String> onDeleted;
+  const _PreviousConversationsScreen({
+    required this.records,
+    required this.userId,
+    required this.onDeleted,
+  });
+
+  @override
+  State<_PreviousConversationsScreen> createState() =>
+      _PreviousConversationsScreenState();
+}
+
+class _PreviousConversationsScreenState
+    extends State<_PreviousConversationsScreen> {
+  late final records = List<Map<String, dynamic>>.of(widget.records);
+  bool _deleting = false;
+
+  Future<void> _deleteConversation(Map<String, dynamic> record) async {
+    if (_deleting) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('이 대화를 삭제할까요?'),
+        content: const Text('삭제한 대화는 다시 불러올 수 없어요.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('취소'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('삭제'),
+          ),
+        ],
+      ),
+    );
+    if (!mounted || confirmed != true) return;
+    setState(() => _deleting = true);
+    try {
+      final id = record['id'] as String;
+      await PharmacistConversationStore().delete(widget.userId, id);
+      if (!mounted) return;
+      setState(() => records.removeWhere((item) => item['id'] == id));
+      widget.onDeleted(id);
+    } catch (_) {
+      if (mounted) {
+        showSeniorSnackbar(context, '대화를 삭제하지 못했어요. 다시 시도해 주세요.', error: true);
+      }
+    } finally {
+      if (mounted) setState(() => _deleting = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) => Scaffold(
@@ -1556,6 +1621,7 @@ class _PreviousConversationsScreen extends StatelessWidget {
                       );
                       return SeniorCard(
                         onTap: () async {
+                          if (_deleting) return;
                           final resume = await Navigator.of(context).push<bool>(
                             MaterialPageRoute(
                               builder: (_) =>
@@ -1569,11 +1635,27 @@ class _PreviousConversationsScreen extends StatelessWidget {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(
-                              record['title'] as String,
-                              style: AppText.cardTitle(size: 21),
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: Text(
+                                    record['title'] as String,
+                                    style: AppText.cardTitle(size: 21),
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                                IconButton(
+                                  key: ValueKey(
+                                    'delete-conversation-${record['id']}',
+                                  ),
+                                  tooltip: '이 대화 삭제',
+                                  onPressed: _deleting
+                                      ? null
+                                      : () => _deleteConversation(record),
+                                  icon: const Icon(Icons.delete_outline),
+                                ),
+                              ],
                             ),
                             const SizedBox(height: 8),
                             Text(
