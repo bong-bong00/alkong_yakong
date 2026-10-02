@@ -93,7 +93,7 @@ void showSeniorSnackbar(
   );
 }
 
-/// 세그먼트 컨트롤 — 이번 주 / 한 달, 일반 / 쉬운 화면.
+/// 세그먼트 컨트롤 — 이번 주 / 한 달, 일반 / 간편 화면.
 class SeniorSegmented extends StatelessWidget {
   final List<String> labels;
   final int index;

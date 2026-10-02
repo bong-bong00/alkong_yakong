@@ -206,10 +206,10 @@ class _EasyFlowShellState extends ConsumerState<EasyFlowShell> {
   }
 }
 
-/// 쉬운 화면 맨 위 — 메뉴와 일반 화면으로 나가는 길.
+/// 간편 화면 맨 위 — 메뉴와 일반 화면으로 나가는 길.
 ///
 /// 걸음 막대는 여기서 그리지 않는다. 명세서는 복약 한 바퀴(76~84)에서만
-/// 여덟 칸 막대를 두고, 나머지 쉬운 화면(85~90)에는 두지 않는다.
+/// 여덟 칸 막대를 두고, 나머지 간편 화면(85~90)에는 두지 않는다.
 class _EasyFlowTop extends StatelessWidget {
   final VoidCallback onMenu;
   final VoidCallback onLeave;

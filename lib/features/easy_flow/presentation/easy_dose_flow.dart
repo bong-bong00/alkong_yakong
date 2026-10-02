@@ -16,7 +16,7 @@ import '../../medication/presentation/widgets/dose_guard_sheets.dart';
 import '../../reminder/application/alarm_preferences.dart';
 import 'easy_heart_result.dart';
 
-/// 쉬운 화면의 복약 한 바퀴 (명세서 76~85).
+/// 간편 화면의 복약 한 바퀴 (명세서 76~85).
 ///
 /// 여덟 걸음을 한 걸음에 하나씩만 보여 준다.
 /// 1 약 드실 시간 · 2 가슴 띠 차기 · 3 먹기 전 재는 중 · 4 잘 쟀어요

@@ -3,6 +3,7 @@ import 'package:alkong_yakong/core/theme/app_theme.dart';
 import 'package:alkong_yakong/features/auth/presentation/screens/login_screen.dart';
 import 'package:alkong_yakong/features/auth/domain/exclusive_choice.dart';
 import 'package:alkong_yakong/features/medicines/presentation/screens/my_medicines_screen.dart';
+import 'package:alkong_yakong/features/biosignal/application/heart_device.dart';
 import 'package:alkong_yakong/features/biosignal/application/heart_sensor.dart';
 import 'package:alkong_yakong/features/biosignal/domain/heart_data.dart';
 import 'package:alkong_yakong/features/biosignal/presentation/screens/measure_screen.dart';
@@ -63,6 +64,12 @@ class _StreamingSensor extends HeartSensor {
 
   @override
   HeartSensorStatus get status => HeartSensorStatus.streaming;
+}
+
+/// 늘 "기기를 쓴다"고 답하는 컨트롤러. build를 덮어 저장소를 읽지 않는다.
+class _PairedHeartDevice extends HeartDeviceController {
+  @override
+  bool build() => true;
 }
 
 /// 테스트에서만 쓰는 채워진 기록. 앱 코드에는 이런 값을 두지 않는다.
@@ -180,7 +187,36 @@ void main() {
     }
   });
 
-  testWidgets('먹었어요는 바로 기록하지 않고 센서 착용부터 묻는다 (13)', (tester) async {
+  testWidgets('기기가 없으면 먹었어요가 묻지 않고 바로 기록한다 (13)', (tester) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+
+    var done = 0;
+    var measured = 0;
+    await tester.pumpWidget(
+      wrap(
+        PatientHomeScreen(onDone: (_) => done++, onMeasure: (_) => measured++),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.text('먹었어요'), findsOneWidget);
+    await tester.tap(find.text('먹었어요'));
+    await tester.pumpAndSettle();
+    if (find.text('그래도 먹었어요').evaluate().isNotEmpty) {
+      await tester.tap(find.text('그래도 먹었어요'));
+      await tester.pumpAndSettle();
+    }
+
+    // 센서를 차고 계신지 묻지 않는다. 기기를 안 쓰는 분에게는 물을 까닭이
+    // 없고, 쓰는 분인지는 앱이 이미 안다.
+    expect(find.textContaining('심박 센서를'), findsNothing);
+    expect(done, 1);
+    expect(measured, 0);
+  });
+
+  testWidgets('기기가 없으면 심박수 걸음을 아예 보여주지 않는다 (13)', (tester) async {
     tester.view.physicalSize = const Size(390, 844);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.reset);
@@ -188,53 +224,54 @@ void main() {
     await tester.pumpWidget(wrap(const PatientHomeScreen()));
     await tester.pump();
 
-    expect(find.text('먹었어요'), findsOneWidget);
-    await tester.tap(find.text('먹었어요'));
-    await tester.pumpAndSettle();
-    // 기록보다 시트가 먼저다. 띠를 차고 계시면 심박수를 잴 기회이기 때문이다.
-    expect(find.textContaining('심박 센서를'), findsOneWidget);
-    expect(find.text('착용했어요 · 측정'), findsOneWidget);
-    expect(find.text('착용 안 했어요 · 복약만 기록'), findsOneWidget);
-    expect(find.text('그만두기'), findsOneWidget);
+    expect(find.text('심박수 재기'), findsNothing);
+    expect(find.text('먹기 전 재기'), findsNothing);
   });
 
-  testWidgets('그만두기를 고르면 아무것도 기록되지 않는다 (13)', (tester) async {
+  testWidgets('기기를 쓰면 먹기 전 심박수부터 재게 한다 (13)', (tester) async {
     tester.view.physicalSize = const Size(390, 844);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.reset);
 
     var done = 0;
-    await tester.pumpWidget(wrap(PatientHomeScreen(onDone: (_) => done++)));
+    var before = 0;
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          medicationProvider.overrideWith(_SeniorTestMedicationController.new),
+          heartDevicePairedProvider.overrideWith(_PairedHeartDevice.new),
+        ],
+        child: MaterialApp(
+          theme: AppTheme.build(),
+          home: MediaQuery(
+            data: const MediaQueryData(disableAnimations: true),
+            child: Scaffold(
+              body: PatientHomeScreen(
+                onDone: (_) => done++,
+                onMeasureBefore: (_) async {
+                  before++;
+                  return 78;
+                },
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
     await tester.pump();
 
-    await tester.tap(find.text('먹었어요'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('그만두기'));
+    // 큰 단추가 기록이 아니라 재기를 먼저 말한다.
+    expect(find.text('심박수 재기'), findsOneWidget);
+    expect(find.text('약 먹기 전에'), findsOneWidget);
+
+    await tester.tap(find.text('심박수 재기'));
     await tester.pumpAndSettle();
 
+    expect(before, 1);
     expect(done, 0);
-    expect(find.text('먹었어요'), findsOneWidget);
-  });
-
-  testWidgets('복약만 기록을 고르면 완료로 넘어간다 (14)', (tester) async {
-    tester.view.physicalSize = const Size(390, 844);
-    tester.view.devicePixelRatio = 1.0;
-    addTearDown(tester.view.reset);
-
-    var done = 0;
-    await tester.pumpWidget(wrap(PatientHomeScreen(onDone: (_) => done++)));
-    await tester.pump();
-
-    await tester.tap(find.text('먹었어요'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('착용 안 했어요 · 복약만 기록'));
-    await tester.pumpAndSettle();
-    if (find.text('그래도 먹었어요').evaluate().isNotEmpty) {
-      await tester.tap(find.text('그래도 먹었어요'));
-      await tester.pumpAndSettle();
-    }
-
-    expect(done, 1);
+    // 재고 나면 같은 단추가 약 기록으로 바뀐다.
+    expect(find.text('심박수 재기'), findsNothing);
+    expect(find.text('먹었어요'), findsWidgets);
   });
 
   testWidgets('완료 화면의 되돌리기는 시간 제한 없이 있다 (14)', (tester) async {
@@ -331,7 +368,7 @@ void _easyModeTests() {
     expect(find.text('복약 전 심박 측정'), findsOneWidget);
     // 아바타 자리가 메뉴 버튼으로 바뀐다.
     expect(find.text('메뉴'), findsOneWidget);
-    // 시안대로 나가는 길을 이름으로 적는다. 지금이 쉬운 화면이라는 것은
+    // 시안대로 나가는 길을 이름으로 적는다. 지금이 간편 화면이라는 것은
     // 걸음 표시와 이 단추가 함께 말한다.
     expect(find.text('일반 화면으로'), findsOneWidget);
     expect(find.text('1 / 8'), findsOneWidget);
@@ -1454,10 +1491,10 @@ void _screenCopyTests() {
       'lib/features/profile/presentation/screens/mypage_screen.dart',
     ).readAsStringSync();
     expect(source.contains("Text('화면 모드'"), isFalse);
-    expect(source.contains("labels: const ['일반', '쉬운 화면']"), isFalse);
+    expect(source.contains("labels: const ['일반', '간편 화면']"), isFalse);
   });
 
-  test('쉬운 화면으로 가는 길은 홈 헤더에 남아 있다', () {
+  test('간편 화면으로 가는 길은 홈 헤더에 남아 있다', () {
     final source = File(
       'lib/features/dashboard/presentation/screens/patient_home_screen.dart',
     ).readAsStringSync();

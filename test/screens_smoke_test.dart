@@ -169,7 +169,7 @@ void main() {
     '약 넣기 방법 고르기 (07)': () => AddMedicineScreen(onPick: (_) {}),
     '손으로 적기 (10)': () => const ManualMedicineScreen(),
     '내 약 목록 (20)': () => const MyMedicinesScreen(),
-    // 쉬운 화면 복약 한 바퀴의 첫 걸음 (명세서 76).
+    // 간편 화면 복약 한 바퀴의 첫 걸음 (명세서 76).
     '쉬운 · 약 드실 시간 (76)': () => const EasyDoseFlow(),
     '약 설명 (21)': () => const DrugDetailScreen(medicineCode: '200701021'),
     'AI 약사 상담 (22)': () => const PharmacistChatScreen(),

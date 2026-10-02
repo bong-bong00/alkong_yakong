@@ -73,6 +73,18 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               }
               context.push('/medicines/$code');
             },
+            // 기기를 쓰는 분은 약을 들기 전에 먼저 잰다.
+            onMeasureBefore: (_) async {
+              final bpm = await Navigator.of(context).push<Object?>(
+                MaterialPageRoute(
+                  builder: (_) => const MeasureScreen(
+                    returnToPreviousScreen: true,
+                    beforeDose: true,
+                  ),
+                ),
+              );
+              return bpm is int ? bpm : null;
+            },
             onMeasure: (_) => Navigator.of(context).push(
               MaterialPageRoute(
                 builder: (_) => const MeasureScreen(

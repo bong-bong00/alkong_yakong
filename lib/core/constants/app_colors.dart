@@ -162,10 +162,10 @@ abstract final class AppColors {
   /// 카메라 화면의 어두운 칩·버튼.
   static const Color camChip = Color(0xFF2A2A31);
 
-  /// 쉬운 화면 하단 바의 "뒤로" 버튼 (명세서 86~90).
+  /// 간편 화면 하단 바의 "뒤로" 버튼 (명세서 86~90).
   static const Color darkButton = Color(0xFF2E2F37);
 
-  /// 쉬운 화면 걸음 표시의 아직 안 온 칸 (명세서 76~84).
+  /// 간편 화면 걸음 표시의 아직 안 온 칸 (명세서 76~84).
   static const Color stepTrack = Color(0xFFD5D8E4);
 
   /// 처방전 촬영 배경.

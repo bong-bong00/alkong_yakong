@@ -35,6 +35,10 @@ class SavedScreen extends StatelessWidget {
   /// 심박수 관리 화면에서 시작한 측정이면, 그 화면으로만 돌아간다.
   /// 다른 진입 경로는 기존의 최상위 경로 복귀 동작을 유지한다.
   final bool returnToPreviousScreen;
+
+  /// 약을 들기 전에 잰 것인지. 그렇다면 확인 단추가 다음 할 일
+  /// ("이제 약 먹으러 가기")을 말한다.
+  final bool beforeDose;
   final bool returnToCaller;
   final Future<void> Function()? onConfirmed;
 
@@ -48,6 +52,7 @@ class SavedScreen extends StatelessWidget {
     this.measurementContext = HeartMeasurementContext.general,
     this.onOpenRecord,
     this.returnToPreviousScreen = false,
+    this.beforeDose = false,
     this.returnToCaller = false,
     this.onConfirmed,
   });
@@ -146,7 +151,7 @@ class SavedScreen extends StatelessWidget {
                   ),
                   const SizedBox(height: 20),
                   SeniorButton(
-                    label: '확인했어요',
+                    label: beforeDose ? '이제 약 먹으러 가기' : '확인했어요',
                     minHeight: 74,
                     fontSize: 24,
                     onPressed: () => _confirm(context),

@@ -18,7 +18,7 @@ class ModeBadge extends ConsumerWidget {
     final easy = ref.watch(appModeProvider).isEasy;
     return Semantics(
       button: true,
-      label: easy ? '쉬운 화면. 누르면 일반 화면으로 바뀝니다' : '일반 화면. 누르면 쉬운 화면으로 바뀝니다',
+      label: easy ? '간편 화면. 누르면 일반 화면으로 바뀝니다' : '일반 화면. 누르면 간편 화면으로 바뀝니다',
       child: GestureDetector(
         onTap: () => ref.read(appModeProvider.notifier).toggle(),
         child: Container(
@@ -43,7 +43,7 @@ class ModeBadge extends ConsumerWidget {
               // 배지가 헤더를 밀어내면 날짜와 이름이 잘린다.
               Flexible(
                 child: Text(
-                  easy ? '일반 화면으로' : '쉬운 화면으로',
+                  easy ? '일반 화면으로' : '간편 화면으로',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: AppText.cardTitle(size: 17),
