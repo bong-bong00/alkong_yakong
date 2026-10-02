@@ -787,7 +787,7 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
 
       big(
         _StepDef(
-          title: '가족을 보호자로\n등록할까요?',
+          title: '가족을 보호자로\n설정할까요?',
           subtitle: '약을 놓치시거나 심박수가 빠를 때 그 가족에게 알려드려요.',
           validate: () => _guardianAnswer == null ? '해당하는 것을 골라주세요' : null,
           child: Column(
@@ -1025,17 +1025,36 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
                       ),
                       const SizedBox(height: 6),
                     ],
-                    Text(cur.title, style: AppText.screenTitle(size: 27)),
-                    if (cur.subtitle != null) ...[
-                      const SizedBox(height: 8),
-                      Text(
-                        cur.subtitle!,
-                        style: AppText.body(
-                          size: 18,
-                          color: AppColors.textTertiary,
+                    // 곁말은 제목 아래로 내리지 않고 오른쪽 끝에 한 줄로
+                    // 붙인다. 아래로 쌓으면 질문과 곁말이 같은 무게로 읽힌다.
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        Expanded(
+                          child: Text(
+                            cur.title,
+                            style: AppText.screenTitle(size: 27),
+                          ),
                         ),
-                      ),
-                    ],
+                        if (cur.subtitle != null) ...[
+                          const SizedBox(width: 10),
+                          Flexible(
+                            child: FittedBox(
+                              fit: BoxFit.scaleDown,
+                              alignment: Alignment.bottomRight,
+                              child: Text(
+                                cur.subtitle!,
+                                maxLines: 1,
+                                style: AppText.body(
+                                  size: 17,
+                                  color: AppColors.textTertiary,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
                     const SizedBox(height: 20),
                     cur.child,
                   ],
@@ -1061,7 +1080,7 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
                             flex: 2,
                             child: SeniorButton(
                               label: '넘어가기',
-                              kind: SeniorButtonKind.card,
+                              kind: SeniorButtonKind.secondary,
                               minHeight: 74,
                               fontSize: 20,
                               onPressed: _isSubmitting
@@ -1699,18 +1718,33 @@ class _AddOwnSheetState extends State<_AddOwnSheet> {
         onSubmitted: (_) => _submit(),
       ),
       actions: [
-        SeniorButton(
-          label: '넣기',
-          minHeight: 66,
-          fontSize: 22,
-          onPressed: _submit,
-        ),
-        SeniorButton(
-          label: '그만두기',
-          kind: SeniorButtonKind.secondary,
-          minHeight: 62,
-          fontSize: 21,
-          onPressed: () => Navigator.of(context).pop(),
+        // 그만두는 쪽을 작게 왼쪽에, 넣는 쪽을 크게 오른쪽에 둔다.
+        IntrinsicHeight(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Expanded(
+                flex: 2,
+                child: SeniorButton(
+                  label: '그만두기',
+                  kind: SeniorButtonKind.secondary,
+                  minHeight: 66,
+                  fontSize: 20,
+                  onPressed: () => Navigator.of(context).pop(),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                flex: 3,
+                child: SeniorButton(
+                  label: '넣기',
+                  minHeight: 66,
+                  fontSize: 22,
+                  onPressed: _submit,
+                ),
+              ),
+            ],
+          ),
         ),
       ],
     );
