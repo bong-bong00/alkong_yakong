@@ -405,6 +405,10 @@ class _PatientHomeScreenState extends ConsumerState<PatientHomeScreen> {
         : today.doses.where((dose) => dose.slot == pickedSlot).firstOrNull;
     // 고른 때를 이미 드셨으면 단추는 되돌리기가 된다.
     final pickedTaken = pickedDose?.taken ?? true;
+    // 센서를 쓸 때는 위에 걸음 칸이 하나 더 붙는다. 동그라미가 줄어들지
+    // 않게 위아래 여백을 거둔다.
+    final tight = usesDevice && (!pickedTaken || afterSlot != null);
+    final gap = tight ? 10.0 : 20.0;
 
     return Container(
       color: AppColors.pageBg,
@@ -517,7 +521,7 @@ class _PatientHomeScreenState extends ConsumerState<PatientHomeScreen> {
                               )
                             : const SizedBox(width: double.infinity),
                       ),
-                      const SizedBox(height: 20),
+                      SizedBox(height: gap),
                       // 남는 세로 자리를 그대로 받아 그 안에 맞춘다.
                       _Fill(
                         scrolls: scrolls,
@@ -554,7 +558,7 @@ class _PatientHomeScreenState extends ConsumerState<PatientHomeScreen> {
                         ),
                       ),
                       // 위아래 여백을 같게 둔다. 두 칸 정가운데에 단추가 온다.
-                      const SizedBox(height: 20),
+                      SizedBox(height: gap),
                       _HomeTiles(
                         alarmLabel: _nextAlarmLabel(
                           ref.watch(alarmPreferencesProvider),
@@ -969,6 +973,16 @@ class _BigDoseButtonState extends State<_BigDoseButton>
     super.dispose();
   }
 
+  /// 받은 자리보다 조금 크게 그린다. 높이가 끝없는 자리(글씨를 키워
+  /// 스크롤로 넘기는 때)에서는 그냥 두고 그린다.
+  Widget _room(bool bounded, double height, Widget child) => bounded
+      ? OverflowBox(
+          maxHeight: height,
+          alignment: Alignment.center,
+          child: child,
+        )
+      : child;
+
   @override
   Widget build(BuildContext context) {
     final measuring =
@@ -1009,9 +1023,13 @@ class _BigDoseButtonState extends State<_BigDoseButton>
           // 동그라미가 벽에 낀 것처럼 답답해 보인다.
           // 건너뛰는 줄이 붙으면 그만큼 동그라미 자리가 줄어든다.
           final skipRoom = widget.measureAfter ? 56.0 : 0.0;
+          // 걸음 칸이 붙어 자리가 좁을 때는 받은 자리보다 조금 더 크게
+          // 잡는다. 넣는 동그라미는 그 안에 있고, 말가의 연한 테만
+          // 위아래 칸에 살짝 걸친다.
+          final stretch = widget.compact ? 36.0 : 0.0;
           final room = math.min(
             (box.maxWidth.isFinite ? box.maxWidth : 320) - 56,
-            (box.maxHeight.isFinite ? box.maxHeight : 320) - skipRoom,
+            (box.maxHeight.isFinite ? box.maxHeight : 320) + stretch - skipRoom,
           );
           // 걸음 표시가 위에 붙으면 자리가 좁다. 그때는 한 치수 줄인다.
           // 읽힐 크기(180) 아래로는 줄이지 않으되, 받은 자리가 그보다
@@ -1033,96 +1051,100 @@ class _BigDoseButtonState extends State<_BigDoseButton>
           // 위 칸과 아래 칸 사이 정가운데에 둔다.
           return Align(
             alignment: Alignment.center,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Semantics(
-                  button: true,
-                  label: label,
-                  child: GestureDetector(
-                    onTap: widget.measureAfter
-                        ? widget.onMeasureAfter
-                        : widget.done
-                        ? widget.onUndo
-                        : widget.measureFirst
-                        ? widget.onMeasure
-                        : widget.onTake,
-                    child: ExcludeSemantics(
-                      child: SizedBox(
-                        width: outer,
-                        height: outer,
-                        child: Stack(
-                          alignment: Alignment.center,
-                          // 테가 받은 자리 밖으로 조금 나가도 자르지 않는다.
-                          clipBehavior: Clip.none,
-                          children: [
-                            OverflowBox(
-                              maxWidth: halo,
-                              maxHeight: halo,
-                              child: AnimatedBuilder(
-                                animation: _pulse,
-                                builder: (context, child) => Transform.scale(
-                                  scale: beating ? _pulse.value : 1.0,
-                                  child: child,
-                                ),
-                                child: Container(
-                                  width: halo,
-                                  height: halo,
-                                  decoration: const BoxDecoration(
-                                    color: AppColors.pointHalo,
-                                    shape: BoxShape.circle,
+            child: _room(
+              box.maxHeight.isFinite,
+              outer + skipRoom,
+              Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Semantics(
+                    button: true,
+                    label: label,
+                    child: GestureDetector(
+                      onTap: widget.measureAfter
+                          ? widget.onMeasureAfter
+                          : widget.done
+                          ? widget.onUndo
+                          : widget.measureFirst
+                          ? widget.onMeasure
+                          : widget.onTake,
+                      child: ExcludeSemantics(
+                        child: SizedBox(
+                          width: outer,
+                          height: outer,
+                          child: Stack(
+                            alignment: Alignment.center,
+                            // 테가 받은 자리 밖으로 조금 나가도 자르지 않는다.
+                            clipBehavior: Clip.none,
+                            children: [
+                              OverflowBox(
+                                maxWidth: halo,
+                                maxHeight: halo,
+                                child: AnimatedBuilder(
+                                  animation: _pulse,
+                                  builder: (context, child) => Transform.scale(
+                                    scale: beating ? _pulse.value : 1.0,
+                                    child: child,
+                                  ),
+                                  child: Container(
+                                    width: halo,
+                                    height: halo,
+                                    decoration: const BoxDecoration(
+                                      color: AppColors.pointHalo,
+                                      shape: BoxShape.circle,
+                                    ),
                                   ),
                                 ),
                               ),
-                            ),
-                            Container(
-                              width: size,
-                              height: size,
-                              alignment: Alignment.center,
-                              decoration: BoxDecoration(
-                                color: fill,
-                                shape: BoxShape.circle,
-                              ),
-                              // 동그라미 안에 드는 네모는 지름의 0.7배다. 글씨를
-                              // 키운 기기에서도 그 안에서 줄여 담아 넘치지 않게 한다.
-                              child: SizedBox(
-                                width: size * 0.72,
-                                height: size * 0.72,
-                                child: FittedBox(
-                                  fit: BoxFit.scaleDown,
-                                  child: Column(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      // 재기 때는 그림을 두지 않는다 — 글자 두 줄이
-                                      // 이미 무엇을 하는지 말한다.
-                                      if (!measuring) ...[
-                                        Icon(
-                                          widget.done
-                                              ? TablerIcons.arrow_back_up
-                                              : TablerIcons.check,
-                                          size: iconSize,
-                                          color: ink,
-                                        ),
-                                        const SizedBox(height: 2),
+                              Container(
+                                width: size,
+                                height: size,
+                                alignment: Alignment.center,
+                                decoration: BoxDecoration(
+                                  color: fill,
+                                  shape: BoxShape.circle,
+                                ),
+                                // 동그라미 안에 드는 네모는 지름의 0.7배다. 글씨를
+                                // 키운 기기에서도 그 안에서 줄여 담아 넘치지 않게 한다.
+                                child: SizedBox(
+                                  width: size * 0.72,
+                                  height: size * 0.72,
+                                  child: FittedBox(
+                                    fit: BoxFit.scaleDown,
+                                    child: Column(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        // 재기 때는 그림을 두지 않는다 — 글자 두 줄이
+                                        // 이미 무엇을 하는지 말한다.
+                                        if (!measuring) ...[
+                                          Icon(
+                                            widget.done
+                                                ? TablerIcons.arrow_back_up
+                                                : TablerIcons.check,
+                                            size: iconSize,
+                                            color: ink,
+                                          ),
+                                          const SizedBox(height: 2),
+                                        ],
+                                        for (final line in lines)
+                                          Text(line, style: labelStyle),
                                       ],
-                                      for (final line in lines)
-                                        Text(line, style: labelStyle),
-                                    ],
+                                    ),
                                   ),
                                 ),
                               ),
-                            ),
-                          ],
+                            ],
+                          ),
                         ),
                       ),
                     ),
                   ),
-                ),
-                if (widget.measureAfter && widget.onSkipMeasure != null) ...[
-                  const SizedBox(height: 10),
-                  _SkipMeasure(onTap: widget.onSkipMeasure!),
+                  if (widget.measureAfter && widget.onSkipMeasure != null) ...[
+                    const SizedBox(height: 10),
+                    _SkipMeasure(onTap: widget.onSkipMeasure!),
+                  ],
                 ],
-              ],
+              ),
             ),
           );
         },

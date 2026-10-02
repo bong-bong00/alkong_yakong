@@ -30,7 +30,14 @@ class MyPageScreen extends ConsumerStatefulWidget {
   /// 보호자 화면에서 열렸는지. 문구만 달라지고 색은 같다.
   final bool isGuardian;
 
-  const MyPageScreen({super.key, this.isGuardian = false});
+  /// 쉬운 화면에서 열렸을 때. 위에 이미 띄가 있어 제목을 더 위로 붙인다.
+  final bool compactTop;
+
+  const MyPageScreen({
+    super.key,
+    this.isGuardian = false,
+    this.compactTop = false,
+  });
 
   @override
   ConsumerState<MyPageScreen> createState() => _MyPageScreenState();
@@ -77,7 +84,7 @@ class _MyPageScreenState extends ConsumerState<MyPageScreen> {
           children: [
             Expanded(
               child: SingleChildScrollView(
-                padding: const EdgeInsets.fromLTRB(16, 20, 16, 28),
+                padding: EdgeInsets.fromLTRB(16, widget.compactTop ? 2 : 20, 16, 28),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [

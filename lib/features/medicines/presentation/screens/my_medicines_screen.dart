@@ -25,7 +25,14 @@ class MyMedicinesScreen extends ConsumerWidget {
   /// 남아 있는 깃발. 간편 화면 쉘이 자기 걸음 머리를 따로 그린다.
   final bool asTab;
 
-  const MyMedicinesScreen({super.key, this.asTab = true});
+  /// 쉬운 화면에서 열렸을 때. 위에 이미 띄가 있어 제목을 더 위로 붙인다.
+  final bool compactTop;
+
+  const MyMedicinesScreen({
+    super.key,
+    this.asTab = true,
+    this.compactTop = false,
+  });
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -52,7 +59,11 @@ class MyMedicinesScreen extends ConsumerWidget {
                   stillWorksTitle: '지금도 할 수 있는 것',
                   stillWorksBody: '오늘 홈에서 복약 기록과 처방전 사진 찍기는 그대로 쓸 수 있어요.',
                 ),
-                data: (items) => _MedicineList(items: items, asTab: asTab),
+                data: (items) => _MedicineList(
+                  items: items,
+                  asTab: asTab,
+                  compactTop: compactTop,
+                ),
               ),
             ),
           ],
@@ -65,8 +76,13 @@ class MyMedicinesScreen extends ConsumerWidget {
 class _MedicineList extends StatelessWidget {
   final List<UserMedicine> items;
   final bool asTab;
+  final bool compactTop;
 
-  const _MedicineList({required this.items, this.asTab = false});
+  const _MedicineList({
+    required this.items,
+    this.asTab = false,
+    this.compactTop = false,
+  });
 
   /// 시안 38 — 제목 아래 큰 두 칸. 처방전 넣기는 파란 면으로 두어
   /// 이 화면에서 가장 먼저 눈에 들어오게 한다.
@@ -139,11 +155,11 @@ class _MedicineList extends StatelessWidget {
     final active = items.where((item) => item.status == 'active').toList();
     final past = items.where((item) => item.status != 'active').toList();
     return ListView(
-      padding: const EdgeInsets.fromLTRB(16, 18, 16, 28),
+      padding: EdgeInsets.fromLTRB(16, compactTop ? 2 : 18, 16, 28),
       children: [
         if (asTab) ...[
           Padding(
-            padding: const EdgeInsets.fromLTRB(6, 6, 6, 0),
+            padding: const EdgeInsets.fromLTRB(6, 0, 6, 0),
             child: Text('내 약', style: AppText.screenTitle(size: 28)),
           ),
           const SizedBox(height: 14),

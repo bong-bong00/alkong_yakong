@@ -44,15 +44,6 @@ class _EasyFlowShellState extends ConsumerState<EasyFlowShell> {
   /// 지나온 화면. "이전"에서 하나씩 꺼낸다.
   final List<EasyScreen> _history = <EasyScreen>[];
 
-  /// 흐름 안에서 지금 화면이 몇 번째인지. 흐름 밖이면 -1.
-  int get _flowIndex => kEasyFlow.indexWhere((step) => step.screen == _screen);
-
-  String get _nextLabel {
-    final index = _flowIndex;
-    if (index < 0) return kEasyFallbackLabel;
-    return kEasyFlow[index].nextLabel;
-  }
-
   void _goTo(EasyScreen screen) {
     if (screen == EasyScreen.chat) {
       context.push('/drug-explain');
@@ -67,26 +58,12 @@ class _EasyFlowShellState extends ConsumerState<EasyFlowShell> {
   }
 
   void _back() {
-    if (_history.isEmpty) return;
-    setState(() => _screen = _history.removeLast());
-  }
-
-  /// 다음 한 걸음.
-  Future<void> _next() async {
-    final index = _flowIndex;
-
-    // 흐름 밖이면 오늘 화면으로 되돌린다.
-    if (index < 0) {
+    if (_history.isEmpty) {
+      // 돌아갈 길이 없으면 오늘로. 단추가 죽어 갔힐 곳이 없으면 안 된다.
       _goTo(EasyScreen.today);
       return;
     }
-
-    final nextIndex = index + 1;
-    _goTo(
-      nextIndex < kEasyFlow.length
-          ? kEasyFlow[nextIndex].screen
-          : EasyScreen.today,
-    );
+    setState(() => _screen = _history.removeLast());
   }
 
   /// 일반 모드가 쓰는 화면을 그대로 부른다.
@@ -110,11 +87,12 @@ class _EasyFlowShellState extends ConsumerState<EasyFlowShell> {
       case EasyScreen.record:
         return MedicationRecordScreen(
           onBackToToday: () => _goTo(EasyScreen.today),
+          compactTop: true,
         );
       case EasyScreen.heart:
         return HeartScreen(repository: mockHeartRepository());
       case EasyScreen.medicines:
-        return const MyMedicinesScreen();
+        return const MyMedicinesScreen(compactTop: true);
       case EasyScreen.prescription:
         return PrescriptionScreen(
           onCompleted: (_) => _goTo(EasyScreen.scheduleDays),
@@ -128,7 +106,7 @@ class _EasyFlowShellState extends ConsumerState<EasyFlowShell> {
       case EasyScreen.measure:
         return const MeasureScreen(returnToPreviousScreen: true);
       case EasyScreen.myInfo:
-        return const MyPageScreen();
+        return const MyPageScreen(compactTop: true);
     }
   }
 
@@ -162,9 +140,8 @@ class _EasyFlowShellState extends ConsumerState<EasyFlowShell> {
       ),
       bottomNavigationBar: showBar
           ? _EasyFlowBar(
-              label: _nextLabel,
-              onNext: _next,
-              onBack: _history.isEmpty ? null : _back,
+              // 메뉴에서 들어온 화면에는 돌아가는 길 하나면 된다.
+              onBack: _back,
             )
           : null,
     );
@@ -183,7 +160,7 @@ class _EasyFlowTop extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(18, 10, 18, 6),
+      padding: const EdgeInsets.fromLTRB(18, 6, 18, 2),
       child: Row(
         children: [
           const Spacer(),
@@ -230,15 +207,9 @@ class _EasyFlowTop extends StatelessWidget {
 
 /// 다음 한 걸음 바.
 class _EasyFlowBar extends StatelessWidget {
-  final String label;
-  final VoidCallback onNext;
-  final VoidCallback? onBack;
+  final VoidCallback onBack;
 
-  const _EasyFlowBar({
-    required this.label,
-    required this.onNext,
-    required this.onBack,
-  });
+  const _EasyFlowBar({required this.onBack});
 
   @override
   Widget build(BuildContext context) {
@@ -266,32 +237,13 @@ class _EasyFlowBar extends StatelessWidget {
               // 뒤로와 다음을 한 줄에 나란히. 뒤로는 일반 화면과 같은
               // 회색 면으로 둔다 — 같은 뜻의 단추가 화면마다 다른 색이면
               // 다른 것으로 읽힌다.
-              Row(
-                children: [
-                  if (onBack != null) ...[
-                    SizedBox(
-                      width: 128,
-                      child: SeniorButton(
-                        label: '뒤로',
-                        kind: SeniorButtonKind.secondary,
-                        minHeight: 72,
-                        fontSize: 21,
-                        radius: 18,
-                        onPressed: onBack,
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                  ],
-                  Expanded(
-                    child: SeniorButton(
-                      label: label,
-                      minHeight: 72,
-                      fontSize: 22,
-                      radius: 18,
-                      onPressed: onNext,
-                    ),
-                  ),
-                ],
+              SeniorButton(
+                label: '뒤로',
+                kind: SeniorButtonKind.secondary,
+                minHeight: 72,
+                fontSize: 21,
+                radius: 18,
+                onPressed: onBack,
               ),
             ],
           ),
