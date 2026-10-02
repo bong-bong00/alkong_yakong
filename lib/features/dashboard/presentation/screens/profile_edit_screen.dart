@@ -565,6 +565,12 @@ class _ProfileEditScreenState extends ConsumerState<ProfileEditScreen> {
                   // 회원가입에서 물은 것을 여기서도 다 고칠 수 있어야 한다.
                   // 한쪽에서만 고쳐지면 어느 쪽이 맞는 값인지 알 수 없다.
                   Text('예전에 크게 아팠던 적이 있나요?', style: AppText.label(size: 18)),
+                  // 회원가입에서 묻던 보기를 그대로 적는다. 없으면 어디까지를
+                  // "크게 아팠다"로 봐야 할지 알 수 없다.
+                  Text(
+                    '암, 뇌졸중, 심근경색 같은 병이요.',
+                    style: AppText.caption(size: 16),
+                  ),
                   const SizedBox(height: 8),
                   _ChoiceRow(
                     options: const ['네, 있어요', '아니요, 없어요'],

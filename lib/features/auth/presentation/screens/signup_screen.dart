@@ -1025,18 +1025,21 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
                       ),
                       const SizedBox(height: 6),
                     ],
-                    // 곁말은 제목 아래로 내리지 않고 오른쪽 끝에 한 줄로
-                    // 붙인다. 아래로 쌓으면 질문과 곁말이 같은 무게로 읽힌다.
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      children: [
-                        Expanded(
-                          child: Text(
-                            cur.title,
-                            style: AppText.screenTitle(size: 27),
+                    // 짧은 곁말("여러 개 골라도 돼요")은 제목 오른쪽 끝에
+                    // 한 줄로 붙인다. 긴 곁말까지 옆에 붙이면 제목이
+                    // "어떤 분이신가 / 요?"처럼 접힌다 — 그때는 아래로.
+                    if (cur.subtitle == null)
+                      Text(cur.title, style: AppText.screenTitle(size: 27))
+                    else if (cur.subtitle!.length <= 12)
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          Expanded(
+                            child: Text(
+                              cur.title,
+                              style: AppText.screenTitle(size: 27),
+                            ),
                           ),
-                        ),
-                        if (cur.subtitle != null) ...[
                           const SizedBox(width: 10),
                           Flexible(
                             child: FittedBox(
@@ -1053,8 +1056,18 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
                             ),
                           ),
                         ],
-                      ],
-                    ),
+                      )
+                    else ...[
+                      Text(cur.title, style: AppText.screenTitle(size: 27)),
+                      const SizedBox(height: 6),
+                      Text(
+                        cur.subtitle!,
+                        style: AppText.body(
+                          size: 17,
+                          color: AppColors.textTertiary,
+                        ),
+                      ),
+                    ],
                     const SizedBox(height: 20),
                     cur.child,
                   ],

@@ -263,8 +263,9 @@ class _EasyFlowBar extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              // 시안 — 뒤로와 다음을 한 줄에 나란히. 뒤로는 검은 면으로
-              // 두어 파란 "다음"과 헷갈리지 않게 한다.
+              // 뒤로와 다음을 한 줄에 나란히. 뒤로는 일반 화면과 같은
+              // 회색 면으로 둔다 — 같은 뜻의 단추가 화면마다 다른 색이면
+              // 다른 것으로 읽힌다.
               Row(
                 children: [
                   if (onBack != null) ...[
@@ -272,8 +273,7 @@ class _EasyFlowBar extends StatelessWidget {
                       width: 128,
                       child: SeniorButton(
                         label: '뒤로',
-                        icon: TablerIcons.arrow_left,
-                        kind: SeniorButtonKind.dark,
+                        kind: SeniorButtonKind.secondary,
                         minHeight: 72,
                         fontSize: 21,
                         radius: 18,

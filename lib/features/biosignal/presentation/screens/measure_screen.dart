@@ -293,7 +293,7 @@ class _MeasureScreenState extends State<MeasureScreen> {
                                     ? '센서가 떨어졌어요'
                                     : _live
                                     ? '폴라 센서로\n측정하고 있어요'
-                                    : '폴라 센서를 찾고 있어요',
+                                    : '폴라 센서를\n찾고 있어요',
                                 style: AppText.cardTitle(
                                   size: 19,
                                   color: _lost

@@ -54,7 +54,7 @@ const List<EasyDestination> kEasyMenu = [
   EasyDestination('AI 약사 상담', EasyScreen.chat),
   EasyDestination('심박수 관리', EasyScreen.heart),
   EasyDestination('심박수 측정', EasyScreen.measure),
-  EasyDestination('처방전 넣기', EasyScreen.prescription),
+  EasyDestination('처방전 등록', EasyScreen.prescription),
   EasyDestination('복약 완료', EasyScreen.done),
   EasyDestination('내 정보', EasyScreen.myInfo),
 ];

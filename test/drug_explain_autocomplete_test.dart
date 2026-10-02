@@ -774,8 +774,9 @@ void main() {
 
     await tester.pumpWidget(appWith(client));
     await tester.pumpAndSettle();
-    // 알콩이는 내 약 전부를 알고 있다고 먼저 말한다.
-    expect(find.text('알콩이'), findsOneWidget);
+    // 첫 인사가 내 약 전부를 알고 있다고 먼저 말한다. 말풍선 위에
+    // 이름은 적지 않는다 — 화면 제목이 이미 누구와 말하는지 말한다.
+    expect(find.text('알콩이'), findsNothing);
     expect(find.textContaining('드시는 모든 약들에 대해 알고 있어요'), findsOneWidget);
     expect(find.textContaining('선생님'), findsNothing);
 
@@ -947,13 +948,19 @@ void main() {
 
     Future<void> tapSuggestion(String label) async {
       // 질문 카드는 대화 아래에 있다. 접힌 자리면 굴려서 꺼낸다.
-      await tester.scrollUntilVisible(
-        find.text(label),
-        200,
-        scrollable: find.byType(Scrollable).first,
-      );
+      // 같은 글이 대화에도 남아 있다. 질문 카드만 집어 누른다.
+      final card = find.byKey(ValueKey('suggestion-$label'));
+      if (card.evaluate().isEmpty) {
+        await tester.scrollUntilVisible(
+          card,
+          200,
+          scrollable: find.byType(Scrollable).first,
+        );
+      } else {
+        await tester.ensureVisible(card);
+      }
       await tester.pumpAndSettle();
-      await tester.tap(find.text(label).last);
+      await tester.tap(card);
       await tester.pumpAndSettle();
     }
 

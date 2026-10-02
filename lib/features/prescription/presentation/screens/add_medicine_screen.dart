@@ -110,7 +110,7 @@ class _AddMedicineScreenState extends State<AddMedicineScreen> {
       backgroundColor: AppColors.pageBg,
       body: Column(
         children: [
-          const SeniorBackHeader(title: '처방전 넣기'),
+          const SeniorBackHeader(title: '처방전 등록'),
           Expanded(
             child: SingleChildScrollView(
               padding: const EdgeInsets.fromLTRB(16, 18, 16, 28),
@@ -140,7 +140,7 @@ class _AddMedicineScreenState extends State<AddMedicineScreen> {
                   // 가장 쉬운 길 하나만 파란 면으로 크게 둔다.
                   _PrimaryWay(
                     icon: TablerIcons.camera,
-                    label: '사진 찍기',
+                    label: '촬영',
                     sub: '가장 쉽고 빨라요',
                     onTap: () => widget.onPick(AddMedicineMethod.camera),
                   ),

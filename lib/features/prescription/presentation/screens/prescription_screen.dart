@@ -464,8 +464,30 @@ class _PrescriptionScreenState extends ConsumerState<PrescriptionScreen> {
     return true;
   }
 
+  /// 전화기 뒤로가기. 찍는 중이면 화면을 닫지 않고 등록 화면으로 돌아간다.
+  ///
+  /// 그러지 않으면 뒤로가기 한 번에 내 약까지 빠져나가, 어디까지 했는지
+  /// 잃는다.
+  void _stepBack() {
+    setState(() {
+      _image = null;
+      _failureReason = '';
+      _step = PrescriptionStep.pickMethod;
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
+    return PopScope(
+      canPop: _step == PrescriptionStep.pickMethod,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) _stepBack();
+      },
+      child: _buildStep(context),
+    );
+  }
+
+  Widget _buildStep(BuildContext context) {
     switch (_step) {
       case PrescriptionStep.pickMethod:
         return AddMedicineScreen(
@@ -570,7 +592,7 @@ class _CaptureScreen extends StatelessWidget {
       backgroundColor: AppColors.cameraBg,
       body: Column(
         children: [
-          SeniorBackHeader(title: '처방전 찍기', onDark: true, onBack: onBack),
+          SeniorBackHeader(title: '처방전 촬영', onDark: true, onBack: onBack),
           if (onBehalfOf != null)
             Padding(
               padding: const EdgeInsets.fromLTRB(22, 4, 22, 0),

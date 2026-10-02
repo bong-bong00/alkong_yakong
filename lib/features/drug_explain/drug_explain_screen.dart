@@ -875,7 +875,7 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
                           fit: BoxFit.scaleDown,
                           alignment: Alignment.centerLeft,
                           child: Text(
-                            '무엇이든 물어보세요',
+                            'AI 약사 상담',
                             style: AppText.screenTitle(size: 28),
                           ),
                         ),
@@ -921,7 +921,8 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
                           ? greeting
                           : message['text'] as String,
                       isMe: message['isMe'] as bool,
-                      speaker: message['isMe'] == true ? null : '알콩이',
+                      // 화면 제목이 이미 누구와 이야기하는지 말한다.
+                      speaker: null,
                       sources:
                           (message['sources'] as List?)
                               ?.whereType<String>()
@@ -971,6 +972,7 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
                     const SizedBox(height: 10),
                     for (final suggestion in suggestions) ...[
                       SeniorCard(
+                        key: ValueKey('suggestion-${suggestion['label']}'),
                         onTap: _isLoading
                             ? null
                             : () => _askSuggestion(suggestion),
@@ -1310,32 +1312,22 @@ class _MedicinePickSheetState extends State<_MedicinePickSheet> {
                 style: AppText.body(size: 18, color: AppColors.textBody),
               )
             else
-              LayoutBuilder(
-                builder: (context, constraints) {
-                  // 두 줄로 세운다. 좁은 폰이나 큰 글씨에서는 한 줄로 내린다.
-                  final twoColumns =
-                      constraints.maxWidth >= 300 &&
-                      MediaQuery.textScalerOf(context).scale(19) <= 26;
-                  final width = twoColumns
-                      ? (constraints.maxWidth - 10) / 2
-                      : constraints.maxWidth;
-                  return Wrap(
-                    spacing: 10,
-                    runSpacing: 10,
-                    children: [
-                      for (final medicine in widget.medicines)
-                        SizedBox(
-                          width: width,
-                          child: _MedicineChoice(
-                            label: widget.shortName(medicine),
-                            onTap: () => Navigator.of(
-                              context,
-                            ).pop(_MedicinePick(name: medicine)),
-                          ),
-                        ),
-                    ],
-                  );
-                },
+              // 칸을 늘어놓지 않고 줄로 세운다. 오른쪽 스위치를 켜면 그 약을
+              // 고른 것이다 — 약이 늘어도 줄만 길어질 뿐 모양이 흐트러지지
+              // 않는다.
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  for (int i = 0; i < widget.medicines.length; i++) ...[
+                    if (i > 0) const SeniorDivider(),
+                    _MedicineToggleRow(
+                      label: widget.shortName(widget.medicines[i]),
+                      onPick: () => Navigator.of(
+                        context,
+                      ).pop(_MedicinePick(name: widget.medicines[i])),
+                    ),
+                  ],
+                ],
               ),
             const SizedBox(height: 20),
           ],
@@ -1454,40 +1446,6 @@ class _MedicinePickSheetState extends State<_MedicinePickSheet> {
 }
 
 /// 내 약 한 칸. 누르면 바로 닫힌다.
-class _MedicineChoice extends StatelessWidget {
-  final String label;
-  final VoidCallback onTap;
-
-  const _MedicineChoice({required this.label, required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    return Semantics(
-      button: true,
-      child: GestureDetector(
-        key: ValueKey('medicine-selection-$label'),
-        onTap: onTap,
-        behavior: HitTestBehavior.opaque,
-        child: Container(
-          constraints: const BoxConstraints(minHeight: 58),
-          alignment: Alignment.centerLeft,
-          decoration: BoxDecoration(
-            color: AppColors.secondaryFill,
-            borderRadius: BorderRadius.circular(14),
-          ),
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-          child: Text(
-            label,
-            style: AppText.cardTitle(size: 19),
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 class _DrugSearchCandidate {
   final String itemName;
   final String? manufacturer;
@@ -2000,6 +1958,45 @@ class _HistoryButton extends StatelessWidget {
                 Icon(TablerIcons.history, size: 22, color: ink),
                 const SizedBox(width: 6),
                 Text('이전 대화', style: AppText.cardTitle(size: 18, color: ink)),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// 내 약 한 줄. 오른쪽 스위치를 켜면 그 약으로 고른다.
+class _MedicineToggleRow extends StatelessWidget {
+  final String label;
+  final VoidCallback onPick;
+
+  const _MedicineToggleRow({required this.label, required this.onPick});
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      button: true,
+      label: '$label 고르기',
+      child: ExcludeSemantics(
+        child: GestureDetector(
+          key: ValueKey('medicine-selection-$label'),
+          onTap: onPick,
+          behavior: HitTestBehavior.opaque,
+          child: Container(
+            constraints: const BoxConstraints(minHeight: 60),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(label, style: AppText.cardTitle(size: 19)),
+                ),
+                const SizedBox(width: 10),
+                SeniorToggle(
+                  value: false,
+                  semanticLabel: label,
+                  onChanged: (_) => onPick(),
+                ),
               ],
             ),
           ),

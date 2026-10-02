@@ -131,7 +131,7 @@ class _PharmacistChatScreenState extends ConsumerState<PharmacistChatScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text('무엇이든 물어보세요', style: AppText.screenTitle(size: 24)),
+                      Text('AI 약사 상담', style: AppText.screenTitle(size: 24)),
                       Text(
                         '약 이야기를 쉬운 말로 알려드려요',
                         style: AppText.caption(size: 16.5),

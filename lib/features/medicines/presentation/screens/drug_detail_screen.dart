@@ -142,7 +142,7 @@ class _DetailBody extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          _Profile(medicine: medicine),
+          _Profile(medicine: medicine, name: medicine.displayName),
           const SizedBox(height: 16),
           _DetailTabs(
             index: tab,
@@ -159,10 +159,6 @@ class _DetailBody extends StatelessWidget {
               _ => _DosingTab(medicine: medicine),
             },
           ),
-          const SizedBox(height: 14),
-          // 읽다가 모르는 것이 생기면 그 자리에서 물어보게 한다. 약 이름을
-          // 다시 고르게 하지 않는다 — 지금 보고 있는 약이 곧 그 약이다.
-          _AskAboutThisDrug(name: medicine.displayName),
           // 출처는 박스에 담지 않는다. 읽을 거리가 아니라 꼬리말이다.
           if (medicine.detailSourceName.trim().isNotEmpty) ...[
             const SizedBox(height: 16),
@@ -190,7 +186,10 @@ class _DetailBody extends StatelessWidget {
 class _Profile extends StatelessWidget {
   final UserMedicine medicine;
 
-  const _Profile({required this.medicine});
+  /// 물어보러 갈 때 들고 갈 약 이름.
+  final String name;
+
+  const _Profile({required this.medicine, required this.name});
 
   @override
   Widget build(BuildContext context) {
@@ -230,6 +229,10 @@ class _Profile extends StatelessWidget {
             ],
           ),
         ),
+        const SizedBox(width: 10),
+        // 읽다가 모르는 것이 생기면 그 자리에서 물어보게 한다. 약 이름을
+        // 다시 고르게 하지 않는다 — 지금 보고 있는 약이 곧 그 약이다.
+        _AskAboutThisDrug(name: name),
       ],
     );
   }
@@ -654,30 +657,30 @@ class _AskAboutThisDrug extends StatelessWidget {
         child: GestureDetector(
           onTap: () => context.push('/drug-explain', extra: name),
           child: Container(
-            constraints: const BoxConstraints(minHeight: 66),
+            constraints: const BoxConstraints(minWidth: 64, minHeight: 64),
             alignment: Alignment.center,
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
             decoration: BoxDecoration(
               color: AppColors.surface,
               borderRadius: BorderRadius.circular(18),
               boxShadow: kCardShadow,
             ),
-            child: Row(
+            child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
                 const Icon(
                   TablerIcons.help_circle,
-                  size: 26,
-                  color: AppColors.textPrimary,
+                  size: 22,
+                  color: AppColors.point,
                 ),
-                const SizedBox(width: 10),
-                Flexible(
-                  child: Text(
-                    '이 약, AI 약사에게 묻기',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: AppText.cardTitle(size: 20),
-                  ),
+                const SizedBox(height: 2),
+                Text(
+                  '약사',
+                  style: AppText.cardTitle(size: 15, color: AppColors.point),
+                ),
+                Text(
+                  '상담',
+                  style: AppText.cardTitle(size: 15, color: AppColors.point),
                 ),
               ],
             ),

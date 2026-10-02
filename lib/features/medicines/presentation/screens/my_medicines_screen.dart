@@ -10,6 +10,7 @@ import '../../../../core/widgets/senior_button.dart';
 import '../../../../core/widgets/senior_card.dart';
 import '../../../../core/widgets/senior_header.dart';
 import '../../application/user_medicines_controller.dart';
+import '../../domain/display_policy.dart';
 import '../../domain/user_medicine_models.dart';
 
 /// 내 약 — 활성 약 종류당 1행 (서버 `/medicines`).
@@ -77,7 +78,7 @@ class _MedicineList extends StatelessWidget {
           Expanded(
             child: _ActionTile(
               icon: TablerIcons.camera,
-              label: '처방전 넣기',
+              label: '처방전 등록',
               filled: true,
               onTap: () => context.push('/prescription'),
             ),
@@ -366,46 +367,38 @@ class _PastMedicinesState extends State<_PastMedicines> {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        _StackedCard(
-          child: SeniorCard(
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
-            child: SeniorListRow(
+    // 칸 하나로 둔다. 접혀 있을 때는 "이전에 사용한 약" 한 줄만 보이고,
+    // 누르면 그 칸이 아래로 늘어나며 약들이 따라 나온다. 칸을 둘로 나누면
+    // 펼친 목록이 남의 칸처럼 떨어져 보인다.
+    return _StackedCard(
+      child: SeniorCard(
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            SeniorListRow(
               label: '이전에 사용한 약',
               labelColor: AppColors.textTertiary,
               value: '${widget.medicines.length}가지',
               trailing: const SeniorChevron(),
               onTap: () => setState(() => _open = !_open),
             ),
-          ),
+            if (_open)
+              for (final medicine in widget.medicines)
+                SeniorListRow(
+                  label: nameWithoutStrength(
+                    medicine.displayName,
+                    strength: medicine.ingredientStrength,
+                  ),
+                  labelColor: AppColors.textTertiary,
+                  value: medicine.useType.label,
+                  trailing: const SeniorChevron(),
+                  onTap: () =>
+                      context.push('/medicines/${medicine.medicineCode}'),
+                ),
+          ],
         ),
-        if (_open) ...[
-          const SizedBox(height: 10),
-          // 지난 약은 한 칸 안에 줄로 쌓는다. 약마다 칸을 따로 세우면
-          // 지금 드시는 약과 같은 무게로 보여 목록이 두 배로 길어진다.
-          _StackedCard(
-            child: SeniorCard(
-              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 6),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  for (final medicine in widget.medicines)
-                    SeniorListRow(
-                      label: medicine.displayName,
-                      labelColor: AppColors.textTertiary,
-                      value: medicine.useType.label,
-                      trailing: const SeniorChevron(),
-                      onTap: () =>
-                          context.push('/medicines/${medicine.medicineCode}'),
-                    ),
-                ],
-              ),
-            ),
-          ),
-        ],
-      ],
+      ),
     );
   }
 }
