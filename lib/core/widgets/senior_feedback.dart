@@ -43,6 +43,36 @@ Future<bool> showSeniorYesNoDialog({
   return confirmed ?? false;
 }
 
+/// 끝났다고 알리고 닫기만 하는 창.
+///
+/// 되돌릴 수 없는 일(탈퇴 같은)을 마쳤을 때 쓴다. 스낵바는 몇 초 뒤
+/// 사라져서, 화면이 함께 바뀌는 자리에서는 못 보고 지나칠 수 있다.
+Future<void> showSeniorNoticeDialog({
+  required BuildContext context,
+  required String title,
+  String? message,
+  String confirmLabel = '확인',
+}) async {
+  await SeniorSheet.show<void>(
+    context: context,
+    dismissible: false,
+    builder: (sheetContext) => SeniorSheet(
+      title: title,
+      body: (message == null || message.isEmpty)
+          ? null
+          : Text(message, style: AppText.body()),
+      actions: [
+        SeniorButton(
+          label: confirmLabel,
+          minHeight: 66,
+          fontSize: 22,
+          onPressed: () => Navigator.of(sheetContext).pop(),
+        ),
+      ],
+    ),
+  );
+}
+
 /// 스낵바.
 ///
 /// **보호자에게 연락한 결과는 이것으로만 알린다.** 어르신 화면에는 전화 걸기

@@ -134,6 +134,15 @@ class AccountScreen extends ConsumerWidget {
       }
       return;
     }
+    // 지워진 뒤에 한 번 말해 준다. 화면이 로그인으로 바뀌어 버리면
+    // 탈퇴가 된 것인지 튕긴 것인지 알 수 없다.
+    if (context.mounted) {
+      await showSeniorNoticeDialog(
+        context: context,
+        title: '탈퇴되었습니다',
+        message: '그동안 이용해 주셔서 고맙습니다. 처음 화면으로 돌아갈게요.',
+      );
+    }
     await endSession(ref);
     if (context.mounted) context.go('/login');
   }

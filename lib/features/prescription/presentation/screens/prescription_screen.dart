@@ -25,6 +25,7 @@ import '../../../medication/application/medication_controller.dart';
 import '../../../medicines/application/user_medicines_controller.dart';
 import '../../../medicines/application/family_medicine_inbox.dart';
 import '../../../medicines/domain/display_policy.dart';
+import '../../../medicines/domain/user_medicine_models.dart';
 import '../../../onboarding/presentation/screens/first_run_screen.dart';
 import 'add_medicine_screen.dart';
 import 'manual_medicine_screen.dart';
@@ -401,6 +402,48 @@ class _PrescriptionScreenState extends ConsumerState<PrescriptionScreen> {
     );
   }
 
+  /// 가족이 처방전을 넣었는지 서버에 다시 물어본다.
+  ///
+  /// 서버는 "누가 넣었는지"를 알려주지 않는다. 그래서 이 기기가 본 적 없는
+  /// 약이 들어와 있으면 가족이 넣은 것으로 본다 — 홈에서 쓰는 장부와
+  /// 같은 규칙이다. 넣으셨으면 "약이 들어왔어요"로 넘기고 true를 돌려준다.
+  Future<bool> _checkFamilyPrescription() async {
+    final userId = MvpSession.userId.trim();
+    if (userId.isEmpty) return false;
+    try {
+      await ref.read(userMedicinesProvider.notifier).refresh();
+    } catch (_) {
+      // 못 읽었으면 "안 넣으셨다"고 단정하지 않는다. 다시 눌러 보시면 된다.
+      if (mounted) {
+        showSeniorSnackbar(
+          context,
+          '지금은 확인하지 못했어요. 잠시 뒤 다시 눌러 주세요.',
+          error: true,
+        );
+      }
+      return false;
+    }
+    final medicines =
+        ref.read(userMedicinesProvider).valueOrNull ?? const <UserMedicine>[];
+    final arrived = await FamilyMedicineInbox.unseen(
+      userId,
+      medicines.map((medicine) => medicine.medicineCode),
+    );
+    if (arrived.isEmpty) return false;
+
+    final rows = [
+      for (final medicine in medicines)
+        if (arrived.contains(medicine.medicineCode))
+          {'name': medicine.displayName, 'dose': medicine.amount},
+    ];
+    if (rows.isEmpty) return false;
+
+    await FamilyMedicineInbox.markSeen(userId, arrived);
+    if (!mounted) return true;
+    context.push('/medicine-arrived', extra: {'medicines': rows});
+    return true;
+  }
+
   @override
   Widget build(BuildContext context) {
     switch (_step) {
@@ -408,6 +451,7 @@ class _PrescriptionScreenState extends ConsumerState<PrescriptionScreen> {
         return AddMedicineScreen(
           guardianTitle: resolveGuardianTitle(context, widget.guardianTitle),
           onGoHome: widget.onGoHome ?? () => Navigator.of(context).maybePop(),
+          onCheckFamily: _checkFamilyPrescription,
           onPick: (method) {
             switch (method) {
               case AddMedicineMethod.camera:

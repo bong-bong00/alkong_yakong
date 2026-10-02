@@ -62,7 +62,10 @@ void main() {
     expect(find.text('68세'), findsOneWidget);
     expect(find.text('B형'), findsOneWidget);
     expect(find.text('페니실린'), findsOneWidget);
-    expect(find.textContaining('앓는 병 · 고혈압, 당뇨'), findsOneWidget);
+    expect(find.textContaining('보유 질환 : 고혈압, 당뇨'), findsOneWidget);
+    // 쓰는 말은 "내 건강 정보 · 수정"이다. "몸 정보"나 "고치기"가 아니다.
+    expect(find.text('내 건강 정보'), findsOneWidget);
+    expect(find.text('수정'), findsOneWidget);
   });
 
   testWidgets('약 자세히가 가짜 설명과 주의를 그린다', (tester) async {

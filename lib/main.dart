@@ -24,7 +24,6 @@ import 'features/drug_explain/drug_explain_screen.dart';
 import 'features/dur_analysis/presentation/screens/dur_analysis_screen.dart';
 import 'features/medication/application/medication_controller.dart';
 import 'features/medicines/presentation/screens/drug_detail_screen.dart';
-import 'features/medicines/presentation/screens/my_medicines_screen.dart';
 import 'features/onboarding/presentation/screens/first_run_screen.dart';
 import 'features/prescription/presentation/screens/manual_medicine_screen.dart';
 import 'features/prescription/presentation/screens/prescription_screen.dart';
@@ -91,7 +90,9 @@ final _router = GoRouter(
     ),
     GoRoute(
       path: '/my-medicines',
-      builder: (context, state) => const MyMedicinesScreen(),
+      // 내 약은 아래 탭에 있는 자리다. 따로 쌓지 않고 그 탭을 연다.
+      builder: (context, state) =>
+          const HomeScreen(initialTab: HomeTab.medicines),
     ),
     GoRoute(
       path: '/medicines/:code',

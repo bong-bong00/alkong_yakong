@@ -682,7 +682,7 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
 
       big(
         _yesNoStep(
-          title: '약을 먹고 두드러기가 나거나\n숨이 찬 적이 있나요?',
+          title: '약을 먹고 거부 반응이나\n이상 반응이 있으신 적 있나요?',
           subtitle: '약 알레르기를 여쭤보는 거예요.',
           answer: _allergyAnswer,
           onAnswer: (v) => _allergyAnswer = v,

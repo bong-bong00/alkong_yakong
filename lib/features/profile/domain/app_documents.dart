@@ -128,9 +128,9 @@ const List<HelpTopic> kHelpTopics = <HelpTopic>[
     noteIsWarning: true,
   ),
   HelpTopic(
-    title: '내 정보 고치기',
+    title: '내 정보 수정',
     steps: [
-      '"내 정보" 맨 위, 이름 옆의 "고치기"를 누르세요.',
+      '"내 정보" 맨 위, 이름 옆의 "수정"을 누르세요.',
       '이름, 휴대폰 번호, 생년월일, 키와 몸무게, 혈액형, '
           '앓는 병, 알레르기 등을 고칠 수 있어요.',
       '다 고치신 뒤 저장해 주세요.',
@@ -396,7 +396,7 @@ const AppDocument kPrivacyPolicy = AppDocument(
     DocSection(
       title: '3. 받는 방법',
       paragraphs: [
-        '· 회원가입과 "내 정보 고치기" 화면에서 이용자가 직접 입력',
+        '· 회원가입과 "내 정보 수정" 화면에서 이용자가 직접 입력',
         '· 처방전 사진 촬영 또는 앨범에서 고른 사진',
         '· 블루투스로 연결한 폴라 심박 센서',
         '· 앱을 쓰는 동안 만들어지는 복약·측정 기록',
@@ -477,7 +477,7 @@ const AppDocument kPrivacyPolicy = AppDocument(
     DocSection(
       title: '10. 이용자의 권리와 행사 방법',
       paragraphs: [
-        '· 언제든 "내 정보"에서 내 정보를 보고 "고치기"로 바로잡을 수 있습니다.',
+        '· 언제든 "내 정보"에서 내 정보를 보고 "수정"으로 바로잡을 수 있습니다.',
         '· "내 정보" → "계정 관리" → "그만두기"로 탈퇴하면 정보가 지워집니다.',
         '· 열람, 처리 정지, 동의 철회, 보호자 공유 중단은 $kContactChannel 에서 '
             '요청하시면 지체 없이 처리합니다.',

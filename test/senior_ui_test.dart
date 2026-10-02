@@ -680,7 +680,7 @@ void _signupTests() {
       "title: '지금 임신 중이거나",
       "title: '담배를",
       "title: '술은 얼마나",
-      "title: '약을 먹고 두드러기가 나거나",
+      "title: '약을 먹고 거부 반응이나",
       "title: '지금 치료받고 있는",
       "title: '예전에 크게",
       "title: '부모님이나 형제가",

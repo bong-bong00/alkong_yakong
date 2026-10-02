@@ -129,7 +129,7 @@ class MedicineArrivedScreen extends StatelessWidget {
                     kind: SeniorButtonKind.secondary,
                     minHeight: 64,
                     fontSize: 21,
-                    onPressed: () => context.push('/my-medicines'),
+                    onPressed: () => context.go('/my-medicines'),
                   ),
                 ],
               ),

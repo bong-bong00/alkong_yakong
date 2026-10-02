@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import '../../../medication/application/medication_controller.dart';
 import 'package:flutter_tabler_icons/flutter_tabler_icons.dart';
@@ -25,12 +27,19 @@ class AddMedicineScreen extends StatefulWidget {
   /// 이미 부탁을 마치고 들어왔는지. 첫 사용 화면에서 넘어올 때 true다.
   final bool familyAsked;
 
+  /// 가족이 처방전을 넣었는지 서버에 물어본다.
+  ///
+  /// 넣었으면 부른 쪽이 다음 화면으로 넘기고 true를 돌려준다.
+  /// 아직이면 false를 돌려주고, 이 화면이 "아직 안 넣으셨어요"라고 말한다.
+  final Future<bool> Function()? onCheckFamily;
+
   const AddMedicineScreen({
     super.key,
     required this.onPick,
     this.guardianTitle = '',
     this.onGoHome,
     this.familyAsked = false,
+    this.onCheckFamily,
   });
 
   @override
@@ -40,6 +49,28 @@ class AddMedicineScreen extends StatefulWidget {
 class _AddMedicineScreenState extends State<AddMedicineScreen> {
   /// 가족에게 부탁했는지. 화면을 옮기지 않고 자리에서 카드로 바뀐다.
   late bool _asked = widget.familyAsked;
+
+  /// 지금 서버에 물어보는 중인지.
+  bool _checking = false;
+
+  /// 물어봤더니 아직 안 들어와 있었는지.
+  bool _notYet = false;
+
+  /// 가족이 넣었는지 확인한다. 넣었으면 부른 쪽이 다음 화면으로 넘긴다.
+  Future<void> _checkFamily() async {
+    final check = widget.onCheckFamily;
+    if (check == null || _checking) return;
+    setState(() {
+      _checking = true;
+      _notYet = false;
+    });
+    final arrived = await check();
+    if (!mounted) return;
+    setState(() {
+      _checking = false;
+      _notYet = !arrived;
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -113,6 +144,7 @@ class _AddMedicineScreenState extends State<AddMedicineScreen> {
                               onTap: () {
                                 setState(() => _asked = true);
                                 widget.onPick(AddMedicineMethod.family);
+                                unawaited(_checkFamily());
                               },
                             ),
                           ),
@@ -128,6 +160,11 @@ class _AddMedicineScreenState extends State<AddMedicineScreen> {
                         widget.guardianTitle,
                       ),
                       onGoHome: widget.onGoHome,
+                      checking: _checking,
+                      notYet: _notYet,
+                      onCheck: widget.onCheckFamily == null
+                          ? null
+                          : _checkFamily,
                     ),
                   ],
                 ],
@@ -266,7 +303,22 @@ class _AskedCard extends StatelessWidget {
   final String guardianTitle;
   final VoidCallback? onGoHome;
 
-  const _AskedCard({required this.guardianTitle, this.onGoHome});
+  /// 지금 서버에 물어보는 중인지.
+  final bool checking;
+
+  /// 물어봤더니 아직 안 들어와 있었는지.
+  final bool notYet;
+
+  /// 다시 확인하는 길. 없으면 단추를 그리지 않는다.
+  final Future<void> Function()? onCheck;
+
+  const _AskedCard({
+    required this.guardianTitle,
+    this.onGoHome,
+    this.checking = false,
+    this.notYet = false,
+    this.onCheck,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -312,7 +364,33 @@ class _AskedCard extends StatelessWidget {
               ),
             ],
           ),
-          const SizedBox(height: 14),
+          // 아직 안 들어와 있으면 그렇다고 말해 준다. 기다리라고만 하면
+          // 어르신은 자기가 뭘 잘못 눌렀는지 되짚어 보게 된다.
+          if (notYet) ...[
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+              decoration: BoxDecoration(
+                color: AppColors.sunken,
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: Text(
+                '$guardianTitle이 아직 처방전을 넣지 않으셨어요.\n'
+                '넣으시면 이 자리에서 바로 알려드릴게요.',
+                style: AppText.body(size: 18),
+              ),
+            ),
+          ],
+          if (onCheck != null) ...[
+            const SizedBox(height: 14),
+            SeniorButton(
+              label: checking ? '확인하는 중…' : '넣으셨는지 확인하기',
+              minHeight: 66,
+              fontSize: 21,
+              onPressed: checking ? null : () => onCheck!(),
+            ),
+          ],
+          const SizedBox(height: 12),
           SeniorButton(
             label: '오늘 화면으로 가기',
             kind: SeniorButtonKind.secondary,
