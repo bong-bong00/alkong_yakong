@@ -160,7 +160,7 @@ UserMedicine _userMedicine({
   interactionSummary: conflictWhy.isEmpty ? null : conflictWhy,
   interactionPairLabel: conflictWith.isEmpty ? '' : '$name ↔ $conflictWith',
   interactionConflictNames: conflictWith.isEmpty ? const [] : [conflictWith],
-  officialUsageNotice: '밥을 드신 뒤에 물을 넉넉히 마시며 드세요.',
+  officialUsageNotice: '식사 후에 물을 넉넉히 드시면서 복용하세요.',
   detailStatus: 'READY',
   detailSourceName: '식약처 의약품 허가정보',
 );
@@ -635,7 +635,7 @@ Future<void> seedMockConversations() async {
     {
       'isMe': true,
       'createdAt': today.subtract(const Duration(days: 4)).toIso8601String(),
-      'text': '꼭 밥 먹고 먹어야 하나요?',
+      'text': '꼭 식사 후에 복용해야 하나요?',
     },
     {
       'isMe': false,

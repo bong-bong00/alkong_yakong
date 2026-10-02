@@ -232,8 +232,8 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
   /// 약 하나를 골랐을 때. {medicine} 자리에 고른 약 이름이 들어간다.
   static const List<Map<String, String>> _medicineSuggestions = [
     {
-      'label': '꼭 밥 먹고 먹어야 하나요?',
-      'prompt': '{medicine}은 꼭 밥을 먹고 나서 먹어야 하나요?',
+      'label': '꼭 식사 후에 복용해야 하나요?',
+      'prompt': '{medicine}은 꼭 식사 후에 복용해야 하나요?',
       'intent': 'dosage',
     },
     {

@@ -733,7 +733,7 @@ class _EmphasizedBodyText extends StatelessWidget {
           effectStart,
           effectStart + effect.length,
           bodyStyle.copyWith(
-            color: AppColors.detailEmphasis,
+            color: AppColors.point,
             fontWeight: FontWeight.w800,
           ),
         ),

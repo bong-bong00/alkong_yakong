@@ -184,7 +184,7 @@ void main() {
         .firstWhere((t) => t.textSpan?.toPlainText() == '정해진 작용을 돕는 성분이에요.');
     final spans = (text.textSpan! as TextSpan).children!.cast<TextSpan>();
     final highlighted = spans.singleWhere((s) => s.text == '정해진 작용');
-    expect(highlighted.style!.color, AppColors.detailEmphasis);
+    expect(highlighted.style!.color, AppColors.point);
     expect(highlighted.style!.fontWeight, FontWeight.w800);
     // 쓰임은 제목과 설명을 한 흐름으로 쓴다. 제목만 굵게 짚고 설명은
     // 보통 글씨로 이어 붙여, "혈전이 생기기 쉬운 / 분"처럼 끊기지 않는다.
@@ -223,7 +223,7 @@ void main() {
         final text = tester.widget<Text>(find.text(body));
         expect(text.textSpan, isNull);
         expect(text.data, body);
-        expect(text.style!.color, isNot(AppColors.detailEmphasis));
+        expect(text.style!.color, isNot(AppColors.point));
       }
     },
   );
@@ -241,10 +241,7 @@ void main() {
           .widgetList<Text>(find.byType(Text))
           .firstWhere((t) => t.textSpan?.toPlainText() == body);
       final spans = (text.textSpan! as TextSpan).children!.cast<TextSpan>();
-      expect(
-        spans.where((s) => s.style?.color == AppColors.detailEmphasis).length,
-        1,
-      );
+      expect(spans.where((s) => s.style?.color == AppColors.point).length, 1);
       expect(text.textSpan!.toPlainText(), body);
       expect(spans.last.text, contains('다시 작용을 돕'));
     },
