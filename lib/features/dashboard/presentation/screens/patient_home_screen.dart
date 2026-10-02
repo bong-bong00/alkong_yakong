@@ -519,7 +519,7 @@ class _PatientHomeScreenState extends ConsumerState<PatientHomeScreen> {
                         const SizedBox(height: 14),
                         _HeartSteps(beforeBpm: _beforeBpm[next.slot]),
                       ],
-                      const SizedBox(height: 10),
+                      const SizedBox(height: 20),
                       // 남는 세로 자리를 그대로 받아 그 안에 맞춘다.
                       _Fill(
                         scrolls: scrolls,
@@ -542,9 +542,8 @@ class _PatientHomeScreenState extends ConsumerState<PatientHomeScreen> {
                                 ),
                         ),
                       ),
-                      // 테가 아래 칸에 가리지 않을 만큼은 비워 둔다.
-                      // 겹치는 것은 위쪽 한 곳으로 족하다.
-                      const SizedBox(height: 32),
+                      // 위아래 여백을 같게 둔다. 두 칸 정가운데에 단추가 온다.
+                      const SizedBox(height: 20),
                       _HomeTiles(
                         alarmLabel: _nextAlarmLabel(
                           ref.watch(alarmPreferencesProvider),
@@ -971,10 +970,9 @@ class _BigDoseButtonState extends State<_BigDoseButton>
         final iconSize = (size * 0.24).clamp(44.0, 66.0).toDouble();
         final labelStyle = AppText.cardTitle(size: labelSize, color: ink);
 
-        // 받은 자리의 가운데보다 조금 아래에 둔다. 위 칸과는 테가 겹치고,
-        // 손은 아래쪽에서 올라온다.
+        // 위 칸과 아래 칸 사이 정가운데에 둔다.
         return Align(
-          alignment: const Alignment(0, 0.4),
+          alignment: Alignment.center,
           child: Semantics(
             button: true,
             label: label,
