@@ -586,18 +586,21 @@ class _DosingTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final eating = medicine.useType == MedicineUseType.eat;
+    final meal = medicine.officialUsageNotice.trim();
+    final aboutMeal =
+        meal.contains('식사') || meal.contains('식후') || meal.contains('식전');
+    // ingredientLabel 에 용량이 이미 들어 있다. 또 붙이면 "100mg · 100mg".
+    final label = medicine.ingredientLabel.trim();
+    final strength = medicine.ingredientStrength.trim();
     final ingredient = [
-      medicine.ingredientLabel.trim(),
-      medicine.ingredientStrength.trim(),
+      label,
+      if (strength.isNotEmpty && !label.contains(strength)) strength,
       medicine.manufacturer.trim(),
     ].where((value) => value.isNotEmpty).join(' · ');
-    final meal = medicine.officialUsageNotice.trim();
-
     final rows = <(String, String)>[
       ('얼마나', '한 번에 ${medicine.dosageLabel} · ${medicine.frequencyLabel}'),
       ('언제', _whenLine),
-      if (meal.isNotEmpty) (eating ? '식사' : '쓰는 법', meal),
+      if (meal.isNotEmpty) (aboutMeal ? '식사' : '쓰는 법', meal),
       if (ingredient.isNotEmpty) ('성분', ingredient),
     ];
 
