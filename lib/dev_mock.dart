@@ -38,7 +38,7 @@ import 'features/profile/data/user_repository.dart';
 import 'features/profile/domain/user_profile.dart';
 
 /// 켜면 서버 대신 가짜 데이터로 화면을 채운다.
-const bool kMockData = true;
+const bool kMockData = false;
 
 /// 배포 빌드에서는 절대 먹지 않는다.
 bool get mockData => kMockData && kDebugMode;
@@ -424,11 +424,11 @@ class _MockHeartRepository extends HeartRepository {
 /// 먹기 전 재기 → 먹었어요 → 먹은 뒤 재기 흐름을 보여 준다.
 class _MockPairedDevice extends HeartDeviceController {
   @override
-  bool build() => false;
+  bool build() => true;
 }
 
 /// 먹기 전에 이미 재 둔 값. 화면을 볼 때 재는 걸음부터 거치지 않게 한다.
-int? mockBeforeBpm() => mockData ? null : null;
+int? mockBeforeBpm() => mockData ? 78 : null;
 
 /// 심박수 화면에 넣어 주는 가짜 저장소. 켜져 있지 않으면 null이다.
 HeartRepository? mockHeartRepository() =>

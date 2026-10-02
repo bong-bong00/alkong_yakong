@@ -297,6 +297,16 @@ class _PatientHomeScreenState extends ConsumerState<PatientHomeScreen> {
     ).push(MaterialPageRoute<void>(builder: (_) => const PolarScreen()));
   }
 
+  /// 센서 연결을 끊는다. 표시만 바꾸지 않고 실제로 끊는다 —
+  /// 폴라 화면의 "연결 끊기"와 같은 일을 한다.
+  Future<void> _disconnectHeartDevice() async {
+    if (!mockData) await ref.read(heartSensorProvider).stop();
+    await ref.read(heartDevicePairedProvider.notifier).set(false);
+    if (!mounted) return;
+    setState(() => _measureAfterSlot = null);
+    showSeniorSnackbar(context, '센서 연결을 끊었어요');
+  }
+
   /// 장부에 없는 약 — 내가 넣지 않았는데 들어와 있는 약을 알린다.
   ///
   /// 내가 등록한 약은 등록하는 자리에서 미리 장부에 적으므로 여기 걸리지
@@ -604,6 +614,9 @@ class _PatientHomeScreenState extends ConsumerState<PatientHomeScreen> {
                         // 아직 기기를 안 쓰시는 분께는 연결 길을 먼저
                         // 보여 드린다. 약 보기는 아래 “내 약” 칸에도 있다.
                         onConnectDevice: usesDevice ? null : _openHeartDevice,
+                        onDisconnectDevice: usesDevice
+                            ? _disconnectHeartDevice
+                            : null,
                         onOpenMedicines: widget.onOpenMedicines,
                       ),
                       if (today.daysLeft != null) ...[
@@ -1202,14 +1215,18 @@ class _HomeTiles extends StatelessWidget {
   /// 복약 알림 설정으로. 소리로 울릴 시각을 거기서 고친다.
   final VoidCallback? onOpenAlarm;
 
-  /// 심박기기 연결로. null이면 이미 쓰고 계셔서 “약 보기”를 둔다.
+  /// 센서 연결로. null이면 이미 쓰고 계신다.
   final VoidCallback? onConnectDevice;
+
+  /// 센서 연결을 끊는다. 쓰고 계실 때만 둘다.
+  final VoidCallback? onDisconnectDevice;
   final VoidCallback? onOpenMedicines;
 
   const _HomeTiles({
     required this.alarmLabel,
     this.onOpenAlarm,
     this.onConnectDevice,
+    this.onDisconnectDevice,
     this.onOpenMedicines,
   });
 
@@ -1232,6 +1249,13 @@ class _HomeTiles extends StatelessWidget {
                   icon: TablerIcons.heart,
                   label: '센서 연결',
                   onTap: onConnectDevice,
+                )
+              : onDisconnectDevice != null
+              ? _tile(
+                  icon: TablerIcons.heart_off,
+                  label: '기기 연결 해제',
+                  onTap: onDisconnectDevice,
+                  fontSize: 18,
                 )
               : _tile(
                   icon: TablerIcons.pill,

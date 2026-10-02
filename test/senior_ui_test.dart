@@ -1285,7 +1285,7 @@ void _homeTimelineTests() {
     expect(circle().width, greaterThan(small));
   });
 
-  testWidgets('심박기기를 쓰시면 아래 칸이 "약 보기"로 돌아온다', (tester) async {
+  testWidgets('심박기기를 쓰시면 아래 칸이 끊는 길로 바뀜다', (tester) async {
     await tester.pumpWidget(
       home(
         paired: true,
@@ -1299,7 +1299,8 @@ void _homeTimelineTests() {
     );
     await tester.pump();
 
-    expect(find.text('약 보기'), findsOneWidget);
+    // 쓰고 계시면 그 자리는 끊는 길이다.
+    expect(find.text('기기 연결 해제'), findsOneWidget);
     expect(find.text('센서 연결'), findsNothing);
   });
 
