@@ -12,6 +12,8 @@ import '../../../../core/widgets/senior_header.dart';
 import '../../application/user_medicines_controller.dart';
 import '../../domain/display_policy.dart';
 import '../../domain/ingredient_explanation_display.dart';
+import '../../domain/explanation_highlight.dart';
+import '../../domain/official_usage_display.dart';
 import '../../domain/user_medicine_models.dart';
 
 /// 내 약 한 종류 상세 — 서버 쉬운말·주의·복용 정보.
@@ -448,6 +450,12 @@ class _WorkTab extends StatelessWidget {
             highlight: medicine.ingredientHighlight,
             ingredient: medicine.ingredientName,
             fallbackHighlight: medicine.approvedUseSummary,
+            purposeHighlights: [
+              for (final use in medicine.treatmentUses) ...[
+                use.highlight,
+                use.title,
+              ],
+            ],
           ),
         if (_summary.isNotEmpty) ...[
           const SizedBox(height: 10),
@@ -691,6 +699,17 @@ class _DosingTab extends StatelessWidget {
 
   const _DosingTab({required this.medicine});
 
+  String get _doseLine =>
+      medicine.amount.trim().isEmpty &&
+          (medicine.dosage?.trim().isEmpty ?? true)
+      ? ''
+      : '한 번에 ${medicine.dosageLabel}';
+
+  List<String> get _confirmedDosing => [
+    if (_doseLine.isNotEmpty) _doseLine,
+    if ((medicine.frequencyPerDay ?? 0) > 0) medicine.frequencyLabel,
+  ];
+
   /// "아침, 점심, 저녁 하루 3번 드세요." 처럼 한 문장으로 잇는다.
   ///
   /// 시각을 분 단위로 적지 않는다. 08:00에 드시든 08:40에 드시든 아침
@@ -721,13 +740,12 @@ class _DosingTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // 꼬리말("제품 설명서의 일반적인 사용법이에요…")이 아니라 용법
-    // 문장을 적는다. 꼬리말을 적으면 복용법 자리에 복용법이 없다.
-    //
-    // 서버가 검토된 카드를 주면 그 카드는 이미 세 문장으로 줄여 온다.
-    // 카드가 없으면 설명서 원문이 그대로 온다 — 머리말을 걷고 항마다
-    // 줄을 나눠 둔다(팀원이 만든 formatOfficialUsage).
-    final meal = formatOfficialUsage(officialUsageLine(medicine.officialUsage));
+    // 꼬리말("제품 설명서의 일반적인 사용법이에요…")이 아니라 용법 문장을
+    // 적는다. 머리말을 걷고, 항마다 줄을 나누고, 고령자·성인·소아 차례로
+    // 세운다(팀원이 만든 formatOfficialUsage·orderOfficialUsageSections).
+    final usage = orderOfficialUsageSections(
+      formatOfficialUsage(officialUsageLine(medicine.officialUsage)),
+    );
     // ingredientLabel 에 용량이 이미 들어 있다. 또 붙이면 "100mg · 100mg".
     final label = medicine.ingredientLabel.trim();
     final strength = medicine.ingredientStrength.trim();
@@ -737,12 +755,9 @@ class _DosingTab extends StatelessWidget {
       if (strength.isNotEmpty && !label.contains(strength)) strength,
     ].where((value) => value.isNotEmpty).join(' · ');
     final rows = <(String, String)>[
-      ('얼마나', '한 번에 ${medicine.dosageLabel} · ${medicine.frequencyLabel}'),
+      if (_confirmedDosing.isNotEmpty) ('얼마나', _confirmedDosing.join(' · ')),
       ('언제', _whenLine),
-      // 한 줄에 들어가는 것은 허가 용법 문장 하나다. 식사 이야기가 있든
-      // 없든 딱지는 "복용법" 하나로 둔다 — 딱지가 줄마다 바뀜면
-      // 같은 줄인지 다른 줄인지 헷갈린다.
-      if (meal.isNotEmpty) ('복용법', meal),
+      if (usage.isNotEmpty) ('복용법', usage),
       if (ingredient.isNotEmpty) ('성분', ingredient),
     ];
 
@@ -842,12 +857,14 @@ class _EmphasizedBodyText extends StatelessWidget {
   final String highlight;
   final String ingredient;
   final String fallbackHighlight;
+  final List<String> purposeHighlights;
 
   const _EmphasizedBodyText({
     required this.text,
     required this.highlight,
     required this.ingredient,
     required this.fallbackHighlight,
+    required this.purposeHighlights,
   });
 
   @override
@@ -906,27 +923,18 @@ class _EmphasizedBodyText extends StatelessWidget {
     return Text.rich(TextSpan(style: bodyStyle, children: spans));
   }
 
-  /// 본문 전체를 강조하면 강조가 아니다. 그런 값은 버린다.
-  bool _wholeBody(String value) => value.trim() == text.trim();
-
   String _effectTarget() {
-    final reviewed = highlight.trim();
-    if (reviewed.isNotEmpty &&
-        !_wholeBody(reviewed) &&
-        text.contains(reviewed)) {
-      return reviewed;
-    }
     var fallback = fallbackHighlight.trim();
     if (fallback.startsWith('이 약은 ')) fallback = fallback.substring(5);
     fallback = fallback.replaceFirst(
       RegExp(r'\s*(사용해요|사용돼요|사용될 수 있어요|도움을 줘요)\.?$'),
       '',
     );
-    return fallback.isNotEmpty &&
-            !_wholeBody(fallback) &&
-            text.contains(fallback)
-        ? fallback
-        : '';
+    return explanationHighlight(text, [
+      highlight,
+      fallback,
+      ...purposeHighlights,
+    ]);
   }
 }
 
