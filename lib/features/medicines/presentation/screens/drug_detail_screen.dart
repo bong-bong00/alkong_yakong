@@ -229,7 +229,14 @@ class _Profile extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(width: 10),
-                  _AskAboutThisDrug(name: name),
+                  // 단추는 두 줄이라 이름 줄보다 키가 크다. 그 키만큼 줄을 밀면
+                  // 이름 밑에 빈 자리가 생긴다. 차지하는 자리는 이름 줄만큼만
+                  // 잡고, 나머지는 오른쪽 빈 곳에 그대로 그린다.
+                  Align(
+                    alignment: Alignment.topRight,
+                    heightFactor: 0.6,
+                    child: _AskAboutThisDrug(name: name),
+                  ),
                 ],
               ),
               if (purpose.isNotEmpty) ...[
@@ -355,31 +362,43 @@ class _WorkTab extends StatelessWidget {
     return medicine.ingredientExplanation;
   }
 
-  /// 이 약이 쓰이는 경우. 앞말(병 이름)만 파랗게 짚는다.
-  List<(String?, String)> get _uses {
+  /// 이 약이 쓰이는 경우. 한 줄씩 짧은 말로 두고, 그 안에서 짚을 낱말만
+  /// 파랑게 한다. 긴 설명 문장은 위 문단에 이미 있어 여기 올리지 않는다.
+  List<(String, String)> get _uses {
     final seen = <String>{};
-    final uses = <(String?, String)>[];
+    final uses = <(String, String)>[];
     for (final use in medicine.treatmentUses) {
       final title = use.title.trim();
       if (title.isEmpty || !seen.add(title)) continue;
-      uses.add((title, use.description.trim()));
+      final rest = use.description.trim();
+      // 조사나 가운덴점으로 이어지면 한 말의 뒷토막이다. 아니면 설명 문장이다.
+      final phrase = _isTail(rest) ? '$title$rest' : title;
+      final mark = use.highlight.trim();
+      uses.add((phrase, mark.isEmpty ? title : mark));
     }
     for (final approved in medicine.approvedUses) {
       final text = approved.trim();
       if (text.isEmpty || !seen.add(text)) continue;
-      uses.add((null, text));
+      uses.add((text, ''));
     }
     if (uses.isEmpty && medicine.approvedUseSummary.trim().isNotEmpty) {
-      uses.add((null, medicine.approvedUseSummary.trim()));
+      uses.add((medicine.approvedUseSummary.trim(), ''));
     }
     return uses;
+  }
+
+  /// 앞말에 바로 붙는 뒷토막인지.
+  static bool _isTail(String rest) {
+    if (rest.isEmpty) return false;
+    const glue = ['·', '이', '가', '은', '는', '을', '를', '과', '와', ','];
+    return glue.contains(rest[0]);
   }
 
   /// 허가 목적 한 줄. 아래 쓰이는 경우 줄에 이미 있으면 적지 않는다.
   String get _summary {
     final summary = medicine.approvedUseSummary.trim();
     if (summary.isEmpty) return '';
-    final shown = _uses.any((use) => use.$2 == summary || use.$1 == summary);
+    final shown = _uses.any((use) => use.$1 == summary);
     return shown ? '' : summary;
   }
 
@@ -418,8 +437,8 @@ class _WorkTab extends StatelessWidget {
           // 아래 "얼마나·언제"와 같은 틀로 읽힌다. 첫 줄에만 딱지를 단다.
           _Bullet(
             tag: i == 0 ? '쓰임' : '',
-            emphasis: uses[i].$1,
-            rest: uses[i].$2,
+            text: uses[i].$1,
+            highlight: uses[i].$2,
           ),
         ],
       ],
@@ -431,17 +450,14 @@ class _WorkTab extends StatelessWidget {
 class _Bullet extends StatelessWidget {
   /// 왼쪽 딱지. 비워 두면 자리만 차지해 다음 줄이 같은 줄에 선다.
   final String tag;
-  final String? emphasis;
-  final String rest;
 
-  const _Bullet({this.tag = '', this.emphasis, required this.rest});
+  /// 한 줄로 읽힐 말.
+  final String text;
 
-  /// 조사나 가운뎃점으로 이어지면 사이를 띄우지 않는다.
-  static String _join(String rest) {
-    if (rest.isEmpty) return '';
-    const glue = ['·', '이', '가', '은', '는', '을', '를', '과', '와', ','];
-    return glue.contains(rest[0]) ? rest : ' $rest';
-  }
+  /// 그 안에서 파랑게 짚을 낱말. 제목이 아니라 눈에 떨어져야 할 말이다.
+  final String highlight;
+
+  const _Bullet({this.tag = '', required this.text, this.highlight = ''});
 
   @override
   Widget build(BuildContext context) {
@@ -450,15 +466,17 @@ class _Bullet extends StatelessWidget {
       size: 19,
       color: AppColors.point,
     ).copyWith(fontWeight: FontWeight.w800);
-    final head = emphasis?.trim() ?? '';
 
-    final text = head.isEmpty
-        ? Text(rest, style: body)
+    final mark = highlight.trim();
+    final at = mark.isEmpty ? -1 : text.indexOf(mark);
+    final line = at < 0
+        ? Text(text, style: body)
         : Text.rich(
             TextSpan(
               children: [
-                TextSpan(text: head, style: strong),
-                if (rest.isNotEmpty) TextSpan(text: _join(rest), style: body),
+                if (at > 0) TextSpan(text: text.substring(0, at), style: body),
+                TextSpan(text: mark, style: strong),
+                TextSpan(text: text.substring(at + mark.length), style: body),
               ],
             ),
             style: body,
@@ -475,7 +493,7 @@ class _Bullet extends StatelessWidget {
           ),
         ),
         const SizedBox(width: 10),
-        Expanded(child: text),
+        Expanded(child: line),
       ],
     );
   }

@@ -186,21 +186,20 @@ void main() {
     final highlighted = spans.singleWhere((s) => s.text == '정해진 작용');
     expect(highlighted.style!.color, AppColors.point);
     expect(highlighted.style!.fontWeight, FontWeight.w800);
-    // 쓰임은 제목과 설명을 한 흐름으로 쓴다. 제목만 굵게 짚고 설명은
-    // 보통 글씨로 이어 붙여, "혈전이 생기기 쉬운 / 분"처럼 끊기지 않는다.
+    // 쓰임 줄은 짧은 말 한 줄이다. 긴 설명 문장은 위 문단이 맡는다.
+    // 그 안에서 짚을 낱말만 파랑게 둔다.
+    expect(shown(tester), contains('치통'));
+    expect(shown(tester), isNot(contains('성인에만 사용한다.')));
     final useLine = tester.widget<Text>(
       find.byWidgetPredicate(
         (widget) =>
-            widget is Text &&
-            widget.textSpan?.toPlainText() == '치통 성인에만 사용한다.',
+            widget is Text && widget.textSpan?.toPlainText() == '치통',
       ),
     );
     final useSpans = (useLine.textSpan! as TextSpan).children!.cast<TextSpan>();
-    expect(useSpans.first.text, '치통');
-    expect(useSpans.first.style!.color, AppColors.point);
-    expect(useSpans.first.style!.fontWeight, FontWeight.w800);
-    expect(useSpans.last.text, ' 성인에만 사용한다.');
-    expect(useSpans.last.style!.color, isNot(AppColors.point));
+    final blue = useSpans.singleWhere((span) => span.text == '치통');
+    expect(blue.style!.color, AppColors.point);
+    expect(blue.style!.fontWeight, FontWeight.w800);
   });
 
   testWidgets(
@@ -262,8 +261,10 @@ void main() {
     // 세 탭으로 나누면서 "전체 허가 목적" 펼침 카드는 두지 않는다.
     expect(find.byType(ExpansionTile), findsNothing);
     expect(find.text('전체 허가 목적'), findsNothing);
-    // 대표 조건은 "하는 일" 탭에 그대로 보인다.
-    expect(shown(tester), contains(entries[1]));
+    // 쓰임 줄은 짧은 말로 선다. 긴 문장은 올리지 않는다.
+    expect(shown(tester), contains('치통'));
+    expect(shown(tester), contains(entries[0]));
+    expect(shown(tester), isNot(contains(entries[1])));
     expect(tester.takeException(), isNull);
   });
 

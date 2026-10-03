@@ -207,9 +207,16 @@ List<UserMedicine> _mockMedicines() => [
         '심장·뇌를 지키기 위해 매일 드시는 약이에요.',
     highlight: '혈관을 막는 것을 예방',
     uses: const [
-      TreatmentUse(title: '심근경색', description: '·뇌경색 재발 예방'),
-      // 서버가 가공해 내려주는 모양 그대로 — 사람이 아니라 쓰임을 말한다.
-      TreatmentUse(title: '혈전 예방', description: '혈관을 막는 혈전이 생기지 않게 해요'),
+      // 서버가 내려주는 모양 그대로 — 짧은 말 한 줄과 그 안에서 짚을 낱말.
+      TreatmentUse(
+        title: '심근경색·뇌경색 재발 예방',
+        highlight: '심근경색·뇌경색',
+      ),
+      TreatmentUse(
+        title: '혈전 예방',
+        description: '혈관을 막는 혈전이 생기지 않게 하는 데 사용해요.',
+        highlight: '혈전',
+      ),
     ],
     conflictWith: '와파린',
     conflictWhy: '두 약 모두 피를 묽게 해서, 같이 드시면 피가 잘 멈추지 않을 수 있어요.',

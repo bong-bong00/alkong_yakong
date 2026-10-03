@@ -7,7 +7,14 @@ class TreatmentUse {
   final String title;
   final String description;
 
-  const TreatmentUse({required this.title, this.description = ''});
+  /// 쓰임 줄에서 파랑게 짚을 낱말. 비어 있으면 앞말을 짚는다.
+  final String highlight;
+
+  const TreatmentUse({
+    required this.title,
+    this.description = '',
+    this.highlight = '',
+  });
 }
 
 enum MedicineUseType {
@@ -310,6 +317,7 @@ class UserMedicine {
           (item) => TreatmentUse(
             title: item['title']?.toString().trim() ?? '',
             description: item['description']?.toString().trim() ?? '',
+            highlight: item['highlight']?.toString().trim() ?? '',
           ),
         )
         .where((item) => item.title.isNotEmpty)

@@ -46,56 +46,67 @@ _BOILERPLATE_PURPOSES = (
     "주효능 효과",
     "효능 효과",
 )
-_PURPOSE_GROUPS: tuple[tuple[re.Pattern[str], str, str], ...] = (
+# (찾는 문양, 쓰임 한 마디, 설명 한 문장, 파랑게 짚을 낱말)
+_PURPOSE_GROUPS: tuple[tuple[re.Pattern[str], str, str, str], ...] = (
     (
         re.compile(r"발열|해열|감기.*(?:열|통증)"),
         "열·감기 통증",
         "열을 내리고 감기로 인한 통증을 줄이는 데 사용해요.",
+        "열·감기 통증",
     ),
     (
         re.compile(r"두통|치통|월경곤란|생리통|요통|근육통|신경통|수술\s*후\s*통증"),
         "여러 통증",
         "두통·치통·생리통 등 여러 통증을 줄이는 데 사용해요.",
+        "통증",
     ),
     (
         re.compile(r"관절염|류마티|통풍|염좌|좌상|건염|건초염|활액낭염|소염"),
         "관절·근육의 염증과 통증",
         "관절이나 근육의 염증과 통증을 줄이는 데 사용해요.",
+        "염증과 통증",
     ),
     (
         re.compile(r"가려움|두드러기|알레르기|알러지"),
         "알레르기로 인한 가려움",
         "알레르기로 인한 가려움 같은 증상을 줄이는 데 사용해요.",
+        "가려움",
     ),
     (
         re.compile(r"불안|긴장|초조|신경증"),
         "불안·긴장",
         "불안하거나 긴장된 증상을 완화할 목적으로 사용될 수 있어요.",
+        "불안·긴장",
     ),
     (
         re.compile(r"위산|속쓰림|역류|위궤양|십이지장궤양"),
         "속쓰림·위 불편감",
         "위산과 관련된 속쓰림이나 위 불편감을 줄이는 데 사용해요.",
+        "속쓰림",
     ),
     (
         re.compile(r"부정맥|심실세동|심방세동|빈맥"),
         "빠르거나 불규칙한 심장 박동",
         "불규칙하거나 지나치게 빠른 심장 박동을 조절하는 데 사용해요.",
+        "심장 박동",
     ),
     (
         re.compile(r"고혈압|혈압"),
         "높은 혈압",
         "높은 혈압을 조절하는 데 사용해요.",
+        "혈압",
     ),
     (
         re.compile(r"당뇨|혈당"),
         "높은 혈당",
         "혈당을 조절하는 데 사용해요.",
+        "혈당",
     ),
     (
         re.compile(r"혈전|항혈소판|색전|다시경색|심근경색|뇌졸중|혈소판응집"),
         "혈전 예방",
         "혈관을 막는 혈전이 생기지 않게 하는 데 사용해요.",
+        "혈전",
     ),
 )
 def normalize_ingredient_key(value: str | None) -> str:
@@ -729,7 +740,7 @@ def _parse_official_purposes(value: Any) -> dict[str, list[str]]:
 
     representative: list[str] = []
     joined = " ".join(all_items)
-    for pattern, _title, sentence in _PURPOSE_GROUPS:
+    for pattern, _title, sentence, _highlight in _PURPOSE_GROUPS:
         if pattern.search(joined) and sentence not in representative:
             representative.append(sentence)
         if len(representative) == 3:
@@ -803,9 +814,15 @@ def treatment_use_items(
     )
     joined = " ".join(source_items)
     result: list[dict[str, str]] = []
-    for pattern, title, description in _PURPOSE_GROUPS:
+    for pattern, title, description, highlight in _PURPOSE_GROUPS:
         if pattern.search(joined):
-            result.append({"title": title, "description": description})
+            result.append(
+                {
+                    "title": title,
+                    "description": description,
+                    "highlight": highlight,
+                }
+            )
         if len(result) == 3:
             return result
 
@@ -820,7 +837,9 @@ def treatment_use_items(
             or any(entry["title"] == text for entry in result)
         ):
             continue
-        result.append({"title": use_phrase(text), "description": ""})
+        result.append(
+            {"title": use_phrase(text), "description": "", "highlight": ""}
+        )
         if len(result) == 3:
             break
     return result
