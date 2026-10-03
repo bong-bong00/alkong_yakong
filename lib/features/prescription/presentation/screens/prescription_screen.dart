@@ -44,7 +44,7 @@ enum PrescriptionStep {
   /// 4d — 처방전 촬영.
   capture,
 
-  /// 10 — 손으로 적기.
+  /// 10 — 직접 작성.
   manual,
 
   /// 읽는 중.
@@ -148,10 +148,14 @@ class _PrescriptionScreenState extends ConsumerState<PrescriptionScreen> {
     return pairConflictMatches(durResult).isNotEmpty;
   }
 
+  /// 지금 올린 사진을 어디서 가져왔는지. 다시 고를 때 같은 길로 연다.
+  ImageSource _imageSource = ImageSource.camera;
+
   Future<void> _pick(ImageSource source) async {
     try {
       final picked = await _picker.pickImage(source: source);
       if (picked == null || !mounted) return;
+      _imageSource = source;
       String? galleryMessage;
       if (source == ImageSource.camera) {
         try {
@@ -634,7 +638,9 @@ class _PrescriptionScreenState extends ConsumerState<PrescriptionScreen> {
             _step = PrescriptionStep.pickMethod;
           }),
           onUse: _read,
-          onCamera: () => _pick(ImageSource.camera),
+          fromGallery: _image != null && _imageSource == ImageSource.gallery,
+          onCamera: () =>
+              _pick(_image == null ? ImageSource.camera : _imageSource),
         );
       case PrescriptionStep.reading:
         return _ReadingScreen(image: _image);
@@ -686,12 +692,16 @@ class _CaptureScreen extends StatelessWidget {
   final VoidCallback onBack;
   final String? onBehalfOf;
 
+  /// 앨범에서 고른 사진인지. 다시 고르는 단추의 말이 달라진다.
+  final bool fromGallery;
+
   const _CaptureScreen({
     required this.image,
     required this.onBack,
     this.onBehalfOf,
     required this.onUse,
     required this.onCamera,
+    this.fromGallery = false,
   });
 
   @override
@@ -700,7 +710,7 @@ class _CaptureScreen extends StatelessWidget {
       backgroundColor: AppColors.cameraBg,
       body: Column(
         children: [
-          SeniorBackHeader(title: '처방전 촬영', onDark: true, onBack: onBack),
+          SeniorBackHeader(title: '처방전 등록', onDark: true, onBack: onBack),
           if (onBehalfOf != null)
             Padding(
               padding: const EdgeInsets.fromLTRB(22, 4, 22, 0),
@@ -772,26 +782,47 @@ class _CaptureScreen extends StatelessWidget {
                         const Spacer(),
                         Padding(
                           padding: const EdgeInsets.fromLTRB(22, 0, 22, 12),
-                          child: Column(
-                            children: [
-                              if (image != null) ...[
-                                SeniorButton(
-                                  label: '이 사진 사용하기',
+                          // 가는 단추를 왼쪽에, 쓰는 단추를 오른쪽에 크게
+                          // 둔다. 위아래로 쌓으면 둘 다 같은 무게로 보여
+                          // 어느 쪽이 보통 길인지 흐려진다.
+                          child: image == null
+                              ? SeniorButton(
+                                  label: '사진 찍기',
+                                  icon: TablerIcons.camera,
                                   minHeight: 74,
                                   fontSize: 25,
-                                  onPressed: onUse,
+                                  onPressed: onCamera,
+                                )
+                              : IntrinsicHeight(
+                                  child: Row(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.stretch,
+                                    children: [
+                                      Expanded(
+                                        flex: 2,
+                                        child: SeniorButton(
+                                          label: fromGallery
+                                              ? '다시 고르기'
+                                              : '다시 찍기',
+                                          kind: SeniorButtonKind.secondary,
+                                          minHeight: 74,
+                                          fontSize: 20,
+                                          onPressed: onCamera,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 10),
+                                      Expanded(
+                                        flex: 3,
+                                        child: SeniorButton(
+                                          label: '이 사진 사용하기',
+                                          minHeight: 74,
+                                          fontSize: 22,
+                                          onPressed: onUse,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
                                 ),
-                                const SizedBox(height: 14),
-                              ],
-                              SeniorButton(
-                                label: image == null ? '사진 찍기' : '다시 찍기',
-                                icon: TablerIcons.camera,
-                                minHeight: 74,
-                                fontSize: 25,
-                                onPressed: onCamera,
-                              ),
-                            ],
-                          ),
                         ),
                       ],
                     ),

@@ -154,7 +154,7 @@ class _AddMedicineScreenState extends State<AddMedicineScreen> {
                   const SizedBox(height: 12),
                   _SmallWay(
                     icon: TablerIcons.pencil,
-                    label: '손으로 적기',
+                    label: '직접 작성',
                     onTap: () => widget.onPick(AddMedicineMethod.manual),
                   ),
                   if (!_asked) ...[

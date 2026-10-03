@@ -125,11 +125,11 @@ class FirstRunScreen extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    Text('손으로 적기', style: AppText.screenTitle(size: 24)),
+                    Text('직접 작성', style: AppText.screenTitle(size: 24)),
                     const SizedBox(height: 6),
                     Text(
                       '처방전이 없어도 괜찮아요. '
-                      '약 이름과 드시는 때만 적으면 됩니다.',
+                      '약 이름과 복용 시간대만 적으면 됩니다.',
                       style: AppText.body(size: 18.5),
                     ),
                     const SizedBox(height: 14),

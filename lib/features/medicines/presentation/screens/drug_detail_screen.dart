@@ -747,8 +747,8 @@ class _DosingTab extends StatelessWidget {
     // "성인 :" 같은 머리말은 걷지 않는다. 누구에게 주는 용법인지를
     // 말하는 말이고, 뒤에 오는 "고령자 :"와 짝을 이룬다. 앞의 하나만
     // 지우면 남은 머리말이 엉뚱한 문단에 붙은 것처럼 읽힌다.
-    final usage = orderOfficialUsageSections(
-      formatOfficialUsage(medicine.officialUsage),
+    final usage = dropLoneAdultHeading(
+      orderOfficialUsageSections(formatOfficialUsage(medicine.officialUsage)),
     );
     // ingredientLabel 에 용량이 이미 들어 있다. 또 붙이면 "100mg · 100mg".
     final label = medicine.ingredientLabel.trim();
@@ -795,7 +795,10 @@ class _DosingTab extends StatelessWidget {
             const SizedBox(height: 12),
           ],
           Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
+            // 때 박스 줄에서는 딱지가 박스와 눈높이를 맞춘다.
+            crossAxisAlignment: rows[i].$1 == '언제'
+                ? CrossAxisAlignment.center
+                : CrossAxisAlignment.start,
             children: [
               SizedBox(
                 width: 68,

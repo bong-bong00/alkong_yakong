@@ -1663,12 +1663,12 @@ void _confirmPreviewTests() {
 
 /// 3장 — 화면별 문구·경로가 9/11 병합에서 빠졌던 자리들.
 void _screenCopyTests() {
-  test('손으로 적기는 확인되지 않은 복용 시각을 만들지 않는다 (10)', () {
+  test('직접 작성은 확인되지 않은 복용 시각을 만들지 않는다 (10)', () {
     final source = File(
       'lib/features/prescription/presentation/screens/manual_medicine_screen.dart',
     ).readAsStringSync();
     // 시각을 지어내지 않는다 — 드시는 때를 고르지 않으면 등록하지 않는다.
-    expect(source.contains('드시는 때를 한 개 이상 골라 주세요.'), isTrue);
+    expect(source.contains('복용 시간대를 한 개 이상 골라 주세요.'), isTrue);
     expect(source.contains("'administration_times': _slots.toList()"), isTrue);
     expect(source.contains('공식 약 이름을 찾지 못했어요.'), isTrue);
   });
