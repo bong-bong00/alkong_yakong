@@ -732,7 +732,7 @@ class _AskAboutThisDrug extends StatelessWidget {
                     color: AppColors.textSecondary,
                   ),
                 ),
-                Text('약사 상담', style: AppText.cardTitle(size: 16)),
+                Text('챗봇 상담', style: AppText.cardTitle(size: 16)),
               ],
             ),
           ),
