@@ -214,9 +214,10 @@ class _Profile extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
-              // 약 이름과 묻는 단추를 한 줄에 둔다.
+              // 약 이름과 묻는 단추를 한 줄에 둔다. 윗줄을 맞춰 단추가
+              // 이름보다 위로 솔아오르지 않게 한다.
               Row(
-                crossAxisAlignment: CrossAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Expanded(
                     child: Text(
@@ -639,7 +640,9 @@ class _DosingTab extends StatelessWidget {
     final rows = <(String, String)>[
       ('얼마나', '한 번에 ${medicine.dosageLabel} · ${medicine.frequencyLabel}'),
       ('언제', _whenLine),
-      if (meal.isNotEmpty) (aboutMeal ? '식사' : '쓰는 법', meal),
+      // 위에 "쓰임"이 있으니 여기는 "먹는 법"으로 두나눈다. 두 딱지가
+      // 비슷하게 읽히면 무엇이 다른 줄인지 한 번 더 생각하게 된다.
+      if (meal.isNotEmpty) (aboutMeal ? '식사' : '먹는 법', meal),
       if (ingredient.isNotEmpty) ('성분', ingredient),
     ];
 
