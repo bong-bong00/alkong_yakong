@@ -12,6 +12,8 @@ import '../../../../core/widgets/senior_header.dart';
 import '../../application/user_medicines_controller.dart';
 import '../../domain/display_policy.dart';
 import '../../domain/ingredient_explanation_display.dart';
+import '../../domain/explanation_highlight.dart';
+import '../../domain/official_usage_display.dart';
 import '../../domain/user_medicine_models.dart';
 
 /// 내 약 한 종류 상세 — 서버 쉬운말·주의·복용 정보.
@@ -448,6 +450,12 @@ class _WorkTab extends StatelessWidget {
             highlight: medicine.ingredientHighlight,
             ingredient: medicine.ingredientName,
             fallbackHighlight: medicine.approvedUseSummary,
+            purposeHighlights: [
+              for (final use in medicine.treatmentUses) ...[
+                use.highlight,
+                use.title,
+              ],
+            ],
           ),
         if (_summary.isNotEmpty) ...[
           const SizedBox(height: 10),
@@ -691,6 +699,17 @@ class _DosingTab extends StatelessWidget {
 
   const _DosingTab({required this.medicine});
 
+  String get _doseLine =>
+      medicine.amount.trim().isEmpty &&
+          (medicine.dosage?.trim().isEmpty ?? true)
+      ? ''
+      : '한 번에 ${medicine.dosageLabel}';
+
+  List<String> get _confirmedDosing => [
+    if (_doseLine.isNotEmpty) _doseLine,
+    if ((medicine.frequencyPerDay ?? 0) > 0) medicine.frequencyLabel,
+  ];
+
   /// "아침, 점심, 저녁 하루 3번 드세요." 처럼 한 문장으로 잇는다.
   ///
   /// 시각을 분 단위로 적지 않는다. 08:00에 드시든 08:40에 드시든 아침
@@ -721,13 +740,7 @@ class _DosingTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // 꼬리말("제품 설명서의 일반적인 사용법이에요…")이 아니라 용법
-    // 문장을 적는다. 꼬리말을 적으면 복용법 자리에 복용법이 없다.
-    //
-    // 서버가 검토된 카드를 주면 그 카드는 이미 세 문장으로 줄여 온다.
-    // 카드가 없으면 설명서 원문이 그대로 온다 — 머리말을 걷고 항마다
-    // 줄을 나눠 둔다(팀원이 만든 formatOfficialUsage).
-    final meal = formatOfficialUsage(officialUsageLine(medicine.officialUsage));
+    final usage = medicine.officialUsage.trim();
     // ingredientLabel 에 용량이 이미 들어 있다. 또 붙이면 "100mg · 100mg".
     final label = medicine.ingredientLabel.trim();
     final strength = medicine.ingredientStrength.trim();
@@ -737,12 +750,9 @@ class _DosingTab extends StatelessWidget {
       if (strength.isNotEmpty && !label.contains(strength)) strength,
     ].where((value) => value.isNotEmpty).join(' · ');
     final rows = <(String, String)>[
-      ('얼마나', '한 번에 ${medicine.dosageLabel} · ${medicine.frequencyLabel}'),
+      if (_confirmedDosing.isNotEmpty) ('얼마나', _confirmedDosing.join(' · ')),
       ('언제', _whenLine),
-      // 한 줄에 들어가는 것은 허가 용법 문장 하나다. 식사 이야기가 있든
-      // 없든 딱지는 "복용법" 하나로 둔다 — 딱지가 줄마다 바뀜면
-      // 같은 줄인지 다른 줄인지 헷갈린다.
-      if (meal.isNotEmpty) ('복용법', meal),
+      ('공식 복용법', usage),
       if (ingredient.isNotEmpty) ('성분', ingredient),
     ];
 
@@ -755,26 +765,126 @@ class _DosingTab extends StatelessWidget {
             const SeniorDivider(),
             const SizedBox(height: 12),
           ],
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              SizedBox(
-                width: 68,
-                child: Text(
-                  rows[i].$1,
-                  style: AppText.label(size: 18, color: AppColors.textTertiary),
+          if (rows[i].$1 == '공식 복용법')
+            _OfficialUsagePreview(
+              preview: _confirmedDosing.join('\n'),
+              fullText: medicine.officialUsage.trim(),
+              doseUnconfirmed: _doseLine.isEmpty,
+            )
+          else
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                SizedBox(
+                  width: 68,
+                  child: Text(
+                    rows[i].$1,
+                    style: AppText.label(
+                      size: 18,
+                      color: AppColors.textTertiary,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [_RowValue(text: rows[i].$2, foldable: false)],
+                  ),
+                ),
+              ],
+            ),
+        ],
+      ],
+    );
+  }
+}
+
+/// Keep the compact card to three lines without losing access to dose limits,
+/// adjustment conditions, or other age groups in the original official text.
+class _OfficialUsagePreview extends StatefulWidget {
+  final String preview;
+  final String fullText;
+  final bool doseUnconfirmed;
+
+  const _OfficialUsagePreview({
+    required this.preview,
+    required this.fullText,
+    required this.doseUnconfirmed,
+  });
+
+  @override
+  State<_OfficialUsagePreview> createState() => _OfficialUsagePreviewState();
+}
+
+class _OfficialUsagePreviewState extends State<_OfficialUsagePreview> {
+  bool _expanded = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            SizedBox(
+              width: 68,
+              child: Text(
+                '복용법',
+                style: AppText.label(size: 18, color: AppColors.textTertiary),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    widget.preview,
+                    maxLines: 3,
+                    overflow: TextOverflow.ellipsis,
+                    style: AppText.cardTitle(size: 19).copyWith(height: 1.45),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    widget.doseUnconfirmed
+                        ? '한 번에 먹는 양을 확인하지 못했어요.\n처방전을 확인해 주세요.'
+                        : '처방전을 확인해 주세요.',
+                    style: AppText.label(
+                      size: 14,
+                      color: AppColors.textTertiary,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            if (widget.fullText.isNotEmpty)
+              IconButton(
+                tooltip: _expanded ? '공식 복용법 접기' : '공식 복용법 펼치기',
+                onPressed: () => setState(() => _expanded = !_expanded),
+                icon: Icon(
+                  _expanded
+                      ? Icons.keyboard_arrow_up_rounded
+                      : Icons.keyboard_arrow_down_rounded,
+                  color: AppColors.point,
+                  size: 28,
                 ),
               ),
-              const SizedBox(width: 10),
-              Expanded(
-                // 설명서에서 그대로 온 용법은 열 줄을 넘기도 한다.
-                // 다 펴 두면 아래 줄이 화면 밖으로 밀린다.
-                child: _RowValue(
-                  text: rows[i].$2,
-                  foldable: rows[i].$1 == '복용법',
-                ),
-              ),
-            ],
+          ],
+        ),
+        if (_expanded) ...[
+          const SizedBox(height: 24),
+          Center(child: Text('공식 복용법', style: AppText.cardTitle(size: 19))),
+          const SizedBox(height: 24),
+          Text(
+            orderOfficialUsageSections(formatOfficialUsage(widget.fullText)),
+            style: AppText.body(size: 18).copyWith(height: 1.55),
+          ),
+          const SizedBox(height: 10),
+          Text(
+            '제품의 공식 기준이며 개인 처방과 다를 수 있어요. 실제 사용은 처방전과 의료진의 안내를 따르세요.',
+            style: AppText.label(size: 16, color: AppColors.textTertiary),
           ),
         ],
       ],
@@ -842,12 +952,14 @@ class _EmphasizedBodyText extends StatelessWidget {
   final String highlight;
   final String ingredient;
   final String fallbackHighlight;
+  final List<String> purposeHighlights;
 
   const _EmphasizedBodyText({
     required this.text,
     required this.highlight,
     required this.ingredient,
     required this.fallbackHighlight,
+    required this.purposeHighlights,
   });
 
   @override
@@ -906,27 +1018,18 @@ class _EmphasizedBodyText extends StatelessWidget {
     return Text.rich(TextSpan(style: bodyStyle, children: spans));
   }
 
-  /// 본문 전체를 강조하면 강조가 아니다. 그런 값은 버린다.
-  bool _wholeBody(String value) => value.trim() == text.trim();
-
   String _effectTarget() {
-    final reviewed = highlight.trim();
-    if (reviewed.isNotEmpty &&
-        !_wholeBody(reviewed) &&
-        text.contains(reviewed)) {
-      return reviewed;
-    }
     var fallback = fallbackHighlight.trim();
     if (fallback.startsWith('이 약은 ')) fallback = fallback.substring(5);
     fallback = fallback.replaceFirst(
       RegExp(r'\s*(사용해요|사용돼요|사용될 수 있어요|도움을 줘요)\.?$'),
       '',
     );
-    return fallback.isNotEmpty &&
-            !_wholeBody(fallback) &&
-            text.contains(fallback)
-        ? fallback
-        : '';
+    return explanationHighlight(text, [
+      highlight,
+      fallback,
+      ...purposeHighlights,
+    ]);
   }
 }
 
