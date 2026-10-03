@@ -82,7 +82,10 @@ final _router = GoRouter(
     // 화면 확인용 임시 경로. 확인이 끝나면 지운다.
     GoRoute(
       path: '/prescription',
-      builder: (context, state) => const PrescriptionScreen(),
+      // ?start=camera 로 들어오면 길 고르는 칸을 건너뛴다.
+      builder: (context, state) => PrescriptionScreen(
+        startAtCapture: state.uri.queryParameters['start'] == 'camera',
+      ),
     ),
     GoRoute(
       path: '/manual-medicine',

@@ -84,6 +84,10 @@ class PrescriptionScreen extends ConsumerStatefulWidget {
   /// 대신 넣는 어르신의 id. 약은 이 사람 것으로 들어간다.
   final String? onBehalfOfUserId;
 
+  /// 넣는 길을 고르는 칸을 건너뛰고 바로 촬영으로 연다.
+  /// "처방전 촬영하기"처럼 이미 길을 고르고 들어온 자리에서 쓴다.
+  final bool startAtCapture;
+
   const PrescriptionScreen({
     super.key,
     this.onCompleted,
@@ -92,6 +96,7 @@ class PrescriptionScreen extends ConsumerStatefulWidget {
     this.guardianTitle = '',
     this.onBehalfOf,
     this.onBehalfOfUserId,
+    this.startAtCapture = false,
   });
 
   @override
@@ -112,7 +117,8 @@ class _PrescriptionScreenState extends ConsumerState<PrescriptionScreen> {
     baseUrl: ApiConfig.localFeatureBaseUrl,
   );
 
-  late PrescriptionStep _step = widget.onBehalfOf == null
+  late PrescriptionStep _step =
+      widget.onBehalfOf == null && !widget.startAtCapture
       ? PrescriptionStep.pickMethod
       : PrescriptionStep.capture;
 

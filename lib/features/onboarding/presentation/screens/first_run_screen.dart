@@ -109,7 +109,10 @@ class FirstRunScreen extends StatelessWidget {
                       kind: SeniorButtonKind.secondary,
                       minHeight: 66,
                       fontSize: 22,
-                      onPressed: () => context.push('/prescription'),
+                      // 길은 이 칸에서 이미 골랐다. 들어가서 또 고르게
+                      // 하지 않는다.
+                      onPressed: () =>
+                          context.push('/prescription?start=camera'),
                     ),
                   ],
                 ),
@@ -147,7 +150,9 @@ class FirstRunScreen extends StatelessWidget {
               SeniorButton(
                 label: '건너뛰기',
                 subLabel: '나중에 넣어도 됩니다',
-                kind: SeniorButtonKind.secondary,
+                // 연한 면(#F0F1F5)은 이 화면 바탕과 거의 같은 색이라
+                // 단추가 바탕에 묻혔다. 흰 면에 그림자로 띄운다.
+                kind: SeniorButtonKind.card,
                 minHeight: 66,
                 fontSize: 21,
                 onPressed: () => context.go('/'),
