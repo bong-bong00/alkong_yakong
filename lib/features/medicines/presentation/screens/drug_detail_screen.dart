@@ -627,8 +627,6 @@ class _DosingTab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final meal = medicine.officialUsageNotice.trim();
-    final aboutMeal =
-        meal.contains('식사') || meal.contains('식후') || meal.contains('식전');
     // ingredientLabel 에 용량이 이미 들어 있다. 또 붙이면 "100mg · 100mg".
     final label = medicine.ingredientLabel.trim();
     final strength = medicine.ingredientStrength.trim();
@@ -640,9 +638,10 @@ class _DosingTab extends StatelessWidget {
     final rows = <(String, String)>[
       ('얼마나', '한 번에 ${medicine.dosageLabel} · ${medicine.frequencyLabel}'),
       ('언제', _whenLine),
-      // 위에 "쓰임"이 있으니 여기는 "먹는 법"으로 두나눈다. 두 딱지가
-      // 비슷하게 읽히면 무엇이 다른 줄인지 한 번 더 생각하게 된다.
-      if (meal.isNotEmpty) (aboutMeal ? '식사' : '먹는 법', meal),
+      // 한 줄에 들어가는 것은 허가 용법 문장 하나다. 식사 이야기가 있든
+      // 없든 딱지는 "복용법" 하나로 둔다 — 딱지가 줄마다 바뀜면
+      // 같은 줄인지 다른 줄인지 헷갈린다.
+      if (meal.isNotEmpty) ('복용법', meal),
       if (ingredient.isNotEmpty) ('성분', ingredient),
     ];
 

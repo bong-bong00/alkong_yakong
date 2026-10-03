@@ -92,6 +92,11 @@ _PURPOSE_GROUPS: tuple[tuple[re.Pattern[str], str, str], ...] = (
         "높은 혈당",
         "혈당을 조절하는 데 사용해요.",
     ),
+    (
+        re.compile(r"혈전|항혈소판|색전|다시경색|심근경색|뇌졸중|혈소판응집"),
+        "혈전 예방",
+        "혈관을 막는 혈전이 생기지 않게 하는 데 사용해요.",
+    ),
 )
 def normalize_ingredient_key(value: str | None) -> str:
     """Make a stable reuse key without changing the official display value."""
@@ -745,6 +750,44 @@ def _parse_official_purposes(value: Any) -> dict[str, list[str]]:
     }
 
 
+_PERSON_TAIL = re.compile(
+    r"(?:\s*(?:환자|분|사람|성인|소아))\s*$"
+)
+
+
+def use_phrase(value: str) -> str:
+    """Say what the medicine is for, not who takes it.
+
+    허가 문구는 "혈전이 생기기 쉬운 분"처럼 사람을 가리키는 말로 끝나는 일이
+    많다. "쓰임" 줄에 그대로 올리면 약이 무엇에 쓰이는지가 아니라 누가 먹는지가
+    적힐다. 사람을 가리키는 꼬리를 떼고 상황으로 바꾼다.
+    """
+    text = _SPACE.sub(" ", str(value or "")).strip()
+    if not text:
+        return ""
+    if not _PERSON_TAIL.search(text):
+        return text
+    stem = _PERSON_TAIL.sub("", text).strip()
+    if not stem:
+        return text
+    if stem.endswith("운"):  # 쉬운 → 쉬울 때
+        return stem[:-1] + "울 때"
+    if stem.endswith("는"):  # 생기는 → 생길 때, 먹는 → 먹을 때
+        head = stem[:-1]
+        last = head[-1:]
+        if last and "가" <= last <= "훣":
+            code = ord(last) - 0xAC00
+            if code % 28 == 0:
+                return head[:-1] + chr(0xAC00 + code + 8) + " 때"
+            return head + "을 때"
+        return head + " 때"
+    if stem.endswith("한"):  # 필요한 → 필요할 때
+        return stem[:-1] + "할 때"
+    if stem.endswith("인"):  # 고혈압인 → 고혈압일 때
+        return stem[:-1] + "일 때"
+    return stem + "일 때"
+
+
 def treatment_use_items(
     approved_summary: str,
     approved_uses: list[str],
@@ -777,7 +820,7 @@ def treatment_use_items(
             or any(entry["title"] == text for entry in result)
         ):
             continue
-        result.append({"title": text, "description": ""})
+        result.append({"title": use_phrase(text), "description": ""})
         if len(result) == 3:
             break
     return result
