@@ -8,6 +8,7 @@ import 'package:flutter_tabler_icons/flutter_tabler_icons.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:gal/gal.dart';
 
 import '../../../../core/constants/medicine_flow_colors.dart';
 import '../../../../core/network/api_client.dart';
@@ -148,11 +149,28 @@ class _PrescriptionScreenState extends ConsumerState<PrescriptionScreen> {
   Future<void> _pick(ImageSource source) async {
     try {
       final picked = await _picker.pickImage(source: source);
-      if (picked == null) return;
+      if (picked == null || !mounted) return;
+      String? galleryMessage;
+      if (source == ImageSource.camera) {
+        try {
+          await Gal.putImage(picked.path);
+          galleryMessage = '촬영한 사진을 갤러리에 저장했어요.';
+        } on GalException catch (error) {
+          galleryMessage = error.type == GalExceptionType.accessDenied
+              ? '사진 저장 권한이 없어 갤러리에 저장하지 못했어요. 처방전 인식은 계속할 수 있어요.'
+              : '갤러리에 사진을 저장하지 못했어요. 처방전 인식은 계속할 수 있어요.';
+        } catch (_) {
+          galleryMessage = '갤러리에 사진을 저장하지 못했어요. 처방전 인식은 계속할 수 있어요.';
+        }
+      }
+      if (!mounted) return;
       setState(() {
         _image = File(picked.path);
         _step = PrescriptionStep.capture;
       });
+      if (galleryMessage != null) {
+        showSeniorSnackbar(context, galleryMessage);
+      }
     } catch (_) {
       if (!mounted) return;
       setState(() {
