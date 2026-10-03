@@ -1219,9 +1219,23 @@ void _homeTimelineTests() {
     expect(find.text('드셨어요'), findsOneWidget);
     expect(find.text('저녁'), findsOneWidget);
     expect(find.text('아직'), findsOneWidget);
-    // 시각을 미리 정해 두지 않으므로 칩에는 정해둔 시각이 없다.
-    expect(find.text('12:00'), findsNothing);
-    expect(find.text('18:00'), findsNothing);
+    // 시각을 미리 정해 두지 않는다 — 칩에 적히는 것은 드신 시각뿐이다.
+    // (아래 알림 칸에는 따로 맞춰 둔 시각이 적힐 수 있다.)
+    final chips = find.ancestor(
+      of: find.text('아직'),
+      matching: find.byType(Row),
+    );
+    expect(
+      find.descendant(
+        of: chips.first,
+        matching: find.byWidgetPredicate(
+          (widget) =>
+              widget is Text &&
+              RegExp(r'^\d{2}:\d{2}$').hasMatch(widget.data ?? ''),
+        ),
+      ),
+      findsNothing,
+    );
 
     expect(find.text('메트포르민'), findsNothing);
     // 심박기기를 안 쓰시면 그 자리는 연결 길이다.
@@ -1357,7 +1371,14 @@ void _homeTimelineTests() {
     expect(find.textContaining('2번 남았어요'), findsOneWidget);
     expect(find.text('먹었어요'), findsOneWidget);
     // 알림 화면으로 가는 네모 칸. 맞춰 둔 시각만 적는다(자명종 그림이 있다).
-    expect(find.text('08:00'), findsWidgets);
+    // 어느 시각이 나오는지는 지금 몇 시인지에 따라 다르다 — 꼴만 본다.
+    expect(
+      find.byWidgetPredicate(
+        (widget) =>
+            widget is Text && RegExp(r'^\d{2}:\d{2}$').hasMatch(widget.data ?? ''),
+      ),
+      findsWidgets,
+    );
   });
 
   test('접고 펴는 버튼에 화살표 장식을 붙이지 않는다', () {

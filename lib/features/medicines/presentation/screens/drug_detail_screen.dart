@@ -214,12 +214,22 @@ class _Profile extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text(
-                nameWithoutStrength(
-                  medicine.displayName,
-                  strength: medicine.ingredientStrength,
-                ),
-                style: AppText.screenTitle(size: 25),
+              // 약 이름과 묻는 단추를 한 줄에 둔다.
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  Expanded(
+                    child: Text(
+                      nameWithoutStrength(
+                        medicine.displayName,
+                        strength: medicine.ingredientStrength,
+                      ),
+                      style: AppText.screenTitle(size: 25),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  _AskAboutThisDrug(name: name),
+                ],
               ),
               if (purpose.isNotEmpty) ...[
                 const SizedBox(height: 2),
@@ -238,10 +248,6 @@ class _Profile extends StatelessWidget {
             ],
           ),
         ),
-        const SizedBox(width: 10),
-        // 읽다가 모르는 것이 생기면 그 자리에서 물어보게 한다. 약 이름을
-        // 다시 고르게 하지 않는다 — 지금 보고 있는 약이 곧 그 약이다.
-        _AskAboutThisDrug(name: name),
       ],
     );
   }
@@ -408,7 +414,12 @@ class _WorkTab extends StatelessWidget {
         ],
         for (int i = 0; i < uses.length; i++) ...[
           if (i > 0) const SizedBox(height: 10),
-          _Bullet(emphasis: uses[i].$1, rest: uses[i].$2),
+          // 아래 "얼마나·언제"와 같은 틀로 읽힌다. 첫 줄에만 딱지를 단다.
+          _Bullet(
+            tag: i == 0 ? '쓰임' : '',
+            emphasis: uses[i].$1,
+            rest: uses[i].$2,
+          ),
         ],
       ],
     );
@@ -417,10 +428,12 @@ class _WorkTab extends StatelessWidget {
 
 /// "· 앞말 + 나머지" 한 줄. 앞말만 파랗게 굵게 둔다.
 class _Bullet extends StatelessWidget {
+  /// 왼쪽 딱지. 비워 두면 자리만 차지해 다음 줄이 같은 줄에 선다.
+  final String tag;
   final String? emphasis;
   final String rest;
 
-  const _Bullet({this.emphasis, required this.rest});
+  const _Bullet({this.tag = '', this.emphasis, required this.rest});
 
   /// 조사나 가운뎃점으로 이어지면 사이를 띄우지 않는다.
   static String _join(String rest) {
@@ -438,17 +451,31 @@ class _Bullet extends StatelessWidget {
     ).copyWith(fontWeight: FontWeight.w800);
     final head = emphasis?.trim() ?? '';
 
-    // 한 줄로 흐르게 둔다. 가운뎃점을 따로 떼면 "혈전이 생기기 쉬운 / 분"
-    // 처럼 끊겨 읽힌다.
-    if (head.isEmpty) return Text('· $rest', style: body);
-    return Text.rich(
-      TextSpan(
-        children: [
-          TextSpan(text: '· $head', style: strong),
-          if (rest.isNotEmpty) TextSpan(text: _join(rest), style: body),
-        ],
-      ),
-      style: body,
+    final text = head.isEmpty
+        ? Text(rest, style: body)
+        : Text.rich(
+            TextSpan(
+              children: [
+                TextSpan(text: head, style: strong),
+                if (rest.isNotEmpty) TextSpan(text: _join(rest), style: body),
+              ],
+            ),
+            style: body,
+          );
+
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SizedBox(
+          width: 68,
+          child: Text(
+            tag,
+            style: AppText.label(size: 18, color: AppColors.textTertiary),
+          ),
+        ),
+        const SizedBox(width: 10),
+        Expanded(child: text),
+      ],
     );
   }
 }

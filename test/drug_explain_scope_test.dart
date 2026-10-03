@@ -17,17 +17,20 @@ void main() {
     headers: {'content-type': 'application/json; charset=utf-8'},
   );
 
-  /// 머리 아래 칸을 눌러 약 하나를 고른다. 누르면 바로 닫힌다.
+  /// 머리 아래 칸을 눌러 약을 고른다. 여러 개를 고를 수 있는 창이라
+  /// 다 고른 뒤 확인을 한 번 누른다.
   Future<void> pick(WidgetTester tester, String label) async {
     await tester.tap(find.byKey(const ValueKey('ai-subject-card')));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(ValueKey('medicine-selection-$label')));
     await tester.pumpAndSettle();
+    await tester.tap(find.text('확인'));
+    await tester.pumpAndSettle();
   }
 
   /// 고른 약을 뺀다.
   Future<void> clearPick(WidgetTester tester) async {
-    await tester.tap(find.text('삭제'));
+    await tester.tap(find.bySemanticsLabel('고른 약 빼기'));
     await tester.pumpAndSettle();
   }
 
@@ -278,6 +281,8 @@ void main() {
     await tester.pump(const Duration(milliseconds: 550));
     await tester.pumpAndSettle();
     await tester.tap(find.text('검색약정'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('확인'));
     await tester.pumpAndSettle();
     await ask(tester);
     expect(sent.last['selected_medicine']['medicine_code'], 'TEMP-1');

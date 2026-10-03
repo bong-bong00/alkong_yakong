@@ -140,7 +140,7 @@ void main() {
   testWidgets('old backend keeps original purpose display', (tester) async {
     await show(tester, data());
     expect(find.text('기존 사용 목적'), findsOneWidget);
-    expect(find.text('· 기존 조건'), findsOneWidget);
+    expect(find.text('기존 조건'), findsOneWidget);
     expect(find.text('정해진 작용을 돕는 성분이에요.'), findsOneWidget);
   });
 
@@ -192,11 +192,11 @@ void main() {
       find.byWidgetPredicate(
         (widget) =>
             widget is Text &&
-            widget.textSpan?.toPlainText() == '· 치통 성인에만 사용한다.',
+            widget.textSpan?.toPlainText() == '치통 성인에만 사용한다.',
       ),
     );
     final useSpans = (useLine.textSpan! as TextSpan).children!.cast<TextSpan>();
-    expect(useSpans.first.text, '· 치통');
+    expect(useSpans.first.text, '치통');
     expect(useSpans.first.style!.color, AppColors.point);
     expect(useSpans.first.style!.fontWeight, FontWeight.w800);
     expect(useSpans.last.text, ' 성인에만 사용한다.');
