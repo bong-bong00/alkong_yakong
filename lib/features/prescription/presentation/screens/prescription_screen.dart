@@ -1171,7 +1171,6 @@ class _ConfirmScreenState extends State<_ConfirmScreen> {
     final timingGuessed =
         (item['administration_times_source']?.toString() ?? '') !=
         'PRESCRIPTION';
-    final instruction = item['dosing_instruction']?.toString().trim() ?? '';
     final nameController = TextEditingController(
       text: item['drug_name']?.toString() ?? '',
     );
@@ -1337,13 +1336,6 @@ class _ConfirmScreenState extends State<_ConfirmScreen> {
                     ),
                 ],
               ),
-              if (instruction.isNotEmpty) ...[
-                const SizedBox(height: 4),
-                Text(
-                  '처방전에 적힌 것: $instruction',
-                  style: AppText.caption(size: 16),
-                ),
-              ],
               const SizedBox(height: 8),
               _SlotPicker(
                 selected: times,

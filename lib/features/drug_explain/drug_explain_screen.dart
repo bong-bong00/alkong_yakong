@@ -1951,10 +1951,13 @@ class _ChatBubble extends StatelessWidget {
                             ? healthHighlightTerms
                             : officialProductNames,
                         // 약 이름 말고도 어르신이 놓치면 안 되는 토막을
-                        // 짚는다 — 얼마나, 언제, 하지 말아야 할 것.
+                        // 짚는다 — 얼마나·언제는 파랑, 하지 말 것은 빨강.
                         extraTerms: isMe || isHealthReply
                             ? const []
                             : chatHighlightTerms(text),
+                        warnTerms: isMe || isHealthReply
+                            ? const []
+                            : chatWarningTerms(text),
                         AppText.body(
                           size: 20,
                           color: isMe ? Colors.white : AppColors.textPrimary,
@@ -1991,6 +1994,7 @@ List<TextSpan> _officialProductNameSpans(
   Color emphasisColor = AppColors.detailEmphasis,
   bool healthWarningsOnly = false,
   List<String> extraTerms = const [],
+  List<String> warnTerms = const [],
 }) {
   final names =
       officialProductNames
@@ -2008,14 +2012,21 @@ List<TextSpan> _officialProductNameSpans(
           .toSet()
           .toList()
         ..sort((left, right) => right.length.compareTo(left.length));
-  if (names.isEmpty && extras.isEmpty) {
+  final warns =
+      warnTerms
+          .map((term) => term.trim())
+          .where((term) => term.isNotEmpty)
+          .toSet()
+          .toList()
+        ..sort((left, right) => right.length.compareTo(left.length));
+  if (names.isEmpty && extras.isEmpty && warns.isEmpty) {
     return [TextSpan(text: text, style: baseStyle)];
   }
 
-  final matches = <({int start, int end})>[];
+  final matches = <({int start, int end, bool warn})>[];
   var cursor = 0;
   while (cursor < text.length) {
-    ({int start, int end})? next;
+    ({int start, int end, bool warn})? next;
     for (final name in names) {
       var start = text.indexOf(name, cursor);
       while (start >= 0 &&
@@ -2024,21 +2035,27 @@ List<TextSpan> _officialProductNameSpans(
         start = text.indexOf(name, start + 1);
       }
       if (start < 0) continue;
-      final candidate = (start: start, end: start + name.length);
+      final candidate = (start: start, end: start + name.length, warn: false);
       if (next == null ||
           candidate.start < next.start ||
           (candidate.start == next.start && candidate.end > next.end)) {
         next = candidate;
       }
     }
-    for (final term in extras) {
-      final start = text.indexOf(term, cursor);
-      if (start < 0) continue;
-      final candidate = (start: start, end: start + term.length);
-      if (next == null ||
-          candidate.start < next.start ||
-          (candidate.start == next.start && candidate.end > next.end)) {
-        next = candidate;
+    for (final (index, group) in [extras, warns].indexed) {
+      for (final term in group) {
+        final start = text.indexOf(term, cursor);
+        if (start < 0) continue;
+        final candidate = (
+          start: start,
+          end: start + term.length,
+          warn: index == 1,
+        );
+        if (next == null ||
+            candidate.start < next.start ||
+            (candidate.start == next.start && candidate.end > next.end)) {
+          next = candidate;
+        }
       }
     }
     if (next == null) break;
@@ -2059,7 +2076,8 @@ List<TextSpan> _officialProductNameSpans(
       TextSpan(
         text: text.substring(match.start, match.end),
         style: baseStyle.copyWith(
-          color: emphasisColor,
+          // 하지 말아야 할 것은 붉게. 나머지 짚는 말과 무게가 다르다.
+          color: match.warn ? AppColors.danger : emphasisColor,
           fontWeight: FontWeight.w700,
         ),
       ),

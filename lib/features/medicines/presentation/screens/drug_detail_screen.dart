@@ -741,10 +741,14 @@ class _DosingTab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     // 꼬리말("제품 설명서의 일반적인 사용법이에요…")이 아니라 용법 문장을
-    // 적는다. 머리말을 걷고, 항마다 줄을 나누고, 고령자·성인·소아 차례로
-    // 세운다(팀원이 만든 formatOfficialUsage·orderOfficialUsageSections).
+    // 적는다. 항마다 줄을 나누고 고령자·성인·소아 차례로 세운다(팀원이
+    // 만든 formatOfficialUsage·orderOfficialUsageSections).
+    //
+    // "성인 :" 같은 머리말은 걷지 않는다. 누구에게 주는 용법인지를
+    // 말하는 말이고, 뒤에 오는 "고령자 :"와 짝을 이룬다. 앞의 하나만
+    // 지우면 남은 머리말이 엉뚱한 문단에 붙은 것처럼 읽힌다.
     final usage = orderOfficialUsageSections(
-      formatOfficialUsage(officialUsageLine(medicine.officialUsage)),
+      formatOfficialUsage(medicine.officialUsage),
     );
     // ingredientLabel 에 용량이 이미 들어 있다. 또 붙이면 "100mg · 100mg".
     final label = medicine.ingredientLabel.trim();
