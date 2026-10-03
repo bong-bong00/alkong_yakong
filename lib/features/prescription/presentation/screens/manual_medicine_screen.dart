@@ -254,12 +254,7 @@ class _ManualMedicineScreenState extends ConsumerState<ManualMedicineScreen> {
   }
 
   static bool _hasPairConflict(Map<String, dynamic>? durResult) {
-    const pairTypes = {'병용금기', '중복성분', '효능군중복'};
-    final matches = durResult?['matches'];
-    if (matches is! List) return false;
-    return matches.any(
-      (item) => item is Map && pairTypes.contains(item['type']?.toString()),
-    );
+    return pairConflictMatches(durResult).isNotEmpty;
   }
 
   @override

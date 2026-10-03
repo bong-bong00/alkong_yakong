@@ -1,4 +1,5 @@
 import 'dart:async';
+import '../../domain/registration_result.dart';
 import 'dart:convert';
 import 'dart:io';
 
@@ -7,6 +8,7 @@ import 'package:flutter_tabler_icons/flutter_tabler_icons.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:gal/gal.dart';
 
 import '../../../../core/constants/medicine_flow_colors.dart';
 import '../../../../core/network/api_client.dart';
@@ -141,22 +143,34 @@ class _PrescriptionScreenState extends ConsumerState<PrescriptionScreen> {
   }
 
   static bool _hasPairConflict(Map<String, dynamic>? durResult) {
-    const pairTypes = {'병용금기', '중복성분', '효능군중복'};
-    final matches = durResult?['matches'];
-    if (matches is! List) return false;
-    return matches.any(
-      (item) => item is Map && pairTypes.contains(item['type']?.toString()),
-    );
+    return pairConflictMatches(durResult).isNotEmpty;
   }
 
   Future<void> _pick(ImageSource source) async {
     try {
       final picked = await _picker.pickImage(source: source);
-      if (picked == null) return;
+      if (picked == null || !mounted) return;
+      String? galleryMessage;
+      if (source == ImageSource.camera) {
+        try {
+          await Gal.putImage(picked.path);
+          galleryMessage = '촬영한 사진을 갤러리에 저장했어요.';
+        } on GalException catch (error) {
+          galleryMessage = error.type == GalExceptionType.accessDenied
+              ? '사진 저장 권한이 없어 갤러리에 저장하지 못했어요. 처방전 인식은 계속할 수 있어요.'
+              : '갤러리에 사진을 저장하지 못했어요. 처방전 인식은 계속할 수 있어요.';
+        } catch (_) {
+          galleryMessage = '갤러리에 사진을 저장하지 못했어요. 처방전 인식은 계속할 수 있어요.';
+        }
+      }
+      if (!mounted) return;
       setState(() {
         _image = File(picked.path);
         _step = PrescriptionStep.capture;
       });
+      if (galleryMessage != null) {
+        showSeniorSnackbar(context, galleryMessage);
+      }
     } catch (_) {
       if (!mounted) return;
       setState(() {
@@ -444,8 +458,18 @@ class _PrescriptionScreenState extends ConsumerState<PrescriptionScreen> {
       'pair_conflict=$hasPairConflict '
       'destination=${hasPairConflict ? 'dur_analysis' : 'schedule_days'}',
     );
-    // 함께먹기 주의 화면은 없앴다. 충돌이 있어도 등록은 그대로 이어가고,
-    // 주의 내용은 약 자세히에서 그 약을 열어 볼 때 보여 준다.
+    if (hasPairConflict) {
+      context.push(
+        '/dur-analysis',
+        extra: {
+          ...?durResult,
+          'open_schedule_days': true,
+          if (widget.onOpenScheduleDays != null)
+            'on_open_schedule_days': widget.onOpenScheduleDays,
+        },
+      );
+      return;
+    }
     openScheduleDays();
   }
 
@@ -576,6 +600,18 @@ class _PrescriptionScreenState extends ConsumerState<PrescriptionScreen> {
         return ManualMedicineScreen(
           onBack: () => setState(() => _step = PrescriptionStep.pickMethod),
           onSaved: (durResult) {
+            if (_hasPairConflict(durResult)) {
+              context.push(
+                '/dur-analysis',
+                extra: {
+                  ...?durResult,
+                  'open_schedule_days': true,
+                  if (widget.onOpenScheduleDays != null)
+                    'on_open_schedule_days': widget.onOpenScheduleDays,
+                },
+              );
+              return;
+            }
             final onOpenScheduleDays = widget.onOpenScheduleDays;
             if (onOpenScheduleDays != null) {
               onOpenScheduleDays();

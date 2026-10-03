@@ -23,6 +23,7 @@ import 'features/dashboard/presentation/screens/home_screen.dart';
 import 'features/drug_explain/drug_explain_screen.dart';
 import 'features/medication/application/medication_controller.dart';
 import 'features/medicines/presentation/screens/drug_detail_screen.dart';
+import 'features/dur_analysis/presentation/screens/dur_analysis_screen.dart';
 import 'features/onboarding/presentation/screens/first_run_screen.dart';
 import 'features/prescription/presentation/screens/manual_medicine_screen.dart';
 import 'features/prescription/presentation/screens/prescription_screen.dart';
@@ -108,6 +109,20 @@ final _router = GoRouter(
             ? extra['prescription_id']?.toString()
             : null;
         return ScheduleDaysScreen(prescriptionId: id);
+      },
+    ),
+    GoRoute(
+      path: '/dur-analysis',
+      builder: (context, state) {
+        final data = state.extra is Map
+            ? Map<String, dynamic>.from(state.extra as Map)
+            : null;
+        return DurAnalysisScreen(
+          initialResult: data,
+          onOpenScheduleDays: data?['on_open_schedule_days'] is VoidCallback
+              ? data!['on_open_schedule_days'] as VoidCallback
+              : null,
+        );
       },
     ),
     GoRoute(

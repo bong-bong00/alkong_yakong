@@ -11,6 +11,7 @@ import '../../../../core/widgets/senior_card.dart' show PillPhoto, kCardShadow;
 import '../../../../core/widgets/senior_header.dart';
 import '../../application/user_medicines_controller.dart';
 import '../../domain/display_policy.dart';
+import '../../domain/ingredient_explanation_display.dart';
 import '../../domain/user_medicine_models.dart';
 
 /// 내 약 한 종류 상세 — 서버 쉬운말·주의·복용 정보.
@@ -345,7 +346,11 @@ class _WorkTab extends StatelessWidget {
   String get _explanation {
     final spoken = medicine.detailSpoken ?? '';
     if (spoken.trim().isNotEmpty) return spoken;
-    return medicine.ingredientExplanation;
+    // 팀원이 더한 다듬기 — "이 약의 주성분으로," 뒤의 군더더기를 걷는다.
+    return ingredientExplanationDisplay(
+      medicine.ingredientExplanation,
+      medicine.ingredientHighlight,
+    );
   }
 
   /// 이 약이 쓰이는 경우. 한 줄씩 짧은 말로 두고, 그 안에서 짚을 낱말만

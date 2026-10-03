@@ -26,6 +26,12 @@
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>NSCameraUsageDescription</key>
+	<string>처방전을 촬영하여 약과 복용 정보를 확인합니다.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>사진에서 처방전을 선택하여 약과 복용 정보를 확인합니다.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>촬영한 처방전 사진을 사진 보관함에 저장합니다.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>
