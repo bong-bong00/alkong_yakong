@@ -64,6 +64,9 @@ class _AddCareSheetState extends State<_AddCareSheet> {
   /// 상대를 부르는 말. 보호자가 보면 "어르신", 어르신이 보면 "보호자".
   String get _other => widget.asPatient ? '보호자' : '어르신';
 
+  /// 그 말에 붙는 임자 조사 — "보호자가", "어르신이".
+  String get _otherSubject => widget.asPatient ? '보호자가' : '어르신이';
+
   String? _relation;
 
   bool get _isOther => _relation == '그 외';
@@ -93,7 +96,7 @@ class _AddCareSheetState extends State<_AddCareSheet> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           SeniorSheetBody([
-            '$_other 전화번호로 초대를 보냅니다. $_other이 ',
+            '$_other 전화번호로 초대를 보냅니다. $_otherSubject ',
             '수락해야',
             widget.asPatient ? ' 내 복약 현황이 보입니다.' : ' 복약 현황이 보입니다.',
           ]),
@@ -151,7 +154,7 @@ class _AddCareSheetState extends State<_AddCareSheet> {
                 const SizedBox(height: 6),
                 Text(
                   '이름, 관계, 내 전화번호가 $_other에게 그대로 보입니다. '
-                  '$_other이 수락해야 복약 현황이 열립니다.',
+                  '$_otherSubject 수락해야 복약 현황이 열립니다.',
                   style: AppText.body(size: 17.5),
                 ),
               ],
@@ -209,7 +212,6 @@ class _RelationChip extends StatelessWidget {
         child: ExcludeSemantics(
           child: Container(
             constraints: const BoxConstraints(minHeight: 52),
-            alignment: Alignment.center,
             padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
             decoration: BoxDecoration(
               color: selected ? AppColors.pointFill : AppColors.sunken,
