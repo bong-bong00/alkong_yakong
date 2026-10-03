@@ -205,7 +205,7 @@ class _Profile extends StatelessWidget {
     final purpose = (medicine.purposeLabel ?? '').trim();
     final look = medicine.appearanceLine.trim();
     return Row(
-      crossAxisAlignment: CrossAxisAlignment.center,
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         PillPhoto(size: 72, imageUrl: medicine.imageUrl),
         const SizedBox(width: 16),
@@ -214,30 +214,12 @@ class _Profile extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
-              // 약 이름과 묻는 단추를 한 줄에 둔다. 윗줄을 맞춰 단추가
-              // 이름보다 위로 솔아오르지 않게 한다.
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Expanded(
-                    child: Text(
-                      nameWithoutStrength(
-                        medicine.displayName,
-                        strength: medicine.ingredientStrength,
-                      ),
-                      style: AppText.screenTitle(size: 25),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  // 단추는 두 줄이라 이름 줄보다 키가 크다. 그 키만큼 줄을 밀면
-                  // 이름 밑에 빈 자리가 생긴다. 차지하는 자리는 이름 줄만큼만
-                  // 잡고, 나머지는 오른쪽 빈 곳에 그대로 그린다.
-                  Align(
-                    alignment: Alignment.topRight,
-                    heightFactor: 0.6,
-                    child: _AskAboutThisDrug(name: name),
-                  ),
-                ],
+              Text(
+                nameWithoutStrength(
+                  medicine.displayName,
+                  strength: medicine.ingredientStrength,
+                ),
+                style: AppText.screenTitle(size: 25),
               ),
               if (purpose.isNotEmpty) ...[
                 const SizedBox(height: 2),
@@ -256,6 +238,10 @@ class _Profile extends StatelessWidget {
             ],
           ),
         ),
+        const SizedBox(width: 10),
+        // 글 묶음 바깥에 둔다. 안에 두면 설명이 길어질 때 단추 밑으로
+        // 글이 들어가 겹친다. 윗줄은 약 이름과 맞춘다.
+        _AskAboutThisDrug(name: name),
       ],
     );
   }
