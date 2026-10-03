@@ -58,6 +58,20 @@ class AuthSession {
     }
   }
 
+  /// 스스로 나가신 분을 개발용 자동 로그인이 다시 끌고 들어오지
+  /// 않게 막는 표시. 다시 로그인하시면 풀린다.
+  static const String _devAutoLoginBlockedKey = 'devAutoLoginBlocked';
+
+  static Future<bool> get devAutoLoginBlocked async {
+    _prefs ??= await SharedPreferences.getInstance();
+    return _prefs?.getBool(_devAutoLoginBlockedKey) ?? false;
+  }
+
+  static Future<void> allowDevAutoLogin() async {
+    _prefs ??= await SharedPreferences.getInstance();
+    await _prefs?.remove(_devAutoLoginBlockedKey);
+  }
+
   static Future<void> persistUserId(String userId) async {
     final normalized = userId.trim();
     if (normalized.isEmpty) return;
@@ -80,6 +94,10 @@ class AuthSession {
   }
 
   static Future<void> logout() async {
+    _prefs ??= await SharedPreferences.getInstance();
+    // 나가셨으면 다음에 켤 때 로그인 화면이 떠야 한다. 개발 빌드가
+    // 체험 계정으로 다시 들어가 버리면 나간 것이 아니다.
+    await _prefs?.setBool(_devAutoLoginBlockedKey, true);
     isLoggedIn = false;
     role = 'patient';
     await _prefs?.setBool('isLoggedIn', false);

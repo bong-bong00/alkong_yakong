@@ -66,6 +66,7 @@ Future<void> startSession(WidgetRef ref, UserProfile user) async {
   }
   MvpSession.userId = id;
   MvpSession.isPregnant = user.isPregnant;
+  await AuthSession.allowDevAutoLogin();
   await AuthSession.setLoggedIn(user.isGuardian ? 'guardian' : 'patient');
   ref.read(userRoleProvider.notifier).state = user.isGuardian
       ? UserRole.guardian
