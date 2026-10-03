@@ -353,30 +353,60 @@ class _WorkTab extends StatelessWidget {
     );
   }
 
-  /// 이 약이 쓰이는 경우. 한 줄씩 짧은 말로 두고, 그 안에서 짚을 낱말만
-  /// 파랑게 한다. 긴 설명 문장은 위 문단에 이미 있어 여기 올리지 않는다.
+  /// 이 약이 쓰이는 경우. 한 줄에 문장을 적고, 그 안에서 짚을 낱말만
+  /// 파랗게 한다. 낱말만 따로 한 줄 세우면 같은 말이 두 줄이 된다.
   List<(String, String)> get _uses {
     final seen = <String>{};
     final uses = <(String, String)>[];
+    final spoken = _explanation;
     for (final use in medicine.treatmentUses) {
       final title = use.title.trim();
-      if (title.isEmpty || !seen.add(title)) continue;
       final rest = use.description.trim();
-      // 조사나 가운덴점으로 이어지면 한 말의 뒷토막이다. 아니면 설명 문장이다.
-      final phrase = _isTail(rest) ? '$title$rest' : title;
+      if (title.isEmpty && rest.isEmpty) continue;
+      // 설명 문장이 있으면 그 문장을 적는다. 낱말은 그 문장 안에서 짚는다.
+      // 조사나 가운뎃점으로 이어지면 한 말의 뒷토막이니 앞말에 붙인다.
+      final phrase = rest.isEmpty
+          ? title
+          : _isTail(rest)
+          ? '$title$rest'
+          : rest;
+      if (!seen.add(phrase)) continue;
+      // 윗 문단이 이미 같은 말을 했으면 두 번 적지 않는다.
+      if (_samePhrase(phrase, spoken)) continue;
       final mark = use.highlight.trim();
       uses.add((phrase, mark.isEmpty ? title : mark));
     }
     for (final approved in medicine.approvedUses) {
       final text = approved.trim();
       if (text.isEmpty || !seen.add(text)) continue;
+      if (_samePhrase(text, spoken)) continue;
       uses.add((text, ''));
     }
-    if (uses.isEmpty && medicine.approvedUseSummary.trim().isNotEmpty) {
+    if (uses.isEmpty &&
+        medicine.approvedUseSummary.trim().isNotEmpty &&
+        !_samePhrase(medicine.approvedUseSummary, spoken)) {
       uses.add((medicine.approvedUseSummary.trim(), ''));
     }
     return uses;
   }
+
+  /// 약이 아니라 자료를 설명하는 말인지.
+  static bool _isNotice(String text) {
+    const marks = ['허가정보', '설명서', '출처', '참고하', '확인해 주세요', '안내예요'];
+    return marks.any(text.contains);
+  }
+
+  /// 두 말이 사실상 같은 말인지. 띄어쓰기·문장부호만 다른 경우가 많다.
+  static bool _samePhrase(String a, String b) {
+    final left = _bare(a);
+    final right = _bare(b);
+    if (left.isEmpty || right.isEmpty) return false;
+    return left == right || right.contains(left);
+  }
+
+  /// 견주기 위해 띄어쓰기와 문장부호를 턴다.
+  static String _bare(String text) =>
+      text.replaceAll(RegExp(r'[\s.,·()\[\]"’“”]'), '');
 
   /// 앞말에 바로 붙는 뒷토막인지.
   static bool _isTail(String rest) {
@@ -389,6 +419,11 @@ class _WorkTab extends StatelessWidget {
   String get _summary {
     final summary = medicine.approvedUseSummary.trim();
     if (summary.isEmpty) return '';
+    // "공식 허가정보에서 확인한 대표 사용 목적이에요" 같은 말은 약이
+    // 아니라 자료를 설명한다. 출처는 맨 밑에 이미 한 줄 적혀 있다.
+    if (_isNotice(summary)) return '';
+    // 윗 문단이 이미 같은 말을 했으면 두 번 적지 않는다.
+    if (_samePhrase(summary, _explanation)) return '';
     final shown = _uses.any((use) => use.$1 == summary);
     return shown ? '' : summary;
   }
@@ -450,6 +485,50 @@ class _Bullet extends StatelessWidget {
 
   const _Bullet({this.tag = '', required this.text, this.highlight = ''});
 
+  /// 짚을 낱말들. 통째로 들어 있으면 그대로, 아니면 가운뎃점·쉼표로
+  /// 갈라 문장 안에 실제로 있는 토막만 남긴다.
+  List<String> get _marks {
+    final mark = highlight.trim();
+    if (mark.isEmpty) return const [];
+    if (text.contains(mark)) return [mark];
+    return mark
+        .split(RegExp(r'[·,/\s]+'))
+        .map((piece) => piece.trim())
+        .where((piece) => piece.length >= 2 && text.contains(piece))
+        .toList();
+  }
+
+  /// 낱말마다 파랗게 끊어 둔 조각들. 짚을 것이 없으면 null.
+  List<InlineSpan>? _spans(String text, TextStyle body, TextStyle strong) {
+    final marks = _marks;
+    if (marks.isEmpty) return null;
+    final spans = <InlineSpan>[];
+    var cursor = 0;
+    while (cursor < text.length) {
+      var at = -1;
+      var hit = '';
+      for (final mark in marks) {
+        final found = text.indexOf(mark, cursor);
+        if (found < 0) continue;
+        if (at < 0 || found < at || (found == at && mark.length > hit.length)) {
+          at = found;
+          hit = mark;
+        }
+      }
+      if (at < 0) break;
+      if (at > cursor) {
+        spans.add(TextSpan(text: text.substring(cursor, at), style: body));
+      }
+      spans.add(TextSpan(text: hit, style: strong));
+      cursor = at + hit.length;
+    }
+    if (spans.isEmpty) return null;
+    if (cursor < text.length) {
+      spans.add(TextSpan(text: text.substring(cursor), style: body));
+    }
+    return spans;
+  }
+
   @override
   Widget build(BuildContext context) {
     final body = AppText.body(size: 19);
@@ -458,20 +537,10 @@ class _Bullet extends StatelessWidget {
       color: AppColors.point,
     ).copyWith(fontWeight: FontWeight.w800);
 
-    final mark = highlight.trim();
-    final at = mark.isEmpty ? -1 : text.indexOf(mark);
-    final line = at < 0
+    final spans = _spans(text, body, strong);
+    final line = spans == null
         ? Text(text, style: body)
-        : Text.rich(
-            TextSpan(
-              children: [
-                if (at > 0) TextSpan(text: text.substring(0, at), style: body),
-                TextSpan(text: mark, style: strong),
-                TextSpan(text: text.substring(at + mark.length), style: body),
-              ],
-            ),
-            style: body,
-          );
+        : Text.rich(TextSpan(children: spans), style: body);
 
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -622,20 +691,43 @@ class _DosingTab extends StatelessWidget {
 
   const _DosingTab({required this.medicine});
 
-  /// "아침 8시에 하루 한 번 드세요." 처럼 한 문장으로 잇는다.
+  /// "아침, 점심, 저녁 하루 3번 드세요." 처럼 한 문장으로 잇는다.
+  ///
+  /// 시각을 분 단위로 적지 않는다. 08:00에 드시든 08:40에 드시든 아침
+  /// 약이다. 몇 시에 울릴지는 알림이 따로 맡는다.
   String get _whenLine {
-    final times = medicine.administrationTimes
-        .map((time) => time.trim())
-        .where((time) => time.isNotEmpty)
-        .toList();
+    final slots = <String>[];
+    for (final time in medicine.administrationTimes) {
+      final slot = _slotName(time);
+      if (slot.isNotEmpty && !slots.contains(slot)) slots.add(slot);
+    }
     final how = medicine.frequencyLabel.trim();
-    if (times.isEmpty) return how.isEmpty ? '처방전대로 드세요.' : '$how 드세요.';
-    return '${times.join(' · ')}에 ${how.isEmpty ? '' : '$how '}드세요.';
+    if (slots.isEmpty) return how.isEmpty ? '처방전대로 드세요.' : '$how 드세요.';
+    return '${slots.join(', ')} ${how.isEmpty ? '' : '$how '}드세요.';
+  }
+
+  /// "08:00" → "아침". 읽을 수 없는 값이면 빈 말이다.
+  static String _slotName(String raw) {
+    final match = RegExp(r'^(\d{1,2})\s*[:시]').firstMatch(raw.trim());
+    if (match == null) return '';
+    final hour = int.tryParse(match.group(1)!) ?? -1;
+    if (hour < 0 || hour > 24) return '';
+    if (hour < 5) return '밤';
+    if (hour < 11) return '아침';
+    if (hour < 17) return '점심';
+    if (hour < 22) return '저녁';
+    return '밤';
   }
 
   @override
   Widget build(BuildContext context) {
-    final meal = medicine.officialUsageNotice.trim();
+    // 꼬리말("제품 설명서의 일반적인 사용법이에요…")이 아니라 용법
+    // 문장을 적는다. 꼬리말을 적으면 복용법 자리에 복용법이 없다.
+    //
+    // 서버가 검토된 카드를 주면 그 카드는 이미 세 문장으로 줄여 온다.
+    // 카드가 없으면 설명서 원문이 그대로 온다 — 머리말을 걷고 항마다
+    // 줄을 나눠 둔다(팀원이 만든 formatOfficialUsage).
+    final meal = formatOfficialUsage(officialUsageLine(medicine.officialUsage));
     // ingredientLabel 에 용량이 이미 들어 있다. 또 붙이면 "100mg · 100mg".
     final label = medicine.ingredientLabel.trim();
     final strength = medicine.ingredientStrength.trim();
@@ -675,9 +767,11 @@ class _DosingTab extends StatelessWidget {
               ),
               const SizedBox(width: 10),
               Expanded(
-                child: Text(
-                  rows[i].$2,
-                  style: AppText.cardTitle(size: 19).copyWith(height: 1.45),
+                // 설명서에서 그대로 온 용법은 열 줄을 넘기도 한다.
+                // 다 펴 두면 아래 줄이 화면 밖으로 밀린다.
+                child: _RowValue(
+                  text: rows[i].$2,
+                  foldable: rows[i].$1 == '복용법',
                 ),
               ),
             ],
@@ -842,4 +936,55 @@ class _EmphasisRange {
   final TextStyle style;
 
   const _EmphasisRange(this.start, this.end, this.style);
+}
+
+/// 줄 하나의 값. 긴 말은 세 줄만 보이고 "더 보기"로 편다.
+class _RowValue extends StatefulWidget {
+  final String text;
+
+  /// 접을 수 있는 줄인지. 짧은 줄은 접을 까닭이 없다.
+  final bool foldable;
+
+  const _RowValue({required this.text, this.foldable = false});
+
+  @override
+  State<_RowValue> createState() => _RowValueState();
+}
+
+class _RowValueState extends State<_RowValue> {
+  bool _open = false;
+
+  /// 세 줄 안에 들어가는 길이면 접지 않는다.
+  bool get _long => widget.foldable && widget.text.length > 70;
+
+  @override
+  Widget build(BuildContext context) {
+    final style = AppText.cardTitle(size: 19).copyWith(height: 1.45);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          widget.text,
+          style: style,
+          maxLines: _long && !_open ? 3 : null,
+          overflow: _long && !_open ? TextOverflow.ellipsis : null,
+        ),
+        if (_long) ...[
+          const SizedBox(height: 6),
+          GestureDetector(
+            onTap: () => setState(() => _open = !_open),
+            behavior: HitTestBehavior.opaque,
+            child: Container(
+              constraints: const BoxConstraints(minHeight: 44),
+              alignment: Alignment.centerLeft,
+              child: Text(
+                _open ? '접기' : '더 보기',
+                style: AppText.cardTitle(size: 18, color: AppColors.point),
+              ),
+            ),
+          ),
+        ],
+      ],
+    );
+  }
 }

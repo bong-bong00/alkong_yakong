@@ -54,7 +54,13 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
   final Map<String, _DrugSearchCandidate> _temporaryMedicinesByCode = {};
   final Set<String> _registeredMedicineCodes = {};
   String? _medicineLoadError;
+
+  /// 등록된 복용중인 약. 서버에서 받아 온 것만 여기 든다.
   final List<String> _medicines = [];
+
+  /// 이름으로 찾아서 이번에 더한 약. 복용중인 약이 되지는 않는다 —
+  /// 검색만으로 내 약 목록이 불어나면 안 된다.
+  final List<String> _searchedMedicines = [];
   final List<Map<String, dynamic>> _messages = [];
   int _conversationStart = 0;
   final _conversationStore = PharmacistConversationStore();
@@ -154,7 +160,7 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
         // Keep current registered medicines. Old search selections are not registered.
         for (final candidate in _temporaryMedicinesByCode.values) {
           if (!_registeredMedicineCodes.contains(candidate.itemSeq)) {
-            _medicines.remove(candidate.itemName);
+            _searchedMedicines.remove(candidate.itemName);
             _officialMedicinesByName.remove(candidate.itemName);
           }
         }
@@ -167,8 +173,9 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
             _temporaryMedicinesByCode[candidate.itemSeq!] = candidate;
           }
           _officialMedicinesByName[candidate.itemName] = candidate;
-          if (!_medicines.contains(candidate.itemName)) {
-            _medicines.add(candidate.itemName);
+          if (!_medicines.contains(candidate.itemName) &&
+              !_searchedMedicines.contains(candidate.itemName)) {
+            _searchedMedicines.add(candidate.itemName);
           }
         }
         for (final item in conversation['selected'] as List? ?? []) {
@@ -178,7 +185,10 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
             itemName: item['product_name'] as String,
             itemSeq: item['medicine_code'] as String?,
           );
-          if (!_medicines.contains(name)) _medicines.add(name);
+          if (!_medicines.contains(name) &&
+              !_searchedMedicines.contains(name)) {
+            _searchedMedicines.add(name);
+          }
         }
         _pendingGeneralQuestion = conversation['pendingQuestion'] as String?;
         _chatController.clear();
@@ -595,6 +605,7 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
       builder: (_) => _MedicinePickSheet(
         apiClient: _apiClient,
         medicines: _medicines,
+        searched: _searchedMedicines,
         shortName: _shortName,
         selected: _selectedMedicines,
       ),
@@ -610,8 +621,11 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
   }) {
     setState(() {
       for (final candidate in candidates) {
-        if (!_medicines.contains(candidate.itemName)) {
-          _medicines.add(candidate.itemName);
+        // 찾아서 더한 약은 복용중인 약으로 치지 않는다. 묻기 위해
+        // 잠깐 올려 둔 것일 뿐, 내가 먹는 약이라고 말한 적은 없다.
+        if (!_medicines.contains(candidate.itemName) &&
+            !_searchedMedicines.contains(candidate.itemName)) {
+          _searchedMedicines.add(candidate.itemName);
         }
         final code = candidate.itemSeq?.trim();
         if (code != null && code.isNotEmpty) {
@@ -1341,7 +1355,7 @@ class _MedicinePick {
   /// 고른 약 이름들.
   final List<String> names;
 
-  /// 검색으로 새로 고른 약. 내 약 목록에 더해 둔다.
+  /// 검색으로 새로 고른 약. 복용중인 약과는 따로 둔다.
   final List<_DrugSearchCandidate> found;
 
   const _MedicinePick({this.names = const [], this.found = const []});
@@ -1353,7 +1367,13 @@ class _MedicinePick {
 /// 고를 수 있으면 그 말을 할 수 없다.
 class _MedicinePickSheet extends StatefulWidget {
   final ApiClient apiClient;
+
+  /// 등록된 복용중인 약.
   final List<String> medicines;
+
+  /// 앞서 이름으로 찾아 더해 둔 약.
+  final List<String> searched;
+
   final String Function(String name) shortName;
 
   /// 지금 고른 약들. 그 줄에 체크가 찬다.
@@ -1363,6 +1383,7 @@ class _MedicinePickSheet extends StatefulWidget {
     required this.apiClient,
     required this.medicines,
     required this.shortName,
+    this.searched = const [],
     this.selected = const [],
   });
 
@@ -1374,7 +1395,7 @@ class _MedicinePickSheetState extends State<_MedicinePickSheet> {
   /// 지금 체크한 약들.
   late final List<String> _picked = [...widget.selected];
 
-  /// 검색으로 새로 고른 약. 내 약 줄 끝에 같이 세운다.
+  /// 이번에 검색으로 새로 고른 약. 찾아 더한 약 줄에 선다.
   final List<_DrugSearchCandidate> _found = [];
 
   final TextEditingController _controller = TextEditingController();
@@ -1394,11 +1415,14 @@ class _MedicinePickSheetState extends State<_MedicinePickSheet> {
     super.dispose();
   }
 
-  /// 창에 세울 약 줄 — 내 약과 검색으로 더한 약.
-  List<String> get _names => [
-    ...widget.medicines,
+  /// 찾아서 더한 약 줄 — 앞서 더해 둔 것과 이번에 고른 것.
+  List<String> get _searchedNames => [
+    for (final name in widget.searched)
+      if (!widget.medicines.contains(name)) name,
     for (final candidate in _found)
-      if (!widget.medicines.contains(candidate.itemName)) candidate.itemName,
+      if (!widget.medicines.contains(candidate.itemName) &&
+          !widget.searched.contains(candidate.itemName))
+        candidate.itemName,
   ];
 
   void _toggle(String name) {
@@ -1543,29 +1567,40 @@ class _MedicinePickSheetState extends State<_MedicinePickSheet> {
             const SizedBox(height: 8),
             if (widget.medicines.isEmpty)
               Text(
-                '등록된 약이 없어요. 아래에서 약 이름으로 찾아보세요.',
+                '등록된 약이 없어요. 위에서 약 이름으로 찾아보세요.',
                 style: AppText.body(size: 18, color: AppColors.textBody),
               )
             else
-              // 칸을 늘어놓지 않고 줄로 세운다. 오른쪽 스위치를 켜면 그 약을
-              // 고른 것이다 — 약이 늘어도 줄만 길어질 뿐 모양이 흐트러지지
-              // 않는다.
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  for (int i = 0; i < _names.length; i++) ...[
-                    if (i > 0) const SeniorDivider(),
-                    _MedicineToggleRow(
-                      label: widget.shortName(_names[i]),
-                      picked: _picked.contains(_names[i]),
-                      onPick: () => _toggle(_names[i]),
-                    ),
-                  ],
-                ],
-              ),
+              _rows(widget.medicines),
+            // 찾아서 더한 약은 따로 세운다. 검색했다고 내가 먹는 약이
+            // 되는 것은 아니다.
+            if (_searchedNames.isNotEmpty) ...[
+              const SizedBox(height: 18),
+              Text('찾아서 더한 약', style: AppText.caption(size: 17.5)),
+              const SizedBox(height: 8),
+              _rows(_searchedNames),
+            ],
           ],
         ],
       ),
+    );
+  }
+
+  /// 약 줄 한 묶음. 칸을 늘어놓지 않고 줄로 세운다 — 약이 늘어도
+  /// 줄만 길어질 뿐 모양이 흐트러지지 않는다.
+  Widget _rows(List<String> names) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        for (int i = 0; i < names.length; i++) ...[
+          if (i > 0) const SeniorDivider(),
+          _MedicineToggleRow(
+            label: widget.shortName(names[i]),
+            picked: _picked.contains(names[i]),
+            onPick: () => _toggle(names[i]),
+          ),
+        ],
+      ],
     );
   }
 

@@ -1190,7 +1190,7 @@ void _homeTimelineTests() {
     expect(same.phrase, '평소와 비슷');
   });
 
-  testWidgets('드신 때와 아직인 때를 때 칩으로 말한다', (tester) async {
+  testWidgets('드신 때와 미복용인 때를 때 칩으로 말한다', (tester) async {
     await tester.pumpWidget(
       home(
         doses: const [
@@ -1211,18 +1211,18 @@ void _homeTimelineTests() {
     );
     await tester.pump();
 
-    // 약이 없는 때는 "없음". 드신 때는 드신 시각을, 아직인 때는 "아직"을
+    // 약이 없는 때는 "없음". 드신 때는 드신 시각을, 아직인 때는 "미복용"을
     // 적는다. 몇 시에 드시는지는 미리 정해 두지 않는다.
     expect(find.text('아침'), findsOneWidget);
     expect(find.text('없음'), findsOneWidget);
     expect(find.text('점심'), findsOneWidget);
     expect(find.text('드셨어요'), findsOneWidget);
     expect(find.text('저녁'), findsOneWidget);
-    expect(find.text('아직'), findsOneWidget);
+    expect(find.text('미복용'), findsOneWidget);
     // 시각을 미리 정해 두지 않는다 — 칩에 적히는 것은 드신 시각뿐이다.
     // (아래 알림 칸에는 따로 맞춰 둔 시각이 적힐 수 있다.)
     final chips = find.ancestor(
-      of: find.text('아직'),
+      of: find.text('미복용'),
       matching: find.byType(Row),
     );
     expect(
@@ -1272,7 +1272,7 @@ void _homeTimelineTests() {
     // 되돌리면 아침은 다시 "아직"이 된다.
     await tester.tap(find.text('취소하기'));
     await tester.pumpAndSettle();
-    expect(find.text('아직'), findsWidgets);
+    expect(find.text('미복용'), findsWidgets);
 
     // 그 자리에서 다시 드시면 지금 시각이 적힌다.
     await tester.tap(find.text('복용 완료').last);
@@ -1370,14 +1370,15 @@ void _homeTimelineTests() {
 
     expect(find.textContaining('2번 남았어요'), findsOneWidget);
     expect(find.text('복용 완료'), findsOneWidget);
-    // 알림 화면으로 가는 네모 칸. 맞춰 둔 시각만 적는다(자명종 그림이 있다).
-    // 어느 시각이 나오는지는 지금 몇 시인지에 따라 다르다 — 꼴만 본다.
+    // 알림 화면으로 가는 네모 칸. 다음에 울릴 시각을 "다음 알람 18:00"처럼
+    // 적는다. 어느 시각인지는 지금 몇 시인지에 따라 다르다 — 꼴만 본다.
     expect(
       find.byWidgetPredicate(
         (widget) =>
-            widget is Text && RegExp(r'^\d{2}:\d{2}$').hasMatch(widget.data ?? ''),
+            widget is Text &&
+            RegExp(r'^다음 알람 \d{2}:\d{2}$').hasMatch(widget.data ?? ''),
       ),
-      findsWidgets,
+      findsOneWidget,
     );
   });
 
@@ -1595,8 +1596,9 @@ void _medicinesByTimeTests() {
     final source = File(
       'lib/features/medicines/presentation/screens/my_medicines_screen.dart',
     ).readAsStringSync();
-    // 시안 38은 "지금 드시는 약" 옆에 이 말을 붙여 둔다.
-    expect(source.contains('누르면 설명이 나와요'), isTrue);
+    // 머리말은 두지 않는다. 약 줄이 바로 보이면 더 설명할 것이 없다.
+    expect(source.contains('누르면 설명이 나와요'), isFalse);
+    expect(source.contains('현재 사용하는 약'), isFalse);
     // 약마다 같은 사진 자리를 쓴다. 다른 모양이면 다른 약으로 읽힌다.
     // 크기는 화면마다 다를 수 있으므로 같은 위젯을 쓰는지만 본다.
     expect(source.contains('PillPhoto(size:'), isTrue);

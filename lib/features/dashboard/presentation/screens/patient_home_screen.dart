@@ -197,8 +197,8 @@ class _PatientHomeScreenState extends ConsumerState<PatientHomeScreen> {
     );
   }
 
-  /// 홈 알림 칸에 적을 말. 다음에 울릴 시각만 적는다 — 자명종 그림이
-  /// 이미 알림이라고 말하고 있다.
+  /// 홈 알림 칸에 적을 말. 다음에 울릴 시각을 "다음 알람 18:00"처럼
+  /// 적는다 — 시각만 적으면 무슨 시각인지 알 길이 없다.
   static String _nextAlarmLabel(AlarmPreferences alarm) {
     final times = alarm.ringingTimes;
     if (!alarm.autoAlarm || times.isEmpty) return '알림 꺼짐';
@@ -209,7 +209,7 @@ class _PatientHomeScreenState extends ConsumerState<PatientHomeScreen> {
       (t) => t > minutes,
       orElse: () => times.first,
     );
-    return AlarmPreferences.clock(next);
+    return '다음 알람 ${AlarmPreferences.clock(next)}';
   }
 
   /// "알림 시간" 칸 — 소리로 울릴 시각을 고치러 간다.
@@ -682,7 +682,7 @@ class _SlotChips extends StatelessWidget {
         ? '없음'
         : taken
         ? (clock.isEmpty ? '드셨어요' : clock)
-        : '아직';
+        : '미복용';
     final background = dose == null
         ? AppColors.neutralFill
         : isPicked
@@ -1232,7 +1232,7 @@ class _SkipMeasure extends StatelessWidget {
 /// 동그라미 아래 두 칸 — "30분 뒤"와 "약 보기".
 /// 다 드신 뒤에는 왼쪽이 드신 시각으로 바뀐다.
 class _HomeTiles extends StatelessWidget {
-  /// 알림 칸에 적을 말 — "18:00" 또는 "알림 꺼짐".
+  /// 알림 칸에 적을 말 — "다음 알람 18:00" 또는 "알림 꺼짐".
   final String alarmLabel;
 
   /// 복약 알림 설정으로. 소리로 울릴 시각을 거기서 고친다.

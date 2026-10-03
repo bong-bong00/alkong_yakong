@@ -329,6 +329,23 @@ MyMedicineCard resolveMyMedicineCard({
   return MyMedicineCard(name: name, purposeLabel: purpose, spoken: spoken);
 }
 
+/// 제품 설명서의 용법 한 줄. 설명서 말투의 머리말을 걷는다.
+///
+/// 서버가 주는 문장은 "성인 : 아미오다론염산염으로서 …"처럼 시작한다.
+/// 어르신이 읽을 자리에서는 "성인 :"이 할 말이 없다 — 내 약이니까.
+String officialUsageLine(String? raw) {
+  final text = (raw ?? '').replaceAll(RegExp(r'\s+'), ' ').trim();
+  if (text.isEmpty) return '';
+  final cut = text
+      // 설명서 머리의 동그라미·가운뎃점.
+      .replaceFirst(RegExp(r'^[○◦●·\-]\s*'), '')
+      // "1. 정신과 영역 2. 피부과 영역" — 쓰임 묶음 번호지 용법이 아니다.
+      .replaceAll(RegExp(r'\d+\.\s*[가-힣]+\s*영역\s*'), '')
+      .replaceFirst(RegExp(r'^(성인의 경우|성인|일반적으로)\s*[:：]?\s*'), '')
+      .trim();
+  return cut.isEmpty ? text : cut;
+}
+
 /// 약 이름에서 끝에 붙은 용량을 뗀다 — "아스피린 100mg" → "아스피린".
 ///
 /// 용량은 "한 번에 한 알", "500mg" 처럼 따로 적히는 자리가 있다. 이름에

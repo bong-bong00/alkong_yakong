@@ -226,6 +226,9 @@ Future<void> _restoreSession(ProviderContainer container) async {
   // 가짜 데이터로 볼 때는 로그인 화면을 건너뛴다(dev_mock.dart와 함께 꺼진다).
   // 저장된 세션을 읽은 **뒤**에 연다 — 읽는 쪽이 세션을 지우기 때문이다.
   await applyMockSession();
+  // 가짜가 아니어도 개발 빌드에서는 로그인 화면을 세우지 않는다.
+  // 저장된 로그인이 있으면 그 사람이 이긴다.
+  if (restoredUser == null) await applyDevSession();
   if (restoredUser != null) {
     container.read(userRoleProvider.notifier).state = restoredUser.isGuardian
         ? UserRole.guardian
