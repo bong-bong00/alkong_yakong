@@ -820,7 +820,6 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
           _StepDef(
             title: '누구에게 알려드릴까요?',
             validate: () {
-              if (_guardianRelation == null) return '나와의 관계를 골라주세요';
               if (_guardianName.text.trim().isEmpty) {
                 return '보호자 성함을 입력해주세요';
               }
@@ -830,18 +829,14 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
               if (!_isPhoneComplete(_guardianPhone.text)) {
                 return '전화번호를 다시 확인해주세요';
               }
+              if (_guardianRelation == null) return '나와의 관계를 골라주세요';
               return null;
             },
+            // 누구인지(성함·번호)를 먼저 적고, 나와 어떤 사이인지는
+            // 마지막에 고른다. 다른 곳에서 쓰는 차례와 같다.
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                _sectionLabel('나와의 관계'),
-                _grid(
-                  const ['딸', '아들', '배우자', '다른 분'],
-                  _guardianRelation,
-                  (v) => setState(() => _guardianRelation = v),
-                ),
-                const SizedBox(height: 18),
                 _field(_guardianName, label: '성함', hint: '보호자 성함'),
                 const SizedBox(height: 12),
                 _field(
@@ -849,6 +844,13 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
                   label: '휴대폰 번호',
                   hint: '010-0000-0000',
                   keyboard: TextInputType.phone,
+                ),
+                const SizedBox(height: 18),
+                _sectionLabel('나와의 관계'),
+                _grid(
+                  const ['딸', '아들', '배우자', '다른 분'],
+                  _guardianRelation,
+                  (v) => setState(() => _guardianRelation = v),
                 ),
               ],
             ),

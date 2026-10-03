@@ -109,6 +109,16 @@ class _AddCareSheetState extends State<_AddCareSheet> {
             onChanged: (_) => setState(() {}),
           ),
           const SizedBox(height: 16),
+          Text('$_other 전화번호', style: AppText.label(size: 18)),
+          const SizedBox(height: 8),
+          SeniorField(
+            controller: _phone,
+            hint: '010-0000-0000',
+            keyboardType: TextInputType.phone,
+            onChanged: (_) => setState(() {}),
+          ),
+          const SizedBox(height: 16),
+          // 누구인지를 먼저 적고, 나와 어떤 사이인지는 마지막에 고른다.
           Text('나와의 관계', style: AppText.label(size: 18)),
           const SizedBox(height: 8),
           Wrap(
@@ -131,15 +141,6 @@ class _AddCareSheetState extends State<_AddCareSheet> {
               onChanged: (_) => setState(() {}),
             ),
           ],
-          const SizedBox(height: 16),
-          Text('$_other 전화번호', style: AppText.label(size: 18)),
-          const SizedBox(height: 8),
-          SeniorField(
-            controller: _phone,
-            hint: '010-0000-0000',
-            keyboardType: TextInputType.phone,
-            onChanged: (_) => setState(() {}),
-          ),
           const SizedBox(height: 16),
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
