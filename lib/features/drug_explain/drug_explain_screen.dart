@@ -14,6 +14,7 @@ import '../../core/polar_pharmacist_ui/widgets/senior_feedback.dart';
 import '../../core/polar_pharmacist_ui/widgets/senior_header.dart';
 import '../../core/polar_pharmacist_ui/widgets/senior_sheet.dart';
 import '../medicines/domain/display_policy.dart';
+import 'chat_highlight.dart';
 import 'conversation_store.dart';
 import 'answer_cache.dart';
 
@@ -1949,6 +1950,11 @@ class _ChatBubble extends StatelessWidget {
                             : isHealthReply
                             ? healthHighlightTerms
                             : officialProductNames,
+                        // 약 이름 말고도 어르신이 놓치면 안 되는 토막을
+                        // 짚는다 — 얼마나, 언제, 하지 말아야 할 것.
+                        extraTerms: isMe || isHealthReply
+                            ? const []
+                            : chatHighlightTerms(text),
                         AppText.body(
                           size: 20,
                           color: isMe ? Colors.white : AppColors.textPrimary,
@@ -1984,6 +1990,7 @@ List<TextSpan> _officialProductNameSpans(
   TextStyle baseStyle, {
   Color emphasisColor = AppColors.detailEmphasis,
   bool healthWarningsOnly = false,
+  List<String> extraTerms = const [],
 }) {
   final names =
       officialProductNames
@@ -1992,7 +1999,18 @@ List<TextSpan> _officialProductNameSpans(
           .toSet()
           .toList()
         ..sort((left, right) => right.length.compareTo(left.length));
-  if (names.isEmpty) return [TextSpan(text: text, style: baseStyle)];
+  // 약 이름은 조사까지 보고 짚는다("코다론정을"의 "코다론정"). 나머지
+  // 토막은 이미 한 덩어리라 그 자리를 그대로 짚는다.
+  final extras =
+      extraTerms
+          .map((term) => term.trim())
+          .where((term) => term.isNotEmpty)
+          .toSet()
+          .toList()
+        ..sort((left, right) => right.length.compareTo(left.length));
+  if (names.isEmpty && extras.isEmpty) {
+    return [TextSpan(text: text, style: baseStyle)];
+  }
 
   final matches = <({int start, int end})>[];
   var cursor = 0;
@@ -2007,6 +2025,16 @@ List<TextSpan> _officialProductNameSpans(
       }
       if (start < 0) continue;
       final candidate = (start: start, end: start + name.length);
+      if (next == null ||
+          candidate.start < next.start ||
+          (candidate.start == next.start && candidate.end > next.end)) {
+        next = candidate;
+      }
+    }
+    for (final term in extras) {
+      final start = text.indexOf(term, cursor);
+      if (start < 0) continue;
+      final candidate = (start: start, end: start + term.length);
       if (next == null ||
           candidate.start < next.start ||
           (candidate.start == next.start && candidate.end > next.end)) {

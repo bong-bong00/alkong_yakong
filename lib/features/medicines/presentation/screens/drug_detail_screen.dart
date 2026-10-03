@@ -9,6 +9,7 @@ import '../../../../core/widgets/recovery_view.dart';
 import '../../../../core/widgets/medicine_flow_card.dart' hide PillPhoto;
 import '../../../../core/widgets/senior_card.dart' show PillPhoto, kCardShadow;
 import '../../../../core/widgets/senior_header.dart';
+import '../../../../core/widgets/slot_box.dart';
 import '../../application/user_medicines_controller.dart';
 import '../../domain/display_policy.dart';
 import '../../domain/ingredient_explanation_display.dart';
@@ -710,32 +711,31 @@ class _DosingTab extends StatelessWidget {
     if ((medicine.frequencyPerDay ?? 0) > 0) medicine.frequencyLabel,
   ];
 
-  /// "아침, 점심, 저녁 하루 3번 드세요." 처럼 한 문장으로 잇는다.
+  /// 드시는 때 — 아침·점심·저녁.
   ///
   /// 시각을 분 단위로 적지 않는다. 08:00에 드시든 08:40에 드시든 아침
-  /// 약이다. 몇 시에 울릴지는 알림이 따로 맡는다.
-  String get _whenLine {
+  /// 약이다. 몇 시에 울릴지는 알림이 따로 맡는다. 하루 몇 번인지도
+  /// 적지 않는다 — 바로 윗줄 "얼마나"가 이미 말한다.
+  List<String> get _slots {
     final slots = <String>[];
     for (final time in medicine.administrationTimes) {
       final slot = _slotName(time);
       if (slot.isNotEmpty && !slots.contains(slot)) slots.add(slot);
     }
-    final how = medicine.frequencyLabel.trim();
-    if (slots.isEmpty) return how.isEmpty ? '처방전대로 드세요.' : '$how 드세요.';
-    return '${slots.join(', ')} ${how.isEmpty ? '' : '$how '}드세요.';
+    return slots;
   }
 
   /// "08:00" → "아침". 읽을 수 없는 값이면 빈 말이다.
+  ///
+  /// 자기 전은 따로 두지 않는다 — 늦은 때는 저녁에 넣는다.
   static String _slotName(String raw) {
     final match = RegExp(r'^(\d{1,2})\s*[:시]').firstMatch(raw.trim());
     if (match == null) return '';
     final hour = int.tryParse(match.group(1)!) ?? -1;
     if (hour < 0 || hour > 24) return '';
-    if (hour < 5) return '밤';
-    if (hour < 11) return '아침';
-    if (hour < 17) return '점심';
-    if (hour < 22) return '저녁';
-    return '밤';
+    if (hour >= 4 && hour < 11) return '아침';
+    if (hour >= 11 && hour < 17) return '점심';
+    return '저녁';
   }
 
   @override
@@ -754,11 +754,31 @@ class _DosingTab extends StatelessWidget {
       label,
       if (strength.isNotEmpty && !label.contains(strength)) strength,
     ].where((value) => value.isNotEmpty).join(' · ');
-    final rows = <(String, String)>[
-      if (_confirmedDosing.isNotEmpty) ('얼마나', _confirmedDosing.join(' · ')),
-      ('언제', _whenLine),
-      if (usage.isNotEmpty) ('복용법', usage),
-      if (ingredient.isNotEmpty) ('성분', ingredient),
+    final slots = _slots;
+    final rows = <(String, Widget)>[
+      if (_confirmedDosing.isNotEmpty)
+        ('얼마나', _RowValue(text: _confirmedDosing.join(' · '))),
+      (
+        '언제',
+        slots.isEmpty
+            // 때를 모르면 지어내지 않는다.
+            ? const _RowValue(text: '처방전대로 드세요.')
+            : Padding(
+                padding: const EdgeInsets.only(top: 2),
+                child: Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    // 누르는 칸이 아니다. 파랑으로 채우면 단추로 읽힌다.
+                    for (final slot in slots) SlotBox(label: slot),
+                  ],
+                ),
+              ),
+      ),
+      // 설명서에서 그대로 온 용법은 열 줄을 넘기도 한다.
+      // 다 펴 두면 아래 줄이 화면 밖으로 밀린다.
+      if (usage.isNotEmpty) ('복용법', _RowValue(text: usage, foldable: true)),
+      if (ingredient.isNotEmpty) ('성분', _RowValue(text: ingredient)),
     ];
 
     return Column(
@@ -781,14 +801,7 @@ class _DosingTab extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 10),
-              Expanded(
-                // 설명서에서 그대로 온 용법은 열 줄을 넘기도 한다.
-                // 다 펴 두면 아래 줄이 화면 밖으로 밀린다.
-                child: _RowValue(
-                  text: rows[i].$2,
-                  foldable: rows[i].$1 == '복용법',
-                ),
-              ),
+              Expanded(child: rows[i].$2),
             ],
           ),
         ],
@@ -930,11 +943,13 @@ class _EmphasizedBodyText extends StatelessWidget {
       RegExp(r'\s*(사용해요|사용돼요|사용될 수 있어요|도움을 줘요)\.?$'),
       '',
     );
-    return explanationHighlight(text, [
+    final found = explanationHighlight(text, [
       highlight,
       fallback,
       ...purposeHighlights,
     ]);
+    // 문장을 통째로 칠하지 않는다 — 낱말만 짚는다.
+    return found.isEmpty ? found : emphasisKeyword(found, text);
   }
 }
 

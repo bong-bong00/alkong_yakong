@@ -21,6 +21,7 @@ import '../../../../core/widgets/medicine_flow_card.dart';
 import '../../../../core/widgets/senior_feedback.dart';
 import '../../../../core/widgets/senior_header.dart';
 import '../../../../core/widgets/senior_card.dart' show kRaisedShadow;
+import '../../../../core/widgets/slot_box.dart';
 import '../../../../core/widgets/senior_sheet.dart';
 import '../../../../core/widgets/senior_timeline.dart';
 import '../../../dashboard/application/medication_history_provider.dart';
@@ -1297,12 +1298,11 @@ class _ConfirmScreenState extends State<_ConfirmScreen> {
                 label: '하루 몇 번',
                 value: frequency == null ? '확인 필요' : '$frequency번',
                 needsConfirmation: frequency == null,
-                onMinus: frequency == null
-                    ? null
-                    : () => setSheetState(
-                        () =>
-                            frequency = frequency! > 1 ? frequency! - 1 : null,
-                      ),
+                // 한 번 고치면 "확인 필요"로 되돌아가지 않는다. 1에서는
+                // ─가 아예 안 눌린다 — 눌러도 그대로면 고장으로 읽힌다.
+                onMinus: (frequency ?? 1) > 1
+                    ? () => setSheetState(() => frequency = frequency! - 1)
+                    : null,
                 onPlus: () => setSheetState(
                   () => frequency = frequency == null
                       ? 1
@@ -1314,11 +1314,9 @@ class _ConfirmScreenState extends State<_ConfirmScreen> {
                 label: '며칠분',
                 value: days == null ? '확인 필요' : '$days일',
                 needsConfirmation: days == null,
-                onMinus: days == null
-                    ? null
-                    : () => setSheetState(
-                        () => days = days! > 1 ? days! - 1 : null,
-                      ),
+                onMinus: (days ?? 1) > 1
+                    ? () => setSheetState(() => days = days! - 1)
+                    : null,
                 onPlus: () => setSheetState(
                   () => days = days == null
                       ? 1
@@ -1593,7 +1591,7 @@ class _ConfirmScreenState extends State<_ConfirmScreen> {
     // 보여주면 그 시각에 드시게 된다.
     if (bySlot.isEmpty) return const [];
 
-    const order = ['아침 8시', '점심 12시', '저녁 6시', '자기 전'];
+    const order = ['아침', '점심', '저녁'];
     final rows = <Widget>[];
     final labels = order.where(bySlot.containsKey).toList();
     for (int i = 0; i < labels.length; i++) {
@@ -1626,7 +1624,7 @@ class _ConfirmScreenState extends State<_ConfirmScreen> {
   }
 
   /// 하루 안에서의 차례. 화면과 서버가 같은 순서를 쓴다.
-  static const List<String> _slotOrder = ['아침', '점심', '저녁', '취침전'];
+  static const List<String> _slotOrder = ['아침', '점심', '저녁'];
 
   /// 항목에 적힌 복용 시간대. 서버가 주는 말과 시각을 모두 받는다.
   static List<String> _slotsOf(Map<String, dynamic> item) {
@@ -1649,8 +1647,9 @@ class _ConfirmScreenState extends State<_ConfirmScreen> {
   /// 서버 말·시각을 네 때 중 하나로. 모르면 null.
   static String? _slotName(String raw) {
     final text = raw.toLowerCase().replaceAll(' ', '');
+    // 자기 전은 따로 두지 않는다 — 늦은 때는 저녁에 넣는다.
     if (text.contains('취침') || text.contains('자기') || text.contains('night')) {
-      return '취침전';
+      return '저녁';
     }
     if (text.contains('아침') || text.contains('morning')) return '아침';
     if (text.contains('점심') ||
@@ -1666,28 +1665,28 @@ class _ConfirmScreenState extends State<_ConfirmScreen> {
     }
     final hour = int.tryParse(text.split(':').first);
     if (hour == null) return null;
-    if (hour >= 21 || hour < 4) return '취침전';
-    if (hour < 11) return '아침';
-    if (hour < 16) return '점심';
+    if (hour >= 4 && hour < 11) return '아침';
+    if (hour >= 11 && hour < 16) return '점심';
     return '저녁';
   }
 
   /// 서버가 주는 복용 시간을 화면 문구로. 모르면 null.
   static String? _slotLabel(String raw) {
     final text = raw.toLowerCase();
-    if (text.contains('아침') || text.contains('morning')) return '아침 8시';
+    if (text.contains('아침') || text.contains('morning')) return '아침';
     if (text.contains('점심') ||
         text.contains('lunch') ||
         text.contains('noon')) {
-      return '점심 12시';
+      return '점심';
     }
     if (text.contains('저녁') ||
         text.contains('evening') ||
         text.contains('dinner')) {
-      return '저녁 6시';
+      return '저녁';
     }
+    // 자기 전은 따로 두지 않는다 — 늦은 때는 저녁에 넣는다.
     if (text.contains('자기') || text.contains('night') || text.contains('bed')) {
-      return '자기 전';
+      return '저녁';
     }
     return null;
   }
@@ -2057,18 +2056,18 @@ class _StepperButton extends StatelessWidget {
         child: GestureDetector(
           onTap: onTap,
           child: Container(
-            width: 72,
-            height: 72,
+            width: 56,
+            height: 56,
             alignment: Alignment.center,
             decoration: BoxDecoration(
               color: AppColors.surface,
-              borderRadius: BorderRadius.circular(18),
+              borderRadius: BorderRadius.circular(16),
               // 테두리 대신 그림자로 띄운다 — 다른 화면과 같은 손짓이다.
               boxShadow: enabled ? kRaisedShadow : null,
             ),
             child: Icon(
               icon,
-              size: 32,
+              size: 26,
               color: enabled ? AppColors.point : AppColors.inactive,
             ),
           ),
@@ -2196,7 +2195,7 @@ class _DetailLine extends StatelessWidget {
   }
 }
 
-/// "언제 드세요?" — 아침·점심·저녁·취침전을 눌러서 고른다.
+/// "언제 드세요?" — 아침·점심·저녁을 눌러서 고른다.
 ///
 /// 처방전에는 때가 안 적혀 있는 일이 흔하다. 숫자만 보고 앱이 정하면
 /// 1일 1회 약이 모두 아침으로 가는데, 저녁에 드시는 약이 적지 않다.
@@ -2210,49 +2209,33 @@ class _SlotPicker extends StatelessWidget {
 
   const _SlotPicker({required this.selected, required this.onToggle});
 
-  static const List<(String, String)> _slots = [
-    ('아침', '아침'),
-    ('점심', '점심'),
-    ('저녁', '저녁'),
-    ('취침전', '자기 전'),
-  ];
+  static const List<String> slots = ['아침', '점심', '저녁'];
 
   @override
   Widget build(BuildContext context) {
-    return Wrap(
-      spacing: 10,
-      runSpacing: 10,
+    // 셋뿐이니 한 줄에 나란히 나눈다. 한 칸씩 쌓으면 세 줄을 차지하고,
+    // 고르는 일이 목록 읽기가 된다.
+    return Row(
       children: [
-        for (final (slot, label) in _slots)
-          Semantics(
-            button: true,
-            selected: selected.contains(slot),
-            child: GestureDetector(
-              key: ValueKey('dose-slot-$slot'),
-              onTap: () => onToggle(slot),
-              behavior: HitTestBehavior.opaque,
-              child: Container(
-                constraints: const BoxConstraints(minHeight: 58),
-                alignment: Alignment.center,
-                padding: const EdgeInsets.symmetric(horizontal: 18),
-                decoration: BoxDecoration(
-                  color: selected.contains(slot)
-                      ? AppColors.point
-                      : AppColors.secondaryFill,
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                child: Text(
-                  label,
-                  style: AppText.cardTitle(
-                    size: 19,
-                    color: selected.contains(slot)
-                        ? Colors.white
-                        : AppColors.textPrimary,
-                  ),
+        for (final slot in slots) ...[
+          if (slot != slots.first) const SizedBox(width: 10),
+          Expanded(
+            child: Semantics(
+              button: true,
+              selected: selected.contains(slot),
+              child: GestureDetector(
+                key: ValueKey('dose-slot-$slot'),
+                onTap: () => onToggle(slot),
+                behavior: HitTestBehavior.opaque,
+                child: SlotBox(
+                  label: slot,
+                  filled: selected.contains(slot),
+                  expand: true,
                 ),
               ),
             ),
           ),
+        ],
       ],
     );
   }
@@ -2278,7 +2261,6 @@ class _WhenToTakeScreen extends StatefulWidget {
 }
 
 class _WhenToTakeScreenState extends State<_WhenToTakeScreen> {
-  static const _slots = ['아침', '점심', '저녁', '취침전'];
   late final Set<String> _picked = {...widget.initialSlots};
 
   @override
@@ -2304,30 +2286,11 @@ class _WhenToTakeScreenState extends State<_WhenToTakeScreen> {
                     ),
                   ),
                   const SizedBox(height: 18),
-                  SeniorCard(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 20,
-                      vertical: 4,
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        for (int i = 0; i < _slots.length; i++) ...[
-                          if (i > 0) const SeniorDivider(),
-                          _SlotToggleRow(
-                            label: _slots[i],
-                            value: _picked.contains(_slots[i]),
-                            onChanged: (on) => setState(() {
-                              if (on) {
-                                _picked.add(_slots[i]);
-                              } else {
-                                _picked.remove(_slots[i]);
-                              }
-                            }),
-                          ),
-                        ],
-                      ],
-                    ),
+                  _SlotPicker(
+                    selected: _picked,
+                    onToggle: (slot) => setState(() {
+                      if (!_picked.remove(slot)) _picked.add(slot);
+                    }),
                   ),
                 ],
               ),
@@ -2343,7 +2306,7 @@ class _WhenToTakeScreenState extends State<_WhenToTakeScreen> {
               onPressed: _picked.isEmpty
                   ? null
                   : () => widget.onDone([
-                      for (final slot in _slots)
+                      for (final slot in _SlotPicker.slots)
                         if (_picked.contains(slot)) slot,
                     ]),
             ),
@@ -2355,32 +2318,3 @@ class _WhenToTakeScreenState extends State<_WhenToTakeScreen> {
 }
 
 /// 때 한 줄. 오른쪽 스위치로 켜고 끈다.
-class _SlotToggleRow extends StatelessWidget {
-  final String label;
-  final bool value;
-  final ValueChanged<bool> onChanged;
-
-  const _SlotToggleRow({
-    required this.label,
-    required this.value,
-    required this.onChanged,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      constraints: const BoxConstraints(minHeight: 64),
-      child: Row(
-        children: [
-          Expanded(child: Text(label, style: AppText.cardTitle(size: 21))),
-          const SizedBox(width: 10),
-          SeniorToggle(
-            value: value,
-            semanticLabel: label,
-            onChanged: onChanged,
-          ),
-        ],
-      ),
-    );
-  }
-}
