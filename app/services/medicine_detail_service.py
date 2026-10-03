@@ -46,7 +46,7 @@ _BOILERPLATE_PURPOSES = (
     "주효능 효과",
     "효능 효과",
 )
-# (찾는 문양, 쓰임 한 마디, 설명 한 문장, 파랑게 짚을 낱말)
+# (찾는 말, 쓰임 한 마디, 설명 한 문장, 파랗게 짚을 낱말)
 _PURPOSE_GROUPS: tuple[tuple[re.Pattern[str], str, str, str], ...] = (
     (
         re.compile(r"발열|해열|감기.*(?:열|통증)"),
@@ -103,13 +103,13 @@ _PURPOSE_GROUPS: tuple[tuple[re.Pattern[str], str, str, str], ...] = (
         "혈당",
     ),
     (
-        re.compile(r"혈전|항혈소판|색전|다시경색|심근경색|뇌졸중|혈소판응집"),
+        re.compile(r"혈전|항혈소판|색전|재경색|심근경색|뇌졸중|혈소판응집"),
         "혈전 예방",
         "혈관을 막는 혈전이 생기지 않게 하는 데 사용해요.",
         "혈전",
     ),
     (
-        re.compile(r"고지혈|이상질파|이상지질|콜레스테롤|중성지방|LDL"),
+        re.compile(r"고지혈|이상지질|콜레스테롤|중성지방|LDL"),
         "높은 콜레스테롤",
         "콜레스테롤과 중성지방 수치를 낮추는 데 사용해요.",
         "콜레스테롤",
@@ -127,7 +127,7 @@ _PURPOSE_GROUPS: tuple[tuple[re.Pattern[str], str, str, str], ...] = (
         "세균 감염",
     ),
     (
-        re.compile(r"천식|만성폐쇄성|COPD|기관지확장|호흡곤란|기다"),
+        re.compile(r"천식|만성폐쇄성|COPD|기관지확장|호흡곤란"),
         "숨찬 증상",
         "기관지를 넓혀 숨쉬기 편하게 하는 데 사용해요.",
         "숨찬",
