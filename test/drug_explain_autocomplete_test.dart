@@ -442,9 +442,7 @@ void main() {
     expect(find.text('이 약에 대해 많이 묻는 것'), findsNothing);
     await pickSubject(tester, '게보린정');
     // 질문 카드만 집어 누른다 — 같은 글이 대화에도 남아 있다.
-    final again = find.byKey(
-      const ValueKey('suggestion-꼭 식사 후에 복용해야 하나요?'),
-    );
+    final again = find.byKey(const ValueKey('suggestion-꼭 식사 후에 복용해야 하나요?'));
     await tester.scrollUntilVisible(
       again,
       200,

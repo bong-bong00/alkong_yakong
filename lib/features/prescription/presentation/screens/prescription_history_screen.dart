@@ -121,7 +121,7 @@ class PrescriptionHistoryScreen extends ConsumerWidget {
             child: records.when(
               loading: () => const Center(child: CircularProgressIndicator()),
               error: (_, _) => RecoveryView(
-                title: '처방전 기록을 불러오지 못했어요',
+                title: '처방전 기록을\n불러오지 못했어요',
                 reassurance: '인터넷이나 서버가 잠깐 끊겼을 수 있어요. ',
                 reassuranceEmphasis: '고장이 아니니 걱정하지 마세요.',
                 steps: const ['잠시 후 다시 눌러 보세요', '와이파이나 데이터 연결을 확인해 보세요'],

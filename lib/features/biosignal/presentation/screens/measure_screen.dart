@@ -170,7 +170,7 @@ class _MeasureScreenState extends State<MeasureScreen> {
   /// 아무 값도 나오지 않는다. 그 자리에서 다시 붙는 방법을 알려준다.
   Widget _recovery() {
     return RecoveryView(
-      title: '지금은 심장 박동을 측정하지 못하고 있어요',
+      title: '지금은 심장 박동을\n측정하지 못하고 있어요',
       reassurance: '센서의 심박 신호를 확인하지 못했어요. ',
       reassuranceEmphasis: '센서 연결을 확인해 주세요.',
       steps: const [

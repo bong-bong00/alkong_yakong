@@ -669,7 +669,7 @@ void _signupTests() {
     await tester.tap(find.text('다음'));
     await tester.pumpAndSettle();
 
-    expect(find.text('생년월일과 성별을 알려주세요'), findsOneWidget);
+    expect(find.text('생년월일과 성별을\n알려주세요'), findsOneWidget);
   });
 
   testWidgets('보호자는 건강 질문을 받지 않는다', (tester) async {
@@ -731,7 +731,7 @@ void _signupTests() {
     await tester.pumpAndSettle();
 
     // 5걸음 · 임신 (여성일 때만 나온다). 네/아니요로 먼저 묻는다.
-    expect(find.text('지금 임신 중이거나 젖을 먹이고 계신가요?'), findsOneWidget);
+    expect(find.text('지금 임신 중이거나\n젖을 먹이고 계신가요?'), findsOneWidget);
     expect(find.text('네'), findsOneWidget);
     expect(find.text('아니요'), findsOneWidget);
     expect(tester.takeException(), isNull);
@@ -747,7 +747,7 @@ void _signupTests() {
       "title: '지금 임신 중이거나",
       "title: '담배를",
       "title: '술은 얼마나",
-      "title: '약을 먹고 거부 반응이나",
+      "title: '약을 먹고 이상 반응이",
       "title: '지금 치료받고 있는",
       "title: '예전에 크게",
       "title: '부모님이나 형제가",

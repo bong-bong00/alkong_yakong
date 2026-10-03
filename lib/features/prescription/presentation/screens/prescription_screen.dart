@@ -2154,7 +2154,7 @@ class _FailedScreen extends StatelessWidget {
           const SeniorBackHeader(title: '처방전 찍기'),
           Expanded(
             child: RecoveryView(
-              title: '지금은 처방전을 읽지 못하고 있어요',
+              title: '지금은 처방전을\n읽지 못하고 있어요',
               reassurance: connectionFail
                   ? '서버에 연결하지 못했어요. 같은 와이파이인지, 서버가 켜져 있는지 봐 주세요. '
                   : (failureReason.isEmpty

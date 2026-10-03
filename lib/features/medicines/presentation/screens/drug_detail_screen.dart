@@ -87,7 +87,7 @@ class _DrugDetailScreenState extends ConsumerState<DrugDetailScreen> {
                 ? const Center(child: CircularProgressIndicator())
                 : _error != null
                 ? RecoveryView(
-                    title: '약 정보를 불러오지 못했어요',
+                    title: '약 정보를\n불러오지 못했어요',
                     reassurance: '잠시 연결이 끊겼을 수 있어요. ',
                     reassuranceEmphasis: '고장이 아니니 걱정하지 마세요.',
                     steps: const ['다시 시도해 보세요'],

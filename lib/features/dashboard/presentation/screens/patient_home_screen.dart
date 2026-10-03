@@ -165,7 +165,7 @@ class _PatientHomeScreenState extends ConsumerState<PatientHomeScreen> {
 
     final accept = await showSeniorYesNoDialog(
       context: context,
-      title: '${invite.label} 님이 함께 보기를 청했어요',
+      title: '${invite.label} 님이\n함께 보기를 청했어요',
       message:
           '수락하면 약 드신 것과 심박수를 함께 봅니다. '
           '나중에 내 정보 → 가족에서 끊을 수 있어요.',

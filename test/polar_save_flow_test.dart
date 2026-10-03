@@ -617,7 +617,7 @@ void main() {
     await tester.pump(const Duration(seconds: 2));
     await tester.pump();
 
-    expect(find.text('지금은 심장 박동을 측정하지 못하고 있어요'), findsOneWidget);
+    expect(find.text('지금은 심장 박동을\n측정하지 못하고 있어요'), findsOneWidget);
     expect(find.text('다시 연결하기'), findsOneWidget);
     expect(find.text('폴라 센서로 재고 있어요'), findsNothing);
     expect(r.api.requests, isEmpty);
