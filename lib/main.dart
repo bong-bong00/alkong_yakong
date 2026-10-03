@@ -237,11 +237,6 @@ Future<void> _restoreSession(ProviderContainer container) async {
         ? UserRole.guardian
         : UserRole.patient;
   }
-  // No login is required for the demonstration medicine. Session restoration
-  // clears the ID when signed out, so initialize the shared demo user here.
-  if (restoredUser == null || !restoredUser.isGuardian) {
-    await AuthSession.ensurePresentationMedicine();
-  }
   debugPrint('[STARTUP_DIAG] session_restore_ms=${timer.elapsedMilliseconds}');
 }
 
