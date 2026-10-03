@@ -47,8 +47,6 @@ class _ProfileEditScreenState extends ConsumerState<ProfileEditScreen> {
   final Set<String> _diseases = {};
   final Set<String> _pastIllnesses = {};
   final Set<String> _familyIllnesses = {};
-  bool? _pastYes;
-  bool? _familyYes;
 
   /// 칸을 채운 원래 값. null이면 아직 서버에서 못 읽었다.
   UserProfile? _original;
@@ -116,8 +114,6 @@ class _ProfileEditScreenState extends ConsumerState<ProfileEditScreen> {
     _diseases
       ..clear()
       ..addAll(user.diseases);
-    _pastYes = user.pastHistory;
-    _familyYes = user.familyHistory;
     _pastIllnesses
       ..clear()
       ..addAll(user.pastIllnesses);
@@ -180,20 +176,19 @@ class _ProfileEditScreenState extends ConsumerState<ProfileEditScreen> {
       drinking: _isGuardian ? original.drinking : _drinking,
       allergies: _isGuardian ? original.allergies : _allergens.toList(),
       diseases: _isGuardian ? original.diseases : _diseases.toList(),
-      pastHistory: _isGuardian ? original.pastHistory : _pastYes,
-      familyHistory: _isGuardian ? original.familyHistory : _familyYes,
-      // "없어요"로 바꾸면 적어 두었던 병도 함께 지운다. 안 그러면
-      // 없다고 해 놓고 목록만 남는다.
+      // 적힌 병이 있으면 있는 것, 없으면 없는 것으로 보낸다.
+      pastHistory: _isGuardian
+          ? original.pastHistory
+          : _pastIllnesses.isNotEmpty,
+      familyHistory: _isGuardian
+          ? original.familyHistory
+          : _familyIllnesses.isNotEmpty,
       pastIllnesses: _isGuardian
           ? original.pastIllnesses
-          : _pastYes == true
-          ? _pastIllnesses.toList()
-          : const [],
+          : _pastIllnesses.toList(),
       familyIllnesses: _isGuardian
           ? original.familyIllnesses
-          : _familyYes == true
-          ? _familyIllnesses.toList()
-          : const [],
+          : _familyIllnesses.toList(),
     );
 
     setState(() => _saving = true);
@@ -564,60 +559,34 @@ class _ProfileEditScreenState extends ConsumerState<ProfileEditScreen> {
                   const SizedBox(height: 18),
                   // 회원가입에서 물은 것을 여기서도 다 고칠 수 있어야 한다.
                   // 한쪽에서만 고쳐지면 어느 쪽이 맞는 값인지 알 수 없다.
-                  Text('예전에 크게 아팠던 적이 있나요?', style: AppText.label(size: 18)),
-                  // 회원가입에서 묻던 보기를 그대로 적는다. 없으면 어디까지를
-                  // "크게 아팠다"로 봐야 할지 알 수 없다.
+                  // "있어요/없어요"를 따로 묻지 않는다. 적힌 병이 없으면
+                  // 없는 것이다 — 같은 것을 두 번 묻는 칸이었다.
+                  Text('예전에 크게 아팠던 병', style: AppText.label(size: 18)),
                   Text(
                     '암, 뇌졸중, 심근경색 같은 병이요.',
                     style: AppText.caption(size: 16),
                   ),
                   const SizedBox(height: 8),
-                  _ChoiceRow(
-                    options: const ['네, 있어요', '아니요, 없어요'],
-                    selected: switch (_pastYes) {
-                      true => '네, 있어요',
-                      false => '아니요, 없어요',
-                      null => null,
-                    },
-                    onPick: (value) =>
-                        setState(() => _pastYes = value == '네, 있어요'),
+                  _ChipEditor(
+                    items: _pastIllnesses,
+                    onAdd: () =>
+                        _openPicker('예전에 앓은 병', _pastIllnesses, _pastOptions),
+                    onRemove: (item) =>
+                        setState(() => _pastIllnesses.remove(item)),
                   ),
-                  if (_pastYes == true) ...[
-                    const SizedBox(height: 10),
-                    _ChipEditor(
-                      items: _pastIllnesses,
-                      onAdd: () =>
-                          _openPicker('예전에 앓은 병', _pastIllnesses, _pastOptions),
-                      onRemove: (item) =>
-                          setState(() => _pastIllnesses.remove(item)),
-                    ),
-                  ],
                   const SizedBox(height: 18),
-                  Text('부모님이나 형제가 앓은 병이 있나요?', style: AppText.label(size: 18)),
+                  Text('부모님이나 형제가 앓은 병', style: AppText.label(size: 18)),
                   const SizedBox(height: 8),
-                  _ChoiceRow(
-                    options: const ['네, 있어요', '아니요, 없어요'],
-                    selected: switch (_familyYes) {
-                      true => '네, 있어요',
-                      false => '아니요, 없어요',
-                      null => null,
-                    },
-                    onPick: (value) =>
-                        setState(() => _familyYes = value == '네, 있어요'),
-                  ),
-                  if (_familyYes == true) ...[
-                    const SizedBox(height: 10),
-                    _ChipEditor(
-                      items: _familyIllnesses,
-                      onAdd: () => _openPicker(
-                        '가족이 앓은 병',
-                        _familyIllnesses,
-                        _familyOptions,
-                      ),
-                      onRemove: (item) =>
-                          setState(() => _familyIllnesses.remove(item)),
+                  _ChipEditor(
+                    items: _familyIllnesses,
+                    onAdd: () => _openPicker(
+                      '가족이 앓은 병',
+                      _familyIllnesses,
+                      _familyOptions,
                     ),
-                  ],
+                    onRemove: (item) =>
+                        setState(() => _familyIllnesses.remove(item)),
+                  ),
                 ],
               ),
             ),

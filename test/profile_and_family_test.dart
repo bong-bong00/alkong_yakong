@@ -65,19 +65,17 @@ void main() {
       await tester.pumpWidget(wrap(const ProfileEditScreen()));
       await tester.pumpAndSettle();
 
-      expect(find.text('예전에 크게 아팠던 적이 있나요?'), findsOneWidget);
-      expect(find.text('부모님이나 형제가 앓은 병이 있나요?'), findsOneWidget);
+      expect(find.text('예전에 크게 아팠던 병'), findsOneWidget);
+      expect(find.text('부모님이나 형제가 앓은 병'), findsOneWidget);
 
-      // 있다고 답해 둔 쪽은 적어 둔 병이 함께 보인다.
+      // 적어 둔 병은 그대로 보인다.
       expect(find.text('뇌졸중'), findsOneWidget);
 
-      // 없다고 답해 둔 쪽을 있다로 바꾸면 그 자리에서 병을 넣을 수 있다.
-      expect(find.text('더 넣기'), findsNWidgets(3));
-      final familyYes = find.text('네, 있어요').last;
-      await tester.ensureVisible(familyYes);
-      await tester.pumpAndSettle();
-      await tester.tap(familyYes);
-      await tester.pumpAndSettle();
+      // "있어요/없어요"는 따로 묻지 않는다. 적힌 병이 없으면 없는 것이다.
+      expect(find.text('네, 있어요'), findsNothing);
+      expect(find.text('아니요, 없어요'), findsNothing);
+
+      // 알레르기·현재 질환·과거 병력·가족력 네 자리 모두 바로 넣을 수 있다.
       expect(find.text('더 넣기'), findsNWidgets(4));
     });
 
@@ -89,8 +87,8 @@ void main() {
       await tester.pumpWidget(wrap(const ProfileEditScreen(isGuardian: true)));
       await tester.pumpAndSettle();
 
-      expect(find.text('예전에 크게 아팠던 적이 있나요?'), findsNothing);
-      expect(find.text('부모님이나 형제가 앓은 병이 있나요?'), findsNothing);
+      expect(find.text('예전에 크게 아팠던 병'), findsNothing);
+      expect(find.text('부모님이나 형제가 앓은 병'), findsNothing);
     });
   });
 
