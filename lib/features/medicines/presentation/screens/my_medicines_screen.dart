@@ -244,6 +244,17 @@ class _GroupedMedicines extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Confirmed pair warnings apply to both members, not just the row carrying
+    // the warning. Do not infer conflicts from check_needed/unknown results.
+    String nameKey(String name) =>
+        name.split('(').first.replaceAll(RegExp(r'\s+'), '').trim();
+    final conflictNames = <String>{
+      for (final medicine in medicines)
+        if (medicine.interactionStatus == 'risk_found') ...[
+          nameKey(medicine.displayName),
+          ...medicine.interactionConflictNames.map(nameKey),
+        ],
+    }..remove('');
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -283,7 +294,12 @@ class _GroupedMedicines extends StatelessWidget {
             for (final medicine in medicines.where(
               (medicine) => medicine.useType == type,
             )) ...[
-              _MedicineCard(medicine: medicine),
+              _MedicineCard(
+                medicine: medicine,
+                pairConflict: conflictNames.contains(
+                  nameKey(medicine.displayName),
+                ),
+              ),
               const SizedBox(height: 12),
             ],
           ],
@@ -294,12 +310,14 @@ class _GroupedMedicines extends StatelessWidget {
 
 class _MedicineCard extends StatelessWidget {
   final UserMedicine medicine;
+  final bool pairConflict;
 
-  const _MedicineCard({required this.medicine});
+  const _MedicineCard({required this.medicine, this.pairConflict = false});
 
   @override
   Widget build(BuildContext context) {
-    final hasConflict = medicine.interactionStatus == 'risk_found';
+    final hasConflict =
+        pairConflict || medicine.interactionStatus == 'risk_found';
     return SeniorCard(
       radius: 26,
       borderColor: hasConflict ? AppColors.danger : null,

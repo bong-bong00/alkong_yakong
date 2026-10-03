@@ -45,6 +45,7 @@ class UserMedicine {
   final String interactionRiskFactor;
   final String interactionPairLabel;
   final List<String> interactionConflictNames;
+  final List<Map<String, dynamic>> interactionMatches;
   final String amount;
   final String? imageUrl;
   final String? purposeLabel;
@@ -93,6 +94,7 @@ class UserMedicine {
     this.interactionRiskFactor = '',
     this.interactionPairLabel = '',
     this.interactionConflictNames = const [],
+    this.interactionMatches = const [],
     required this.amount,
     this.imageUrl,
     this.purposeLabel,
@@ -158,6 +160,11 @@ class UserMedicine {
       interactionRiskFactor: json['interaction_risk_factor']?.toString() ?? '',
       interactionPairLabel: json['interaction_pair_label']?.toString() ?? '',
       interactionConflictNames: _stringList(json['interaction_conflict_names']),
+      interactionMatches: [
+        if (json['interaction_matches'] is List)
+          for (final match in json['interaction_matches'] as List)
+            if (match is Map) Map<String, dynamic>.from(match),
+      ],
       amount: json['amount']?.toString() ?? '',
       imageUrl: json['image_url']?.toString(),
       purposeLabel: card.purposeLabel,

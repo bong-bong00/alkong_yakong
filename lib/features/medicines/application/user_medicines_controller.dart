@@ -93,6 +93,8 @@ class UserMedicinesController extends AsyncNotifier<List<UserMedicine>> {
     }
     final safety = response['safety'];
     if (safety is Map) {
+      data['interaction_matches'] =
+          safety['interaction_matches'] ?? data['interaction_matches'];
       data['key_cautions'] = safety['key_cautions'] ?? data['key_cautions'];
       data['ask_doctor_when'] = safety['ask_doctor_when'];
       data['possible_side_effects'] = safety['possible_side_effects'];
