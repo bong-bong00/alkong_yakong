@@ -17,17 +17,20 @@ void main() {
     headers: {'content-type': 'application/json; charset=utf-8'},
   );
 
-  /// 머리 아래 칸을 눌러 약 하나를 고른다. 누르면 바로 닫힌다.
+  /// 머리 아래 칸을 눌러 약을 고른다. 여러 개를 고를 수 있는 창이라
+  /// 다 고른 뒤 확인을 한 번 누른다.
   Future<void> pick(WidgetTester tester, String label) async {
     await tester.tap(find.byKey(const ValueKey('ai-subject-card')));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(ValueKey('medicine-selection-$label')));
     await tester.pumpAndSettle();
+    await tester.tap(find.text('확인'));
+    await tester.pumpAndSettle();
   }
 
   /// 고른 약을 뺀다.
   Future<void> clearPick(WidgetTester tester) async {
-    await tester.tap(find.text('삭제'));
+    await tester.tap(find.bySemanticsLabel('고른 약 빼기'));
     await tester.pumpAndSettle();
   }
 
@@ -91,13 +94,13 @@ void main() {
     );
     await tester.pumpAndSettle();
     await pick(tester, '약정');
-    await tapCard(tester, '꼭 밥 먹고 먹어야 하나요?');
+    await tapCard(tester, '꼭 식사 후에 복용해야 하나요?');
     expect(calls, 1);
     // 약을 뺐다 다시 고르면 대화가 처음으로 돌아간다. 같은 질문을 다시
     // 누르면 서버에 또 묻지 않고 저장해 둔 답을 보여 준다.
     await clearPick(tester);
     await pick(tester, '약정');
-    await tapCard(tester, '꼭 밥 먹고 먹어야 하나요?');
+    await tapCard(tester, '꼭 식사 후에 복용해야 하나요?');
     expect(calls, 1);
     expect(find.textContaining('저장된 답변 ·'), findsOneWidget);
     offline = true;
@@ -198,7 +201,7 @@ void main() {
     );
     await tester.pumpAndSettle();
     await pick(tester, '선택약1정');
-    await tapCard(tester, '꼭 밥 먹고 먹어야 하나요?');
+    await tapCard(tester, '꼭 식사 후에 복용해야 하나요?');
 
     expect(sent, isNotNull);
     expect(sent!['user_id'], 'scope-user');
@@ -278,6 +281,8 @@ void main() {
     await tester.pump(const Duration(milliseconds: 550));
     await tester.pumpAndSettle();
     await tester.tap(find.text('검색약정'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('확인'));
     await tester.pumpAndSettle();
     await ask(tester);
     expect(sent.last['selected_medicine']['medicine_code'], 'TEMP-1');

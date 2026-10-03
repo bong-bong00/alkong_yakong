@@ -199,6 +199,21 @@ String? cardPurposeLabel(String? raw) {
 }
 
 /// 홈 짧은 분류. 주제는 쉼표로 모두 적고 `약`은 끝에 한 번만 붙인다.
+/// 무슨 약인지 한 줄 — 앞의 한 가지만 남긴다.
+///
+/// "열 내리고 아픈 것을 덜어 주는 약"처럼 두 가지를 이어 붙이면 길어지고,
+/// 뒷말("아픈 것을 덜어 준다")은 약이면 거의 다 하는 말이라 덧붙여도
+/// 새로 알려 주는 것이 없다. 첫 마디만 남겨 "열 내리는 약"으로 줄인다.
+String shortPurposeLabel(String? raw) {
+  final text = (raw ?? '').trim();
+  if (text.isEmpty) return '';
+  final cut = RegExp(r'^(.{2,}?)고[,\s]').firstMatch(text);
+  if (cut == null) return text;
+  final head = cut.group(1)!.trim();
+  if (head.isEmpty) return text;
+  return '$head는 약';
+}
+
 String? homePurposeCaption(String? raw) {
   final labeled = cardPurposeLabel(raw);
   if (labeled == null) return null;
@@ -299,10 +314,15 @@ MyMedicineCard resolveMyMedicineCard({
   String? shortExplanation,
   String? easyCategory,
 }) {
-  final name = cardOfficialName(
-    productName: productName,
-    displayName: displayName,
-    ingredient: ingredient,
+  // 이름에는 용량을 붙이지 않는다. 용량은 "한 번에 한 알", "500mg"처럼
+  // 따로 적히는 자리가 있어, 이름에 또 적으면 같은 말이 두 번 나오고
+  // 좁은 칸에서 두 줄로 접힌다.
+  final name = nameWithoutStrength(
+    cardOfficialName(
+      productName: productName,
+      displayName: displayName,
+      ingredient: ingredient,
+    ),
   );
   var purpose = cardPurposeLabel(purposeLabel);
   var spoken = cardSpokenOf(shortExplanation) ?? cardSpokenOf(easyCategory);

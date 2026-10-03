@@ -388,7 +388,7 @@ void main() {
           now: DateTime.parse('2026-09-18T06:00:00Z'),
           localize: localize,
         ),
-        '오늘 오후 2시 42분',
+        '오늘 14시 42분',
       );
       expect(
         heartSavedTimeLabel(
@@ -396,7 +396,7 @@ void main() {
           now: DateTime.parse('2026-05-31T15:01:00Z'),
           localize: localize,
         ),
-        '오늘 오전 12시 0분',
+        '오늘 0시 0분',
       );
       expect(
         heartSavedTimeLabel(
@@ -404,7 +404,7 @@ void main() {
           now: DateTime.parse('2026-05-31T15:01:00Z'),
           localize: localize,
         ),
-        '2026년 5월 31일 오후 11시 59분',
+        '2026년 5월 31일 23시 59분',
       );
     },
   );
@@ -433,8 +433,9 @@ void main() {
       expect(find.text('지난 기록 보기'), findsNothing);
       expect(find.widgetWithText(SeniorSegmented, '이번 주'), findsOneWidget);
       expect(find.widgetWithText(SeniorSegmented, '한 달'), findsOneWidget);
-      expect(find.text('지금 측정'), findsOneWidget);
-      expect(find.text('폴라 센서'), findsOneWidget);
+      // 연결과 측정은 단추 하나다. 따로 단 폴라 센서 칸은 없다.
+      expect(find.text('연결 확인 후 측정'), findsOneWidget);
+      expect(find.text('폴라 센서'), findsNothing);
       expect(find.textContaining('에게 바로 알려요'), findsNothing);
       expect(gets, 1);
       await tester.tap(find.text('한 달'));
@@ -664,8 +665,8 @@ void main() {
       );
       await tester.pumpAndSettle();
       expect(find.text('아직 측정 기록이 없어요'), findsOneWidget);
-      await tester.ensureVisible(find.text('지금 측정'));
-      await tester.tap(find.text('지금 측정'));
+      await tester.ensureVisible(find.text('연결 확인 후 측정'));
+      await tester.tap(find.text('연결 확인 후 측정'));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 400));
       await rig.widgetWindow(tester);
@@ -744,8 +745,8 @@ void main() {
           await tester.ensureVisible(find.text(purpose.shortLabel));
           await tester.tap(find.text(purpose.shortLabel));
         }
-        await tester.ensureVisible(find.text('지금 측정'));
-        await tester.tap(find.text('지금 측정'));
+        await tester.ensureVisible(find.text('연결 확인 후 측정'));
+        await tester.tap(find.text('연결 확인 후 측정'));
         await tester.pump();
         await tester.pump(const Duration(milliseconds: 400));
         await rig.widgetWindow(tester);
@@ -813,8 +814,8 @@ void main() {
         );
         await tester.tap(find.text('홈에서 심박수 관리 열기'));
         await tester.pumpAndSettle();
-        await tester.ensureVisible(find.text('지금 측정'));
-        await tester.tap(find.text('지금 측정'));
+        await tester.ensureVisible(find.text('연결 확인 후 측정'));
+        await tester.tap(find.text('연결 확인 후 측정'));
         await tester.pump(const Duration(milliseconds: 400));
         await rig.widgetWindow(tester);
         if (saveFailure.rejected) {
@@ -994,8 +995,8 @@ void main() {
     );
     await tester.tap(find.text('홈에서 심박수 관리 열기'));
     await tester.pumpAndSettle();
-    await tester.ensureVisible(find.text('지금 측정'));
-    await tester.tap(find.text('지금 측정'));
+    await tester.ensureVisible(find.text('연결 확인 후 측정'));
+    await tester.tap(find.text('연결 확인 후 측정'));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 400));
     expect(find.byType(MeasureScreen), findsOneWidget);
@@ -1032,10 +1033,10 @@ void main() {
       await tester.pumpAndSettle();
       await tester.ensureVisible(find.text('복약 전'));
       await tester.tap(find.text('복약 전'));
-      await tester.ensureVisible(find.text('지금 측정'));
+      await tester.ensureVisible(find.text('연결 확인 후 측정'));
       final startButton = tester.widget<SeniorButton>(
         find.ancestor(
-          of: find.text('지금 측정'),
+          of: find.text('연결 확인 후 측정'),
           matching: find.byType(SeniorButton),
         ),
       );
@@ -1056,10 +1057,16 @@ void main() {
       );
       tester.state<NavigatorState>(find.byType(Navigator)).pop();
       await tester.pumpAndSettle();
-      final selector = tester.widget<SeniorSegmented>(
-        find.widgetWithText(SeniorSegmented, '평소'),
-      );
-      expect(selector.index, 0);
+      // 목적은 평소로 돌아온다. 고른 칸만 selected로 말한다.
+      final picked = tester
+          .widgetList<Semantics>(
+            find.ancestor(
+              of: find.text('평소'),
+              matching: find.byType(Semantics),
+            ),
+          )
+          .where((node) => node.properties.selected == true);
+      expect(picked, isNotEmpty);
       expect(rig.sensor.measurementContext, HeartMeasurementContext.general);
       await tester.pumpWidget(const SizedBox());
       rig.sensor.dispose();

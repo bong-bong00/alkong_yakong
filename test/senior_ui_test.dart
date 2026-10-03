@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:alkong_yakong/core/constants/app_colors.dart';
 import 'package:alkong_yakong/core/theme/app_theme.dart';
 import 'package:alkong_yakong/features/auth/presentation/screens/login_screen.dart';
 import 'package:alkong_yakong/features/auth/domain/exclusive_choice.dart';
@@ -76,8 +77,8 @@ class _PairedHeartDevice extends HeartDeviceController {
 const _heartSample = HeartData(
   today: HeartPair(before: 78, after: 72),
   todaySlotLabel: '저녁 약',
-  beforeAt: '오후 5시 52분',
-  afterAt: '오후 6시 40분',
+  beforeAt: '17시 52분',
+  afterAt: '18시 40분',
   week: [
     HeartDay('월', HeartPair(before: 80, after: 74)),
     HeartDay('화', HeartPair()),
@@ -196,7 +197,13 @@ void main() {
     var measured = 0;
     await tester.pumpWidget(
       wrap(
-        PatientHomeScreen(onDone: (_) => done++, onMeasure: (_) => measured++),
+        PatientHomeScreen(
+          onDone: (_) => done++,
+          onMeasure: (_) async {
+            measured++;
+            return 70;
+          },
+        ),
       ),
     );
     await tester.pump();
@@ -260,18 +267,67 @@ void main() {
     );
     await tester.pump();
 
-    // 큰 단추가 기록이 아니라 재기를 먼저 말한다.
-    expect(find.text('심박수 재기'), findsOneWidget);
-    expect(find.text('약 먹기 전에'), findsOneWidget);
+    // 큰 단추가 기록이 아니라 재기를 먼저 말한다. 두 줄로 크게 적는다.
+    expect(find.text('심박수'), findsOneWidget);
+    expect(find.text('측정'), findsOneWidget);
 
-    await tester.tap(find.text('심박수 재기'));
+    await tester.tap(find.text('심박수'));
     await tester.pumpAndSettle();
 
     expect(before, 1);
     expect(done, 0);
     // 재고 나면 같은 단추가 약 기록으로 바뀐다.
-    expect(find.text('심박수 재기'), findsNothing);
+    expect(find.text('측정'), findsNothing);
     expect(find.text('먹었어요'), findsWidgets);
+  });
+
+  testWidgets('드신 뒤 재지 않고 나오면 홈에 재는 단추가 남는다', (tester) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          medicationProvider.overrideWith(_SeniorTestMedicationController.new),
+          heartDevicePairedProvider.overrideWith(_PairedHeartDevice.new),
+        ],
+        child: MaterialApp(
+          theme: AppTheme.build(),
+          home: MediaQuery(
+            data: const MediaQueryData(disableAnimations: true),
+            child: Scaffold(
+              body: PatientHomeScreen(
+                onMeasureBefore: (_) async => 78,
+                // 그냥 나왔다 — 재지 않았으므로 null이다.
+                onMeasure: (_) async => null,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    await tester.tap(find.text('심박수'));
+    await tester.pumpAndSettle();
+    // 걸음 칸에도 같은 말이 있어 큰 단추 쪽을 골라 누른다.
+    await tester.tap(find.text('먹었어요').last);
+    await tester.pumpAndSettle();
+    if (find.text('네 알겠어요').evaluate().isNotEmpty) {
+      await tester.tap(find.text('네 알겠어요'));
+      await tester.pumpAndSettle();
+    }
+
+    // 걸음 칸은 세 번째를 가리키고, 큰 단추는 다시 측정을 말한다.
+    expect(find.text('심박수'), findsOneWidget);
+    expect(find.text('측정'), findsOneWidget);
+    expect(find.text('먹은 뒤 재기'), findsOneWidget);
+
+    // 지금 재지 않겠다고 할 수도 있어야 한다.
+    await tester.tap(find.text('나중에 재기'));
+    await tester.pumpAndSettle();
+    expect(find.text('측정'), findsNothing);
   });
 
   testWidgets('완료 화면의 되돌리기는 시간 제한 없이 있다 (14)', (tester) async {
@@ -317,9 +373,11 @@ void main() {
     expect(plan[3].fireAt, doseTime.add(const Duration(minutes: 90)));
   });
 
-  test('절대시간으로 말한다 — 상대시간은 보조다', () {
-    expect(DoseSlot.absoluteTime(DateTime(2026, 8, 20, 18, 2)), '오후 6시 2분');
-    expect(DoseSlot.dinner.spokenTime, '저녁 6시');
+  test('절대시간을 24시로 말한다 — 상대시간은 보조다', () {
+    // 알림 시각(18:00)과 기록 시각이 같은 모양이어야 같은 때로 읽힌다.
+    expect(DoseSlot.absoluteTime(DateTime(2026, 8, 20, 18, 2)), '18시 2분');
+    expect(DoseSlot.absoluteTime(DateTime(2026, 8, 20, 8, 5)), '8시 5분');
+    expect(DoseSlot.dinner.spokenTime, '저녁 18시');
   });
 
   testWidgets('비밀번호 "보기"는 입력칸 오른쪽 끝에 붙는다 (4i)', (tester) async {
@@ -450,7 +508,8 @@ void _easyModeTests() {
     final shell = File(
       'lib/features/easy_flow/presentation/easy_flow_shell.dart',
     ).readAsStringSync();
-    expect(shell.contains("label: '일반 화면으로'"), isTrue);
+    // 띄는 일반 화면과 같은 것을 쓴다 — 같은 자리, 같은 모양.
+    expect(shell.contains('ModeBadge()'), isTrue);
     expect(shell.contains('EasyMenuButton('), isFalse);
   });
 }
@@ -692,7 +751,7 @@ void _signupTests() {
       "title: '지금 치료받고 있는",
       "title: '예전에 크게",
       "title: '부모님이나 형제가",
-      "title: '약을 놓치시면",
+      "title: '가족을 보호자로",
     ]) {
       expect(source.contains(question), isTrue, reason: '$question 단계가 없다');
     }
@@ -992,16 +1051,20 @@ void _backButtonTests() {
 void _homeTimelineTests() {
   /// 오늘 홈의 동그라미는 심장처럼 계속 뛴다. 켜 둔 채로는
   /// `pumpAndSettle`이 끝나지 않으므로 테스트에서는 움직임을 끈다.
-  Widget home({required List<DoseEntry> doses}) => ProviderScope(
-    overrides: [medicationProvider.overrideWith(() => _FixedMedication(doses))],
-    child: MaterialApp(
-      theme: AppTheme.build(),
-      home: const MediaQuery(
-        data: MediaQueryData(disableAnimations: true),
-        child: Scaffold(body: PatientHomeScreen()),
-      ),
-    ),
-  );
+  Widget home({required List<DoseEntry> doses, bool paired = false}) =>
+      ProviderScope(
+        overrides: [
+          medicationProvider.overrideWith(() => _FixedMedication(doses)),
+          if (paired) heartDevicePairedProvider.overrideWith(_PairedDevice.new),
+        ],
+        child: MaterialApp(
+          theme: AppTheme.build(),
+          home: const MediaQuery(
+            data: MediaQueryData(disableAnimations: true),
+            child: Scaffold(body: PatientHomeScreen()),
+          ),
+        ),
+      );
 
   testWidgets('굵은 테두리 카드가 하나만 있다', (tester) async {
     await tester.pumpWidget(
@@ -1148,36 +1211,144 @@ void _homeTimelineTests() {
     );
     await tester.pump();
 
-    // 약이 없는 때는 "없음"으로. 몇 시인지는 셋 다 적는다 —
-    // 한 칸에만 적혀 있으면 왜 거기만 적혔는지 알 수 없다.
+    // 약이 없는 때는 "없음". 드신 때는 드신 시각을, 아직인 때는 "아직"을
+    // 적는다. 몇 시에 드시는지는 미리 정해 두지 않는다.
     expect(find.text('아침'), findsOneWidget);
     expect(find.text('없음'), findsOneWidget);
     expect(find.text('점심'), findsOneWidget);
-    final lunchChip = find.byWidgetPredicate(
-      (widget) =>
-          widget is Semantics &&
-          (widget.properties.label ?? '').startsWith('점심 12:00,') &&
-          (widget.properties.label ?? '').contains('눌러서 시간 설정하기'),
-    );
-    expect(
-      find.descendant(of: lunchChip, matching: find.text('12:00')),
-      findsOneWidget,
-    );
+    expect(find.text('드셨어요'), findsOneWidget);
     expect(find.text('저녁'), findsOneWidget);
-    final dinnerChip = find.byWidgetPredicate(
-      (widget) =>
-          widget is Semantics &&
-          (widget.properties.label ?? '').startsWith('저녁 18:00,') &&
-          (widget.properties.label ?? '').contains('눌러서 시간 설정하기'),
+    expect(find.text('아직'), findsOneWidget);
+    // 시각을 미리 정해 두지 않는다 — 칩에 적히는 것은 드신 시각뿐이다.
+    // (아래 알림 칸에는 따로 맞춰 둔 시각이 적힐 수 있다.)
+    final chips = find.ancestor(
+      of: find.text('아직'),
+      matching: find.byType(Row),
     );
     expect(
-      find.descendant(of: dinnerChip, matching: find.text('18:00')),
-      findsOneWidget,
+      find.descendant(
+        of: chips.first,
+        matching: find.byWidgetPredicate(
+          (widget) =>
+              widget is Text &&
+              RegExp(r'^\d{2}:\d{2}$').hasMatch(widget.data ?? ''),
+        ),
+      ),
+      findsNothing,
     );
 
-    // 약 이름은 홈에 늘어놓지 않는다 — "약 보기"에서 본다.
     expect(find.text('메트포르민'), findsNothing);
-    expect(find.text('약 보기'), findsOneWidget);
+    // 심박기기를 안 쓰시면 그 자리는 연결 길이다.
+    expect(find.text('센서 연결'), findsOneWidget);
+  });
+
+  testWidgets('때를 골라 그 시각으로 적는다', (tester) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          medicationProvider.overrideWith(_SeniorTestMedicationController.new),
+        ],
+        child: MaterialApp(
+          theme: AppTheme.build(),
+          home: const MediaQuery(
+            data: MediaQueryData(disableAnimations: true),
+            child: Scaffold(body: PatientHomeScreen()),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    // 기본은 아직 안 드신 저녁. 아침을 누르면 단추가 그쪽을 맡는다.
+    expect(find.text('먹었어요'), findsWidgets);
+    await tester.tap(find.text('아침'));
+    await tester.pumpAndSettle();
+    expect(find.text('취소하기'), findsOneWidget);
+
+    // 되돌리면 아침은 다시 "아직"이 된다.
+    await tester.tap(find.text('취소하기'));
+    await tester.pumpAndSettle();
+    expect(find.text('아직'), findsWidgets);
+
+    // 그 자리에서 다시 드시면 지금 시각이 적힌다.
+    await tester.tap(find.text('먹었어요').last);
+    await tester.pumpAndSettle();
+    if (find.text('네 알겠어요').evaluate().isNotEmpty) {
+      await tester.tap(find.text('네 알겠어요'));
+      await tester.pumpAndSettle();
+    }
+    final clock = RegExp(r'^\d{2}:\d{2}$');
+    expect(
+      find.byWidgetPredicate(
+        (widget) => widget is Text && clock.hasMatch(widget.data ?? ''),
+      ),
+      findsWidgets,
+    );
+  });
+
+  testWidgets('센서를 떼면 걸음 칸이 사라지고 동그라미가 다시 커진다', (tester) async {
+    await tester.pumpWidget(
+      home(
+        paired: true,
+        doses: const [
+          DoseEntry(
+            slot: DoseSlot.dinner,
+            medicines: [Medicine(ingredient: '저녁정', amount: '1알')],
+          ),
+        ],
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    Size circle() => tester.getSize(
+      find
+          .byWidgetPredicate(
+            (widget) =>
+                widget is Container &&
+                widget.decoration is BoxDecoration &&
+                (widget.decoration as BoxDecoration).shape == BoxShape.circle &&
+                (widget.decoration as BoxDecoration).color ==
+                    AppColors.pointFill,
+          )
+          .first,
+    );
+
+    expect(find.text('먹기 전 재기'), findsOneWidget);
+    final small = circle().width;
+
+    // 센서를 떼면(연결 끊기) 걸음 칸이 접히고 그만큼 동그라미가
+    // 다시 커진다. 가는 길과 오는 길이 같아야 한다.
+    final element = tester.element(find.byType(PatientHomeScreen));
+    await ProviderScope.containerOf(
+      element,
+    ).read(heartDevicePairedProvider.notifier).set(false);
+    await tester.pumpAndSettle();
+
+    expect(find.text('먹기 전 재기'), findsNothing);
+    expect(circle().width, greaterThan(small));
+  });
+
+  testWidgets('심박기기를 쓰시면 아래 칸이 끊는 길로 바뀜다', (tester) async {
+    await tester.pumpWidget(
+      home(
+        paired: true,
+        doses: const [
+          DoseEntry(
+            slot: DoseSlot.dinner,
+            medicines: [Medicine(ingredient: '저녁정', amount: '1알')],
+          ),
+        ],
+      ),
+    );
+    await tester.pump();
+
+    // 쓰고 계시면 그 자리는 끊는 길이다.
+    expect(find.text('기기 연결 해제'), findsOneWidget);
+    expect(find.text('센서 연결'), findsNothing);
   });
 
   testWidgets('아직 드시지 않았으면 큰 단추가 "먹었어요"다', (tester) async {
@@ -1200,7 +1371,14 @@ void _homeTimelineTests() {
     expect(find.textContaining('2번 남았어요'), findsOneWidget);
     expect(find.text('먹었어요'), findsOneWidget);
     // 알림 화면으로 가는 네모 칸. 맞춰 둔 시각만 적는다(자명종 그림이 있다).
-    expect(find.text('08:00'), findsWidgets);
+    // 어느 시각이 나오는지는 지금 몇 시인지에 따라 다르다 — 꼴만 본다.
+    expect(
+      find.byWidgetPredicate(
+        (widget) =>
+            widget is Text && RegExp(r'^\d{2}:\d{2}$').hasMatch(widget.data ?? ''),
+      ),
+      findsWidgets,
+    );
   });
 
   test('접고 펴는 버튼에 화살표 장식을 붙이지 않는다', () {
@@ -1295,7 +1473,7 @@ void _rightAlignTests() {
 
 /// C장 — 기록도 날짜 타임라인이다.
 void _recordTimelineTests() {
-  testWidgets('기록 첫 화면에 오늘로 돌아가는 버튼이 있다', (tester) async {
+  testWidgets('기록 첫 화면에는 오늘로 돌아가는 버튼을 두지 않는다', (tester) async {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
@@ -1316,7 +1494,8 @@ void _recordTimelineTests() {
       ),
     );
     await tester.pump();
-    expect(find.text('오늘 화면으로 돌아가기'), findsOneWidget);
+    // 탭 막대와 쉬운 화면의 "뒤로"가 이미 돌아가는 길이다.
+    expect(find.text('오늘 화면으로 돌아가기'), findsNothing);
   });
 
   test('기록 탭은 주간칸과 달력으로 가는 길만 둔다', () {
@@ -1568,4 +1747,10 @@ void _realLoginTests() {
     expect(main.contains('if (!AuthSession.isLoggedIn)'), isTrue);
     expect(main.contains("publicRoute ? null : '/login'"), isTrue);
   });
+}
+
+/// 심박기기를 이미 쓰고 계신 분. 홈 아래 칸이 "약 보기"로 돌아온다.
+class _PairedDevice extends HeartDeviceController {
+  @override
+  bool build() => true;
 }

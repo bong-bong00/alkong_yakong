@@ -5,7 +5,6 @@ import 'package:flutter_tabler_icons/flutter_tabler_icons.dart';
 
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
-import '../../../../core/widgets/senior_button.dart';
 import '../../../../core/widgets/senior_card.dart';
 import '../../../../core/widgets/senior_header.dart';
 import '../../../medication/application/medication_controller.dart';
@@ -32,7 +31,8 @@ class MedicationRecordScreen extends ConsumerStatefulWidget {
   /// 보호자가 볼 어르신 id. null이면 로그인한 본인의 기록이다.
   final String? patientUserId;
 
-  /// 오늘 화면으로 돌아가는 길. 탭 루트일 때만 쓴다.
+  /// 남아 있는 자리. 화면 안에는 더 이상 단추를 두지 않는다 —
+  /// 탭과 쉬운 화면의 "뒤로"가 이미 돌아가는 길이다.
   final VoidCallback? onBackToToday;
 
   const MedicationRecordScreen({
@@ -90,7 +90,6 @@ class _MedicationRecordScreenState
     final patientName = widget.patientName;
     final patientUserId = widget.patientUserId;
     final showBack = widget.showBack;
-    final onBackToToday = widget.onBackToToday;
     final patientId = patientUserId;
     // 본인은 이 전화기의 오늘 상태를, 보호자는 서버에 올라온 어르신 기록을 쓴다.
     final today = patientId == null
@@ -156,17 +155,6 @@ class _MedicationRecordScreenState
                     ],
                     // 간편 화면에는 탭이 없다. 거기서만 돌아가는 길을 낸다 —
                     // 탭이 있는 일반 화면에서는 시안대로 두지 않는다.
-                    if (onBackToToday != null) ...[
-                      SeniorButton(
-                        label: '오늘 화면으로 돌아가기',
-                        icon: TablerIcons.calendar_event,
-                        minHeight: 72,
-                        fontSize: 23,
-                        elevated: true,
-                        onPressed: onBackToToday,
-                      ),
-                      const SizedBox(height: 12),
-                    ],
                     AdherenceWeekCard(
                       days: weekAdherenceStatuses(today, history),
                       picked: _picked,

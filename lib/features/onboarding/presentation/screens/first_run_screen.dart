@@ -96,7 +96,7 @@ class FirstRunScreen extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    Text('직접 등록하기', style: AppText.screenTitle(size: 24)),
+                    Text('처방전 촬영하기', style: AppText.screenTitle(size: 24)),
                     const SizedBox(height: 6),
                     Text(
                       '처방전 종이를 전화기로 찍으면 약 이름을 읽어드려요. '
@@ -105,7 +105,7 @@ class FirstRunScreen extends StatelessWidget {
                     ),
                     const SizedBox(height: 14),
                     SeniorButton(
-                      label: '처방전 찍기',
+                      label: '처방전 촬영',
                       kind: SeniorButtonKind.secondary,
                       minHeight: 66,
                       fontSize: 22,

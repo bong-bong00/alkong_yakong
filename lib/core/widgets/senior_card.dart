@@ -19,6 +19,19 @@ const List<BoxShadow> kCardShadow = [
   ),
 ];
 
+/// 흰 카드 **위에** 올라가는 흰 칸의 그림자.
+///
+/// 카드 그림자를 그대로 쓰면 흰 바탕에 흰 칸이 묻혀 어디를 눌러야 할지
+/// 보이지 않는다. 같은 두 겹을 쓰되 한 단계 진하고 넓게 깐다.
+const List<BoxShadow> kRaisedShadow = [
+  BoxShadow(color: AppColors.raisedShadow, offset: Offset(0, 2), blurRadius: 3),
+  BoxShadow(
+    color: AppColors.raisedShadowWide,
+    offset: Offset(0, 6),
+    blurRadius: 14,
+  ),
+];
+
 /// 파란 면으로 채운 칸에만 쓰는 그림자. 같은 파랑을 옅게 깔아
 /// 그 칸이 한 단계 앞에 있다고 말한다 (시안 `rgba(31,66,229,.28)`).
 const List<BoxShadow> kAccentShadow = [

@@ -57,8 +57,8 @@ void main() {
     expect(data.streakDays, 9);
     expect(data.anomaly!.day, 12);
     // 어르신 화면은 24시간 표기를 쓰지 않는다.
-    expect(data.beforeAt, '오후 5시 45분');
-    expect(data.afterAt, '오후 6시 20분');
+    expect(data.beforeAt, '17시 45분');
+    expect(data.afterAt, '18시 20분');
     // 서버 label("9월 12일")을 때 이름으로 쓰면 날짜가 두 번 붙는다.
     expect(data.anomaly!.slotLabel, '');
     // 센서 상태는 기록에서 지어내지 않는다.

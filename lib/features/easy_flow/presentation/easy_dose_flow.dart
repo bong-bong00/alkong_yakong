@@ -11,6 +11,7 @@ import '../../biosignal/application/heart_sensor.dart';
 import '../../biosignal/domain/heart_data.dart';
 import '../../biosignal/presentation/screens/measure_screen.dart';
 import '../../medication/application/medication_controller.dart';
+import '../../medicines/domain/display_policy.dart';
 import '../../medication/domain/medication_models.dart';
 import '../../medication/presentation/widgets/dose_guard_sheets.dart';
 import '../../reminder/application/alarm_preferences.dart';
@@ -126,8 +127,11 @@ class _EasyDoseFlowState extends ConsumerState<EasyDoseFlow> {
   }
 
   void _back() {
-    if (_recording || _history.isEmpty) return;
-    final previous = _history.removeLast();
+    if (_recording) return;
+    // 길이 비었어도 단추는 살아 있어야 한다. 갈 곳이 없으면 처음으로.
+    final previous = _history.isEmpty
+        ? EasyDoseStep.time
+        : _history.removeLast();
     // 재던 중으로 되돌아가면 처음부터 다시 잰다.
     setState(() => _step = previous);
     if (previous == EasyDoseStep.measureBefore ||
@@ -231,14 +235,35 @@ class _EasyDoseFlowState extends ConsumerState<EasyDoseFlow> {
     }
   }
 
+  /// 되돌릴 수 있는 때. 방금 기록한 때가 없으면 오늘 가장 나중에 드신
+  /// 때를 따른다 — 화면을 오가다 했다고 되돌리는 길이 사라지면 안 된다.
+  DoseSlot? get _undoableSlot {
+    if (_recordedSlot != null) return _recordedSlot;
+    DoseEntry? latest;
+    for (final dose in ref.read(medicationProvider).doses) {
+      if (!dose.taken) continue;
+      final at = dose.takenAt;
+      final best = latest?.takenAt;
+      if (latest == null ||
+          (at != null && (best == null || at.isAfter(best)))) {
+        latest = dose;
+      }
+    }
+    return latest?.slot;
+  }
+
   void _undoRecord() {
-    final slot = _recordedSlot;
+    final slot = _undoableSlot;
     if (slot == null) return;
     ref.read(medicationProvider.notifier).undo(slot);
     setState(() {
       _recordedSlot = null;
       _after = null;
-      _history.clear();
+      // 길을 비워 두면 뒤로가 갈 곳을 잃어 단추가 죽는다.
+      // 처음 걸음으로 돌아갈 수 있게 한 칸만 남긴다.
+      _history
+        ..clear()
+        ..add(EasyDoseStep.time);
       _step = EasyDoseStep.take;
     });
   }
@@ -299,8 +324,7 @@ class _EasyDoseFlowState extends ConsumerState<EasyDoseFlow> {
   Widget _time(DoseEntry dose) {
     return _EasyStepPage(
       step: EasyDoseStep.time,
-      lead: '${dose.slot.label} 약',
-      title: '드실 시간이에요',
+      title: '약 드실 시간이에요',
       subtitle: '약 드시기 전에 심박부터 측정해요',
       body: [_MedicineCard(medicines: dose.medicines)],
       primary: _EasyAction(
@@ -396,7 +420,6 @@ class _EasyDoseFlowState extends ConsumerState<EasyDoseFlow> {
   Widget _take(DoseEntry dose) {
     return _EasyStepPage(
       step: EasyDoseStep.take,
-      lead: '이 약을 드시고',
       title: '복약 완료하셨나요?',
       body: [
         _MedicineCard(medicines: dose.medicines),
@@ -639,7 +662,7 @@ class _EasyDoseFlowState extends ConsumerState<EasyDoseFlow> {
             _MoreItem(
               icon: Icons.undo_rounded,
               label: '복약 전으로 되돌리기',
-              onTap: _recordedSlot == null ? null : _undoRecord,
+              onTap: _undoableSlot == null ? null : _undoRecord,
             ),
           ],
         ),
@@ -653,7 +676,8 @@ class _EasyStepPage extends StatelessWidget {
   /// 걸음 번호를 매길 단계. 없으면 걸음 표시를 그리지 않는다 (85).
   final EasyDoseStep? step;
 
-  final String lead;
+  /// 제목 위 작은 줄. 한 줄로 쉽게 읽힐 말이면 두지 않는다.
+  final String? lead;
   final String title;
   final String? subtitle;
   final List<Widget> body;
@@ -662,7 +686,7 @@ class _EasyStepPage extends StatelessWidget {
 
   const _EasyStepPage({
     this.step,
-    required this.lead,
+    this.lead,
     required this.title,
     this.subtitle,
     required this.body,
@@ -679,7 +703,8 @@ class _EasyStepPage extends StatelessWidget {
       children: [
         Expanded(
           child: SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(18, 8, 18, 18),
+            // 걸음 막대는 가로를 다 쓴다. 띄가 떠 있는 위쪽은 비워 둔다.
+            padding: EdgeInsets.fromLTRB(18, number == null ? 16 : 88, 18, 18),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
@@ -687,12 +712,13 @@ class _EasyStepPage extends StatelessWidget {
                   _StepPips(current: number),
                   const SizedBox(height: 18),
                 ],
-                Text(
-                  lead,
-                  style: AppText.screenTitle(
-                    size: 28,
-                  ).copyWith(fontWeight: FontWeight.w500),
-                ),
+                if (lead case final String small)
+                  Text(
+                    small,
+                    style: AppText.screenTitle(
+                      size: 28,
+                    ).copyWith(fontWeight: FontWeight.w500),
+                  ),
                 Text(title, style: AppText.screenTitle(size: 28)),
                 if (subtitle case final String note) ...[
                   const SizedBox(height: 8),
@@ -878,7 +904,10 @@ class _MedicineRow extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text(medicine.displayName, style: AppText.cardTitle(size: 21)),
+              Text(
+                nameWithoutStrength(medicine.displayName),
+                style: AppText.cardTitle(size: 21),
+              ),
               if (look.isNotEmpty) ...[
                 const SizedBox(height: 2),
                 Text(look, style: AppText.body(size: 17)),

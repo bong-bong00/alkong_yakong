@@ -110,7 +110,7 @@ class _AddMedicineScreenState extends State<AddMedicineScreen> {
       backgroundColor: AppColors.pageBg,
       body: Column(
         children: [
-          const SeniorBackHeader(title: '처방전 넣기'),
+          const SeniorBackHeader(title: '처방전 등록'),
           Expanded(
             child: SingleChildScrollView(
               padding: const EdgeInsets.fromLTRB(16, 18, 16, 28),
@@ -140,46 +140,31 @@ class _AddMedicineScreenState extends State<AddMedicineScreen> {
                   // 가장 쉬운 길 하나만 파란 면으로 크게 둔다.
                   _PrimaryWay(
                     icon: TablerIcons.camera,
-                    label: '사진 찍기',
+                    label: '촬영',
                     sub: '가장 쉽고 빨라요',
                     onTap: () => widget.onPick(AddMedicineMethod.camera),
                   ),
                   const SizedBox(height: 16),
-                  // 나머지 길은 작은 칸 셋으로 나란히 둔다.
-                  IntrinsicHeight(
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        Expanded(
-                          child: _SmallWay(
-                            icon: TablerIcons.photo,
-                            label: '앨범',
-                            onTap: () =>
-                                widget.onPick(AddMedicineMethod.gallery),
-                          ),
-                        ),
-                        const SizedBox(width: 14),
-                        Expanded(
-                          child: _SmallWay(
-                            icon: TablerIcons.pencil,
-                            label: '손으로 적기',
-                            onTap: () =>
-                                widget.onPick(AddMedicineMethod.manual),
-                          ),
-                        ),
-                        if (!_asked) ...[
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: _SmallWay(
-                              icon: TablerIcons.users,
-                              label: _asking ? '부탁하는 중…' : '가족에게',
-                              onTap: _asking ? null : _askFamily,
-                            ),
-                          ),
-                        ],
-                      ],
-                    ),
+                  // 나머지 길은 가로를 다 쓰는 긴 칸으로 쌓는다.
+                  _SmallWay(
+                    icon: TablerIcons.photo,
+                    label: '앨범에서 고르기',
+                    onTap: () => widget.onPick(AddMedicineMethod.gallery),
                   ),
+                  const SizedBox(height: 12),
+                  _SmallWay(
+                    icon: TablerIcons.pencil,
+                    label: '손으로 적기',
+                    onTap: () => widget.onPick(AddMedicineMethod.manual),
+                  ),
+                  if (!_asked) ...[
+                    const SizedBox(height: 12),
+                    _SmallWay(
+                      icon: TablerIcons.users,
+                      label: _asking ? '부탁하는 중…' : '가족에게 부탁하기',
+                      onTap: _asking ? null : _askFamily,
+                    ),
+                  ],
                   if (_asked) ...[
                     const SizedBox(height: 12),
                     _AskedCard(
@@ -300,23 +285,19 @@ class _SmallWay extends StatelessWidget {
         onTap: onTap,
         child: ExcludeSemantics(
           child: Container(
-            constraints: const BoxConstraints(minHeight: 88),
-            alignment: Alignment.center,
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 14),
+            constraints: const BoxConstraints(minHeight: 76),
+            padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 14),
             decoration: BoxDecoration(
               color: AppColors.surface,
               borderRadius: BorderRadius.circular(22),
               boxShadow: kCardShadow,
             ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
+            child: Row(
               children: [
-                Icon(icon, size: 26, color: AppColors.textPrimary),
-                const SizedBox(height: 10),
-                Text(
-                  label,
-                  textAlign: TextAlign.center,
-                  style: AppText.cardTitle(size: 18),
+                Icon(icon, size: 28, color: AppColors.textPrimary),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Text(label, style: AppText.cardTitle(size: 21)),
                 ),
               ],
             ),

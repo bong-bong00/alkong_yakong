@@ -98,6 +98,8 @@ class OCRMedicineItem(BaseModel):
     easy_explanation: Optional[str] = None
     warning_note: Optional[str] = None
 
+    # Keep the OCR instruction through validation for preview/timing extraction.
+    dosing_instruction: Optional[str] = None
     administration_times: List[str] = Field(default_factory=list)
 
 

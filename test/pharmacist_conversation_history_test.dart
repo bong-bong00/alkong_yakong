@@ -69,7 +69,7 @@ void main() {
       TextAlignVertical.center,
     );
     expect(
-      tester.getRect(find.text('여기에 물어보세요')).center.dy,
+      tester.getRect(find.text('약에 대해 물어보세요')).center.dy,
       closeTo(tester.getRect(input).center.dy, 1),
     );
     await tester.enterText(field, '주의할 점은?');

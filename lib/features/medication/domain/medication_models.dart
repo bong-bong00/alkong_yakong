@@ -26,19 +26,14 @@ enum DoseSlot {
   /// 24시간제 기준 시각.
   final int hour;
 
-  /// "아침 8시" / "저녁 6시" — 화면에 그대로 쓰는 큰 시각 문구.
-  String get spokenTime {
-    final display = hour > 12 ? hour - 12 : hour;
-    return '$label $display시';
-  }
+  /// "아침 8시" / "저녁 18시" — 화면에 그대로 쓰는 큰 시각 문구.
+  String get spokenTime => '$label $hour시';
 
-  /// "오후 6시 2분" 형태의 절대시간. **상대시간("15분 전")은 쓰지 않는다.**
-  static String absoluteTime(DateTime time) {
-    final isAfternoon = time.hour >= 12;
-    final hour12 = time.hour % 12 == 0 ? 12 : time.hour % 12;
-    final period = isAfternoon ? '오후' : '오전';
-    return '$period $hour12시 ${time.minute}분';
-  }
+  /// "18시 2분" 형태의 절대시간. **상대시간("15분 전")은 쓰지 않는다.**
+  ///
+  /// 24시로 적는다. 오전·오후를 붙이면 알림 시각(18:00)과 기록 시각이
+  /// 서로 다른 모양이 되어, 같은 때를 두 가지로 읽게 된다.
+  static String absoluteTime(DateTime time) => '${time.hour}시 ${time.minute}분';
 
   DateTime todayAt(DateTime now) =>
       DateTime(now.year, now.month, now.day, hour);

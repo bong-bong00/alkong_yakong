@@ -10,11 +10,12 @@ import '../../../../core/widgets/senior_button.dart';
 import '../../../../core/widgets/senior_card.dart';
 import '../../../../core/widgets/senior_header.dart';
 import '../../application/user_medicines_controller.dart';
+import '../../domain/display_policy.dart';
 import '../../domain/user_medicine_models.dart';
 
 /// 내 약 — 활성 약 종류당 1행 (서버 `/medicines`).
 ///
-/// 시안 38. 맨 위에 "처방전 넣기"와 "AI 약사 질문"을 큰 두 칸으로 두고,
+/// 시안 38. 맨 위에 "처방전 등록"과 "AI 약사 상담"을 큰 두 칸으로 두고,
 /// 그 아래 지금 드시는 약을 쌓는다. 오늘 홈에서 내린 두 길이 여기 모인다.
 ///
 /// **뒤로 가는 머리띠는 두지 않는다.** 이 화면은 아래 탭에서 바로 열리는
@@ -77,7 +78,7 @@ class _MedicineList extends StatelessWidget {
           Expanded(
             child: _ActionTile(
               icon: TablerIcons.camera,
-              label: '처방전 넣기',
+              label: '처방전 등록',
               filled: true,
               onTap: () => context.push('/prescription'),
             ),
@@ -88,7 +89,7 @@ class _MedicineList extends StatelessWidget {
               // 시안은 동그라미 안에 물음표를 둔다. 말풍선은 "대화"를
               // 말하지만 여기서 하는 일은 "묻는" 것이다.
               icon: TablerIcons.help_circle,
-              label: 'AI 약사 질문',
+              label: 'AI 약사 상담',
               onTap: () => context.push('/drug-explain'),
             ),
           ),
@@ -142,7 +143,7 @@ class _MedicineList extends StatelessWidget {
       children: [
         if (asTab) ...[
           Padding(
-            padding: const EdgeInsets.fromLTRB(6, 6, 6, 0),
+            padding: const EdgeInsets.fromLTRB(6, 0, 6, 0),
             child: Text('내 약', style: AppText.screenTitle(size: 28)),
           ),
           const SizedBox(height: 14),
@@ -238,19 +239,30 @@ class _ActionTile extends StatelessWidget {
 
 class _GroupedMedicines extends StatelessWidget {
   final List<UserMedicine> medicines;
-  final bool past;
 
-  const _GroupedMedicines({required this.medicines, this.past = false});
+  const _GroupedMedicines({required this.medicines});
 
   @override
   Widget build(BuildContext context) {
+    // Confirmed pair warnings apply to both members, not just the row carrying
+    // the warning. Do not infer conflicts from check_needed/unknown results.
+    String nameKey(String name) =>
+        name.split('(').first.replaceAll(RegExp(r'\s+'), '').trim();
+    final conflictNames = <String>{
+      for (final medicine in medicines)
+        if (medicine.interactionStatus == 'risk_found') ...[
+          nameKey(medicine.displayName),
+          ...medicine.interactionConflictNames.map(nameKey),
+        ],
+    }..remove('');
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         for (final type in MedicineUseType.values)
           if (medicines.any((medicine) => medicine.useType == type)) ...[
-            SeniorCard(
-              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+            // 묶음 이름은 박스로 두르지 않는다 — 박스는 약에만 쓴다.
+            Padding(
+              padding: const EdgeInsets.fromLTRB(4, 2, 4, 10),
               child: Row(
                 children: [
                   Icon(
@@ -263,11 +275,11 @@ class _GroupedMedicines extends StatelessWidget {
                       _ => Icons.medical_services_outlined,
                     },
                     color: AppColors.point,
-                    size: 25,
+                    size: 23,
                   ),
-                  const SizedBox(width: 10),
+                  const SizedBox(width: 8),
                   Expanded(
-                    child: Text(type.label, style: AppText.cardTitle(size: 20)),
+                    child: Text(type.label, style: AppText.label(size: 19)),
                   ),
                   Text(
                     '${medicines.where((medicine) => medicine.useType == type).length}가지',
@@ -279,11 +291,15 @@ class _GroupedMedicines extends StatelessWidget {
                 ],
               ),
             ),
-            const SizedBox(height: 10),
             for (final medicine in medicines.where(
               (medicine) => medicine.useType == type,
             )) ...[
-              _MedicineCard(medicine: medicine, past: past),
+              _MedicineCard(
+                medicine: medicine,
+                pairConflict: conflictNames.contains(
+                  nameKey(medicine.displayName),
+                ),
+              ),
               const SizedBox(height: 12),
             ],
           ],
@@ -294,23 +310,14 @@ class _GroupedMedicines extends StatelessWidget {
 
 class _MedicineCard extends StatelessWidget {
   final UserMedicine medicine;
+  final bool pairConflict;
 
-  /// 지금 안 드시는 약. 칸 색은 그대로 두고 왼쪽 회색 띠와 회색 글씨로
-  /// 지금 드시는 약과 갈라 둔다.
-  final bool past;
-
-  const _MedicineCard({required this.medicine, this.past = false});
+  const _MedicineCard({required this.medicine, this.pairConflict = false});
 
   @override
   Widget build(BuildContext context) {
-    if (past) {
-      return _StackedCard(child: _body(context));
-    }
-    return _body(context);
-  }
-
-  Widget _body(BuildContext context) {
-    final hasConflict = !past && medicine.interactionStatus == 'risk_found';
+    final hasConflict =
+        pairConflict || medicine.interactionStatus == 'risk_found';
     return SeniorCard(
       radius: 26,
       borderColor: hasConflict ? AppColors.danger : null,
@@ -326,13 +333,11 @@ class _MedicineCard extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  medicine.displayName,
-                  style: AppText.cardTitle(
-                    size: 21,
-                    color: past
-                        ? AppColors.textTertiary
-                        : AppColors.textPrimary,
+                  nameWithoutStrength(
+                    medicine.displayName,
+                    strength: medicine.ingredientStrength,
                   ),
+                  style: AppText.cardTitle(size: 21),
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                 ),
@@ -383,26 +388,41 @@ class _PastMedicinesState extends State<_PastMedicines> {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        _StackedCard(
-          child: SeniorCard(
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
-            child: SeniorListRow(
+    // 칸 하나로 둔다. 접혀 있을 때는 "이전에 사용한 약" 한 줄만 보이고,
+    // 누르면 그 칸이 아래로 늘어나며 약들이 따라 나온다. 칸을 둘로 나누면
+    // 펼친 목록이 남의 칸처럼 떨어져 보인다.
+    return _StackedCard(
+      child: SeniorCard(
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            SeniorListRow(
               label: '이전에 사용한 약',
               labelColor: AppColors.textTertiary,
               value: '${widget.medicines.length}가지',
               trailing: const SeniorChevron(),
               onTap: () => setState(() => _open = !_open),
             ),
-          ),
+            if (_open)
+              for (final medicine in widget.medicines) ...[
+                // 제목 줄과 약 줄을 가는 선으로 가른다.
+                const SeniorDivider(),
+                SeniorListRow(
+                  label: nameWithoutStrength(
+                    medicine.displayName,
+                    strength: medicine.ingredientStrength,
+                  ),
+                  labelColor: AppColors.textTertiary,
+                  value: medicine.useType.label,
+                  trailing: const SeniorChevron(),
+                  onTap: () =>
+                      context.push('/medicines/${medicine.medicineCode}'),
+                ),
+              ],
+          ],
         ),
-        if (_open) ...[
-          const SizedBox(height: 10),
-          _GroupedMedicines(medicines: widget.medicines, past: true),
-        ],
-      ],
+      ),
     );
   }
 }

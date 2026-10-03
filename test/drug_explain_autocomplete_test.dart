@@ -85,15 +85,23 @@ void main() {
   }
 
   /// 창을 열어 약 하나를 고른다. 누르면 확인 단추 없이 바로 닫힌다.
+  /// 고르기 창의 확인 단추.
+  Future<void> confirmPick(WidgetTester tester) async {
+    await tester.tap(find.text('확인'));
+    await tester.pumpAndSettle();
+  }
+
   Future<void> pickSubject(WidgetTester tester, String label) async {
     await openPicker(tester);
     await tester.tap(find.byKey(ValueKey('medicine-selection-$label')));
     await tester.pumpAndSettle();
+    // 여러 개를 고를 수 있는 창이다. 다 고른 뒤 한 번 누른다.
+    await confirmPick(tester);
   }
 
   /// 고른 약을 뺀다. 다시 내 약 전부를 놓고 묻는 자리로 돌아온다.
   Future<void> clearSubject(WidgetTester tester) async {
-    await tester.tap(find.text('삭제'));
+    await tester.tap(find.bySemanticsLabel('고른 약 빼기'));
     await tester.pumpAndSettle();
   }
 
@@ -221,7 +229,7 @@ void main() {
     expect(find.text('아디팜정'), findsOneWidget);
     expect(find.text('아디팜정(히드록시진염산염)'), findsNothing);
 
-    await tester.tap(find.text('꼭 밥 먹고 먹어야 하나요?'));
+    await tester.tap(find.text('꼭 식사 후에 복용해야 하나요?'));
     await tester.pumpAndSettle();
     expect(sent?['selected_medicine'], {
       'medicine_code': '20000001',
@@ -263,7 +271,7 @@ void main() {
     // 공식 품목을 자동 선택하지 않는다.
     await pickSubject(tester, '같은약정');
     expect(find.text('같은약정'), findsOneWidget);
-    await tester.tap(find.text('꼭 밥 먹고 먹어야 하나요?'));
+    await tester.tap(find.text('꼭 식사 후에 복용해야 하나요?'));
     await tester.pumpAndSettle();
     expect(sent, isNotNull);
     expect(sent!.containsKey('selected_medicine'), isFalse);
@@ -418,11 +426,12 @@ void main() {
     await tester.pump();
     await tester.tap(find.text('게보린정'));
     await tester.pumpAndSettle();
+    await confirmPick(tester);
 
     expect(find.text('게보린정'), findsOneWidget);
-    await tester.tap(find.text('꼭 밥 먹고 먹어야 하나요?'));
+    await tester.tap(find.text('꼭 식사 후에 복용해야 하나요?'));
     await tester.pumpAndSettle();
-    expect(chatBodies.last['message'], '게보린정은 꼭 밥을 먹고 나서 먹어야 하나요?');
+    expect(chatBodies.last['message'], '게보린정은 꼭 식사 후에 복용해야 하나요?');
     expect(chatBodies.last['selected_medicine'], {
       'medicine_code': '1',
       'product_name': '게보린정',
@@ -432,8 +441,15 @@ void main() {
     await clearSubject(tester);
     expect(find.text('이 약에 대해 많이 묻는 것'), findsNothing);
     await pickSubject(tester, '게보린정');
-    final again = find.text('꼭 밥 먹고 먹어야 하나요?').last;
-    await tester.ensureVisible(again);
+    // 질문 카드만 집어 누른다 — 같은 글이 대화에도 남아 있다.
+    final again = find.byKey(
+      const ValueKey('suggestion-꼭 식사 후에 복용해야 하나요?'),
+    );
+    await tester.scrollUntilVisible(
+      again,
+      200,
+      scrollable: find.byType(Scrollable).first,
+    );
     await tester.pumpAndSettle();
     await tester.tap(again);
     await tester.pumpAndSettle();
@@ -467,7 +483,7 @@ void main() {
     await tester.pumpWidget(appWith(client));
     await tester.pumpAndSettle();
     await pickSubject(tester, '유한메토트렉세이트정');
-    await tester.tap(find.text('꼭 밥 먹고 먹어야 하나요?'));
+    await tester.tap(find.text('꼭 식사 후에 복용해야 하나요?'));
     await tester.pumpAndSettle();
 
     expect(chatBody?['selected_medicine'], {
@@ -497,11 +513,11 @@ void main() {
 
     // 고르기 전에는 약 이름 없이 묻는 질문을 보여 준다.
     expect(find.text('아침 약이랑 우유 같이 먹어도 돼요?'), findsOneWidget);
-    expect(find.text('꼭 밥 먹고 먹어야 하나요?'), findsNothing);
+    expect(find.text('꼭 식사 후에 복용해야 하나요?'), findsNothing);
 
     await pickSubject(tester, '게보린정');
     expect(find.text('이 약에 대해 많이 묻는 것'), findsOneWidget);
-    expect(find.text('꼭 밥 먹고 먹어야 하나요?'), findsOneWidget);
+    expect(find.text('꼭 식사 후에 복용해야 하나요?'), findsOneWidget);
     expect(find.text('속이 울렁거리는데 괜찮나요?'), findsOneWidget);
     expect(find.text('같이 먹으면 안 되는 음식은요?'), findsOneWidget);
     expect(find.text('아침 약이랑 우유 같이 먹어도 돼요?'), findsNothing);
@@ -514,7 +530,7 @@ void main() {
     expect(find.text('속이 울렁거리는데 괜찮나요?'), findsOneWidget);
   });
 
-  testWidgets('이름으로 찾은 약은 고른 약을 대신한다', (tester) async {
+  testWidgets('이름으로 찾은 약도 고른 약에 더해진다', (tester) async {
     Map<String, dynamic>? chatBody;
     final client = MockClient((request) async {
       if (request.url.path.endsWith('/dashboard')) {
@@ -553,18 +569,18 @@ void main() {
     await tester.pump();
     await tester.tap(find.text('검색약정'));
     await tester.pumpAndSettle();
+    await confirmPick(tester);
 
-    // 고르는 약은 하나다. 앞서 고른 약은 자리를 내준다.
-    expect(find.text('검색약정'), findsOneWidget);
-    expect(find.text('등록약정'), findsNothing);
+    // 찾은 약은 고른 약에 더해진다. 칸에는 첫 약과 숫자만 적는다.
+    expect(find.text('등록약정 외 1개'), findsOneWidget);
 
-    await tester.tap(find.text('꼭 밥 먹고 먹어야 하나요?'));
+    await tester.tap(find.text('꼭 식사 후에 복용해야 하나요?'));
     await tester.pumpAndSettle();
-    expect(chatBody?['selected_medicine'], {
-      'medicine_code': '222',
-      'product_name': '검색약정',
-    });
-    expect(chatBody?.containsKey('selected_medicines'), isFalse);
+    // 두 약을 함께 보낸다.
+    expect(chatBody?['selected_medicines'], [
+      {'medicine_code': '111', 'product_name': '등록약정'},
+      {'medicine_code': '222', 'product_name': '검색약정'},
+    ]);
   });
 
   for (final width in [320.0, 360.0]) {
@@ -602,7 +618,7 @@ void main() {
       await pickSubject(tester, '유한메토트렉세이트정');
       expect(tester.takeException(), isNull);
 
-      final first = find.text('꼭 밥 먹고 먹어야 하나요?');
+      final first = find.text('꼭 식사 후에 복용해야 하나요?');
       expect(tester.getTopLeft(first).dx, greaterThanOrEqualTo(0));
       expect(tester.getBottomRight(first).dx, lessThanOrEqualTo(width));
       await tester.scrollUntilVisible(
@@ -742,7 +758,6 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('약 고르기'), findsOneWidget);
-    expect(find.text('약 하나만 물어볼 때'), findsOneWidget);
     await tester.enterText(find.byType(TextField), '약 복용을 깜빡하면 어떻게 하나요?');
     await tester.tap(find.byIcon(Icons.send_rounded));
     await tester.pumpAndSettle();
@@ -754,7 +769,7 @@ void main() {
 
     // 묻고 난 뒤에도 고르는 자리는 그대로다. 고르지 않아도 되기 때문이다.
     expect(find.text('약 고르기'), findsOneWidget);
-    expect(find.text('삭제'), findsNothing);
+    expect(find.bySemanticsLabel('고른 약 빼기'), findsNothing);
   });
 
   testWidgets('답변 대기 중 쉬운 문구를 표시하고 첫 안내가 내 약 전부를 말한다', (tester) async {
@@ -774,15 +789,16 @@ void main() {
 
     await tester.pumpWidget(appWith(client));
     await tester.pumpAndSettle();
-    // 알콩이는 내 약 전부를 알고 있다고 먼저 말한다.
-    expect(find.text('알콩이'), findsOneWidget);
+    // 첫 인사가 내 약 전부를 알고 있다고 먼저 말한다. 말풍선 위에
+    // 이름은 적지 않는다 — 화면 제목이 이미 누구와 말하는지 말한다.
+    expect(find.text('알콩이'), findsNothing);
     expect(find.textContaining('드시는 모든 약들에 대해 알고 있어요'), findsOneWidget);
     expect(find.textContaining('선생님'), findsNothing);
 
     await pickSubject(tester, '게보린정');
     expect(find.textContaining('게보린정에 대해 궁금한 걸 물어보세요'), findsOneWidget);
-    await tester.ensureVisible(find.text('꼭 밥 먹고 먹어야 하나요?'));
-    await tester.tap(find.text('꼭 밥 먹고 먹어야 하나요?'));
+    await tester.ensureVisible(find.text('꼭 식사 후에 복용해야 하나요?'));
+    await tester.tap(find.text('꼭 식사 후에 복용해야 하나요?'));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 400));
     await tester.drag(find.byType(ListView).first, const Offset(0, -400));
@@ -863,7 +879,7 @@ void main() {
     );
     await tester.pumpAndSettle();
     await pickSubject(tester, '코다론정');
-    await tester.tap(find.text('꼭 밥 먹고 먹어야 하나요?'));
+    await tester.tap(find.text('꼭 식사 후에 복용해야 하나요?'));
     await tester.pumpAndSettle();
 
     final answer = tester.widget<Text>(
@@ -943,33 +959,46 @@ void main() {
       await tester.pump();
       await tester.tap(find.text(result));
       await tester.pumpAndSettle();
+      await confirmPick(tester);
     }
 
     Future<void> tapSuggestion(String label) async {
       // 질문 카드는 대화 아래에 있다. 접힌 자리면 굴려서 꺼낸다.
-      await tester.scrollUntilVisible(
-        find.text(label),
-        200,
-        scrollable: find.byType(Scrollable).first,
-      );
+      // 같은 글이 대화에도 남아 있다. 질문 카드만 집어 누른다.
+      final card = find.byKey(ValueKey('suggestion-$label'));
+      if (card.evaluate().isEmpty) {
+        await tester.scrollUntilVisible(
+          card,
+          200,
+          scrollable: find.byType(Scrollable).first,
+        );
+      } else {
+        await tester.ensureVisible(card);
+      }
       await tester.pumpAndSettle();
-      await tester.tap(find.text(label).last);
+      await tester.tap(card);
       await tester.pumpAndSettle();
     }
 
+    // 이름으로 찾은 약 하나만 고르면 그 약이 제목이 된다.
     await selectSearchResult('검색C', '검색약C');
-    await pickSubject(tester, '기존약A');
-    await tapSuggestion('꼭 밥 먹고 먹어야 하나요?');
-    expect(chatBodies.last.containsKey('selected_medicine'), isFalse);
-
-    await selectSearchResult('검색D', '검색약D');
-    await tapSuggestion('꼭 밥 먹고 먹어야 하나요?');
+    await tapSuggestion('꼭 식사 후에 복용해야 하나요?');
     expect(chatBodies.last['selected_medicine'], {
-      'medicine_code': '4',
-      'product_name': '검색약D',
+      'medicine_code': '3',
+      'product_name': '검색약C',
     });
 
+    // 등록된 약을 더 고르면 둘을 함께 보낸다. 코드가 없는 약은 이름만 간다.
+    await pickSubject(tester, '기존약A');
+    await tapSuggestion('꼭 식사 후에 복용해야 하나요?');
+    expect(chatBodies.last['selected_medicines'], [
+      {'medicine_code': '3', 'product_name': '검색약C'},
+      {'medicine_code': '', 'product_name': '기존약A'},
+    ]);
+
     // 약을 빼면 이름으로 찾아 둔 약까지 모두 알콩이에게 넘긴다.
+    await clearSubject(tester);
+    await selectSearchResult('검색D', '검색약D');
     await clearSubject(tester);
     await tapSuggestion('아침 약이랑 우유 같이 먹어도 돼요?');
     expect(chatBodies.last.containsKey('selected_medicine'), isFalse);
@@ -977,15 +1006,6 @@ void main() {
       {'medicine_code': '3', 'product_name': '검색약C'},
       {'medicine_code': '4', 'product_name': '검색약D'},
     ]);
-
-    await pickSubject(tester, '검색약D');
-    await openOtherMedicineSearch(tester);
-    await closeSheet(tester);
-    await tapSuggestion('꼭 밥 먹고 먹어야 하나요?');
-    expect(chatBodies.last['selected_medicine'], {
-      'medicine_code': '4',
-      'product_name': '검색약D',
-    });
   });
 
   testWidgets('처음에는 약을 고르지 않은 채 일반 질문을 보여 준다', (tester) async {
@@ -1010,7 +1030,7 @@ void main() {
     expect(find.text('아침 약이랑 우유 같이 먹어도 돼요?'), findsOneWidget);
     expect(find.text('혈압약이랑 관절약 같이 먹어도 돼요?'), findsOneWidget);
     expect(find.text('졸리지 않는 감기약이 있어요?'), findsOneWidget);
-    expect(find.text('꼭 밥 먹고 먹어야 하나요?'), findsNothing);
+    expect(find.text('꼭 식사 후에 복용해야 하나요?'), findsNothing);
     // 보여 주기만 할 뿐, 아무것도 먼저 묻지 않는다.
     expect(chatCalls, 0);
   });
@@ -1088,11 +1108,11 @@ void main() {
     );
     await tester.pumpAndSettle();
     await pickSubject(tester, 'OCR등록약정');
-    expect(find.text('꼭 밥 먹고 먹어야 하나요?'), findsOneWidget);
+    expect(find.text('꼭 식사 후에 복용해야 하나요?'), findsOneWidget);
     expect(find.text('아침 약이랑 우유 같이 먹어도 돼요?'), findsNothing);
     await clearSubject(tester);
     expect(find.text('아침 약이랑 우유 같이 먹어도 돼요?'), findsOneWidget);
-    expect(find.text('꼭 밥 먹고 먹어야 하나요?'), findsNothing);
+    expect(find.text('꼭 식사 후에 복용해야 하나요?'), findsNothing);
   });
 
   for (final width in [320.0, 360.0]) {
@@ -1192,12 +1212,12 @@ void main() {
     expect(bodies.last['intent'], 'combination');
 
     await pickSubject(tester, '게보린정');
-    await tester.tap(find.text('꼭 밥 먹고 먹어야 하나요?'));
+    await tester.tap(find.text('꼭 식사 후에 복용해야 하나요?'));
     await tester.pumpAndSettle();
     expect(bodies.last['intent'], 'dosage');
   });
 
-  testWidgets('창에서 고른 약 하나만 물어볼 약이 된다', (tester) async {
+  testWidgets('창에서 고른 약들이 물어볼 약이 된다', (tester) async {
     final originalUserId = MvpSession.userId;
     MvpSession.userId = 'medicine-toggle-test-user';
     addTearDown(() => MvpSession.userId = originalUserId);
@@ -1222,22 +1242,22 @@ void main() {
 
     // 처음에는 아무 약도 고르지 않은 상태다.
     expect(find.text('약 고르기'), findsOneWidget);
-    expect(find.text('꼭 밥 먹고 먹어야 하나요?'), findsNothing);
+    expect(find.text('꼭 식사 후에 복용해야 하나요?'), findsNothing);
 
     await pickSubject(tester, '게보린정');
     expect(find.text('게보린정'), findsOneWidget);
 
+    // 둘 째를 더 고르면 칸에는 첫 약과 숫자만 적는다.
     await pickSubject(tester, '알마겔정');
-    expect(find.text('알마겔정'), findsOneWidget);
-    expect(find.text('게보린정'), findsNothing);
+    expect(find.text('게보린정 외 1개'), findsOneWidget);
 
     await clearSubject(tester);
     expect(find.text('약 고르기'), findsOneWidget);
-    expect(find.text('꼭 밥 먹고 먹어야 하나요?'), findsNothing);
+    expect(find.text('꼭 식사 후에 복용해야 하나요?'), findsNothing);
     expect(chatCalls, 0);
 
     await pickSubject(tester, '게보린정');
-    await tester.tap(find.text('꼭 밥 먹고 먹어야 하나요?'));
+    await tester.tap(find.text('꼭 식사 후에 복용해야 하나요?'));
     await tester.pumpAndSettle();
     expect(chatCalls, 1);
     expect(find.text('효능 답변'), findsOneWidget);
@@ -1272,7 +1292,7 @@ void main() {
     await tester.ensureVisible(find.text('속이 울렁거리는데 괜찮나요?'));
     await tester.tap(find.text('속이 울렁거리는데 괜찮나요?'));
     await tester.pump();
-    await tester.tap(find.text('꼭 밥 먹고 먹어야 하나요?'), warnIfMissed: false);
+    await tester.tap(find.text('꼭 식사 후에 복용해야 하나요?'), warnIfMissed: false);
     await tester.pump();
     expect(sentMessages, ['게보린정을 먹고 속이 울렁거리는데 괜찮은가요?']);
 

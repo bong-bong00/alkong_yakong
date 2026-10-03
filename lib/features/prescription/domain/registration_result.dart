@@ -1,4 +1,15 @@
 /// Registration consumers must not interpret an absent/malformed DUR as zero risk.
+List<Map<String, dynamic>> pairConflictMatches(Map<String, dynamic>? result) {
+  const pairTypes = {'병용금기', '중복성분', '효능군중복'};
+  final matches = result?['matches'];
+  if (matches is! List) return const [];
+  return [
+    for (final match in matches)
+      if (match is Map && pairTypes.contains(match['type']))
+        Map<String, dynamic>.from(match),
+  ];
+}
+
 bool registrationDurComplete(Map<String, dynamic>? result) {
   if (result == null ||
       result['analysis_complete'] != true ||

@@ -137,6 +137,7 @@ class FakeApi implements ApiClient {
     String path, {
     required Map<String, dynamic> body,
     Duration timeout = const Duration(seconds: 45),
+    Map<String, String> headers = const {},
   }) {
     paths.add(path);
     requests.add(body);

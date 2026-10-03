@@ -210,7 +210,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('저녁 약은 이미\n드신 것으로 되어 있어요'), findsOneWidget);
-    expect(find.text('오후 6시 2분에 기록'), findsOneWidget);
+    expect(find.text('18시 2분에 기록'), findsOneWidget);
 
     // 기본 동작은 아무것도 하지 않고 닫기.
     await tester.tap(find.text('알겠어요'));

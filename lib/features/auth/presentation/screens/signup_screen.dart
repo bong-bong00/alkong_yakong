@@ -787,14 +787,14 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
 
       big(
         _StepDef(
-          title: '약을 놓치시면\n가족에게 알려드릴까요?',
-          subtitle: '심박수가 빠를 때도 함께 알려드려요.',
+          title: '가족을 보호자로\n설정할까요?',
+          subtitle: '약을 놓치시거나 심박수가 빠를 때 그 가족에게 알려드려요.',
           validate: () => _guardianAnswer == null ? '해당하는 것을 골라주세요' : null,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               _choice(
-                '네, 알려주세요',
+                '네, 등록할게요',
                 sub: '다음 화면에서 번호를 적어요',
                 selected: _guardianAnswer == 'y',
                 onTap: () => setState(() => _guardianAnswer = 'y'),
@@ -1025,13 +1025,45 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
                       ),
                       const SizedBox(height: 6),
                     ],
-                    Text(cur.title, style: AppText.screenTitle(size: 27)),
-                    if (cur.subtitle != null) ...[
-                      const SizedBox(height: 8),
+                    // 짧은 곁말("여러 개 골라도 돼요")은 제목 오른쪽 끝에
+                    // 한 줄로 붙인다. 긴 곁말까지 옆에 붙이면 제목이
+                    // "어떤 분이신가 / 요?"처럼 접힌다 — 그때는 아래로.
+                    if (cur.subtitle == null)
+                      Text(cur.title, style: AppText.screenTitle(size: 27))
+                    else if (cur.subtitle!.length <= 12)
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          Expanded(
+                            child: Text(
+                              cur.title,
+                              style: AppText.screenTitle(size: 27),
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Flexible(
+                            child: FittedBox(
+                              fit: BoxFit.scaleDown,
+                              alignment: Alignment.bottomRight,
+                              child: Text(
+                                cur.subtitle!,
+                                maxLines: 1,
+                                style: AppText.body(
+                                  size: 17,
+                                  color: AppColors.textTertiary,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      )
+                    else ...[
+                      Text(cur.title, style: AppText.screenTitle(size: 27)),
+                      const SizedBox(height: 6),
                       Text(
                         cur.subtitle!,
                         style: AppText.body(
-                          size: 18,
+                          size: 17,
                           color: AppColors.textTertiary,
                         ),
                       ),
@@ -1061,7 +1093,7 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
                             flex: 2,
                             child: SeniorButton(
                               label: '넘어가기',
-                              kind: SeniorButtonKind.card,
+                              kind: SeniorButtonKind.secondary,
                               minHeight: 74,
                               fontSize: 20,
                               onPressed: _isSubmitting
@@ -1699,18 +1731,33 @@ class _AddOwnSheetState extends State<_AddOwnSheet> {
         onSubmitted: (_) => _submit(),
       ),
       actions: [
-        SeniorButton(
-          label: '넣기',
-          minHeight: 66,
-          fontSize: 22,
-          onPressed: _submit,
-        ),
-        SeniorButton(
-          label: '그만두기',
-          kind: SeniorButtonKind.secondary,
-          minHeight: 62,
-          fontSize: 21,
-          onPressed: () => Navigator.of(context).pop(),
+        // 그만두는 쪽을 작게 왼쪽에, 넣는 쪽을 크게 오른쪽에 둔다.
+        IntrinsicHeight(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Expanded(
+                flex: 2,
+                child: SeniorButton(
+                  label: '그만두기',
+                  kind: SeniorButtonKind.secondary,
+                  minHeight: 66,
+                  fontSize: 20,
+                  onPressed: () => Navigator.of(context).pop(),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                flex: 3,
+                child: SeniorButton(
+                  label: '넣기',
+                  minHeight: 66,
+                  fontSize: 22,
+                  onPressed: _submit,
+                ),
+              ),
+            ],
+          ),
         ),
       ],
     );

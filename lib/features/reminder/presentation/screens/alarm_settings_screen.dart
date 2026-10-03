@@ -17,9 +17,8 @@ import '../../application/reminder_notifications.dart';
 /// **소리로 알려주기만 한다.** 말로 대답해서 기록하는 기능은 없다 —
 /// 잘못 들으면 그대로 오기록이 되기 때문이다.
 ///
-/// 처음 알림은 홈의 "약 드시는 시간"(아침·점심·저녁)대로 걸린다. 그 뒤로는
-/// 여기서 따로 고친다 — 시각을 더하고 지워도 **홈의 아침·점심·저녁은
-/// 그대로다.** 한 때에 두 번 울리거나, 약과 상관없는 시각을 둘 수도 있다.
+/// 복약과 연결되어 있지 않다. 원하시는 시각을 원하는 만큼 더하고 지우는
+/// 그저 자명종이다. 한 때에 두 번 울려도, 약과 상관없는 시각을 두어도 된다.
 class AlarmSettingsScreen extends ConsumerStatefulWidget {
   const AlarmSettingsScreen({super.key});
 

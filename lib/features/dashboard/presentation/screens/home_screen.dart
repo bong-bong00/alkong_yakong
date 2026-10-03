@@ -91,14 +91,19 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               );
               return bpm is int ? bpm : null;
             },
-            onMeasure: (_) => Navigator.of(context).push(
-              MaterialPageRoute(
-                builder: (_) => const MeasureScreen(
-                  returnToPreviousScreen: true,
-                  measurementContext: HeartMeasurementContext.afterMedication,
+            // 드신 뒤 재기. 그냥 나오면 null이 돌아와 홈에 재는 단추가
+            // 그대로 남는다.
+            onMeasure: (_) async {
+              final bpm = await Navigator.of(context).push<Object?>(
+                MaterialPageRoute(
+                  builder: (_) => const MeasureScreen(
+                    returnToPreviousScreen: true,
+                    measurementContext: HeartMeasurementContext.afterMedication,
+                  ),
                 ),
-              ),
-            ),
+              );
+              return bpm is int ? bpm : null;
+            },
           ),
           const MyMedicinesScreen(),
           // 탭이 오늘로 돌아가는 길이므로 화면 안에 단추를 두지 않는다.

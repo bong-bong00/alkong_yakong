@@ -1,10 +1,11 @@
 abstract final class MvpSession {
   static const String _definedUserId = String.fromEnvironment('USER_ID');
-
-  /// 서버 오늘약 API용. dart-define 없으면 체험 사용자.
-  static String userId = _definedUserId.isNotEmpty
+  static const String defaultUserId = _definedUserId != ''
       ? _definedUserId
       : 'mvp-user';
+
+  /// 서버 오늘약 API용. dart-define 없으면 체험 사용자.
+  static String userId = defaultUserId;
 
   /// 화면에서 부르는 이름. 내 정보를 읽어 오면 채워진다.
   static String userName = '';

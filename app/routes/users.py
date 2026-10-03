@@ -258,6 +258,19 @@ def user_medicines(user_id: str):
     return get_user_medicines(user_id)
 
 
+@router.post("/{user_id}/presentation-medicine")
+def presentation_medicine(
+    user_id: str, x_presentation_mode: str | None = Header(default=None)
+):
+    from app.core.config import PRESENTATION_SEED_ENABLED
+    from app.services.seed_mvp_medicines import ensure_presentation_codarone
+
+    if not PRESENTATION_SEED_ENABLED or x_presentation_mode != "debug":
+        raise HTTPException(status_code=404, detail="Not Found")
+    ensure_presentation_codarone(user_id)
+    return {"medicine_code": "200701021", "presentation": True}
+
+
 @router.get("/{user_id}/medicines/{medicine_code}")
 def user_medicine_detail(user_id: str, medicine_code: str):
     """내 약 한 종류 상세 (쉬운말·주의 포함)."""

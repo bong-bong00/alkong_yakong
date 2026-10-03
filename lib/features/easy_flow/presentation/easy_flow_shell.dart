@@ -1,13 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:flutter_tabler_icons/flutter_tabler_icons.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/constants/app_colors.dart';
-import '../../../core/mode/app_mode.dart';
-import '../../../core/theme/app_typography.dart';
 import '../../../core/widgets/senior_button.dart';
-import '../../../core/widgets/senior_card.dart';
+import '../../../core/widgets/mode_badge.dart';
 import '../../../dev_mock.dart';
 import '../../biosignal/presentation/screens/heart_screen.dart';
 import '../../biosignal/presentation/screens/measure_screen.dart';
@@ -44,15 +41,6 @@ class _EasyFlowShellState extends ConsumerState<EasyFlowShell> {
   /// 지나온 화면. "이전"에서 하나씩 꺼낸다.
   final List<EasyScreen> _history = <EasyScreen>[];
 
-  /// 흐름 안에서 지금 화면이 몇 번째인지. 흐름 밖이면 -1.
-  int get _flowIndex => kEasyFlow.indexWhere((step) => step.screen == _screen);
-
-  String get _nextLabel {
-    final index = _flowIndex;
-    if (index < 0) return kEasyFallbackLabel;
-    return kEasyFlow[index].nextLabel;
-  }
-
   void _goTo(EasyScreen screen) {
     if (screen == EasyScreen.chat) {
       context.push('/drug-explain');
@@ -67,26 +55,12 @@ class _EasyFlowShellState extends ConsumerState<EasyFlowShell> {
   }
 
   void _back() {
-    if (_history.isEmpty) return;
-    setState(() => _screen = _history.removeLast());
-  }
-
-  /// 다음 한 걸음.
-  Future<void> _next() async {
-    final index = _flowIndex;
-
-    // 흐름 밖이면 오늘 화면으로 되돌린다.
-    if (index < 0) {
+    if (_history.isEmpty) {
+      // 돌아갈 길이 없으면 오늘로. 단추가 죽어 갔힐 곳이 없으면 안 된다.
       _goTo(EasyScreen.today);
       return;
     }
-
-    final nextIndex = index + 1;
-    _goTo(
-      nextIndex < kEasyFlow.length
-          ? kEasyFlow[nextIndex].screen
-          : EasyScreen.today,
-    );
+    setState(() => _screen = _history.removeLast());
   }
 
   /// 일반 모드가 쓰는 화면을 그대로 부른다.
@@ -135,38 +109,61 @@ class _EasyFlowShellState extends ConsumerState<EasyFlowShell> {
   @override
   Widget build(BuildContext context) {
     final showBar = showsEasyBar(_screen);
-    return Scaffold(
-      backgroundColor: AppColors.pageBg,
-      body: SafeArea(
-        bottom: false,
-        child: Column(
-          children: [
-            _EasyFlowTop(
-              onLeave: () =>
-                  ref.read(appModeProvider.notifier).set(AppMode.normal),
-            ),
-            Expanded(
-              child: KeyedSubtree(
-                // 화면마다 새로 만든다. 보이지도 않는 화면이 센서를 잡고
-                // 있지 않도록.
-                key: ValueKey(_screen),
-                child: MediaQuery.removePadding(
-                  context: context,
-                  removeBottom: true,
-                  child: _buildScreen(),
+    return PopScope(
+      // 핸드폰 뒤로가기도 앞 화면으로. 메뉴에서 들어가서 누르면
+      // 앱이 꺼지던 것을 고친다.
+      canPop: _screen == EasyScreen.today && _history.isEmpty,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) _back();
+      },
+      child: Scaffold(
+        backgroundColor: AppColors.pageBg,
+        body: SafeArea(
+          bottom: false,
+          // 띄가 제 줄을 차지하면 화면이 그만큼 밀린다. 일반 화면처럼
+          // 화면 위에 얼려 둔다 — 내용은 맨 위에서 시작한다.
+          child: Stack(
+            children: [
+              Positioned.fill(
+                child: KeyedSubtree(
+                  // 화면마다 새로 만든다. 보이지도 않는 화면이 센서를 잡고
+                  // 있지 않도록.
+                  key: ValueKey(_screen),
+                  child: MediaQuery.removePadding(
+                    context: context,
+                    removeBottom: true,
+                    child: _buildScreen(),
+                  ),
                 ),
               ),
-            ),
-          ],
+              // 띄는 일반 화면 머리와 똑같은 틀에 둔다. 왼쪽은 비워 두고
+              // 자리만 똑같이 나눠 갖는다 — 그래야 두 화면의 단추가 같은
+              // 크기로, 같은 자리에 선다. (빈 자리는 손지 막지 않는다.)
+              const Positioned(
+                top: 0,
+                left: 0,
+                right: 0,
+                child: Padding(
+                  padding: EdgeInsets.fromLTRB(18, 16, 18, 14),
+                  child: Row(
+                    children: [
+                      Expanded(child: SizedBox(height: 56)),
+                      SizedBox(width: 10),
+                      Flexible(child: ModeBadge()),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
+        bottomNavigationBar: showBar
+            ? _EasyFlowBar(
+                // 메뉴에서 들어온 화면에는 돌아가는 길 하나면 된다.
+                onBack: _back,
+              )
+            : null,
       ),
-      bottomNavigationBar: showBar
-          ? _EasyFlowBar(
-              label: _nextLabel,
-              onNext: _next,
-              onBack: _history.isEmpty ? null : _back,
-            )
-          : null,
     );
   }
 }
@@ -175,70 +172,11 @@ class _EasyFlowShellState extends ConsumerState<EasyFlowShell> {
 ///
 /// 걸음 막대는 여기서 그리지 않는다. 명세서는 복약 한 바퀴(76~84)에서만
 /// 여덟 칸 막대를 두고, 나머지 간편 화면(85~90)에는 두지 않는다.
-class _EasyFlowTop extends StatelessWidget {
-  final VoidCallback onLeave;
-
-  const _EasyFlowTop({required this.onLeave});
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(18, 10, 18, 6),
-      child: Row(
-        children: [
-          const Spacer(),
-          _pill(onTap: onLeave, label: '일반 화면으로'),
-        ],
-      ),
-    );
-  }
-
-  Widget _pill({required VoidCallback onTap, required String label}) {
-    return Semantics(
-      button: true,
-      label: label,
-      child: GestureDetector(
-        onTap: onTap,
-        child: ExcludeSemantics(
-          child: Container(
-            constraints: const BoxConstraints(minHeight: 50),
-            padding: const EdgeInsets.symmetric(horizontal: 14),
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-              color: AppColors.surface,
-              borderRadius: BorderRadius.circular(14),
-              boxShadow: kCardShadow,
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Icon(
-                  TablerIcons.arrows_exchange,
-                  size: 22,
-                  color: AppColors.textPrimary,
-                ),
-                const SizedBox(width: 6),
-                Text(label, style: AppText.cardTitle(size: 18)),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 /// 다음 한 걸음 바.
 class _EasyFlowBar extends StatelessWidget {
-  final String label;
-  final VoidCallback onNext;
-  final VoidCallback? onBack;
+  final VoidCallback onBack;
 
-  const _EasyFlowBar({
-    required this.label,
-    required this.onNext,
-    required this.onBack,
-  });
+  const _EasyFlowBar({required this.onBack});
 
   @override
   Widget build(BuildContext context) {
@@ -263,35 +201,16 @@ class _EasyFlowBar extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              // 시안 — 뒤로와 다음을 한 줄에 나란히. 뒤로는 검은 면으로
-              // 두어 파란 "다음"과 헷갈리지 않게 한다.
-              Row(
-                children: [
-                  if (onBack != null) ...[
-                    SizedBox(
-                      width: 128,
-                      child: SeniorButton(
-                        label: '뒤로',
-                        icon: TablerIcons.arrow_left,
-                        kind: SeniorButtonKind.dark,
-                        minHeight: 72,
-                        fontSize: 21,
-                        radius: 18,
-                        onPressed: onBack,
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                  ],
-                  Expanded(
-                    child: SeniorButton(
-                      label: label,
-                      minHeight: 72,
-                      fontSize: 22,
-                      radius: 18,
-                      onPressed: onNext,
-                    ),
-                  ),
-                ],
+              // 뒤로와 다음을 한 줄에 나란히. 뒤로는 일반 화면과 같은
+              // 회색 면으로 둔다 — 같은 뜻의 단추가 화면마다 다른 색이면
+              // 다른 것으로 읽힌다.
+              SeniorButton(
+                label: '뒤로',
+                kind: SeniorButtonKind.secondary,
+                minHeight: 72,
+                fontSize: 21,
+                radius: 18,
+                onPressed: onBack,
               ),
             ],
           ),

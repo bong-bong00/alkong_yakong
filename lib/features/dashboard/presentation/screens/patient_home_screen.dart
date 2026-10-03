@@ -6,19 +6,18 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_tabler_icons/flutter_tabler_icons.dart';
 
 import '../../../../core/constants/app_colors.dart';
+import '../../../../dev_mock.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../core/widgets/mode_badge.dart';
 import '../../../../core/widgets/senior_button.dart';
 import '../../../../core/widgets/senior_card.dart';
 import '../../../../core/widgets/senior_feedback.dart';
 import '../../../../core/widgets/senior_header.dart';
-import '../../../../core/widgets/senior_sheet.dart';
-import '../../../../core/widgets/senior_wheel.dart';
 import '../../../../core/network/api_client.dart';
 import '../../../guardian/application/guardians_provider.dart';
 import '../../../guardian/data/guardian_repository.dart';
-import '../../../medication/application/dose_times.dart';
 import '../../../biosignal/application/heart_device.dart';
+import '../../../biosignal/presentation/screens/polar_screen.dart';
 import '../../../medication/application/medication_controller.dart';
 import '../../../reminder/application/alarm_preferences.dart';
 import '../../../reminder/application/reminder_notifications.dart';
@@ -31,6 +30,7 @@ import '../../../profile/application/current_user_controller.dart';
 import 'package:go_router/go_router.dart';
 import '../../../medicines/application/family_medicine_inbox.dart';
 import '../../../medicines/application/user_medicines_controller.dart';
+import '../../../medicines/domain/display_policy.dart';
 
 /// 12 / 15 · 오늘 · 홈.
 ///
@@ -51,7 +51,8 @@ class PatientHomeScreen extends ConsumerStatefulWidget {
   final void Function(Medicine medicine)? onOpenDrug;
 
   /// "먹었어요" 뒤 심박수를 재러 갈 때. 방금 기록한 시간대를 함께 넘긴다.
-  final void Function(DoseSlot slot)? onMeasure;
+  /// 다 재면 재는 단추를 거둔다. 그냥 나오면 단추는 홈에 남는다.
+  final Future<int?> Function(DoseSlot slot)? onMeasure;
 
   /// 약을 들기 **전에** 재러 갈 때. 다 재면 잰 값을 돌려준다.
   /// 기기를 쓰는 분에게만 쓰인다.
@@ -88,9 +89,22 @@ class _PatientHomeScreenState extends ConsumerState<PatientHomeScreen> {
   /// 방금 기록한 시간대. 파란 띠로 알리고, X를 누르면 사라진다.
   DoseSlot? _recordedSlot;
 
+  /// 직접 고르신 때. 아침을 늦게 드셔도 그 때로 적힐 수 있게 한다.
+  /// 안 고르셨으면 아직 안 드신 가장 이른 때를 따른다.
+  DoseSlot? _pickedSlot;
+
+  /// 드신 뒤 아직 안 재다 남은 시간대. 측정 화면을 닫고 나와도
+  /// 홈에 재는 길이 남아 있어야 한다.
+  DoseSlot? _measureAfterSlot;
+
   /// 때마다 먹기 전에 잰 심박수. 다음 때로 넘어가면 그 때에는 값이 없어
   /// 다시 1단계부터 시작한다.
-  final Map<DoseSlot, int> _beforeBpm = {};
+  final Map<DoseSlot, int> _beforeBpm = {
+    // 화면 확인용 가짜 데이터에서는 먹기 전 값을 미리 넣어 둔다.
+    // 재는 걸음부터 거치지 않고 다음 화면을 바로 볼 수 있다.
+    if (mockBeforeBpm() != null)
+      for (final slot in DoseSlot.values) slot: mockBeforeBpm()!,
+  };
 
   @override
   void initState() {
@@ -183,71 +197,6 @@ class _PatientHomeScreenState extends ConsumerState<PatientHomeScreen> {
     );
   }
 
-  /// 때 칸을 눌렀을 때 — 아침·점심·저녁이 몇 시인지 보여 주고 그 자리에서
-  /// 고친다.
-  ///
-  /// 여기서 고치는 것은 **화면에 적는 시각**이다. 소리로 울리는 시각은
-  /// "알림 시간"에서 따로 고른다.
-  Future<void> _showDoseTimes() async {
-    await SeniorSheet.show<void>(
-      context: context,
-      builder: (sheetContext) => Consumer(
-        builder: (consumerContext, sheetRef, _) {
-          final times = sheetRef.watch(doseTimesProvider);
-          return SeniorSheet(
-            title: '약 드시는 시간',
-            body: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                for (final slot in DoseSlot.values) ...[
-                  if (slot != DoseSlot.values.first) const SeniorDivider(),
-                  _SlotTimeRow(
-                    label: slot.label,
-                    clock: times.clock(slot),
-                    onTap: () => _changeDoseTime(sheetContext, slot),
-                  ),
-                ],
-              ],
-            ),
-            actions: [
-              SeniorButton(
-                label: '닫기',
-                kind: SeniorButtonKind.secondary,
-                minHeight: 66,
-                fontSize: 21,
-                onPressed: () => Navigator.of(sheetContext).pop(),
-              ),
-            ],
-          );
-        },
-      ),
-    );
-  }
-
-  /// 한 때의 시각을 바꾼다.
-  ///
-  /// **소리로 울리는 시각은 건드리지 않는다.** 여기서 고치는 것은 화면에
-  /// 적는 시각뿐이고, 알림은 "알림 시간"에서 따로 고른다.
-  Future<void> _changeDoseTime(BuildContext sheetContext, DoseSlot slot) async {
-    final times = ref.read(doseTimesProvider);
-    final current = times.of(slot);
-    final time = await showSeniorClockWheel(
-      context: sheetContext,
-      title: '${slot.label}, 몇 시에 드세요?',
-      initialMinutes: current,
-    );
-    if (time == null || time == current) return;
-    await ref
-        .read(doseTimesProvider.notifier)
-        .update(times.withTime(slot, time));
-
-    if (!mounted) return;
-    showSeniorSnackbar(
-      context,
-      '${slot.label}을 ${DoseTimes.clockOf(time)}로 바꿨어요',
-    );
-  }
-
   /// 홈 알림 칸에 적을 말. 다음에 울릴 시각만 적는다 — 자명종 그림이
   /// 이미 알림이라고 말하고 있다.
   static String _nextAlarmLabel(AlarmPreferences alarm) {
@@ -268,6 +217,30 @@ class _PatientHomeScreenState extends ConsumerState<PatientHomeScreen> {
     await Navigator.of(context).push(
       MaterialPageRoute<void>(builder: (_) => const AlarmSettingsScreen()),
     );
+  }
+
+  /// 심박기기 연결로. 지금까지는 기록 › 오늘 심박수 › 기기 연결로
+  /// 세 걸음 들어가야 닿았다. 홈에서 한 번에 가게 둔다.
+  Future<void> _openHeartDevice() async {
+    // 가짜 데이터로 볼 때는 기기가 없다. 연결된 셈 치고 화면만
+    // 바뀜다 — 보여 주려는 것은 펜어림이 아니라 그 뒤의 홈이다.
+    if (mockData) {
+      await ref.read(heartDevicePairedProvider.notifier).set(true);
+      return;
+    }
+    await Navigator.of(
+      context,
+    ).push(MaterialPageRoute<void>(builder: (_) => const PolarScreen()));
+  }
+
+  /// 센서 연결을 끊는다. 표시만 바꾸지 않고 실제로 끊는다 —
+  /// 폴라 화면의 "연결 끊기"와 같은 일을 한다.
+  Future<void> _disconnectHeartDevice() async {
+    if (!mockData) await ref.read(heartSensorProvider).stop();
+    await ref.read(heartDevicePairedProvider.notifier).set(false);
+    if (!mounted) return;
+    setState(() => _measureAfterSlot = null);
+    showSeniorSnackbar(context, '센서 연결을 끊었어요');
   }
 
   /// 장부에 없는 약 — 내가 넣지 않았는데 들어와 있는 약을 알린다.
@@ -291,7 +264,10 @@ class _PatientHomeScreenState extends ConsumerState<PatientHomeScreen> {
     final rows = [
       for (final medicine in medicines)
         if (arrived.contains(medicine.medicineCode))
-          {'name': medicine.displayName, 'dose': medicine.amount},
+          {
+            'name': nameWithoutStrength(medicine.displayName),
+            'dose': medicine.amount,
+          },
     ];
     if (rows.isEmpty) return;
 
@@ -365,13 +341,23 @@ class _PatientHomeScreenState extends ConsumerState<PatientHomeScreen> {
     // 눌렀는지 놓친다. 대신 맨 위에 파란 띠로 알린다.
     setState(() {
       _recordedSlot = slot;
+      // 다음 할 일로 저절로 옮긴다.
+      _pickedSlot = null;
     });
     // 기기를 쓰는 분은 드신 뒤에 한 번 더 잰다.
     if (ref.read(heartDevicePairedProvider)) {
-      widget.onMeasure?.call(slot);
+      setState(() => _measureAfterSlot = slot);
+      unawaited(_measureAfter(slot));
     } else {
       widget.onDone?.call(slot);
     }
+  }
+
+  /// 드신 뒤 재러 간다. 다 재고 돌아오면 홈에서 그 단추를 거둔다.
+  Future<void> _measureAfter(DoseSlot slot) async {
+    final bpm = await widget.onMeasure?.call(slot);
+    if (!mounted || bpm == null) return;
+    setState(() => _measureAfterSlot = null);
   }
 
   /// 먹기 전 심박수를 재러 간다. 다 재면 그 값이 `_beforeBpm`에 남는다.
@@ -409,6 +395,20 @@ class _PatientHomeScreenState extends ConsumerState<PatientHomeScreen> {
     final remaining = today.doses.where((dose) => !dose.taken).length;
     // 기기를 쓰는 분인지에 따라 홈이 통째로 다른 흐름이 된다.
     final usesDevice = ref.watch(heartDevicePairedProvider);
+    // 드신 뒤 재기가 남았으면 그것이 지금 할 일이다.
+    final afterSlot = usesDevice ? _measureAfterSlot : null;
+    // 고르신 때가 있으면 그 때를, 없으면 아직 안 드신 가장 이른 때를
+    // 지금 할 일로 삼는다. 늦게 드셔도 아침은 아침으로 적힐 수 있어야 한다.
+    final pickedSlot = _pickedSlot ?? next?.slot;
+    final pickedDose = pickedSlot == null
+        ? null
+        : today.doses.where((dose) => dose.slot == pickedSlot).firstOrNull;
+    // 고른 때를 이미 드셨으면 단추는 되돌리기가 된다.
+    final pickedTaken = pickedDose?.taken ?? true;
+    // 센서를 쓸 때는 위에 걸음 칸이 하나 더 붙는다. 동그라미가 줄어들지
+    // 않게 위아래 여백을 거둔다.
+    final tight = usesDevice && (!pickedTaken || afterSlot != null);
+    final gap = tight ? 10.0 : 20.0;
 
     return Container(
       color: AppColors.pageBg,
@@ -494,50 +494,82 @@ class _PatientHomeScreenState extends ConsumerState<PatientHomeScreen> {
                       const SizedBox(height: 18),
                       _SlotChips(
                         today: today,
-                        next: next,
-                        times: ref.watch(doseTimesProvider),
-                        onSetTimes: _showDoseTimes,
+                        picked: pickedSlot,
+                        onPick: (slot) => setState(() => _pickedSlot = slot),
                       ),
                       const SizedBox(height: 8),
                       // 누를 수 있다는 것을 모르면 평생 못 누른다. 한 줄만 적는다.
                       Text(
-                        '아침/점심/저녁을 누르면 복약 시간을 바꿔요',
+                        '어느 때 약인지 고르고 먹었어요를 누르세요',
                         textAlign: TextAlign.left,
                         style: AppText.caption(size: 16),
                       ),
-                      if (usesDevice && next != null) ...[
-                        const SizedBox(height: 14),
-                        _HeartSteps(beforeBpm: _beforeBpm[next.slot]),
-                      ],
-                      const SizedBox(height: 18),
+                      // 기기를 연결하면 걸음 칸이 위에서 자라난다. 그만큼
+                      // 아래 동그라미가 줄며 내려가 무엇이 바뀜는지 눈으로 따라간다.
+                      AnimatedSize(
+                        duration: const Duration(milliseconds: 420),
+                        curve: Curves.easeOutCubic,
+                        alignment: Alignment.topCenter,
+                        child: usesDevice && (!pickedTaken || afterSlot != null)
+                            ? Padding(
+                                padding: const EdgeInsets.only(top: 14),
+                                child: _HeartSteps(
+                                  beforeBpm:
+                                      _beforeBpm[afterSlot ?? pickedSlot],
+                                  afterPending: afterSlot != null,
+                                ),
+                              )
+                            : const SizedBox(width: double.infinity),
+                      ),
+                      SizedBox(height: gap),
                       // 남는 세로 자리를 그대로 받아 그 안에 맞춘다.
                       _Fill(
                         scrolls: scrolls,
                         child: _BigDoseButton(
-                          done: next == null,
+                          done: pickedTaken,
                           // 기기를 쓰는 분은 먹기 전에 먼저 잰다.
                           measureFirst:
-                              next != null &&
+                              !pickedTaken &&
                               usesDevice &&
-                              _beforeBpm[next.slot] == null,
-                          compact: usesDevice && next != null,
-                          onMeasure: next == null
+                              _beforeBpm[pickedSlot] == null,
+                          // 드신 뒤 한 번 더 — 같은 단추로 같은 말을 한다.
+                          measureAfter: afterSlot != null,
+                          onMeasureAfter: afterSlot == null
                               ? null
-                              : () => _measureBefore(next.slot),
-                          onTake: next == null ? null : () => _take(next.slot),
-                          onUndo: next != null
+                              : () => _measureAfter(afterSlot),
+                          onSkipMeasure: afterSlot == null
+                              ? null
+                              : () => setState(() => _measureAfterSlot = null),
+                          compact:
+                              usesDevice && (!pickedTaken || afterSlot != null),
+                          onMeasure: pickedTaken || pickedSlot == null
+                              ? null
+                              : () => _measureBefore(pickedSlot),
+                          onTake: pickedTaken || pickedSlot == null
+                              ? null
+                              : () => _take(pickedSlot),
+                          onUndo: !pickedTaken
                               ? null
                               : () => _undo(
-                                  _recordedSlot ?? today.doses.last.slot,
+                                  pickedSlot ??
+                                      _recordedSlot ??
+                                      today.doses.last.slot,
                                 ),
                         ),
                       ),
-                      const SizedBox(height: 24),
+                      // 위아래 여백을 같게 둔다. 두 칸 정가운데에 단추가 온다.
+                      SizedBox(height: gap),
                       _HomeTiles(
                         alarmLabel: _nextAlarmLabel(
                           ref.watch(alarmPreferencesProvider),
                         ),
                         onOpenAlarm: _openAlarmSettings,
+                        // 아직 기기를 안 쓰시는 분께는 연결 길을 먼저
+                        // 보여 드린다. 약 보기는 아래 “내 약” 칸에도 있다.
+                        onConnectDevice: usesDevice ? null : _openHeartDevice,
+                        onDisconnectDevice: usesDevice
+                            ? _disconnectHeartDevice
+                            : null,
                         onOpenMedicines: widget.onOpenMedicines,
                       ),
                       if (today.daysLeft != null) ...[
@@ -598,27 +630,26 @@ class _TodayHeadline extends StatelessWidget {
   }
 }
 
-/// 아침·점심·저녁 세 칸. 드신 때는 흰 칩에 체크, 다음 때는 파란 칩,
-/// 약이 없는 때는 회색 칩에 "없음".
+/// 아침·점심·저녁 세 칸. 누르면 그 때를 고른다.
 ///
-/// 칸 아래에 그 때가 몇 시인지 적는다. 셋 다 적는다 — 한 칸에만 적혀
-/// 있으면 왜 거기만 적혔는지 알 수 없다. 아직 시간을 맞춘 적이 없어도
-/// 기본 시각(아침 8시·점심 12시·저녁 6시)이 적힌다.
+/// 고른 때는 파란 칩, 드신 때는 흰 칩에 체크와 드신 시각, 약이 없는 때는
+/// 회색 칩에 "없음"이다.
+///
+/// 몇 시에 드시는지는 미리 정해 두지 않는다. 아침을 오후 네 시에 드셔도 그
+/// 시각이 그대로 적힐 뿐이다. 소리로 울리는 시각은 알림에서 따로 고른다.
 class _SlotChips extends StatelessWidget {
   final TodayMedication today;
-  final DoseEntry? next;
 
-  /// 약 드시는 시각 — 소리로 울리는 시각과는 따로 간다.
-  final DoseTimes times;
+  /// 지금 고른 때. 여기에 대고 "먹었어요"를 누른다.
+  final DoseSlot? picked;
 
-  /// 칸을 눌렀을 때 — "약 드시는 시간" 창을 연다.
-  final VoidCallback onSetTimes;
+  /// 칸을 눌렀을 때.
+  final ValueChanged<DoseSlot> onPick;
 
   const _SlotChips({
     required this.today,
-    required this.next,
-    required this.times,
-    required this.onSetTimes,
+    required this.picked,
+    required this.onPick,
   });
 
   @override
@@ -633,33 +664,47 @@ class _SlotChips extends StatelessWidget {
     );
   }
 
+  /// 드신 시각 — "16:00". 아직 안 드셨으면 빈 문자열이다.
+  static String _clock(DateTime? at) {
+    if (at == null) return '';
+    final hour = at.hour.toString().padLeft(2, '0');
+    final minute = at.minute.toString().padLeft(2, '0');
+    return '$hour:$minute';
+  }
+
   Widget _chip(DoseSlot slot) {
     final dose = today.doses.where((d) => d.slot == slot).firstOrNull;
-    final isNext = next?.slot == slot;
+    final isPicked = picked == slot;
     final taken = dose?.taken ?? false;
+    final clock = _clock(dose?.takenAt);
 
-    final under = dose == null ? '없음' : times.clock(slot);
+    final under = dose == null
+        ? '없음'
+        : taken
+        ? (clock.isEmpty ? '드셨어요' : clock)
+        : '아직';
     final background = dose == null
         ? AppColors.neutralFill
-        : isNext
+        : isPicked
         ? AppColors.pointFill
         : AppColors.surface;
     final foreground = dose == null
         ? AppColors.textSecondary
-        : isNext
+        : isPicked
         ? Colors.white
         : AppColors.point;
 
     return Semantics(
-      button: true,
+      button: dose != null,
+      selected: isPicked,
       label: dose == null
-          ? '${slot.label} 약 없음, 눌러서 시간 설정하기'
+          ? '${slot.label} 약 없음'
           : taken
-          ? '${slot.label} ${times.clock(slot)}, 드셨어요, 눌러서 시간 설정하기'
-          : '${slot.label} ${times.clock(slot)}, 눌러서 시간 설정하기',
+          ? '${slot.label} $under에 드셨어요, 누르면 고릅니다'
+          : '${slot.label} 아직 안 드셨어요, 누르면 고릅니다',
       child: ExcludeSemantics(
         child: GestureDetector(
-          onTap: onSetTimes,
+          onTap: dose == null ? null : () => onPick(slot),
           child: Stack(
             clipBehavior: Clip.none,
             children: [
@@ -745,12 +790,19 @@ class _HeartSteps extends StatelessWidget {
   /// 먹기 전에 잰 값. 아직 안 쟀으면 null이다.
   final int? beforeBpm;
 
-  const _HeartSteps({required this.beforeBpm});
+  /// 드신 뒤 재기가 남은 상태. 세 번째 걸음을 가리킨다.
+  final bool afterPending;
+
+  const _HeartSteps({required this.beforeBpm, this.afterPending = false});
 
   @override
   Widget build(BuildContext context) {
     final done = beforeBpm != null;
-    final current = done ? 1 : 0;
+    final current = afterPending
+        ? 2
+        : done
+        ? 1
+        : 0;
     final labels = [done ? '먹기 전 $beforeBpm회' : '먹기 전 재기', '먹었어요', '먹은 뒤 재기'];
 
     return Container(
@@ -847,6 +899,13 @@ class _BigDoseButton extends StatefulWidget {
 
   /// 위에 걸음 표시가 붙어 자리가 좁은 상태. 동그라미를 한 치수 줄인다.
   final bool compact;
+
+  /// 드신 뒤 재기가 남은 상태. 먼저 재던 때와 같은 단추를 둔다.
+  final bool measureAfter;
+  final VoidCallback? onMeasureAfter;
+
+  /// 지금은 재지 않겠다고 할 때. 단추 아래 작은 글자로 둔다.
+  final VoidCallback? onSkipMeasure;
   final VoidCallback? onMeasure;
   final VoidCallback? onTake;
   final VoidCallback? onUndo;
@@ -854,6 +913,9 @@ class _BigDoseButton extends StatefulWidget {
   const _BigDoseButton({
     required this.done,
     this.measureFirst = false,
+    this.measureAfter = false,
+    this.onMeasureAfter,
+    this.onSkipMeasure,
     this.compact = false,
     this.onMeasure,
     this.onTake,
@@ -911,21 +973,34 @@ class _BigDoseButtonState extends State<_BigDoseButton>
     super.dispose();
   }
 
+  /// 받은 자리보다 조금 크게 그린다. 높이가 끝없는 자리(글씨를 키워
+  /// 스크롤로 넘기는 때)에서는 그냥 두고 그린다.
+  Widget _room(bool bounded, double height, Widget child) => bounded
+      ? OverflowBox(
+          maxHeight: height,
+          alignment: Alignment.center,
+          child: child,
+        )
+      : child;
+
   @override
   Widget build(BuildContext context) {
-    final label = widget.done
+    final measuring =
+        widget.measureAfter || (widget.measureFirst && !widget.done);
+    final label = measuring
+        ? '심박수 측정'
+        : widget.done
         ? '취소하기'
-        : widget.measureFirst
-        ? '심박수 재기'
         : '먹었어요';
-    // 먹기 전 재기는 왜 지금 재는지 한 줄 더 말한다. "심박수 재기"만 있으면
-    // 약을 안 누르고 왜 이걸 누르는지 모른다.
-    final sub = widget.measureFirst && !widget.done ? '약 먹기 전에' : null;
-    final fill = widget.done ? AppColors.surface : AppColors.pointFill;
-    final ink = widget.done ? AppColors.textPrimary : Colors.white;
+    // 재는 단추는 작은 설명 줄 대신 두 줄로 크게 적는다. 먼저 재는
+    // 때나 드신 뒤에 재는 때나 같은 말로 말한다.
+    final lines = measuring ? const ['심박수', '측정'] : [label];
+    final quiet = widget.done && !measuring;
+    final fill = quiet ? AppColors.surface : AppColors.pointFill;
+    final ink = quiet ? AppColors.textPrimary : Colors.white;
     // 움직임을 꺼 둔 기기에서는 뛰지 않는다. 다 드신 뒤에도 멈춘다 —
     // 누를 것이 없는데 눈을 끌 이유가 없다.
-    final beating = !widget.done && !MediaQuery.disableAnimationsOf(context);
+    final beating = !quiet && !MediaQuery.disableAnimationsOf(context);
     if (beating) {
       if (!_beat.isAnimating) _beat.repeat();
     } else if (_beat.isAnimating) {
@@ -933,111 +1008,183 @@ class _BigDoseButtonState extends State<_BigDoseButton>
       _beat.value = 0;
     }
 
-    return LayoutBuilder(
-      builder: (context, box) {
-        // 받은 자리 안에 테까지 들어가야 한다. 가로·세로 중 좁은 쪽에
-        // 맞추되, 글자를 읽을 수 있는 크기 아래로는 줄이지 않는다.
-        // 가로는 양옆을 한 뼘씩 비워 둔다. 화면 폭을 꽉 채우면
-        // 동그라미가 벽에 낀 것처럼 답답해 보인다.
-        final room = math.min(
-          (box.maxWidth.isFinite ? box.maxWidth : 320) - 56,
-          box.maxHeight.isFinite ? box.maxHeight : 320,
-        );
-        // 걸음 표시가 위에 붙으면 자리가 좁다. 그때는 한 치수 줄인다.
-        final outer = room
-            .clamp(180.0, widget.compact ? 230.0 : 300.0)
-            .toDouble();
-        final ring = outer * 0.11;
-        final size = outer - ring * 2;
-        // 글자와 아이콘은 지름을 따라간다. 동그라미만 커지고 글자가
-        // 그대로면 가운데가 비어 보인다.
-        final labelSize = (size * 0.135).clamp(24.0, 34.0).toDouble();
-        final iconSize = (size * 0.24).clamp(44.0, 66.0).toDouble();
-        final labelStyle = AppText.cardTitle(size: labelSize, color: ink);
+    // 위에 걸음 칸이 붙고 떨어질 때 지름이 한 꺼번에 바뀜지 않게
+    // 최대 치수를 천천히 옮긴다. 칸이 자라나는 만큼 동그라미가 줄며
+    // 아래로 내려간다.
+    return TweenAnimationBuilder<double>(
+      tween: Tween<double>(end: widget.compact ? 252.0 : 300.0),
+      duration: const Duration(milliseconds: 420),
+      curve: Curves.easeOutCubic,
+      builder: (context, cap, _) => LayoutBuilder(
+        builder: (context, box) {
+          // 받은 자리 안에 테까지 들어가야 한다. 가로·세로 중 좁은 쪽에
+          // 맞추되, 글자를 읽을 수 있는 크기 아래로는 줄이지 않는다.
+          // 가로는 양옆을 한 뼘씩 비워 둔다. 화면 폭을 꽉 채우면
+          // 동그라미가 벽에 낀 것처럼 답답해 보인다.
+          // 건너뛰는 줄이 붙으면 그만큼 동그라미 자리가 줄어든다.
+          final skipRoom = widget.measureAfter ? 56.0 : 0.0;
+          // 걸음 칸이 붙어 자리가 좁을 때는 받은 자리보다 조금 더 크게
+          // 잡는다. 넣는 동그라미는 그 안에 있고, 말가의 연한 테만
+          // 위아래 칸에 살짝 걸친다.
+          final stretch = widget.compact ? 16.0 : 0.0;
+          final room = math.min(
+            (box.maxWidth.isFinite ? box.maxWidth : 320) - 56,
+            (box.maxHeight.isFinite ? box.maxHeight : 320) + stretch - skipRoom,
+          );
+          // 걸음 표시가 위에 붙으면 자리가 좁다. 그때는 한 치수 줄인다.
+          // 읽힐 크기(180) 아래로는 줄이지 않으되, 받은 자리가 그보다
+          // 좁으면 그 자리에 맞춘다 — 칸이 자라나는 찰나에 비지 않게.
+          final floor = math.min(180.0, math.max(room, 0.0));
+          final outer = room.clamp(floor, cap).toDouble();
+          // 가운데 단추 크기는 그대로 두고, 둘레 테만 넓게 편다. 위 칸과
+          // 겹쳐도 비치는 색이라 칸과 테가 함께 보인다.
+          final size = outer * 0.78;
+          // 쉬고 있을 때는 단추보다 조금만 크다. 뛸 때(최대 1.09배) 커지는
+          // 만큼만 여유를 둔다.
+          final halo = size * 1.2;
+          // 글자와 아이콘은 지름을 따라간다. 동그라미만 커지고 글자가
+          // 그대로면 가운데가 비어 보인다.
+          final labelSize = (size * 0.135).clamp(24.0, 34.0).toDouble();
+          final iconSize = (size * 0.24).clamp(44.0, 66.0).toDouble();
+          final labelStyle = AppText.cardTitle(size: labelSize, color: ink);
 
-        return Center(
-          child: Semantics(
-            button: true,
-            label: label,
-            child: GestureDetector(
-              onTap: widget.done
-                  ? widget.onUndo
-                  : widget.measureFirst
-                  ? widget.onMeasure
-                  : widget.onTake,
-              child: ExcludeSemantics(
-                child: SizedBox(
-                  width: outer,
-                  height: outer,
-                  child: Stack(
-                    alignment: Alignment.center,
-                    children: [
-                      AnimatedBuilder(
-                        animation: _pulse,
-                        builder: (context, child) => Transform.scale(
-                          scale: beating ? _pulse.value : 1.0,
-                          child: child,
-                        ),
-                        child: Container(
+          // 위 칸과 아래 칸 사이 정가운데에 둔다.
+          return Align(
+            alignment: Alignment.center,
+            child: _room(
+              box.maxHeight.isFinite,
+              outer + skipRoom,
+              Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Semantics(
+                    button: true,
+                    label: label,
+                    child: GestureDetector(
+                      onTap: widget.measureAfter
+                          ? widget.onMeasureAfter
+                          : widget.done
+                          ? widget.onUndo
+                          : widget.measureFirst
+                          ? widget.onMeasure
+                          : widget.onTake,
+                      child: ExcludeSemantics(
+                        child: SizedBox(
                           width: outer,
                           height: outer,
-                          decoration: const BoxDecoration(
-                            color: AppColors.pointRing,
-                            shape: BoxShape.circle,
-                          ),
-                        ),
-                      ),
-                      Container(
-                        width: size,
-                        height: size,
-                        alignment: Alignment.center,
-                        decoration: BoxDecoration(
-                          color: fill,
-                          shape: BoxShape.circle,
-                        ),
-                        // 동그라미 안에 드는 네모는 지름의 0.7배다. 글씨를
-                        // 키운 기기에서도 그 안에서 줄여 담아 넘치지 않게 한다.
-                        child: SizedBox(
-                          width: size * 0.72,
-                          height: size * 0.72,
-                          child: FittedBox(
-                            fit: BoxFit.scaleDown,
-                            child: Column(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(
-                                  widget.done
-                                      ? TablerIcons.arrow_back_up
-                                      : widget.measureFirst
-                                      ? TablerIcons.heart_filled
-                                      : TablerIcons.check,
-                                  size: iconSize,
-                                  color: ink,
-                                ),
-                                const SizedBox(height: 2),
-                                Text(label, style: labelStyle),
-                                if (sub != null)
-                                  Text(
-                                    sub,
-                                    style: AppText.cardTitle(
-                                      size: labelSize * 0.62,
-                                      color: AppColors.onPointMuted,
-                                      weight: FontWeight.w700,
+                          child: Stack(
+                            alignment: Alignment.center,
+                            // 테가 받은 자리 밖으로 조금 나가도 자르지 않는다.
+                            clipBehavior: Clip.none,
+                            children: [
+                              OverflowBox(
+                                maxWidth: halo,
+                                maxHeight: halo,
+                                child: AnimatedBuilder(
+                                  animation: _pulse,
+                                  builder: (context, child) => Transform.scale(
+                                    scale: beating ? _pulse.value : 1.0,
+                                    child: child,
+                                  ),
+                                  child: Container(
+                                    width: halo,
+                                    height: halo,
+                                    decoration: const BoxDecoration(
+                                      color: AppColors.pointHalo,
+                                      shape: BoxShape.circle,
                                     ),
                                   ),
-                              ],
-                            ),
+                                ),
+                              ),
+                              Container(
+                                width: size,
+                                height: size,
+                                alignment: Alignment.center,
+                                decoration: BoxDecoration(
+                                  color: fill,
+                                  shape: BoxShape.circle,
+                                ),
+                                // 동그라미 안에 드는 네모는 지름의 0.7배다. 글씨를
+                                // 키운 기기에서도 그 안에서 줄여 담아 넘치지 않게 한다.
+                                child: SizedBox(
+                                  width: size * 0.72,
+                                  height: size * 0.72,
+                                  child: FittedBox(
+                                    fit: BoxFit.scaleDown,
+                                    child: Column(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        // 재기 때는 그림을 두지 않는다 — 글자 두 줄이
+                                        // 이미 무엇을 하는지 말한다.
+                                        if (!measuring) ...[
+                                          Icon(
+                                            widget.done
+                                                ? TablerIcons.arrow_back_up
+                                                : TablerIcons.check,
+                                            size: iconSize,
+                                            color: ink,
+                                          ),
+                                          const SizedBox(height: 2),
+                                        ],
+                                        for (final line in lines)
+                                          Text(line, style: labelStyle),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
                         ),
                       ),
-                    ],
+                    ),
                   ),
-                ),
+                  if (widget.measureAfter && widget.onSkipMeasure != null) ...[
+                    const SizedBox(height: 10),
+                    _SkipMeasure(onTap: widget.onSkipMeasure!),
+                  ],
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
+/// "나중에 재기" — 단추 아래 작은 글자 한 줄.
+///
+/// 재는 일을 눈에 띄게 두되, 막지는 않는다. 센서를 지금 차고 있지
+/// 않을 때 한 자리에 갇히면 오늘 홈은 쓸 수 없는 화면이 된다.
+class _SkipMeasure extends StatelessWidget {
+  final VoidCallback onTap;
+
+  const _SkipMeasure({required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      button: true,
+      label: '나중에 재기',
+      child: GestureDetector(
+        onTap: onTap,
+        behavior: HitTestBehavior.opaque,
+        child: ExcludeSemantics(
+          child: Container(
+            constraints: const BoxConstraints(minHeight: 44),
+            alignment: Alignment.center,
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Text(
+              '나중에 재기',
+              style: AppText.cardTitle(
+                size: 18,
+                color: AppColors.textSecondary,
               ),
             ),
           ),
-        );
-      },
+        ),
+      ),
     );
   }
 }
@@ -1050,11 +1197,19 @@ class _HomeTiles extends StatelessWidget {
 
   /// 복약 알림 설정으로. 소리로 울릴 시각을 거기서 고친다.
   final VoidCallback? onOpenAlarm;
+
+  /// 센서 연결로. null이면 이미 쓰고 계신다.
+  final VoidCallback? onConnectDevice;
+
+  /// 센서 연결을 끊는다. 쓰고 계실 때만 둘다.
+  final VoidCallback? onDisconnectDevice;
   final VoidCallback? onOpenMedicines;
 
   const _HomeTiles({
     required this.alarmLabel,
     this.onOpenAlarm,
+    this.onConnectDevice,
+    this.onDisconnectDevice,
     this.onOpenMedicines,
   });
 
@@ -1072,11 +1227,24 @@ class _HomeTiles extends StatelessWidget {
         ),
         const SizedBox(width: 16),
         Expanded(
-          child: _tile(
-            icon: TablerIcons.pill,
-            label: '약 보기',
-            onTap: onOpenMedicines,
-          ),
+          child: onConnectDevice != null
+              ? _tile(
+                  icon: TablerIcons.heart,
+                  label: '센서 연결',
+                  onTap: onConnectDevice,
+                )
+              : onDisconnectDevice != null
+              ? _tile(
+                  icon: TablerIcons.heart_off,
+                  label: '기기 연결 해제',
+                  onTap: onDisconnectDevice,
+                  fontSize: 18,
+                )
+              : _tile(
+                  icon: TablerIcons.pill,
+                  label: '약 보기',
+                  onTap: onOpenMedicines,
+                ),
         ),
       ],
     );
@@ -1221,43 +1389,3 @@ class HomeTopBar extends StatelessWidget {
 ///
 
 /// "약 드시는 시간" 창의 한 줄. 누르면 그 때의 시각을 바꾼다.
-class _SlotTimeRow extends StatelessWidget {
-  final String label;
-  final String clock;
-  final VoidCallback onTap;
-
-  const _SlotTimeRow({
-    required this.label,
-    required this.clock,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Semantics(
-      button: true,
-      label: '$label $clock, 누르면 바꿔요',
-      child: ExcludeSemantics(
-        child: GestureDetector(
-          onTap: onTap,
-          child: Container(
-            color: Colors.transparent,
-            constraints: const BoxConstraints(minHeight: 60),
-            child: Row(
-              children: [
-                Expanded(child: Text(label, style: AppText.label(size: 20))),
-                Text(clock, style: AppText.cardTitle(size: 21)),
-                const SizedBox(width: 8),
-                const Icon(
-                  Icons.expand_more_rounded,
-                  size: 24,
-                  color: AppColors.textTertiary,
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}

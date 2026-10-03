@@ -23,6 +23,7 @@ import 'features/dashboard/presentation/screens/home_screen.dart';
 import 'features/drug_explain/drug_explain_screen.dart';
 import 'features/medication/application/medication_controller.dart';
 import 'features/medicines/presentation/screens/drug_detail_screen.dart';
+import 'features/dur_analysis/presentation/screens/dur_analysis_screen.dart';
 import 'features/onboarding/presentation/screens/first_run_screen.dart';
 import 'features/prescription/presentation/screens/manual_medicine_screen.dart';
 import 'features/prescription/presentation/screens/prescription_screen.dart';
@@ -111,6 +112,20 @@ final _router = GoRouter(
       },
     ),
     GoRoute(
+      path: '/dur-analysis',
+      builder: (context, state) {
+        final data = state.extra is Map
+            ? Map<String, dynamic>.from(state.extra as Map)
+            : null;
+        return DurAnalysisScreen(
+          initialResult: data,
+          onOpenScheduleDays: data?['on_open_schedule_days'] is VoidCallback
+              ? data!['on_open_schedule_days'] as VoidCallback
+              : null,
+        );
+      },
+    ),
+    GoRoute(
       path: '/biosignal',
       builder: (context, state) => HeartScreen(
         routeBasedMeasurement: true,
@@ -162,8 +177,12 @@ final _router = GoRouter(
     GoRoute(
       path: '/drug-explain',
       // 약 자세히에서 "이 약 물어보기"로 오면 그 약을 고른 채로 연다.
-      builder: (context, state) =>
-          DrugExplainScreen(initialMedicine: state.extra as String?),
+      builder: (context, state) => DrugExplainScreen(
+        initialMedicine: state.extra as String?,
+        // 가짜 데이터를 켠 개발 빌드에서는 이 화면도 서버를 타지 않는다.
+        apiClient: mockData ? mockPharmacistApi() : null,
+        medicationApiClient: mockData ? mockPharmacistApi() : null,
+      ),
     ),
   ],
 );
@@ -180,6 +199,8 @@ void main() {
   // 가짜 데이터는 개발 빌드에서만 깔린다. 배포 빌드에서는 빈 목록이다.
   final container = ProviderContainer(overrides: devMockOverrides());
   final sessionReady = _restoreSession(container);
+  // 가짜 이전 대화는 로그인한 사람이 정해진 뒤에 적는다.
+  unawaited(sessionReady.then((_) => seedMockConversations()));
   // 알림 초기화는 화면·로그인 확인을 기다리게 하지 않는다.
   final remindersReady = ReminderNotifications.instance.initialize().catchError(
     (_) {},
@@ -202,10 +223,18 @@ void main() {
 Future<void> _restoreSession(ProviderContainer container) async {
   final timer = Stopwatch()..start();
   final restoredUser = await restorePersistedSession(UserRepository());
+  // 가짜 데이터로 볼 때는 로그인 화면을 건너뛴다(dev_mock.dart와 함께 꺼진다).
+  // 저장된 세션을 읽은 **뒤**에 연다 — 읽는 쪽이 세션을 지우기 때문이다.
+  await applyMockSession();
   if (restoredUser != null) {
     container.read(userRoleProvider.notifier).state = restoredUser.isGuardian
         ? UserRole.guardian
         : UserRole.patient;
+  }
+  // No login is required for the demonstration medicine. Session restoration
+  // clears the ID when signed out, so initialize the shared demo user here.
+  if (restoredUser == null || !restoredUser.isGuardian) {
+    await AuthSession.ensurePresentationMedicine();
   }
   debugPrint('[STARTUP_DIAG] session_restore_ms=${timer.elapsedMilliseconds}');
 }

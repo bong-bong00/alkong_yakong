@@ -29,6 +29,10 @@ abstract final class AppColors {
   /// 큰 동그란 버튼을 두르는 연한 테. 그림자 대신 자리를 잡아 준다.
   static const Color pointRing = Color(0xFFE3E8F8);
 
+  /// "먹었어요" 둘레에서 숨 쉬는 테. 위 칸과 겹쳐도 둘 다 보이도록
+  /// 비치는 파랑으로 둔다.
+  static const Color pointHalo = Color(0x66C7D3F5);
+
   /// 하단 탭 바를 본문에서 떼어 놓는 그림자. 경계선 대신 쓴다.
   static const Color navShadow = Color(0x0F111114);
 
@@ -202,6 +206,11 @@ abstract final class AppColors {
   /// 아래 겹은 넓게 퍼져 카드를 띄운다. 한 겹만 쓰면 선처럼 보인다.
   static const Color cardShadow = Color(0x0D111114);
   static const Color cardShadowWide = Color(0x0A111114);
+
+  /// 흰 카드 위에 올라가는 흰 칸의 그림자. 카드 그림자보다 진해야
+  /// 흰 바탕에서 자리가 보인다.
+  static const Color raisedShadow = Color(0x22111114);
+  static const Color raisedShadowWide = Color(0x14111114);
 
   /// 시트와 하단 바가 바닥에서 떠 보이게 하는 그림자.
   static const Color sheetShadow = Color(0x2E14161E);

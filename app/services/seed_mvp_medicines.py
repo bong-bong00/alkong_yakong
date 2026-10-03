@@ -28,6 +28,47 @@ _SEED_MEDS: tuple[dict, ...] = (_CODARONE,)
 _CATALOG_MEDS = (_CODARONE,)
 
 
+def ensure_presentation_codarone(user_id: str) -> None:
+    """Add the presentation medicine without replacing any real prescriptions.
+
+    The dose and times are demonstration values, not prescribing advice.
+    BEGIN IMMEDIATE prevents simultaneous startup calls from adding duplicates.
+    """
+    from app.services.medication_user_service import ensure_medication_user
+
+    ensure_medication_user(user_id)
+    conn = get_connection()
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        med = _CODARONE
+        conn.execute(
+            """INSERT OR IGNORE INTO medicines
+               (medicine_code, product_name, ingredient, efficacy, precautions,
+                easy_category, explanation_review_status)
+               VALUES (?, ?, ?, ?, ?, ?, 'UNREVIEWED')""",
+            (med['medicine_code'], med['product_name'], med['ingredient'],
+             med['efficacy'], med['precautions'], '심장 박동 약'),
+        )
+        active = conn.execute(
+            """SELECT 1 FROM user_medicines
+               WHERE user_id = ? AND medicine_code = ?
+                 AND COALESCE(is_active, 1) = 1 LIMIT 1""",
+            (user_id, med['medicine_code']),
+        ).fetchone()
+        if not active:
+            conn.execute(
+                """INSERT INTO user_medicines
+                   (user_id, medicine_code, dosage, dose_amount, dose_unit,
+                    frequency_per_day, administration_times, is_active, status)
+                   VALUES (?, ?, ?, 1, '정', ?, ?, 1, 'ACTIVE')""",
+                (user_id, med['medicine_code'], med['dosage'],
+                 med['frequency_per_day'], med['administration_times']),
+            )
+        conn.commit()
+    finally:
+        conn.close()
+
+
 def ensure_mvp_demo_medicines() -> str:
     """Create mvp-user and replace active medicines with development demo data."""
     conn = get_connection()
