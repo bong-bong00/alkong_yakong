@@ -154,7 +154,7 @@ Future<void> showDuplicateDoseSheet({
               TextSpan(
                 text: '지금은 드시지 마세요.',
                 style: AppText.body(
-                  weight: FontWeight.w700,
+                  weight: FontWeight.w600,
                   color: AppColors.textPrimary,
                 ),
               ),

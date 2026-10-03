@@ -192,7 +192,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       '${_selectedDate.month}월 ${_selectedDate.day}일 요약',
                       style: const TextStyle(
                         fontSize: 19,
-                        fontWeight: FontWeight.w800,
+                        fontWeight: FontWeight.w700,
                         color: kText,
                       ),
                     ),
@@ -372,7 +372,7 @@ class _WeeklyCalendar extends StatelessWidget {
                       '${date.day}',
                       style: TextStyle(
                         fontSize: 18,
-                        fontWeight: FontWeight.w800,
+                        fontWeight: FontWeight.w700,
                         color: isSelected ? Colors.white : kText,
                       ),
                     ),
@@ -427,7 +427,7 @@ class _DashboardCard extends StatelessWidget {
                 Text(
                   title,
                   style: const TextStyle(
-                    fontWeight: FontWeight.w700,
+                    fontWeight: FontWeight.w600,
                     color: kText,
                   ),
                 ),
@@ -508,7 +508,7 @@ class _MedicationCard extends StatelessWidget {
                   '$time · $drugName',
                   style: const TextStyle(
                     color: kText,
-                    fontWeight: FontWeight.w700,
+                    fontWeight: FontWeight.w600,
                   ),
                 ),
               ),
@@ -561,7 +561,7 @@ class _MedicationStatus extends StatelessWidget {
         style: TextStyle(
           color: color,
           fontSize: 12,
-          fontWeight: FontWeight.w700,
+          fontWeight: FontWeight.w600,
         ),
       ),
     );

@@ -185,7 +185,7 @@ void main() {
     final spans = (text.textSpan! as TextSpan).children!.cast<TextSpan>();
     final highlighted = spans.singleWhere((s) => s.text == '정해진 작용');
     expect(highlighted.style!.color, AppColors.point);
-    expect(highlighted.style!.fontWeight, FontWeight.w800);
+    expect(highlighted.style!.fontWeight, FontWeight.w700);
     // 쓰임 줄은 설명 문장으로 선다. 낱말만 따로 한 줄 세우면 같은
     // 말이 두 줄이 된다 — 짚을 낱말은 그 문장 안에서 파랗게 둔다.
     expect(shown(tester), contains('치통에 쓰고 성인에만 사용한다.'));
@@ -200,7 +200,7 @@ void main() {
     final useSpans = (useLine.textSpan! as TextSpan).children!.cast<TextSpan>();
     final blue = useSpans.singleWhere((span) => span.text == '치통');
     expect(blue.style!.color, AppColors.point);
-    expect(blue.style!.fontWeight, FontWeight.w800);
+    expect(blue.style!.fontWeight, FontWeight.w700);
   });
 
   testWidgets(

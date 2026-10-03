@@ -544,7 +544,7 @@ class _Bullet extends StatelessWidget {
     final strong = AppText.cardTitle(
       size: 19,
       color: AppColors.point,
-    ).copyWith(fontWeight: FontWeight.w800);
+    ).copyWith(fontWeight: FontWeight.w700);
 
     final spans = _spans(text, body, strong);
     final line = spans == null
@@ -663,7 +663,7 @@ class _Marked extends StatelessWidget {
     final base = AppText.body(size: 19);
     final strong = base.copyWith(
       color: AppColors.danger,
-      fontWeight: FontWeight.w800,
+      fontWeight: FontWeight.w700,
     );
 
     final spans = <TextSpan>[];
@@ -901,7 +901,7 @@ class _EmphasizedBodyText extends StatelessWidget {
         _EmphasisRange(
           ingredientStart,
           ingredientStart + ingredientTarget.length,
-          bodyStyle.copyWith(fontWeight: FontWeight.w800),
+          bodyStyle.copyWith(fontWeight: FontWeight.w700),
         ),
       );
     }
@@ -913,7 +913,7 @@ class _EmphasizedBodyText extends StatelessWidget {
           effectStart + effect.length,
           bodyStyle.copyWith(
             color: AppColors.point,
-            fontWeight: FontWeight.w800,
+            fontWeight: FontWeight.w700,
           ),
         ),
       );

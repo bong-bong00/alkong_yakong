@@ -244,7 +244,7 @@ class _Bubble extends StatelessWidget {
                 style: AppText.body(
                   size: 20,
                   color: bot ? AppColors.textBody : Colors.white,
-                  weight: FontWeight.w700,
+                  weight: FontWeight.w600,
                 ),
               ),
               if (message.withDisclaimer) ...[

@@ -228,7 +228,7 @@ class _ProfileEditScreenState extends ConsumerState<ProfileEditScreen> {
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
         title: const Text(
           '환자 연결을 해제할까요?',
-          style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800),
+          style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
         ),
         content: Text(
           '$name님과의 연결을 해제하면\n더 이상 복약·심박 현황을 볼 수 없어요.',
@@ -254,7 +254,7 @@ class _ProfileEditScreenState extends ConsumerState<ProfileEditScreen> {
               '연결 해제',
               style: TextStyle(
                 color: AppColors.legacyRed,
-                fontWeight: FontWeight.w700,
+                fontWeight: FontWeight.w600,
               ),
             ),
           ),
@@ -349,7 +349,7 @@ class _ProfileEditScreenState extends ConsumerState<ProfileEditScreen> {
                 '내 정보를 불러오지 못했어요',
                 style: TextStyle(
                   fontSize: 17,
-                  fontWeight: FontWeight.w700,
+                  fontWeight: FontWeight.w600,
                   color: kText,
                 ),
               ),

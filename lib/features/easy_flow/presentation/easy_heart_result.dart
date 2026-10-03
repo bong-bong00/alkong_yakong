@@ -333,7 +333,7 @@ class _ArmBandPainter extends CustomPainter {
         style: TextStyle(
           color: Color(0xFFE8EBED),
           fontSize: 7,
-          fontWeight: FontWeight.w700,
+          fontWeight: FontWeight.w600,
         ),
       ),
       textDirection: TextDirection.ltr,

@@ -218,7 +218,7 @@ void main() {
         .where(
           (span) =>
               span.style?.color == AppColors.danger &&
-              span.style?.fontWeight == FontWeight.w700,
+              span.style?.fontWeight == FontWeight.w600,
         )
         .map((span) => span.text);
     expect(emphasized, ['고혈압', '알코올', '술']);

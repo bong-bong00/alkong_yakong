@@ -850,7 +850,7 @@ void main() {
         .where(
           (span) =>
               span.style?.color == AppColors.point &&
-              span.style?.fontWeight == FontWeight.w700,
+              span.style?.fontWeight == FontWeight.w600,
         )
         .map((span) => span.text)
         .toList();

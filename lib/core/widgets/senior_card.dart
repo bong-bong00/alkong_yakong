@@ -302,7 +302,7 @@ class SeniorListRow extends StatelessWidget {
                     style: AppText.label(
                       size: 20,
                       color: labelColor,
-                      weight: FontWeight.w700,
+                      weight: FontWeight.w600,
                     ),
                   ),
                   if (subtitle != null)
@@ -448,7 +448,7 @@ class PillPhoto extends StatelessWidget {
       style: AppText.caption(
         size: 13,
         color: AppColors.textTertiary,
-        weight: FontWeight.w700,
+        weight: FontWeight.w600,
       ),
     );
     return ExcludeSemantics(

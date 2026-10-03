@@ -2078,7 +2078,7 @@ List<TextSpan> _officialProductNameSpans(
         style: baseStyle.copyWith(
           // 하지 말아야 할 것은 붉게. 나머지 짚는 말과 무게가 다르다.
           color: match.warn ? AppColors.danger : emphasisColor,
-          fontWeight: FontWeight.w700,
+          fontWeight: FontWeight.w600,
         ),
       ),
     );

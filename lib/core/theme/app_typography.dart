@@ -33,8 +33,8 @@ abstract final class AppText {
     'sans-serif',
   ];
 
-  static const FontWeight _black = FontWeight.w900;
-  static const FontWeight _bold = FontWeight.w700;
+  static const FontWeight _black = FontWeight.w800;
+  static const FontWeight _bold = FontWeight.w600;
   static const FontWeight _semibold = FontWeight.w600;
   static const FontWeight _medium = FontWeight.w500;
 

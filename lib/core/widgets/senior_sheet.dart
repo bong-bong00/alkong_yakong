@@ -189,7 +189,7 @@ class SeniorSheetBody extends StatelessWidget {
                   ? AppText.body(
                       size: 19,
                       color: AppColors.textPrimary,
-                      weight: FontWeight.w700,
+                      weight: FontWeight.w600,
                     )
                   : base,
             ),

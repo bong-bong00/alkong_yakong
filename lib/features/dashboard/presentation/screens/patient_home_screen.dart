@@ -875,7 +875,7 @@ class _HeartSteps extends StatelessWidget {
               style: AppText.cardTitle(
                 size: 16,
                 color: now ? AppColors.textPrimary : AppColors.textSecondary,
-                weight: now ? FontWeight.w900 : FontWeight.w600,
+                weight: now ? FontWeight.w800 : FontWeight.w600,
               ),
             ),
           ],
@@ -1364,7 +1364,7 @@ class _RefillRow extends StatelessWidget {
               style: AppText.cardTitle(
                 size: 17.5,
                 color: AppColors.textBody,
-                weight: FontWeight.w700,
+                weight: FontWeight.w600,
               ),
             ),
           ),
