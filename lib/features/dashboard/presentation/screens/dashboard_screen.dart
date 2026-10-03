@@ -1,3 +1,4 @@
+import '../../../medicines/domain/display_policy.dart';
 import 'package:flutter/material.dart';
 
 import '../../../../core/constants/app_colors.dart';
@@ -224,8 +225,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           padding: const EdgeInsets.only(bottom: 8),
                           child: _MedicationCard(
                             time: _text(item['time'] ?? item['scheduled_time']),
-                            drugName: _text(
-                              item['drug_name'] ?? item['product_name'],
+                            drugName: nameWithoutStrength(
+                              _text(item['drug_name'] ?? item['product_name']),
                             ),
                             ingredient: _text(item['ingredient']),
                             status: effectiveStatus,

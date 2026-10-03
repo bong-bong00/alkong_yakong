@@ -59,7 +59,11 @@ String stripEasyCategoryParen(String? name) {
 /// 요약 화면에서만 제품명 뒤에 중복된 주성분 괄호를 숨긴다.
 /// DB와 OCR 확인 화면의 공식 제품명은 바꾸지 않는다.
 String compactProductName(String? name, {String? ingredient}) {
-  final text = stripEasyCategoryParen(stripExportAlias(name));
+  // 이름 끝의 용량("…정500밀리그램")은 떼고 본다. 얼마나 드시는지는
+  // 따로 적히는 자리가 있고, 이름에 또 붙으면 긴 이름이 두 줄로 접힌다.
+  final text = nameWithoutStrength(
+    stripEasyCategoryParen(stripExportAlias(name)),
+  );
   final match = RegExp(r'\s*\(([^)]*)\)\s*$').firstMatch(text);
   if (match == null) return text;
   final innerKey = _ingredientCompareKey(match.group(1));

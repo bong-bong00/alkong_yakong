@@ -157,6 +157,27 @@ class _PrescriptionScreenState extends ConsumerState<PrescriptionScreen> {
   /// 지금 올린 사진을 어디서 가져왔는지. 다시 고를 때 같은 길로 연다.
   ImageSource _imageSource = ImageSource.camera;
 
+  /// 촬영 화면에서 뒤로.
+  ///
+  /// 사진이 올라와 있으면 사진만 버리고 찍는 법으로 돌아간다. 길을
+  /// 밖에서 이미 골라 들어왔으면(첫 화면의 "처방전 촬영") 길 고르는
+  /// 칸이 아니라 온 자리로 나간다 — 거기서 또 고르게 하면 눌렀던
+  /// 자리로 돌아갈 수 없다.
+  void _leaveCapture() {
+    if (_image != null) {
+      setState(() => _image = null);
+      return;
+    }
+    if (widget.startAtCapture && context.canPop()) {
+      context.pop();
+      return;
+    }
+    setState(() {
+      _image = null;
+      _step = PrescriptionStep.pickMethod;
+    });
+  }
+
   Future<void> _pick(ImageSource source) async {
     try {
       final picked = await _picker.pickImage(source: source);
@@ -639,10 +660,7 @@ class _PrescriptionScreenState extends ConsumerState<PrescriptionScreen> {
         return _CaptureScreen(
           image: _image,
           onBehalfOf: widget.onBehalfOf,
-          onBack: () => setState(() {
-            _image = null;
-            _step = PrescriptionStep.pickMethod;
-          }),
+          onBack: _leaveCapture,
           onUse: _read,
           fromGallery: _image != null && _imageSource == ImageSource.gallery,
           onCamera: () =>
@@ -964,7 +982,7 @@ class _ReadingScreen extends StatelessWidget {
                     ),
                     const SizedBox(height: 8),
                     Text(
-                      '잠시만 기다려 주세요. 다 읽으면 약 이름을 보여드릴게요.',
+                      '잠시만 기다려 주세요. 다 읽으면 약 정보를 보여드릴게요.',
                       textAlign: TextAlign.center,
                       style: AppText.body(),
                     ),
