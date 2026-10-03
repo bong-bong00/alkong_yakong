@@ -132,8 +132,10 @@ class _MyPageScreenState extends ConsumerState<MyPageScreen> {
                         children: [
                           Expanded(
                             child: _SquareTile(
-                              icon: TablerIcons.bell,
-                              label: '알림',
+                              // 오늘 화면의 알람 칸과 같은 그림·같은 말을
+                              // 쓴다. 한 가지를 두 이름으로 부르지 않는다.
+                              icon: TablerIcons.alarm,
+                              label: '알람',
                               onTap: () => Navigator.of(context).push(
                                 MaterialPageRoute<void>(
                                   builder: (_) => const AlarmSettingsScreen(),
@@ -488,7 +490,13 @@ class _BodyInfoCard extends StatelessWidget {
           style: AppText.label(size: 16, color: AppColors.textSecondary),
         ),
         const SizedBox(height: 4),
-        Text(value, style: AppText.cardTitle(size: 22)),
+        // 세 칸이 가로를 나눠 쓰는 자리다. "페니실린 외 1"처럼 길어지면
+        // 접히지 않고 글자가 줄어든다 — 접히면 "외 / 1"로 끊긴다.
+        FittedBox(
+          fit: BoxFit.scaleDown,
+          alignment: Alignment.centerLeft,
+          child: Text(value, maxLines: 1, style: AppText.cardTitle(size: 20)),
+        ),
       ],
     );
   }
