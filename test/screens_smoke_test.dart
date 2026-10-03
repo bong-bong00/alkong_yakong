@@ -232,7 +232,7 @@ void main() {
     '심박 점검 (옛 화면)': () => const BiosignalScreen(),
     '연결 끊김 회복 (5e)': () => Scaffold(
       body: RecoveryView(
-        title: '지금은 심장 박동을\n측정하지 못하고 있어요',
+        title: '지금은 심장 박동을 측정하지 못하고 있어요',
         reassurance: '가슴에 찬 띠와 전화기가 떨어져 있어요. ',
         reassuranceEmphasis: '고장이 아니니 걱정하지 마세요.',
         steps: const ['띠가 가슴에 잘 붙어 있는지 만져보세요', '띠의 가운데 단추를 한 번 누르세요'],

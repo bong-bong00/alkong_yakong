@@ -408,7 +408,7 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
     );
     big(
       _StepDef(
-        title: '기본 정보를\n알려주세요',
+        title: '기본 정보를 알려주세요',
         subtitle: '번호는 로그인과 약 알림에 써요.',
         validate: () {
           if (_name.text.trim().isEmpty) return '이름을 입력해주세요';
@@ -453,7 +453,7 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
     if (_role == 'patient') {
       big(
         _StepDef(
-          title: '생년월일과 성별을\n알려주세요',
+          title: '생년월일과 성별을 알려주세요',
           subtitle: '나이에 따라 조심할 약이 달라요.',
           validate: () {
             if (_birth == null) return '생년월일을 골라주세요';
@@ -540,7 +540,7 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
       );
       big(
         _StepDef(
-          title: '키와 몸무게,\n혈액형을 알려주세요',
+          title: '키와 몸무게, 혈액형을 알려주세요',
           // 이 세 가지는 내 정보와 가족 화면에 보여 줄 뿐, 약 양을 정하지
           // 않는다. 하지 않는 일을 적어 두면 그것대로 믿게 된다.
           subtitle: '지금 안 적으셔도 넘어갑니다.',
@@ -604,7 +604,7 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
       if (_gender == 'F') {
         big(
           _StepDef(
-            title: '지금 임신 중이거나\n젖을 먹이고 계신가요?',
+            title: '지금 임신 중이거나 젖을 먹이고 계신가요?',
             subtitle: '이때는 피해야 하는 약이 있어요.',
             validate: () => _pregnant == null ? '해당하는 것을 골라주세요' : null,
             child: Column(
@@ -629,7 +629,7 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
 
       big(
         _StepDef(
-          title: '담배를\n피우시나요?',
+          title: '담배를 피우시나요?',
           subtitle: '함께 먹으면 안 좋은 약이 있어요.',
           validate: () => _smoking == null ? '해당하는 것을 골라주세요' : null,
           child: Column(
@@ -649,7 +649,7 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
       );
       big(
         _StepDef(
-          title: '술은 얼마나\n드시나요?',
+          title: '술은 얼마나 드시나요?',
           subtitle: '술과 같이 먹으면 위험한 약이 있어요.',
           validate: () => _drinking == null ? '해당하는 것을 골라주세요' : null,
           child: Column(
@@ -681,7 +681,7 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
 
       big(
         _yesNoStep(
-          title: '약을 먹고 거부 반응이나\n이상 반응이 있으신 적 있나요?',
+          title: '약을 먹고 거부 반응이나 이상 반응이 있으신 적 있나요?',
           subtitle: '약 알레르기를 여쭤보는 거예요.',
           answer: _allergyAnswer,
           onAnswer: (v) => _allergyAnswer = v,
@@ -709,7 +709,7 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
 
       big(
         _yesNoStep(
-          title: '지금 치료받고 있는\n병이 있나요?',
+          title: '지금 치료받고 있는 병이 있나요?',
           subtitle: '약을 함께 먹어도 되는지 볼 때 써요.',
           answer: _diseaseAnswer,
           onAnswer: (v) => _diseaseAnswer = v,
@@ -734,7 +734,7 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
 
       big(
         _yesNoStep(
-          title: '예전에 크게\n아팠던 적이 있나요?',
+          title: '예전에 크게 아팠던 적이 있나요?',
           subtitle: '암, 뇌졸중, 심근경색 같은 병이요.',
           answer: _pastAnswer,
           onAnswer: (v) => _pastAnswer = v,
@@ -760,7 +760,7 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
 
       big(
         _yesNoStep(
-          title: '부모님이나 형제가\n앓은 병이 있나요?',
+          title: '부모님이나 형제가 앓은 병이 있나요?',
           subtitle: '나에게도 생기기 쉬운 병을 미리 살펴요.',
           answer: _familyAnswer,
           onAnswer: (v) => _familyAnswer = v,
@@ -787,7 +787,7 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
 
       big(
         _StepDef(
-          title: '가족을 보호자로\n설정할까요?',
+          title: '가족을 보호자로 설정할까요?',
           subtitle: '약을 놓치시거나 심박수가 빠를 때 그 가족에게 알려드려요.',
           validate: () => _guardianAnswer == null ? '해당하는 것을 골라주세요' : null,
           child: Column(
@@ -818,7 +818,7 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
       if (_guardianAnswer == 'y') {
         detail(
           _StepDef(
-            title: '누구에게\n알려드릴까요?',
+            title: '누구에게 알려드릴까요?',
             validate: () {
               if (_guardianRelation == null) return '나와의 관계를 골라주세요';
               if (_guardianName.text.trim().isEmpty) {
@@ -860,7 +860,7 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
     // 동의는 환자·보호자 공통
     big(
       _StepDef(
-        title: '약관에\n동의해주세요',
+        title: '약관에 동의해주세요',
         subtitle: '필수 3개에 동의하면 가입이 끝나요.',
         validate: () => _allRequired ? null : '필수 3개에 동의해주세요',
         child: Column(

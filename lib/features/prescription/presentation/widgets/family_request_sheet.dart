@@ -18,7 +18,7 @@ Future<void> showFamilyRequestSheet(
   return SeniorSheet.show<void>(
     context: context,
     builder: (sheetContext) => SeniorSheet(
-      title: '$family이 보호자 앱에서\n넣어드려요',
+      title: '$family이 보호자 앱에서 넣어드려요',
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [

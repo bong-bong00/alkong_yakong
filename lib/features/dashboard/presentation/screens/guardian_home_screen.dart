@@ -78,7 +78,7 @@ class _GuardianHomeScreenState extends ConsumerState<GuardianHomeScreen> {
       if (!mounted) return;
       final go = await showSeniorYesNoDialog(
         context: context,
-        title: '${patient.title} 님이\n처방전을 부탁하셨어요',
+        title: '${patient.title} 님이 처방전을 부탁하셨어요',
         message: '처방전을 찍어서 보내 드리면 그 자리에서 약이 들어가요.',
         yesLabel: '대신 처방전 찍기',
         noLabel: '나중에 할게요',
