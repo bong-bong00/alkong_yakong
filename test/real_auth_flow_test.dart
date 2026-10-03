@@ -126,6 +126,7 @@ void main() {
                 'id': 'saved-user-uuid',
                 'name': '검증용 보호자',
                 'role': 'guardian',
+                'phone': '010-1234-5678',
                 'is_pregnant': false,
               }),
               200,
@@ -144,6 +145,35 @@ void main() {
       expect(MvpSession.userId, 'saved-user-uuid');
     },
   );
+
+  test('서버가 급히 만든 "사용자" 껍데기로는 들어가지 않는다', () async {
+    SharedPreferences.setMockInitialValues({
+      'isLoggedIn': true,
+      'userId': 'saved-user-uuid',
+      'role': 'patient',
+    });
+    final repository = UserRepository(
+      apiClient: ApiClient(
+        client: MockClient((request) async {
+          // 전화번호도 비밀번호도 없는 자리끼움 줄.
+          return http.Response(
+            jsonEncode({
+              'id': 'saved-user-uuid',
+              'name': '사용자',
+              'role': 'PATIENT',
+              'is_pregnant': false,
+            }),
+            200,
+            headers: {'content-type': 'application/json'},
+          );
+        }),
+      ),
+    );
+
+    expect(await restorePersistedSession(repository), isNull);
+    expect(AuthSession.isLoggedIn, isFalse);
+    expect(MvpSession.userId, isEmpty);
+  });
 
   test(
     'app restart rejects a mismatched or unavailable server identity',

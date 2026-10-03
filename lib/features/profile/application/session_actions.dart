@@ -35,6 +35,15 @@ Future<UserProfile?> restorePersistedSession(UserRepository repository) async {
       '[STARTUP_DIAG] team_user_fetch_ms=${timer.elapsedMilliseconds}',
     );
     if (user.id != savedId) return null;
+    // 서버는 모르는 아이디로 물어 오면 "사용자"라는 빈 줄을 급히 만들어
+    // 둔다(전화번호도 비밀번호도 없다). 그 껍데기로 들어가면 이름도
+    // 건강 정보도 비어 있는 채로 로그인한 것처럼 보인다. 내 계정이
+    // 아니므로 들이지 않고 로그인 화면으로 보낸다.
+    if ((user.phone ?? '').trim().isEmpty) {
+      debugPrint('[STARTUP_DIAG] placeholder_account_rejected');
+      await AuthSession.logout();
+      return null;
+    }
     MvpSession.userId = user.id;
     MvpSession.isPregnant = user.isPregnant;
     await AuthSession.setLoggedIn(user.isGuardian ? 'guardian' : 'patient');
