@@ -160,10 +160,14 @@ class _SlotBox extends StatelessWidget {
       timeColor = AppColors.slotPending;
     }
 
-    // 드신 때는 실제로 드신 시각을, 아직인 때는 알림 시각을 적는다.
-    final time = taken && dose.takenAt != null
-        ? dose.takenAt!.toLocal()
-        : dose.slot.todayAt(date);
+    // 적히는 시각은 **실제로 드신 때**뿐이다. 아직이면 "미복용"이라고
+    // 적는다. 미리 정해 둔 시각을 적으면 드시지도 않았는데 그 시각에
+    // 드신 것처럼 읽힌다 — 홈 칩과 같은 말을 쓴다.
+    final clockText = !taken
+        ? '미복용'
+        : dose.takenAt == null
+        ? '드셨어요'
+        : _clock(dose.takenAt!.toLocal());
 
     // 드셨으면 파란 체크, 못 드셨으면 붉은 가위표를 칸 왼쪽 위에 붙인다.
     // 홈 칩과 같은 자리·같은 모양이라 두 화면을 같은 눈으로 읽는다.
@@ -176,7 +180,7 @@ class _SlotBox extends StatelessWidget {
     final markColor = taken ? AppColors.pointFill : AppColors.danger;
 
     return Semantics(
-      label: '${dose.slot.label} $_state, ${_clock(time)}',
+      label: '${dose.slot.label} $_state, $clockText',
       child: ExcludeSemantics(
         child: Stack(
           clipBehavior: Clip.none,
@@ -200,7 +204,7 @@ class _SlotBox extends StatelessWidget {
                   FittedBox(
                     fit: BoxFit.scaleDown,
                     child: Text(
-                      _clock(time),
+                      clockText,
                       style: AppText.cardTitle(size: 19, color: timeColor),
                     ),
                   ),
