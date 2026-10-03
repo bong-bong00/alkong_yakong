@@ -226,7 +226,7 @@ List<UserMedicine> _mockMedicines() => [
     code: '200701024',
     name: '타이레놀 500mg',
     ingredient: '아세트아미노펜',
-    purpose: '열 내리고 아픈 것을 덜어 주는 약',
+    purpose: '열 내리는 약',
     status: 'ended',
     times: const ['아침'],
   ),

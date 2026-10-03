@@ -202,7 +202,7 @@ class _Profile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final purpose = (medicine.purposeLabel ?? '').trim();
+    final purpose = shortPurposeLabel(medicine.purposeLabel);
     final look = medicine.appearanceLine.trim();
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
