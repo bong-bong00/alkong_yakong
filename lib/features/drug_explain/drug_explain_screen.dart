@@ -885,8 +885,6 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
           if (saved != null)
             'cacheNotice':
                 '저장된 답변 · ${_conversationDate(saved['savedAt'].toString())}',
-          if (saved != null) 'refreshQuestion': text,
-          if (saved != null) 'refreshIntent': intent,
           'sources':
               (data['sources'] as List?)?.whereType<String>().toList(
                 growable: false,
@@ -978,9 +976,12 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
     );
     final medicine = _selectedMedicine;
 
-    // 지금 대화에서 아직 아무것도 안 물어봤을 때만 질문 보기를 보여 준다.
-    // 약을 새로 고르면 거기서 대화가 다시 시작되므로 보기도 다시 나온다.
-    final showSuggestions = _messages.length - _conversationStart <= 1;
+    // 물어보는 순간 질문 보기는 걷는다. 답을 기다리는 동안에도 남겨
+    // 두면 같은 질문을 또 누르게 된다. 약을 새로 고르면 거기서 대화가
+    // 다시 시작되므로 그때는 다시 나온다.
+    final showSuggestions = !_messages
+        .skip(_conversationStart)
+        .any((message) => message['isMe'] == true);
     final suggestions = medicine == null
         ? _generalSuggestions
         : _medicineSuggestions;
@@ -1072,17 +1073,6 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
                               .toList(growable: false) ??
                           const [],
                     ),
-                    if (message['refreshQuestion'] != null)
-                      TextButton(
-                        onPressed: _isLoading
-                            ? null
-                            : () => _sendMessage(
-                                message: message['refreshQuestion'].toString(),
-                                intent: message['refreshIntent'] as String?,
-                                forceRefresh: true,
-                              ),
-                        child: const Text('최신 정보 확인'),
-                      ),
                     const SizedBox(height: 12),
                   ],
                   if (_isLoadingMedicines) ...[
@@ -1098,7 +1088,7 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
                   if (showSuggestions) ...[
                     const SizedBox(height: 4),
                     Text(
-                      medicine == null ? '이렇게 물어보셔도 돼요' : '이 약에 대해 많이 묻는 것',
+                      medicine == null ? '이렇게 물어보세요' : '이 약에 대해 많이 묻는 것',
                       style: AppText.caption(size: 18.5),
                     ),
                     const SizedBox(height: 10),
@@ -1965,7 +1955,7 @@ class _ChatBubble extends StatelessWidget {
                         ),
                         emphasisColor: isHealthReply
                             ? AppColors.danger
-                            : AppColors.detailEmphasis,
+                            : AppColors.point,
                         healthWarningsOnly: isHealthReply,
                       ),
                     ),

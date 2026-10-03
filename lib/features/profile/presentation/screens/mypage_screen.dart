@@ -39,7 +39,8 @@ class MyPageScreen extends ConsumerStatefulWidget {
 class _MyPageScreenState extends ConsumerState<MyPageScreen> {
   /// 39 시트를 그대로 쓴다. 보호자 화면에 있는 것과 같은 길이다.
   Future<void> _inviteFamily() async {
-    final draft = await showAddCareSheet(context);
+    // 어르신 계정이다. 돌볼 분이 아니라 나를 돌볼 보호자를 더한다.
+    final draft = await showAddCareSheet(context, asPatient: true);
     if (draft == null || !mounted) return;
     final result = await GuardianRepository().invite(
       name: draft.name,

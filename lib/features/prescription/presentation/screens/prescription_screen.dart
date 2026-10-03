@@ -20,6 +20,7 @@ import '../../../../core/widgets/senior_button.dart';
 import '../../../../core/widgets/medicine_flow_card.dart';
 import '../../../../core/widgets/senior_feedback.dart';
 import '../../../../core/widgets/senior_header.dart';
+import '../../../../core/widgets/senior_card.dart' show kRaisedShadow;
 import '../../../../core/widgets/senior_sheet.dart';
 import '../../../../core/widgets/senior_timeline.dart';
 import '../../../dashboard/application/medication_history_provider.dart';
@@ -1308,6 +1309,23 @@ class _ConfirmScreenState extends State<_ConfirmScreen> {
                       : (frequency! < 6 ? frequency! + 1 : frequency),
                 ),
               ),
+              const SizedBox(height: 16),
+              _Stepper(
+                label: '며칠분',
+                value: days == null ? '확인 필요' : '$days일',
+                needsConfirmation: days == null,
+                onMinus: days == null
+                    ? null
+                    : () => setSheetState(
+                        () => days = days! > 1 ? days! - 1 : null,
+                      ),
+                onPlus: () => setSheetState(
+                  () => days = days == null
+                      ? 1
+                      : (days! < 365 ? days! + 1 : days),
+                ),
+              ),
+              // 단추로 고르는 것끼리 위에 모으고, 때 고르기는 그 아래 둔다.
               const SizedBox(height: 18),
               Row(
                 children: [
@@ -1334,22 +1352,6 @@ class _ConfirmScreenState extends State<_ConfirmScreen> {
                 onToggle: (slot) => setSheetState(() {
                   if (!times.remove(slot)) times.add(slot);
                 }),
-              ),
-              const SizedBox(height: 16),
-              _Stepper(
-                label: '며칠분',
-                value: days == null ? '확인 필요' : '$days일',
-                needsConfirmation: days == null,
-                onMinus: days == null
-                    ? null
-                    : () => setSheetState(
-                        () => days = days! > 1 ? days! - 1 : null,
-                      ),
-                onPlus: () => setSheetState(
-                  () => days = days == null
-                      ? 1
-                      : (days! < 365 ? days! + 1 : days),
-                ),
               ),
             ],
           ),
@@ -2059,14 +2061,15 @@ class _StepperButton extends StatelessWidget {
             height: 72,
             alignment: Alignment.center,
             decoration: BoxDecoration(
-              color: AppColors.secondaryFill,
+              color: AppColors.surface,
               borderRadius: BorderRadius.circular(18),
-              border: Border.all(color: AppColors.strongLine, width: 2),
+              // 테두리 대신 그림자로 띄운다 — 다른 화면과 같은 손짓이다.
+              boxShadow: enabled ? kRaisedShadow : null,
             ),
             child: Icon(
               icon,
               size: 32,
-              color: enabled ? AppColors.textBody : AppColors.inactive,
+              color: enabled ? AppColors.point : AppColors.inactive,
             ),
           ),
         ),
@@ -2198,6 +2201,9 @@ class _DetailLine extends StatelessWidget {
 /// 처방전에는 때가 안 적혀 있는 일이 흔하다. 숫자만 보고 앱이 정하면
 /// 1일 1회 약이 모두 아침으로 가는데, 저녁에 드시는 약이 적지 않다.
 /// 그래서 한 번은 사람 눈으로 보고 넘긴다.
+///
+/// 몇 시인지는 적지 않는다. 아침을 몇 시에 드시는지는 사람마다 다르고,
+/// 소리로 울릴 시각은 알림에서 따로 고른다.
 class _SlotPicker extends StatelessWidget {
   final Set<String> selected;
   final ValueChanged<String> onToggle;
@@ -2205,9 +2211,9 @@ class _SlotPicker extends StatelessWidget {
   const _SlotPicker({required this.selected, required this.onToggle});
 
   static const List<(String, String)> _slots = [
-    ('아침', '아침 8시'),
-    ('점심', '점심 1시'),
-    ('저녁', '저녁 8시'),
+    ('아침', '아침'),
+    ('점심', '점심'),
+    ('저녁', '저녁'),
     ('취침전', '자기 전'),
   ];
 
