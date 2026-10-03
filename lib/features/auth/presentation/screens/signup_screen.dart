@@ -1043,9 +1043,17 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
                           crossAxisAlignment: CrossAxisAlignment.end,
                           children: [
                             Expanded(
-                              child: Text(
-                                cur.title,
-                                style: AppText.screenTitle(size: 27),
+                              // 제목은 한 줄로 둔다. 접히면 "어떤 약이었나 /
+                              // 요?"가 되어 묻는 말이 두 동강 난다. 자리가
+                              // 모자라면 글자를 조금 줄인다.
+                              child: FittedBox(
+                                fit: BoxFit.scaleDown,
+                                alignment: Alignment.bottomLeft,
+                                child: Text(
+                                  cur.title,
+                                  maxLines: 1,
+                                  style: AppText.screenTitle(size: 27),
+                                ),
                               ),
                             ),
                             const SizedBox(width: 10),
