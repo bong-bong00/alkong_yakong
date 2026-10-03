@@ -36,7 +36,7 @@ void main() {
     // 아침은 드셨고 점심은 없고 저녁이 남았다.
     expect(find.textContaining('아침'), findsWidgets);
     expect(find.textContaining('없음'), findsWidgets);
-    expect(find.text('먹었어요'), findsOneWidget);
+    expect(find.text('복용 완료'), findsOneWidget);
   });
 
   testWidgets('내 약 목록이 가짜 약 세 가지를 그린다', (tester) async {

@@ -188,7 +188,7 @@ void main() {
     }
   });
 
-  testWidgets('기기가 없으면 먹었어요가 묻지 않고 바로 기록한다 (13)', (tester) async {
+  testWidgets('기기가 없으면 복용 완료가 묻지 않고 바로 기록한다 (13)', (tester) async {
     tester.view.physicalSize = const Size(390, 844);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.reset);
@@ -208,8 +208,8 @@ void main() {
     );
     await tester.pump();
 
-    expect(find.text('먹었어요'), findsOneWidget);
-    await tester.tap(find.text('먹었어요'));
+    expect(find.text('복용 완료'), findsOneWidget);
+    await tester.tap(find.text('복용 완료'));
     await tester.pumpAndSettle();
     if (find.text('네 알겠어요').evaluate().isNotEmpty) {
       await tester.tap(find.text('네 알겠어요'));
@@ -278,7 +278,7 @@ void main() {
     expect(done, 0);
     // 재고 나면 같은 단추가 약 기록으로 바뀐다.
     expect(find.text('측정'), findsNothing);
-    expect(find.text('먹었어요'), findsWidgets);
+    expect(find.text('복용 완료'), findsWidgets);
   });
 
   testWidgets('드신 뒤 재지 않고 나오면 홈에 재는 단추가 남는다', (tester) async {
@@ -312,7 +312,7 @@ void main() {
     await tester.tap(find.text('심박수'));
     await tester.pumpAndSettle();
     // 걸음 칸에도 같은 말이 있어 큰 단추 쪽을 골라 누른다.
-    await tester.tap(find.text('먹었어요').last);
+    await tester.tap(find.text('복용 완료').last);
     await tester.pumpAndSettle();
     if (find.text('네 알겠어요').evaluate().isNotEmpty) {
       await tester.tap(find.text('네 알겠어요'));
@@ -325,7 +325,7 @@ void main() {
     expect(find.text('먹은 뒤 재기'), findsOneWidget);
 
     // 지금 재지 않겠다고 할 수도 있어야 한다.
-    await tester.tap(find.text('나중에 재기'));
+    await tester.tap(find.text('측정 건너뛰기'));
     await tester.pumpAndSettle();
     expect(find.text('측정'), findsNothing);
   });
@@ -1084,8 +1084,8 @@ void _homeTimelineTests() {
     );
     await tester.pump();
 
-    // 할 일은 하나다. "먹었어요"가 두 개면 무엇을 눌러야 할지 고르게 된다.
-    expect(find.text('먹었어요'), findsOneWidget);
+    // 할 일은 하나다. "복용 완료"가 두 개면 무엇을 눌러야 할지 고르게 된다.
+    expect(find.text('복용 완료'), findsOneWidget);
     // 시간 축 막대는 두지 않는다 — 카드 한 장으로 말한다.
     expect(find.byType(TimelineRow), findsNothing);
   });
@@ -1264,7 +1264,7 @@ void _homeTimelineTests() {
     await tester.pump();
 
     // 기본은 아직 안 드신 저녁. 아침을 누르면 단추가 그쪽을 맡는다.
-    expect(find.text('먹었어요'), findsWidgets);
+    expect(find.text('복용 완료'), findsWidgets);
     await tester.tap(find.text('아침'));
     await tester.pumpAndSettle();
     expect(find.text('취소하기'), findsOneWidget);
@@ -1275,7 +1275,7 @@ void _homeTimelineTests() {
     expect(find.text('아직'), findsWidgets);
 
     // 그 자리에서 다시 드시면 지금 시각이 적힌다.
-    await tester.tap(find.text('먹었어요').last);
+    await tester.tap(find.text('복용 완료').last);
     await tester.pumpAndSettle();
     if (find.text('네 알겠어요').evaluate().isNotEmpty) {
       await tester.tap(find.text('네 알겠어요'));
@@ -1351,7 +1351,7 @@ void _homeTimelineTests() {
     expect(find.text('센서 연결'), findsNothing);
   });
 
-  testWidgets('아직 드시지 않았으면 큰 단추가 "먹었어요"다', (tester) async {
+  testWidgets('아직 드시지 않았으면 큰 단추가 "복용 완료"다', (tester) async {
     await tester.pumpWidget(
       home(
         doses: const [
@@ -1369,7 +1369,7 @@ void _homeTimelineTests() {
     await tester.pump();
 
     expect(find.textContaining('2번 남았어요'), findsOneWidget);
-    expect(find.text('먹었어요'), findsOneWidget);
+    expect(find.text('복용 완료'), findsOneWidget);
     // 알림 화면으로 가는 네모 칸. 맞춰 둔 시각만 적는다(자명종 그림이 있다).
     // 어느 시각이 나오는지는 지금 몇 시인지에 따라 다르다 — 꼴만 본다.
     expect(
