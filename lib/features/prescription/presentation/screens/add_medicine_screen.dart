@@ -140,7 +140,7 @@ class _AddMedicineScreenState extends State<AddMedicineScreen> {
                   // 가장 쉬운 길 하나만 파란 면으로 크게 둔다.
                   _PrimaryWay(
                     icon: TablerIcons.camera,
-                    label: '촬영',
+                    label: '카메라 촬영',
                     sub: '가장 쉽고 빨라요',
                     onTap: () => widget.onPick(AddMedicineMethod.camera),
                   ),

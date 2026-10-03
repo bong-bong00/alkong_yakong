@@ -710,7 +710,12 @@ class _CaptureScreen extends StatelessWidget {
       backgroundColor: AppColors.cameraBg,
       body: Column(
         children: [
-          SeniorBackHeader(title: '처방전 등록', onDark: true, onBack: onBack),
+          SeniorBackHeader(
+            // 찍기 전에는 찍는 화면, 사진이 올라온 뒤에는 등록 화면이다.
+            title: image == null ? '카메라 촬영' : '처방전 등록',
+            onDark: true,
+            onBack: onBack,
+          ),
           if (onBehalfOf != null)
             Padding(
               padding: const EdgeInsets.fromLTRB(22, 4, 22, 0),
@@ -729,8 +734,15 @@ class _CaptureScreen extends StatelessWidget {
                             padding: const EdgeInsets.fromLTRB(22, 18, 22, 8),
                             child: ClipRRect(
                               borderRadius: BorderRadius.circular(22),
-                              child: AspectRatio(
-                                aspectRatio: 3 / 4,
+                              // 단추 위 자리를 그대로 쓴다. 3:4로 가두면
+                              // 아래가 비는데도 처방전 글씨가 작게 들어가
+                              // 제대로 찍혔는지 알아보기 어렵다. 사진
+                              // 비율은 contain이 지키므로 잘리지 않는다.
+                              child: SizedBox(
+                                width: double.infinity,
+                                height: constraints.maxHeight > 400
+                                    ? constraints.maxHeight - 126
+                                    : 280,
                                 child: Image.file(image!, fit: BoxFit.contain),
                               ),
                             ),
@@ -765,12 +777,12 @@ class _CaptureScreen extends StatelessWidget {
                                     number: '1',
                                     text: '밝은 곳에 처방전이\n잘 보이게 펼쳐 놓으세요',
                                   ),
-                                  const _CaptureTipArrow(),
+                                  const SizedBox(height: 14),
                                   _CaptureTip(
                                     number: '2',
                                     text: '종이 네 모서리가\n사진에 다 나오게 하세요',
                                   ),
-                                  const _CaptureTipArrow(),
+                                  const SizedBox(height: 14),
                                   _CaptureTip(
                                     number: '3',
                                     text: '두 손으로 잡고\n흔들리지 않게 찍으세요',
@@ -908,32 +920,6 @@ class _CaptureTip extends StatelessWidget {
           ),
         ),
       ],
-    );
-  }
-}
-
-class _CaptureTipArrow extends StatelessWidget {
-  const _CaptureTipArrow();
-
-  @override
-  Widget build(BuildContext context) {
-    // 긴 화살표를 번호 동그라미(40px) 바로 아래, 같은 세로줄에 둔다.
-    return const Padding(
-      padding: EdgeInsets.symmetric(vertical: 4),
-      // 화살표 그림(48)이 동그라미 칸(40)보다 넓어, 넘치는 만큼 양쪽으로
-      // 고르게 나눠 동그라미 중심과 같은 세로줄에 맞춘다.
-      child: SizedBox(
-        width: 40,
-        height: 48,
-        child: OverflowBox(
-          maxWidth: 48,
-          child: Icon(
-            TablerIcons.arrow_narrow_down,
-            size: 48,
-            color: AppColors.onDarkMuted,
-          ),
-        ),
-      ),
     );
   }
 }
