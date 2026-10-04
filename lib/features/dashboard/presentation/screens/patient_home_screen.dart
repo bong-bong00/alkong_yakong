@@ -91,7 +91,8 @@ class _PatientHomeScreenState extends ConsumerState<PatientHomeScreen> {
   final _slotsKey = GlobalKey();
   final _bigButtonKey = GlobalKey();
   final _stepsKey = GlobalKey();
-  final _tilesKey = GlobalKey();
+  final _alarmTileKey = GlobalKey();
+  final _sensorTileKey = GlobalKey();
 
   /// 홈 화면을 하나씩 짚어 가며 설명한다.
   void _openHelp() {
@@ -99,35 +100,47 @@ class _PatientHomeScreenState extends ConsumerState<PatientHomeScreen> {
     CoachMarks.show(context, [
       CoachMark(
         target: _slotsKey,
-        title: '아침 · 점심 · 저녁',
+        title: '복용 시간대 선택',
         body:
-            '드신 때를 누르면 파랗게 바뀌어요. 아침 약을 낮에 드셔도 됩니다 '
-            '(선택한 시간대로 기록됩니다).',
+            '복용할 시간대를 선택하세요. 정해진 시간과 다른 때에 복용하더라도 '
+            '선택한 시간대로 기록됩니다.',
         boxed: true,
+        radius: 22,
       ),
       if (usesDevice)
         CoachMark(
           target: _stepsKey,
-          title: '세 걸음',
+          title: '심박수 측정 단계',
           body:
-              '센서를 차고 계시면 먹기 전에 한 번, 복용 완료한 뒤에 한 번 '
-              '심박수를 잽니다. 지금 걸음이 파랗게 표시돼요.',
+              '센서가 연결되어 있으면 복용 전과 복용 후에 각각 심박수를 '
+              '측정합니다. 현재 단계가 파란색으로 표시됩니다.',
           boxed: true,
+          radius: 18,
         ),
       CoachMark(
         target: _bigButtonKey,
-        title: '가운데 큰 단추',
+        title: '복용 완료 버튼',
         body:
-            '약을 드신 뒤 누르세요. 누른 그 시각으로 적힙니다. '
-            '잘못 눌렀으면 같은 자리가 "취소하기"로 바뀌어요.',
+            '약을 복용한 뒤 누르면 누른 시각으로 복용이 기록됩니다. 잘못 '
+            '눌렀다면 같은 버튼이 "취소하기"로 바뀌어 기록을 취소할 수 있습니다.',
+        // 테가 뛸 때 1.09배까지 커진다. 그만큼 둘레를 더 밝혀 둔다.
+        padding: 16,
       ),
       CoachMark(
-        target: _tilesKey,
-        title: '알람과 센서',
-        body:
-            '왼쪽 박스는 다음에 울릴 시각이에요. 눌러서 바꿀 수 있어요. '
-            '오른쪽 박스로 심박 센서를 연결하거나 끊습니다.',
+        target: _alarmTileKey,
+        title: '알람',
+        body: '다음 복약 알람 시각입니다. 누르면 알람 시각을 변경할 수 있습니다.',
         boxed: true,
+        radius: 18,
+      ),
+      CoachMark(
+        target: _sensorTileKey,
+        title: usesDevice ? '기기 연결 해제' : '센서 연결',
+        body: usesDevice
+            ? '연결된 심박 센서의 연결을 해제합니다.'
+            : '심박 센서를 연결합니다. 연결하면 복용 전후로 심박수를 측정할 수 있습니다.',
+        boxed: true,
+        radius: 18,
       ),
     ]);
   }
@@ -610,7 +623,8 @@ class _PatientHomeScreenState extends ConsumerState<PatientHomeScreen> {
                       // 위아래 여백을 같게 둔다. 두 칸 정가운데에 단추가 온다.
                       SizedBox(height: gap),
                       _HomeTiles(
-                        key: _tilesKey,
+                        alarmKey: _alarmTileKey,
+                        sensorKey: _sensorTileKey,
                         alarmLabel: _nextAlarmLabel(
                           ref.watch(alarmPreferencesProvider),
                         ),
@@ -745,6 +759,11 @@ class _SlotChips extends StatelessWidget {
         : isPicked
         ? Colors.white
         : AppColors.point;
+    // 아래 줄(미복용·드신 시각)은 검정으로 둔다. 위 이름까지 파랑이면
+    // 칸 전체가 한 덩어리로 보여 상태가 눈에 들어오지 않는다.
+    final underColor = dose != null && !isPicked
+        ? AppColors.textPrimary
+        : foreground;
 
     return Semantics(
       button: dose != null,
@@ -786,7 +805,7 @@ class _SlotChips extends StatelessWidget {
                     Text(
                       under,
                       textAlign: TextAlign.center,
-                      style: AppText.cardTitle(size: 16, color: foreground),
+                      style: AppText.cardTitle(size: 16, color: underColor),
                     ),
                   ],
                 ),
@@ -966,8 +985,9 @@ class _BigDoseButton extends StatefulWidget {
   final VoidCallback? onTake;
   final VoidCallback? onUndo;
 
-  /// 도움말이 짚을 자리. 둘레 테와 여백을 뺀 진한 동그라미에만 단다 —
-  /// 단추 자리 전체를 짚으면 동그라미가 위아래 칸까지 덮는다.
+  /// 도움말이 짚을 자리. 뛰는 둘레 테까지 감싸는 자리에 단다 — 단추
+  /// 자리 전체를 짚으면 위아래 칸까지 덮고, 진한 동그라미만 짚으면
+  /// 뛰는 테가 그늘 밖으로 삐져나온다.
   final GlobalKey? focusKey;
 
   const _BigDoseButton({
@@ -1155,25 +1175,31 @@ class _BigDoseButtonState extends State<_BigDoseButton>
                                   OverflowBox(
                                     maxWidth: halo,
                                     maxHeight: halo,
-                                    child: AnimatedBuilder(
-                                      animation: _pulse,
-                                      builder: (context, child) =>
-                                          Transform.scale(
-                                            scale: beating ? _pulse.value : 1.0,
-                                            child: child,
+                                    child: SizedBox(
+                                      key: widget.focusKey,
+                                      width: halo,
+                                      height: halo,
+                                      child: AnimatedBuilder(
+                                        animation: _pulse,
+                                        builder: (context, child) =>
+                                            Transform.scale(
+                                              scale: beating
+                                                  ? _pulse.value
+                                                  : 1.0,
+                                              child: child,
+                                            ),
+                                        child: Container(
+                                          width: halo,
+                                          height: halo,
+                                          decoration: const BoxDecoration(
+                                            color: AppColors.pointHalo,
+                                            shape: BoxShape.circle,
                                           ),
-                                      child: Container(
-                                        width: halo,
-                                        height: halo,
-                                        decoration: const BoxDecoration(
-                                          color: AppColors.pointHalo,
-                                          shape: BoxShape.circle,
                                         ),
                                       ),
                                     ),
                                   ),
                                   Container(
-                                    key: widget.focusKey,
                                     width: size,
                                     height: size,
                                     alignment: Alignment.center,
@@ -1307,8 +1333,13 @@ class _HomeTiles extends StatelessWidget {
   final VoidCallback? onDisconnectDevice;
   final VoidCallback? onOpenMedicines;
 
+  /// 도움말이 칸 하나하나를 따로 짚을 자리.
+  final GlobalKey? alarmKey;
+  final GlobalKey? sensorKey;
+
   const _HomeTiles({
-    super.key,
+    this.alarmKey,
+    this.sensorKey,
     required this.alarmLabel,
     this.onOpenAlarm,
     this.onConnectDevice,
@@ -1322,6 +1353,7 @@ class _HomeTiles extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Expanded(
+          key: alarmKey,
           child: _tile(
             icon: TablerIcons.alarm,
             label: alarmLabel,
@@ -1330,6 +1362,7 @@ class _HomeTiles extends StatelessWidget {
         ),
         const SizedBox(width: 16),
         Expanded(
+          key: sensorKey,
           child: onConnectDevice != null
               ? _tile(
                   icon: TablerIcons.heart,

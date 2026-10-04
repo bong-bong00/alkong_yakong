@@ -5,8 +5,6 @@ import 'package:flutter_tabler_icons/flutter_tabler_icons.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/network/api_client.dart';
 import '../../../../core/theme/app_typography.dart';
-import '../../../../core/widgets/coach_marks.dart';
-import '../../../../core/widgets/help_button.dart';
 import '../../../../core/widgets/senior_button.dart';
 import '../../../../core/widgets/senior_card.dart';
 import '../../../../core/widgets/senior_feedback.dart';
@@ -21,7 +19,7 @@ import 'guardian_prescription_screen.dart';
 /// 서버에 연결된 어르신만 보여준다. 연결을 요청한 분은 어르신이 수락할 때까지
 /// "수락을 기다리는 중"으로 따로 둔다 — 동의 없이 남의 복약을 들여다보는 길을
 /// 만들지 않는다.
-class CareFamilyScreen extends ConsumerStatefulWidget {
+class CareFamilyScreen extends ConsumerWidget {
   /// 어르신 카드를 눌렀을 때.
   final ValueChanged<CarePatient> onOpenPatient;
 
@@ -38,62 +36,27 @@ class CareFamilyScreen extends ConsumerStatefulWidget {
     this.repository,
   });
 
-  @override
-  ConsumerState<CareFamilyScreen> createState() => _CareFamilyScreenState();
-}
+  GuardianRepository get _repository => repository ?? GuardianRepository();
 
-class _CareFamilyScreenState extends ConsumerState<CareFamilyScreen> {
-  // 도움말이 동그라미를 칠 자리들.
-  final _bellKey = GlobalKey();
-  final _prescriptionKey = GlobalKey();
-  final _patientsKey = GlobalKey();
-
-  GuardianRepository get _repository =>
-      widget.repository ?? GuardianRepository();
-
-  /// 이 화면을 짚어 가며 설명한다. 어르신이 아직 없으면 짚을 칸이
-  /// 그려지지 않으므로 그 장은 저절로 빠진다.
-  void _showHelp() {
-    CoachMarks.show(context, [
-      CoachMark(
-        target: _bellKey,
-        title: '알림',
-        body:
-            '약을 거르셨거나 심박이 높았던 일이 여기 모여요. '
-            '빨간 숫자는 확인이 필요한 분 수예요.',
-      ),
-      CoachMark(
-        target: _prescriptionKey,
-        title: '처방전 대신 찍기',
-        body: '어르신 대신 처방전을 찍어 보내면 그분 약 목록에 바로 들어가요.',
-        boxed: true,
-      ),
-      CoachMark(
-        target: _patientsKey,
-        title: '돌보는 분',
-        body:
-            '오늘 약을 드셨는지 한눈에 보여요. '
-            '누르면 기록을 보고 전화를 걸 수 있어요.',
-        boxed: true,
-      ),
-    ]);
-  }
-
-  Future<void> _cancel(PendingInvite invite) async {
+  Future<void> _cancel(
+    BuildContext context,
+    WidgetRef ref,
+    PendingInvite invite,
+  ) async {
     final id = invite.id;
     if (id == null) return;
     try {
       await _repository.remove(id);
       ref.invalidate(careOverviewProvider);
     } on ApiException catch (error) {
-      if (mounted) {
+      if (context.mounted) {
         showSeniorSnackbar(context, error.message, error: true);
       }
     }
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final overview = ref.watch(careOverviewProvider);
     final data = overview.valueOrNull;
     final patients = data?.patients ?? const <CarePatient>[];
@@ -107,20 +70,9 @@ class _CareFamilyScreenState extends ConsumerState<CareFamilyScreen> {
         // (돌보는 분 · 정보)이 이미 말해 준다.
         SeniorTitleHeader(
           title: data == null ? '돌보는 분' : '돌보는 분 ${patients.length}명',
-          trailing: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              HelpButton(onTap: _showHelp, size: 52),
-              if (widget.onOpenAlerts != null) ...[
-                const SizedBox(width: 10),
-                _AlertBell(
-                  key: _bellKey,
-                  count: needAttention.length,
-                  onTap: widget.onOpenAlerts!,
-                ),
-              ],
-            ],
-          ),
+          trailing: onOpenAlerts == null
+              ? null
+              : _AlertBell(count: needAttention.length, onTap: onOpenAlerts!),
         ),
         Expanded(
           // 당겨서 새로고침을 두지 않는다. 돌보는 분이 몇 분 안 되면 목록이
@@ -152,7 +104,6 @@ class _CareFamilyScreenState extends ConsumerState<CareFamilyScreen> {
                 if (patients.isNotEmpty) ...[
                   // 처방전을 대신 넣어 주는 길. 누르면 어느 분인지 고른다.
                   SeniorButton(
-                    key: _prescriptionKey,
                     label: '처방전 대신 찍기',
                     icon: TablerIcons.camera,
                     kind: SeniorButtonKind.card,
@@ -166,23 +117,19 @@ class _CareFamilyScreenState extends ConsumerState<CareFamilyScreen> {
                   ),
                   const SizedBox(height: 12),
                 ],
-                if (patients.isNotEmpty)
-                  Column(
-                    key: _patientsKey,
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      for (int i = 0; i < patients.length; i++) ...[
-                        if (i > 0) const SizedBox(height: 12),
-                        _PatientCard(
-                          patient: patients[i],
-                          onTap: () => widget.onOpenPatient(patients[i]),
-                        ),
-                      ],
-                    ],
+                for (int i = 0; i < patients.length; i++) ...[
+                  if (i > 0) const SizedBox(height: 12),
+                  _PatientCard(
+                    patient: patients[i],
+                    onTap: () => onOpenPatient(patients[i]),
                   ),
+                ],
                 for (final invite in pending) ...[
                   const SizedBox(height: 12),
-                  _PendingCard(invite: invite, onCancel: () => _cancel(invite)),
+                  _PendingCard(
+                    invite: invite,
+                    onCancel: () => _cancel(context, ref, invite),
+                  ),
                 ],
               ],
             ),
@@ -198,7 +145,7 @@ class _AlertBell extends StatelessWidget {
   final int count;
   final VoidCallback onTap;
 
-  const _AlertBell({super.key, required this.count, required this.onTap});
+  const _AlertBell({required this.count, required this.onTap});
 
   @override
   Widget build(BuildContext context) {

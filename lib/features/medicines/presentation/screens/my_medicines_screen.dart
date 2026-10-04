@@ -76,27 +76,38 @@ class _MedicineList extends StatefulWidget {
 
 class _MedicineListState extends State<_MedicineList> {
   // 도움말이 동그라미를 칠 자리들.
-  final _actionsKey = GlobalKey();
-  final _listKey = GlobalKey();
+  final _prescriptionKey = GlobalKey();
+  final _chatKey = GlobalKey();
+  final _medicineKey = GlobalKey();
 
   /// 이 화면을 짚어 가며 설명한다.
   void _showHelp() {
     CoachMarks.show(context, [
       CoachMark(
-        target: _actionsKey,
-        title: '약 넣기와 챗봇',
-        body:
-            '왼쪽 박스로 처방전을 찍어 약을 넣어요. '
-            '오른쪽 박스를 누르면 챗봇에게 약을 물어볼 수 있어요.',
+        target: _prescriptionKey,
+        title: '처방전 등록',
+        body: '처방전을 등록하면 처방된 약이 내 약 목록에 추가됩니다.',
         boxed: true,
+        radius: 26,
       ),
       CoachMark(
-        target: _listKey,
-        title: '지금 드시는 약',
-        body:
-            '약을 누르면 무슨 약인지, 얼마나 언제 드시는지 볼 수 있어요. '
-            '빨간 테두리는 다른 약과 겹치는 데가 있다는 뜻이에요.',
+        target: _chatKey,
+        title: 'AI 약사 상담',
+        body: '복용 중인 약에 대해 AI 약사에게 질문할 수 있습니다.',
         boxed: true,
+        radius: 26,
+      ),
+      CoachMark(
+        target: _medicineKey,
+        title: '복용 중인 약',
+        body:
+            '빨간 테두리는 함께 복용 시 주의가 필요한 약입니다. '
+            '약을 누르면 효능과 복용법을 볼 수 있습니다.',
+        boxed: true,
+        radius: 26,
+        // 목록 위에는 설명이 들어갈 자리가 없다. 위에 두면 짚은 약을
+        // 가리므로 아래 넓은 자리에 둔다.
+        placement: CoachPlacement.below,
       ),
     ]);
   }
@@ -109,6 +120,7 @@ class _MedicineListState extends State<_MedicineList> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Expanded(
+            key: _prescriptionKey,
             child: _ActionTile(
               icon: TablerIcons.camera,
               label: '처방전 등록',
@@ -118,6 +130,7 @@ class _MedicineListState extends State<_MedicineList> {
           ),
           const SizedBox(width: 14),
           Expanded(
+            key: _chatKey,
             child: _ActionTile(
               // 시안은 동그라미 안에 물음표를 둔다. 말풍선은 "대화"를
               // 말하지만 여기서 하는 일은 "묻는" 것이다.
@@ -191,14 +204,11 @@ class _MedicineListState extends State<_MedicineList> {
           ),
           const SizedBox(height: 14),
         ],
-        KeyedSubtree(key: _actionsKey, child: _actions(context)),
+        _actions(context),
         // 머리말을 두지 않는다. 약 줄이 바로 보이면 무엇을 누를지
         // 더 설명할 것이 없다.
         const SizedBox(height: 18),
-        KeyedSubtree(
-          key: _listKey,
-          child: _GroupedMedicines(medicines: active),
-        ),
+        _GroupedMedicines(medicines: active, focusKey: _medicineKey),
         // 지금 안 드시는 약은 줄 하나로 접어 둔다. 목록을 보는 이유는
         // 대부분 "지금 먹는 약"이기 때문이다.
         if (past.isNotEmpty) ...[
@@ -271,7 +281,11 @@ class _ActionTile extends StatelessWidget {
 class _GroupedMedicines extends StatelessWidget {
   final List<UserMedicine> medicines;
 
-  const _GroupedMedicines({required this.medicines});
+  /// 도움말이 짚을 약 한 칸. 목록 전체는 화면보다 길어 설명 붙일 자리가
+  /// 없으므로 한 칸만 짚는다.
+  final GlobalKey? focusKey;
+
+  const _GroupedMedicines({required this.medicines, this.focusKey});
 
   @override
   Widget build(BuildContext context) {
@@ -286,6 +300,15 @@ class _GroupedMedicines extends StatelessWidget {
           ...medicine.interactionConflictNames.map(nameKey),
         ],
     }..remove('');
+    bool conflicts(UserMedicine medicine) =>
+        conflictNames.contains(nameKey(medicine.displayName));
+    // 도움말은 빨간 테두리를 설명하므로 그런 약이 있으면 그 칸을 짚는다.
+    // 보이는 순서(묶음 순)로 고른다.
+    final shown = [
+      for (final type in MedicineUseType.values)
+        ...medicines.where((medicine) => medicine.useType == type),
+    ];
+    final focused = shown.where(conflicts).firstOrNull ?? shown.firstOrNull;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -326,10 +349,9 @@ class _GroupedMedicines extends StatelessWidget {
               (medicine) => medicine.useType == type,
             )) ...[
               _MedicineCard(
+                key: identical(medicine, focused) ? focusKey : null,
                 medicine: medicine,
-                pairConflict: conflictNames.contains(
-                  nameKey(medicine.displayName),
-                ),
+                pairConflict: conflicts(medicine),
               ),
               const SizedBox(height: 12),
             ],
@@ -343,7 +365,11 @@ class _MedicineCard extends StatelessWidget {
   final UserMedicine medicine;
   final bool pairConflict;
 
-  const _MedicineCard({required this.medicine, this.pairConflict = false});
+  const _MedicineCard({
+    super.key,
+    required this.medicine,
+    this.pairConflict = false,
+  });
 
   @override
   Widget build(BuildContext context) {

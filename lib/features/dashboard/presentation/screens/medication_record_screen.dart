@@ -65,25 +65,29 @@ class _MedicationRecordScreenState
     CoachMarks.show(context, [
       CoachMark(
         target: _calendarKey,
-        title: '한 주 달력',
+        title: '이번 주 복약 현황',
         body:
-            '약을 다 드신 날과 거르신 날이 색으로 갈려요. '
-            '날짜를 누르면 그날 기록이 아래 박스에 나옵니다.',
+            '요일별 복약 여부가 색으로 표시됩니다. 날짜를 선택하면 해당 날짜의 '
+            '기록을 아래에서 확인할 수 있고, "달력 보기"에서 월별 기록을 볼 수 있습니다.',
         boxed: true,
       ),
       CoachMark(
         target: _dayKey,
-        title: '그날의 아침 · 점심 · 저녁',
-        body: '복용 완료를 누른 시각이 적혀요. 아직 안 드셨으면 "미복용"입니다.',
+        title: '시간대별 복약 기록',
+        body:
+            '아침 · 점심 · 저녁별로 복용 완료 시각이 기록됩니다. '
+            '아직 복용하지 않은 시간대는 "미복용"으로 표시됩니다.',
         boxed: true,
       ),
       CoachMark(
         target: _heartKey,
         title: '오늘 심박수',
         body:
-            '약 드시기 전과 드신 뒤에 잰 값이에요. '
-            '누르면 심박수 관리 화면으로 갑니다.',
+            '복용 전후에 측정한 심박수가 표시됩니다. '
+            '누르면 심박수 관리 화면으로 이동합니다.',
         boxed: true,
+        radius: 26,
+        placement: CoachPlacement.below,
       ),
     ]);
   }

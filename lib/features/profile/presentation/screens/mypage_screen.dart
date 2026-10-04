@@ -41,7 +41,10 @@ class MyPageScreen extends ConsumerStatefulWidget {
 class _MyPageScreenState extends ConsumerState<MyPageScreen> {
   // 도움말이 동그라미를 칠 자리들.
   final _healthKey = GlobalKey();
-  final _tilesKey = GlobalKey();
+  final _alarmKey = GlobalKey();
+  final _sensorKey = GlobalKey();
+  final _familyKey = GlobalKey();
+  final _historyKey = GlobalKey();
 
   /// 이 화면을 짚어 가며 설명한다.
   void _showHelp() {
@@ -50,16 +53,33 @@ class _MyPageScreenState extends ConsumerState<MyPageScreen> {
         target: _healthKey,
         title: '내 건강 정보',
         body:
-            '나이 · 혈액형 · 알레르기 · 앓는 병이에요. 약이 서로 맞는지 '
-            '볼 때 씁니다. 오른쪽 위 "수정"으로 고치세요.',
+            '나이, 혈액형, 알레르기, 보유 질환 정보입니다. 약물 상호작용을 '
+            '확인할 때 사용되며, 오른쪽 위 "수정"에서 변경할 수 있습니다.',
+        boxed: true,
+        radius: 26,
+      ),
+      CoachMark(
+        target: _alarmKey,
+        title: '알람',
+        body: '복약 알람 시각을 설정합니다.',
         boxed: true,
       ),
       CoachMark(
-        target: _tilesKey,
-        title: '알람 · 센서 · 가족',
-        body:
-            '왼쪽 박스로 약 드실 시각을 맞추고, 가운데 박스로 심박 센서를 '
-            '연결해요. 오른쪽 박스에서 보호자를 더할 수 있어요.',
+        target: _sensorKey,
+        title: '센서',
+        body: '심박 센서를 연결하거나 연결을 해제합니다.',
+        boxed: true,
+      ),
+      CoachMark(
+        target: _familyKey,
+        title: '가족',
+        body: '보호자를 초대하거나 연결된 가족을 확인할 수 있습니다.',
+        boxed: true,
+      ),
+      CoachMark(
+        target: _historyKey,
+        title: '처방전 기록',
+        body: '지금까지 등록한 처방전을 날짜별로 확인할 수 있습니다.',
         boxed: true,
       ),
     ]);
@@ -165,11 +185,11 @@ class _MyPageScreenState extends ConsumerState<MyPageScreen> {
 
                     // ── 알림 · 센서 · 가족 세 칸 ──
                     IntrinsicHeight(
-                      key: _tilesKey,
                       child: Row(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
                           Expanded(
+                            key: _alarmKey,
                             child: _SquareTile(
                               // 오늘 화면의 알람 칸과 같은 그림·같은 말을
                               // 쓴다. 한 가지를 두 이름으로 부르지 않는다.
@@ -184,6 +204,7 @@ class _MyPageScreenState extends ConsumerState<MyPageScreen> {
                           ),
                           const SizedBox(width: 12),
                           Expanded(
+                            key: _sensorKey,
                             child: _SquareTile(
                               icon: TablerIcons.heart,
                               label: '센서',
@@ -196,6 +217,7 @@ class _MyPageScreenState extends ConsumerState<MyPageScreen> {
                           ),
                           const SizedBox(width: 12),
                           Expanded(
+                            key: _familyKey,
                             child: _SquareTile(
                               icon: TablerIcons.users,
                               label: '가족',
@@ -214,6 +236,7 @@ class _MyPageScreenState extends ConsumerState<MyPageScreen> {
 
                     // ── 지금까지 넣은 처방전 ──
                     SeniorCard(
+                      key: _historyKey,
                       padding: const EdgeInsets.symmetric(
                         horizontal: 22,
                         vertical: 4,
