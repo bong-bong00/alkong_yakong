@@ -659,7 +659,7 @@ class _AlertCard extends StatelessWidget {
                 style: AppText.cardTitle(
                   size: 18,
                   color: _barColor,
-                  weight: FontWeight.w900,
+                  weight: FontWeight.w800,
                 ),
                 // 첫 줄 위에 남는 행간을 끈다. 마지막 줄 아래도 껐으므로
                 // 글자와 카드 사이가 위아래 같은 폭으로 떨어진다.

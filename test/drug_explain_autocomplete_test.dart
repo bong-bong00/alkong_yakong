@@ -442,9 +442,7 @@ void main() {
     expect(find.text('이 약에 대해 많이 묻는 것'), findsNothing);
     await pickSubject(tester, '게보린정');
     // 질문 카드만 집어 누른다 — 같은 글이 대화에도 남아 있다.
-    final again = find.byKey(
-      const ValueKey('suggestion-꼭 식사 후에 복용해야 하나요?'),
-    );
+    final again = find.byKey(const ValueKey('suggestion-꼭 식사 후에 복용해야 하나요?'));
     await tester.scrollUntilVisible(
       again,
       200,
@@ -812,7 +810,7 @@ void main() {
     await tester.pumpAndSettle();
   });
 
-  testWidgets('약 전체 답변은 확인된 공식 제품명만 굵은 녹색으로 강조한다', (tester) async {
+  testWidgets('약 전체 답변은 확인된 공식 제품명만 굵은 파랑으로 강조한다', (tester) async {
     final originalUserId = MvpSession.userId;
     MvpSession.userId = 'highlight-user';
     addTearDown(() => MvpSession.userId = originalUserId);
@@ -849,8 +847,8 @@ void main() {
         .whereType<TextSpan>()
         .where(
           (span) =>
-              span.style?.color == AppColors.detailEmphasis &&
-              span.style?.fontWeight == FontWeight.w700,
+              span.style?.color == AppColors.point &&
+              span.style?.fontWeight == FontWeight.w600,
         )
         .map((span) => span.text)
         .toList();
@@ -889,7 +887,7 @@ void main() {
     );
     final highlighted = (answer.textSpan! as TextSpan).children!
         .whereType<TextSpan>()
-        .where((span) => span.style?.color == AppColors.detailEmphasis)
+        .where((span) => span.style?.color == AppColors.point)
         .map((span) => span.text)
         .toList();
     expect(highlighted, ['코다론정']);
@@ -1026,7 +1024,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('약 고르기'), findsOneWidget);
-    expect(find.text('이렇게 물어보셔도 돼요'), findsOneWidget);
+    expect(find.text('이렇게 물어보세요'), findsOneWidget);
     expect(find.text('아침 약이랑 우유 같이 먹어도 돼요?'), findsOneWidget);
     expect(find.text('혈압약이랑 관절약 같이 먹어도 돼요?'), findsOneWidget);
     expect(find.text('졸리지 않는 감기약이 있어요?'), findsOneWidget);
@@ -1292,8 +1290,8 @@ void main() {
     await tester.ensureVisible(find.text('속이 울렁거리는데 괜찮나요?'));
     await tester.tap(find.text('속이 울렁거리는데 괜찮나요?'));
     await tester.pump();
-    await tester.tap(find.text('꼭 식사 후에 복용해야 하나요?'), warnIfMissed: false);
-    await tester.pump();
+    // 물어보는 순간 질문 보기가 걷히므로 두 번 눌릴 일이 없다.
+    expect(find.text('꼭 식사 후에 복용해야 하나요?'), findsNothing);
     expect(sentMessages, ['게보린정을 먹고 속이 울렁거리는데 괜찮은가요?']);
 
     firstReply.complete(jsonResponse({'reply': '부작용 답변'}));

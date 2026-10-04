@@ -269,7 +269,7 @@ class SeniorListRow extends StatelessWidget {
                     style: AppText.label(
                       size: 20,
                       color: labelColor,
-                      weight: FontWeight.w700,
+                      weight: FontWeight.w600,
                     ),
                   ),
                   if (subtitle != null)

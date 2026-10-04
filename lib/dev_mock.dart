@@ -43,6 +43,22 @@ const bool kMockData = false;
 /// 배포 빌드에서는 절대 먹지 않는다.
 bool get mockData => kMockData && kDebugMode;
 
+/// 로그인 화면을 건너뛰고 **실 데이터**로 열 사람.
+///
+/// 가짜 데이터([kMockData])와는 다르다. 서버에 그대로 묻고 서버가 주는
+/// 것만 그린다 — 화면이 비면 그 사람에게 등록된 약이 없는 것이다.
+/// 비워 두면 평소대로 로그인 화면이 뜬다.
+///
+/// 저장된 로그인이 있으면 그쪽이 이긴다. 팀원이 이 가지를 받아도 자기
+/// 계정이 그대로 열린다.
+const String kDevUserId = String.fromEnvironment(
+  'DEV_USER_ID',
+  defaultValue: 'mvp-user',
+);
+
+/// 배포 빌드에서는 절대 먹지 않는다.
+bool get devSession => kDevUserId.isNotEmpty && kDebugMode && !mockData;
+
 /// 오늘. 시각만 바꿔 쓰므로 한 번만 만든다.
 DateTime get _today => DateTime.now();
 
@@ -161,7 +177,11 @@ UserMedicine _userMedicine({
   interactionSummary: conflictWhy.isEmpty ? null : conflictWhy,
   interactionPairLabel: conflictWith.isEmpty ? '' : '$name ↔ $conflictWith',
   interactionConflictNames: conflictWith.isEmpty ? const [] : [conflictWith],
-  officialUsageNotice: '식사 후에 물을 넉넉히 드시면서 복용하세요.',
+  // 서버는 용법 문장과 꼬리말을 따로 준다. 가짜도 같은 꼴로 둔다.
+  officialUsage: '식사 후에 물을 넉넉히 드시면서 복용하세요.',
+  officialUsageNotice:
+      '제품 설명서의 일반적인 사용법이에요. 실제로는 처방전과 '
+      '의료진의 안내대로 복용하세요.',
   detailStatus: 'READY',
   detailSourceName: '식약처 의약품 허가정보',
 );
@@ -208,10 +228,7 @@ List<UserMedicine> _mockMedicines() => [
     highlight: '혈관을 막는 것을 예방',
     uses: const [
       // 서버가 내려주는 모양 그대로 — 짧은 말 한 줄과 그 안에서 짚을 낱말.
-      TreatmentUse(
-        title: '심근경색·뇌경색 재발 예방',
-        highlight: '심근경색·뇌경색',
-      ),
+      TreatmentUse(title: '심근경색·뇌경색 재발 예방', highlight: '심근경색·뇌경색'),
       TreatmentUse(
         title: '혈전 예방',
         description: '혈관을 막는 혈전이 생기지 않게 하는 데 사용해요.',
@@ -263,6 +280,20 @@ class _MockUserMedicines extends UserMedicinesController {
 Future<void> applyMockSession() async {
   if (!mockData) return;
   MvpSession.userId = 'mock-patient';
+  await AuthSession.setLoggedIn('patient');
+}
+
+/// 실 데이터를 볼 때도 로그인 화면을 건너뛴다.
+///
+/// 로그인 절차가 아니라 그 뒤의 화면을 보려는 것이다. 저장된 로그인이
+/// 없을 때만 부른다 — 로그인해 둔 사람을 밀어내지 않는다.
+Future<void> applyDevSession() async {
+  if (!devSession) return;
+  // 스스로 나가신 분은 다시 끌고 들어오지 않는다.
+  if (await AuthSession.devAutoLoginBlocked) return;
+  MvpSession.userId = kDevUserId;
+  // 등록된 약이 하나도 없으면 화면이 통째로 비어 무엇이 잘못됐는지
+  // 알 수 없다. setLoggedIn이 보기용 약을 서버에 심어 준다.
   await AuthSession.setLoggedIn('patient');
 }
 

@@ -77,7 +77,7 @@ class RecoveryView extends StatelessWidget {
                       TextSpan(
                         text: reassuranceEmphasis,
                         style: AppText.body(
-                          weight: FontWeight.w700,
+                          weight: FontWeight.w600,
                           color: AppColors.textPrimary,
                         ),
                       ),

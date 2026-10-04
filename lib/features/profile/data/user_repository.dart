@@ -13,13 +13,8 @@ class UserRepository {
   Future<UserProfile> fetch(String userId) async =>
       _profile(await _api.get(_path(userId)));
 
-  Future<UserProfile> signUp(Map<String, dynamic> body) async => _profile(
-    await _api.post(
-      '/api/v1/users',
-      body: body,
-      timeout: const Duration(seconds: 15),
-    ),
-  );
+  Future<UserProfile> signUp(Map<String, dynamic> body) async =>
+      _profile(await _api.post('/api/v1/users', body: body));
 
   Future<UserProfile> login({
     required String phone,
@@ -28,7 +23,6 @@ class UserRepository {
     await _api.post(
       '/api/v1/users/login',
       body: {'phone': phone, 'password': password},
-      timeout: const Duration(seconds: 15),
     ),
   );
 

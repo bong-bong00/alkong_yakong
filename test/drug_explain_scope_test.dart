@@ -58,16 +58,14 @@ void main() {
     SharedPreferences.setMockInitialValues({});
   });
 
-  testWidgets('같은 빠른 질문은 로컬 재사용, 최신 조회 실패는 이전 답변 표시', (tester) async {
+  testWidgets('같은 빠른 질문은 저장해 둔 답을 다시 보여 준다', (tester) async {
     var calls = 0;
-    var offline = false;
     final client = MockClient((request) async {
       if (request.url.path.endsWith('/cache-context')) {
         return response({'verified': true, 'fingerprint': 'health-v1'});
       }
       if (request.method == 'POST') {
         calls++;
-        if (offline) throw http.ClientException('offline');
         return response({
           'reply': '공식 안내를 확인했어요.',
           'sources': ['식약처'],
@@ -103,12 +101,9 @@ void main() {
     await tapCard(tester, '꼭 식사 후에 복용해야 하나요?');
     expect(calls, 1);
     expect(find.textContaining('저장된 답변 ·'), findsOneWidget);
-    offline = true;
-    await tester.ensureVisible(find.text('최신 정보 확인'));
-    await tester.tap(find.text('최신 정보 확인'));
-    await tester.pumpAndSettle();
-    expect(calls, 2);
-    expect(find.textContaining('현재 약·건강정보는 다시 확인하지 않았어요.'), findsOneWidget);
+    // 답 밑에 "최신 정보 확인" 단추는 두지 않는다. 묻고 싶으면 다시
+    // 물으면 된다 — 같은 자리에 단추가 둘이면 무엇이 다른지 알 수 없다.
+    expect(find.text('최신 정보 확인'), findsNothing);
     expect(tester.takeException(), isNull);
   });
 
@@ -223,7 +218,7 @@ void main() {
         .where(
           (span) =>
               span.style?.color == AppColors.danger &&
-              span.style?.fontWeight == FontWeight.w700,
+              span.style?.fontWeight == FontWeight.w600,
         )
         .map((span) => span.text);
     expect(emphasized, ['고혈압', '알코올', '술']);

@@ -413,7 +413,7 @@ class _BiosignalLiveScreenState extends State<BiosignalLiveScreen>
         elevation: 0,
         title: const Text(
           '실시간 심박',
-          style: TextStyle(fontWeight: FontWeight.w800),
+          style: TextStyle(fontWeight: FontWeight.w700),
         ),
       ),
       body: SafeArea(
@@ -458,7 +458,7 @@ class _BiosignalLiveScreenState extends State<BiosignalLiveScreen>
                               : '--',
                           style: TextStyle(
                             fontSize: 56,
-                            fontWeight: FontWeight.w700,
+                            fontWeight: FontWeight.w600,
                             color: hrColor,
                             height: 1,
                           ),
@@ -489,7 +489,7 @@ class _BiosignalLiveScreenState extends State<BiosignalLiveScreen>
                     '실시간 추이',
                     style: TextStyle(
                       fontSize: 16,
-                      fontWeight: FontWeight.w800,
+                      fontWeight: FontWeight.w700,
                       color: kText,
                     ),
                   ),
@@ -572,7 +572,7 @@ class _BiosignalLiveScreenState extends State<BiosignalLiveScreen>
             label,
             style: TextStyle(
               fontSize: 13,
-              fontWeight: FontWeight.w700,
+              fontWeight: FontWeight.w600,
               color: c,
             ),
           ),
@@ -608,7 +608,7 @@ class _BiosignalLiveScreenState extends State<BiosignalLiveScreen>
                 '심박 이상 감지',
                 style: TextStyle(
                   fontSize: 15,
-                  fontWeight: FontWeight.w800,
+                  fontWeight: FontWeight.w700,
                   color: kText,
                 ),
               ),
@@ -641,7 +641,7 @@ class _BiosignalLiveScreenState extends State<BiosignalLiveScreen>
           _isUsualHrMeasuring
               ? '15초 측정 중... $_usualHrRemainingSeconds초'
               : '평소 심박 측정',
-          style: const TextStyle(fontWeight: FontWeight.w700),
+          style: const TextStyle(fontWeight: FontWeight.w600),
         ),
         style: OutlinedButton.styleFrom(
           foregroundColor: color,
@@ -678,7 +678,7 @@ class _BiosignalLiveScreenState extends State<BiosignalLiveScreen>
                     value,
                     style: TextStyle(
                       fontSize: 22,
-                      fontWeight: FontWeight.w800,
+                      fontWeight: FontWeight.w700,
                       color: color,
                     ),
                   ),
@@ -871,7 +871,7 @@ class _LiveDotState extends State<_LiveDot>
             'LIVE',
             style: TextStyle(
               fontSize: 11,
-              fontWeight: FontWeight.w800,
+              fontWeight: FontWeight.w700,
               color: widget.color,
             ),
           ),

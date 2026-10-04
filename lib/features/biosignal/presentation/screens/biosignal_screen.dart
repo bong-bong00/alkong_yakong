@@ -210,7 +210,7 @@ class _BiosignalScreenState extends State<BiosignalScreen> {
                 '이상 이벤트 ${_events.length}건',
                 style: const TextStyle(
                   fontSize: 17,
-                  fontWeight: FontWeight.w800,
+                  fontWeight: FontWeight.w700,
                   color: kText,
                 ),
               ),
@@ -284,7 +284,7 @@ class _DataCard extends StatelessWidget {
         children: [
           Text(
             title,
-            style: TextStyle(fontWeight: FontWeight.w700, color: color),
+            style: TextStyle(fontWeight: FontWeight.w600, color: color),
           ),
           const SizedBox(height: 7),
           ...lines.map(

@@ -9,18 +9,27 @@ import '../../../dashboard/presentation/screens/patient_data.dart';
 
 /// 39 · 돌보는 분 추가 시트.
 ///
-/// 초대를 보낸다고 현황이 열리지는 않는다. **어르신이 수락해야** 열린다.
-/// 무엇이 어르신에게 보이는지도 보내기 전에 그대로 적어 둔다 —
+/// 초대를 보낸다고 현황이 열리지는 않는다. **받는 분이 수락해야** 열린다.
+/// 무엇이 상대에게 보이는지도 보내기 전에 그대로 적어 둔다 —
 /// 내 전화번호가 넘어간다는 사실을 나중에 알게 해서는 안 된다.
-Future<PendingInvite?> showAddCareSheet(BuildContext context) {
+///
+/// 같은 시트를 양쪽이 쓴다. 보호자는 돌볼 어르신을 더하고, 어르신은
+/// 나를 돌볼 보호자를 더한다. 묻는 것은 같고 부르는 말만 다르다.
+Future<PendingInvite?> showAddCareSheet(
+  BuildContext context, {
+  bool asPatient = false,
+}) {
   return SeniorSheet.show<PendingInvite>(
     context: context,
-    builder: (sheetContext) => const _AddCareSheet(),
+    builder: (sheetContext) => _AddCareSheet(asPatient: asPatient),
   );
 }
 
 class _AddCareSheet extends StatefulWidget {
-  const _AddCareSheet();
+  /// 어르신이 보호자를 더하는 자리인지. 아니면 보호자가 어르신을 더한다.
+  final bool asPatient;
+
+  const _AddCareSheet({this.asPatient = false});
 
   @override
   State<_AddCareSheet> createState() => _AddCareSheetState();
@@ -31,7 +40,32 @@ class _AddCareSheetState extends State<_AddCareSheet> {
   final TextEditingController _phone = TextEditingController();
   final TextEditingController _otherRelation = TextEditingController();
 
-  static const List<String> _relations = ['어머니', '아버지', '장모님', '장인어른', '그 외'];
+  static const List<String> _careRelations = [
+    '어머니',
+    '아버지',
+    '장모님',
+    '장인어른',
+    '그 외',
+  ];
+
+  /// 어르신이 고르는 말 — 나를 돌볼 사람이 나와 어떤 사이인지.
+  static const List<String> _guardianRelations = [
+    '아들',
+    '딸',
+    '배우자',
+    '며느리',
+    '사위',
+    '그 외',
+  ];
+
+  List<String> get _relations =>
+      widget.asPatient ? _guardianRelations : _careRelations;
+
+  /// 상대를 부르는 말. 보호자가 보면 "어르신", 어르신이 보면 "보호자".
+  String get _other => widget.asPatient ? '보호자' : '어르신';
+
+  /// 그 말에 붙는 임자 조사 — "보호자가", "어르신이".
+  String get _otherSubject => widget.asPatient ? '보호자가' : '어르신이';
 
   String? _relation;
 
@@ -57,17 +91,17 @@ class _AddCareSheetState extends State<_AddCareSheet> {
   @override
   Widget build(BuildContext context) {
     return SeniorSheet(
-      title: '돌보는 분 추가하기',
+      title: widget.asPatient ? '보호자 추가하기' : '돌보는 분 추가하기',
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const SeniorSheetBody([
-            '어르신 전화번호로 초대를 보냅니다. 어르신이 ',
+          SeniorSheetBody([
+            '$_other 전화번호로 초대를 보냅니다. $_otherSubject ',
             '수락해야',
-            ' 복약 현황이 보입니다.',
+            widget.asPatient ? ' 내 복약 현황이 보입니다.' : ' 복약 현황이 보입니다.',
           ]),
           const SizedBox(height: 18),
-          Text('어르신 성함', style: AppText.label(size: 18)),
+          Text('$_other 성함', style: AppText.label(size: 18)),
           const SizedBox(height: 8),
           SeniorField(
             controller: _name,
@@ -75,6 +109,16 @@ class _AddCareSheetState extends State<_AddCareSheet> {
             onChanged: (_) => setState(() {}),
           ),
           const SizedBox(height: 16),
+          Text('$_other 전화번호', style: AppText.label(size: 18)),
+          const SizedBox(height: 8),
+          SeniorField(
+            controller: _phone,
+            hint: '010-0000-0000',
+            keyboardType: TextInputType.phone,
+            onChanged: (_) => setState(() {}),
+          ),
+          const SizedBox(height: 16),
+          // 누구인지를 먼저 적고, 나와 어떤 사이인지는 마지막에 고른다.
           Text('나와의 관계', style: AppText.label(size: 18)),
           const SizedBox(height: 8),
           Wrap(
@@ -98,15 +142,6 @@ class _AddCareSheetState extends State<_AddCareSheet> {
             ),
           ],
           const SizedBox(height: 16),
-          Text('어르신 전화번호', style: AppText.label(size: 18)),
-          const SizedBox(height: 8),
-          SeniorField(
-            controller: _phone,
-            hint: '010-0000-0000',
-            keyboardType: TextInputType.phone,
-            onChanged: (_) => setState(() {}),
-          ),
-          const SizedBox(height: 16),
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
             decoration: BoxDecoration(
@@ -119,8 +154,8 @@ class _AddCareSheetState extends State<_AddCareSheet> {
                 Text('보내는 내용', style: AppText.label(size: 17.5)),
                 const SizedBox(height: 6),
                 Text(
-                  '이름, 관계, 내 전화번호가 어르신에게 그대로 보입니다. '
-                  '어르신이 수락해야 복약 현황이 열립니다.',
+                  '이름, 관계, 내 전화번호가 $_other에게 그대로 보입니다. '
+                  '$_otherSubject 수락해야 복약 현황이 열립니다.',
                   style: AppText.body(size: 17.5),
                 ),
               ],
@@ -178,7 +213,6 @@ class _RelationChip extends StatelessWidget {
         child: ExcludeSemantics(
           child: Container(
             constraints: const BoxConstraints(minHeight: 52),
-            alignment: Alignment.center,
             padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
             decoration: BoxDecoration(
               color: selected ? AppColors.pointFill : AppColors.sunken,

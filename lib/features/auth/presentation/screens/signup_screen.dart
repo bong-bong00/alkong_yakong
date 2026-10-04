@@ -408,7 +408,7 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
     );
     big(
       _StepDef(
-        title: '기본 정보를\n알려주세요',
+        title: '기본 정보를 알려주세요',
         subtitle: '번호는 로그인과 약 알림에 써요.',
         validate: () {
           if (_name.text.trim().isEmpty) return '이름을 입력해주세요';
@@ -629,7 +629,7 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
 
       big(
         _StepDef(
-          title: '담배를\n피우시나요?',
+          title: '담배를 피우시나요?',
           subtitle: '함께 먹으면 안 좋은 약이 있어요.',
           validate: () => _smoking == null ? '해당하는 것을 골라주세요' : null,
           child: Column(
@@ -649,7 +649,7 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
       );
       big(
         _StepDef(
-          title: '술은 얼마나\n드시나요?',
+          title: '술은 얼마나 드시나요?',
           subtitle: '술과 같이 먹으면 위험한 약이 있어요.',
           validate: () => _drinking == null ? '해당하는 것을 골라주세요' : null,
           child: Column(
@@ -681,7 +681,7 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
 
       big(
         _yesNoStep(
-          title: '약을 먹고 거부 반응이나\n이상 반응이 있으신 적 있나요?',
+          title: '약을 먹고 이상 반응이\n있으신 적 있나요?',
           subtitle: '약 알레르기를 여쭤보는 거예요.',
           answer: _allergyAnswer,
           onAnswer: (v) => _allergyAnswer = v,
@@ -818,9 +818,8 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
       if (_guardianAnswer == 'y') {
         detail(
           _StepDef(
-            title: '누구에게\n알려드릴까요?',
+            title: '누구에게 알려드릴까요?',
             validate: () {
-              if (_guardianRelation == null) return '나와의 관계를 골라주세요';
               if (_guardianName.text.trim().isEmpty) {
                 return '보호자 성함을 입력해주세요';
               }
@@ -830,18 +829,14 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
               if (!_isPhoneComplete(_guardianPhone.text)) {
                 return '전화번호를 다시 확인해주세요';
               }
+              if (_guardianRelation == null) return '나와의 관계를 골라주세요';
               return null;
             },
+            // 누구인지(성함·번호)를 먼저 적고, 나와 어떤 사이인지는
+            // 마지막에 고른다. 다른 곳에서 쓰는 차례와 같다.
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                _sectionLabel('나와의 관계'),
-                _grid(
-                  const ['딸', '아들', '배우자', '다른 분'],
-                  _guardianRelation,
-                  (v) => setState(() => _guardianRelation = v),
-                ),
-                const SizedBox(height: 18),
                 _field(_guardianName, label: '성함', hint: '보호자 성함'),
                 const SizedBox(height: 12),
                 _field(
@@ -849,6 +844,13 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
                   label: '휴대폰 번호',
                   hint: '010-0000-0000',
                   keyboard: TextInputType.phone,
+                ),
+                const SizedBox(height: 18),
+                _sectionLabel('나와의 관계'),
+                _grid(
+                  const ['딸', '아들', '배우자', '다른 분'],
+                  _guardianRelation,
+                  (v) => setState(() => _guardianRelation = v),
                 ),
               ],
             ),
@@ -860,7 +862,7 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
     // 동의는 환자·보호자 공통
     big(
       _StepDef(
-        title: '약관에\n동의해주세요',
+        title: '약관에 동의해주세요',
         subtitle: '필수 3개에 동의하면 가입이 끝나요.',
         validate: () => _allRequired ? null : '필수 3개에 동의해주세요',
         child: Column(
@@ -960,180 +962,197 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
     // 자세히 화면은 앞 단계와 같은 번호를 쓰므로 큰 단계만 센다.
     final bigTotal = steps.last.stepNo;
 
-    return Scaffold(
-      backgroundColor: AppColors.pageBg,
-      body: SafeArea(
-        child: Column(
-          children: [
-            SeniorHeader(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  // 뒤로 버튼이 라벨을 갖게 되면서 한 줄에 셋을 넣으면
-                  // 글자가 커질 때 넘친다. 걸음 표시를 아래로 내린다.
-                  Row(
-                    children: [
-                      SeniorBackButton(onTap: _prev),
-                      const SizedBox(width: 14),
-                      Expanded(
-                        child: Text(
-                          '회원가입',
-                          style: AppText.screenTitle(size: 24),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 10),
-                  Text(
-                    '${cur.stepNo} / $bigTotal',
-                    style: AppText.cardTitle(
-                      size: 18,
-                      color: AppColors.textTertiary,
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(4),
-                    child: LinearProgressIndicator(
-                      value: cur.stepNo / bigTotal,
-                      minHeight: 8,
-                      backgroundColor: AppColors.secondaryFill,
-                      valueColor: const AlwaysStoppedAnimation<Color>(
-                        AppColors.point,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            Expanded(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.fromLTRB(20, 20, 20, 16),
+    // 폰의 뒤로가기도 화면 안 뒤로 단추와 같은 길로 간다. 한 걸음씩
+    // 적어 온 것을 한 번에 버리고 로그인으로 나가 버리면, 고치려고
+    // 누른 사람은 처음부터 다시 적어야 한다.
+    return PopScope(
+      canPop: _step == 0,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) _prev();
+      },
+      child: Scaffold(
+        backgroundColor: AppColors.pageBg,
+        body: SafeArea(
+          child: Column(
+            children: [
+              SeniorHeader(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    // 한 화면에 하나만 묻는다.
-                    if (cur.confirm != null) ...[
-                      // 방금 "네"라고 하신 것을 되짚어 준다 — 다른 질문에
-                      // 답하고 있다고 헷갈리지 않게.
-                      Text(
-                        cur.confirm!,
-                        style: AppText.cardTitle(
-                          size: 19,
-                          color: AppColors.point,
+                    // 뒤로 버튼이 라벨을 갖게 되면서 한 줄에 셋을 넣으면
+                    // 글자가 커질 때 넘친다. 걸음 표시를 아래로 내린다.
+                    Row(
+                      children: [
+                        SeniorBackButton(onTap: _prev),
+                        const SizedBox(width: 14),
+                        Expanded(
+                          child: Text(
+                            '회원가입',
+                            style: AppText.screenTitle(size: 24),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    Text(
+                      '${cur.stepNo} / $bigTotal',
+                      style: AppText.cardTitle(
+                        size: 18,
+                        color: AppColors.textTertiary,
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(4),
+                      child: LinearProgressIndicator(
+                        value: cur.stepNo / bigTotal,
+                        minHeight: 8,
+                        backgroundColor: AppColors.secondaryFill,
+                        valueColor: const AlwaysStoppedAnimation<Color>(
+                          AppColors.point,
                         ),
                       ),
-                      const SizedBox(height: 6),
-                    ],
-                    // 짧은 곁말("여러 개 골라도 돼요")은 제목 오른쪽 끝에
-                    // 한 줄로 붙인다. 긴 곁말까지 옆에 붙이면 제목이
-                    // "어떤 분이신가 / 요?"처럼 접힌다 — 그때는 아래로.
-                    if (cur.subtitle == null)
-                      Text(cur.title, style: AppText.screenTitle(size: 27))
-                    else if (cur.subtitle!.length <= 12)
-                      Row(
-                        crossAxisAlignment: CrossAxisAlignment.end,
-                        children: [
-                          Expanded(
-                            child: Text(
-                              cur.title,
-                              style: AppText.screenTitle(size: 27),
-                            ),
-                          ),
-                          const SizedBox(width: 10),
-                          Flexible(
-                            child: FittedBox(
-                              fit: BoxFit.scaleDown,
-                              alignment: Alignment.bottomRight,
-                              child: Text(
-                                cur.subtitle!,
-                                maxLines: 1,
-                                style: AppText.body(
-                                  size: 17,
-                                  color: AppColors.textTertiary,
-                                ),
-                              ),
-                            ),
-                          ),
-                        ],
-                      )
-                    else ...[
-                      Text(cur.title, style: AppText.screenTitle(size: 27)),
-                      const SizedBox(height: 6),
-                      Text(
-                        cur.subtitle!,
-                        style: AppText.body(
-                          size: 17,
-                          color: AppColors.textTertiary,
-                        ),
-                      ),
-                    ],
-                    const SizedBox(height: 20),
-                    cur.child,
+                    ),
                   ],
                 ),
               ),
-            ),
-            Padding(
-              key: _actionsKey,
-              padding: const EdgeInsets.fromLTRB(20, 0, 20, 30),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  // 넘어가도 되는 단계에서는 "넘어가기"를 왼쪽에 작게 두고
-                  // 가는 단추를 오른쪽에 크게 둔다. 위아래로 쌓으면 둘 다
-                  // 같은 무게로 보여 어느 쪽이 보통 길인지 흐려진다.
-                  if (cur.skippable && !isLast)
-                    IntrinsicHeight(
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          Expanded(
-                            flex: 2,
-                            child: SeniorButton(
-                              label: '넘어가기',
-                              kind: SeniorButtonKind.secondary,
-                              minHeight: 74,
-                              fontSize: 20,
-                              onPressed: _isSubmitting
-                                  ? null
-                                  : () {
-                                      cur.onSkip?.call();
-                                      _skip(steps);
-                                    },
-                            ),
+              Expanded(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.fromLTRB(20, 20, 20, 16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      // 한 화면에 하나만 묻는다.
+                      if (cur.confirm != null) ...[
+                        // 방금 "네"라고 하신 것을 되짚어 준다 — 다른 질문에
+                        // 답하고 있다고 헷갈리지 않게.
+                        Text(
+                          cur.confirm!,
+                          style: AppText.cardTitle(
+                            size: 19,
+                            color: AppColors.point,
                           ),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            flex: 3,
-                            child: SeniorButton(
-                              label: '저장 후 다음',
-                              minHeight: 74,
-                              fontSize: 22,
-                              onPressed: _isSubmitting
-                                  ? null
-                                  : () => _next(steps),
+                        ),
+                        const SizedBox(height: 6),
+                      ],
+                      // 짧은 곁말("여러 개 골라도 돼요")은 제목 오른쪽 끝에
+                      // 한 줄로 붙인다. 긴 곁말까지 옆에 붙이면 제목이
+                      // "어떤 분이신가 / 요?"처럼 접힌다 — 그때는 아래로.
+                      if (cur.subtitle == null)
+                        Text(cur.title, style: AppText.screenTitle(size: 27))
+                      else if (cur.subtitle!.length <= 12)
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          children: [
+                            Expanded(
+                              // 제목은 한 줄로 둔다. 접히면 "어떤 약이었나 /
+                              // 요?"가 되어 묻는 말이 두 동강 난다. 자리가
+                              // 모자라면 글자를 조금 줄인다.
+                              child: FittedBox(
+                                fit: BoxFit.scaleDown,
+                                alignment: Alignment.bottomLeft,
+                                child: Text(
+                                  cur.title,
+                                  maxLines: 1,
+                                  style: AppText.screenTitle(size: 27),
+                                ),
+                              ),
                             ),
+                            const SizedBox(width: 10),
+                            Flexible(
+                              child: FittedBox(
+                                fit: BoxFit.scaleDown,
+                                alignment: Alignment.bottomRight,
+                                child: Text(
+                                  cur.subtitle!,
+                                  maxLines: 1,
+                                  style: AppText.body(
+                                    size: 17,
+                                    color: AppColors.textTertiary,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        )
+                      else ...[
+                        Text(cur.title, style: AppText.screenTitle(size: 27)),
+                        const SizedBox(height: 6),
+                        Text(
+                          cur.subtitle!,
+                          style: AppText.body(
+                            size: 17,
+                            color: AppColors.textTertiary,
                           ),
-                        ],
-                      ),
-                    )
-                  else
-                    SeniorButton(
-                      label: isLast && _isSubmitting
-                          ? '가입 중...'
-                          : isLast
-                          ? '가입하기'
-                          : '다음',
-                      minHeight: 74,
-                      fontSize: 24,
-                      onPressed: _isSubmitting ? null : () => _next(steps),
-                    ),
-                ],
+                        ),
+                      ],
+                      const SizedBox(height: 20),
+                      cur.child,
+                    ],
+                  ),
+                ),
               ),
-            ),
-          ],
+              Padding(
+                key: _actionsKey,
+                padding: const EdgeInsets.fromLTRB(20, 0, 20, 30),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    // 넘어가도 되는 단계에서는 "넘어가기"를 왼쪽에 작게 두고
+                    // 가는 단추를 오른쪽에 크게 둔다. 위아래로 쌓으면 둘 다
+                    // 같은 무게로 보여 어느 쪽이 보통 길인지 흐려진다.
+                    if (cur.skippable && !isLast)
+                      IntrinsicHeight(
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            Expanded(
+                              flex: 2,
+                              child: SeniorButton(
+                                label: '넘어가기',
+                                kind: SeniorButtonKind.secondary,
+                                minHeight: 74,
+                                fontSize: 20,
+                                onPressed: _isSubmitting
+                                    ? null
+                                    : () {
+                                        cur.onSkip?.call();
+                                        _skip(steps);
+                                      },
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              flex: 3,
+                              child: SeniorButton(
+                                label: '저장 후 다음',
+                                minHeight: 74,
+                                fontSize: 22,
+                                onPressed: _isSubmitting
+                                    ? null
+                                    : () => _next(steps),
+                              ),
+                            ),
+                          ],
+                        ),
+                      )
+                    else
+                      SeniorButton(
+                        label: isLast && _isSubmitting
+                            ? '가입 중...'
+                            : isLast
+                            ? '가입하기'
+                            : '다음',
+                        minHeight: 74,
+                        fontSize: 24,
+                        onPressed: _isSubmitting ? null : () => _next(steps),
+                      ),
+                  ],
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

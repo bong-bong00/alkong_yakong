@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
@@ -71,6 +72,10 @@ class ApiClient {
       return _decodeResponse(response);
     } on ApiException {
       rethrow;
+    } on TimeoutException {
+      // 무료 서버는 아무도 안 쓰면 잠든다. 처음 깨우는 데 30초 넘게
+      // 걸리기도 한다. 고장이 아니라 기다리면 되는 일이라고 말한다.
+      throw const ApiException('서버를 깨우는 중이에요. 잠시 뒤 다시 해 주세요.');
     } catch (error) {
       throw ApiException('서버에 연결할 수 없습니다: $error');
     }

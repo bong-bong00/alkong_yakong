@@ -23,11 +23,9 @@ class AuthSession {
   }
 
   static Future<void> setLoggedIn(String r) async {
-    // Presentation data must live on the medication server to enter real DUR.
-    // Do not add it to release builds or to guardian accounts.
-    if (kDebugMode && r == 'patient' && MvpSession.userId.isNotEmpty) {
-      await ensurePresentationMedicine();
-    }
+    // 보기용 약(코다론정)을 로그인할 때마다 심지 않는다. 처방전을 넣은
+    // 적 없는 분의 "내 약"에 모르는 약이 들어가 있으면, 그 약을 드셔야
+    // 하는 줄 아신다. 심는 길은 아래에 남겨 두되 스스로 돌지 않는다.
     _prefs ??= await SharedPreferences.getInstance();
     isLoggedIn = true;
     role = r;
@@ -38,8 +36,11 @@ class AuthSession {
     }
   }
 
-  /// Runs before the first screen, even without login or signup.
-  /// Keep this startup hook when replacing authentication with a demo bypass.
+  /// 보기용 약 한 가지(코다론정)를 서버에 심는다.
+  ///
+  /// 시연에서 함께먹기(DUR) 충돌을 보여 주려고 둔 길이다. 스스로 돌지
+  /// 않는다 — 부르는 쪽에서 체험 계정에만 쓴다. 쓰는 분의 계정에
+  /// 넣으면 처방받지도 않은 약을 드시게 된다.
   static Future<void> ensurePresentationMedicine({ApiClient? apiClient}) async {
     if (!kDebugMode) return;
     if (MvpSession.userId.trim().isEmpty) {
@@ -56,6 +57,20 @@ class AuthSession {
       // Registration is server-backed; do not pretend it succeeded offline.
       debugPrint('[PRESENTATION_SEED] 코다론정 등록 실패: $error');
     }
+  }
+
+  /// 스스로 나가신 분을 개발용 자동 로그인이 다시 끌고 들어오지
+  /// 않게 막는 표시. 다시 로그인하시면 풀린다.
+  static const String _devAutoLoginBlockedKey = 'devAutoLoginBlocked';
+
+  static Future<bool> get devAutoLoginBlocked async {
+    _prefs ??= await SharedPreferences.getInstance();
+    return _prefs?.getBool(_devAutoLoginBlockedKey) ?? false;
+  }
+
+  static Future<void> allowDevAutoLogin() async {
+    _prefs ??= await SharedPreferences.getInstance();
+    await _prefs?.remove(_devAutoLoginBlockedKey);
   }
 
   static Future<void> persistUserId(String userId) async {
@@ -80,6 +95,10 @@ class AuthSession {
   }
 
   static Future<void> logout() async {
+    _prefs ??= await SharedPreferences.getInstance();
+    // 나가셨으면 다음에 켤 때 로그인 화면이 떠야 한다. 개발 빌드가
+    // 체험 계정으로 다시 들어가 버리면 나간 것이 아니다.
+    await _prefs?.setBool(_devAutoLoginBlockedKey, true);
     isLoggedIn = false;
     role = 'patient';
     await _prefs?.setBool('isLoggedIn', false);

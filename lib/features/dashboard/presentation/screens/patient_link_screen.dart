@@ -104,7 +104,7 @@ class _PatientLinkScreenState extends ConsumerState<PatientLinkScreen> {
             textAlign: TextAlign.center,
             style: TextStyle(
               fontSize: 20,
-              fontWeight: FontWeight.w800,
+              fontWeight: FontWeight.w700,
               color: kText,
             ),
           ),
@@ -183,7 +183,7 @@ class _PatientLinkScreenState extends ConsumerState<PatientLinkScreen> {
                 _sending ? '보내는 중...' : '연결 요청 보내기',
                 style: const TextStyle(
                   fontSize: 17,
-                  fontWeight: FontWeight.w700,
+                  fontWeight: FontWeight.w600,
                 ),
               ),
             ),
@@ -221,7 +221,7 @@ class _PatientLinkScreenState extends ConsumerState<PatientLinkScreen> {
             textAlign: TextAlign.center,
             style: TextStyle(
               fontSize: 20,
-              fontWeight: FontWeight.w800,
+              fontWeight: FontWeight.w700,
               color: kText,
             ),
           ),
@@ -248,7 +248,7 @@ class _PatientLinkScreenState extends ConsumerState<PatientLinkScreen> {
               onPressed: () => Navigator.of(context).maybePop(),
               child: const Text(
                 '확인',
-                style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
+                style: TextStyle(fontSize: 17, fontWeight: FontWeight.w600),
               ),
             ),
           ),
@@ -263,7 +263,7 @@ class _PatientLinkScreenState extends ConsumerState<PatientLinkScreen> {
       t,
       style: const TextStyle(
         fontSize: 14,
-        fontWeight: FontWeight.w700,
+        fontWeight: FontWeight.w600,
         color: kText,
       ),
     ),

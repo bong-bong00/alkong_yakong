@@ -149,24 +149,9 @@ class _MedicineList extends StatelessWidget {
           const SizedBox(height: 14),
         ],
         _actions(context),
+        // 머리말을 두지 않는다. 약 줄이 바로 보이면 무엇을 누를지
+        // 더 설명할 것이 없다.
         const SizedBox(height: 18),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 6),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Expanded(
-                child: Text('현재 사용하는 약', style: AppText.cardTitle(size: 20)),
-              ),
-              const SizedBox(width: 10),
-              Text(
-                '누르면 설명이 나와요',
-                style: AppText.body(size: 17, color: AppColors.textSecondary),
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 14),
         _GroupedMedicines(medicines: active),
         // 지금 안 드시는 약은 줄 하나로 접어 둔다. 목록을 보는 이유는
         // 대부분 "지금 먹는 약"이기 때문이다.

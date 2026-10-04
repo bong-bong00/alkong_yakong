@@ -59,7 +59,11 @@ String stripEasyCategoryParen(String? name) {
 /// 요약 화면에서만 제품명 뒤에 중복된 주성분 괄호를 숨긴다.
 /// DB와 OCR 확인 화면의 공식 제품명은 바꾸지 않는다.
 String compactProductName(String? name, {String? ingredient}) {
-  final text = stripEasyCategoryParen(stripExportAlias(name));
+  // 이름 끝의 용량("…정500밀리그램")은 떼고 본다. 얼마나 드시는지는
+  // 따로 적히는 자리가 있고, 이름에 또 붙으면 긴 이름이 두 줄로 접힌다.
+  final text = nameWithoutStrength(
+    stripEasyCategoryParen(stripExportAlias(name)),
+  );
   final match = RegExp(r'\s*\(([^)]*)\)\s*$').firstMatch(text);
   if (match == null) return text;
   final innerKey = _ingredientCompareKey(match.group(1));
@@ -351,4 +355,23 @@ String nameWithoutStrength(String name, {String strength = ''}) {
       )
       .trim();
   return cut.isEmpty ? trimmed : cut;
+}
+
+/// 묶음이 하나뿐일 때 맨 앞의 "성인 :"을 뗀다.
+///
+/// 어르신이 보는 화면에서 "성인 :"은 할 말이 없다 — 내 약이니까.
+/// 다만 "고령자 :", "소아 :"가 함께 있는 설명서에서는 그 머리말이
+/// 누구에게 주는 용법인지를 가른다. 그때는 하나도 떼지 않는다.
+String dropLoneAdultHeading(String usage) {
+  final text = usage.trim();
+  if (text.isEmpty) return text;
+  final heading = RegExp(
+    r'^[ \t]*(고령자|성인|소아|어린이|유아|영아|신기능부전 환자|신기능 저하 환자|'
+    r'간기능 저하 환자)\s*[:：]\s*',
+    multiLine: true,
+  );
+  final all = heading.allMatches(text).toList();
+  if (all.length != 1 || all.first.start != 0) return text;
+  if (all.first.group(1) != '성인') return text;
+  return text.substring(all.first.end).trim();
 }

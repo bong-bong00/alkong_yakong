@@ -150,7 +150,7 @@ class _TopicCard extends StatelessWidget {
                           '${i + 1}.',
                           style: AppText.body(
                             color: AppColors.point,
-                            weight: FontWeight.w700,
+                            weight: FontWeight.w600,
                           ),
                         ),
                         const SizedBox(width: 10),

@@ -20,6 +20,8 @@ import '../../../../core/widgets/senior_button.dart';
 import '../../../../core/widgets/medicine_flow_card.dart';
 import '../../../../core/widgets/senior_feedback.dart';
 import '../../../../core/widgets/senior_header.dart';
+import '../../../../core/widgets/senior_card.dart' show kRaisedShadow;
+import '../../../../core/widgets/slot_box.dart';
 import '../../../../core/widgets/senior_sheet.dart';
 import '../../../../core/widgets/senior_timeline.dart';
 import '../../../dashboard/application/medication_history_provider.dart';
@@ -42,7 +44,7 @@ enum PrescriptionStep {
   /// 4d — 처방전 촬영.
   capture,
 
-  /// 10 — 손으로 적기.
+  /// 10 — 직접 작성.
   manual,
 
   /// 읽는 중.
@@ -82,6 +84,10 @@ class PrescriptionScreen extends ConsumerStatefulWidget {
   /// 대신 넣는 어르신의 id. 약은 이 사람 것으로 들어간다.
   final String? onBehalfOfUserId;
 
+  /// 넣는 길을 고르는 칸을 건너뛰고 바로 촬영으로 연다.
+  /// "처방전 촬영하기"처럼 이미 길을 고르고 들어온 자리에서 쓴다.
+  final bool startAtCapture;
+
   const PrescriptionScreen({
     super.key,
     this.onCompleted,
@@ -90,6 +96,7 @@ class PrescriptionScreen extends ConsumerStatefulWidget {
     this.guardianTitle = '',
     this.onBehalfOf,
     this.onBehalfOfUserId,
+    this.startAtCapture = false,
   });
 
   @override
@@ -110,7 +117,8 @@ class _PrescriptionScreenState extends ConsumerState<PrescriptionScreen> {
     baseUrl: ApiConfig.localFeatureBaseUrl,
   );
 
-  late PrescriptionStep _step = widget.onBehalfOf == null
+  late PrescriptionStep _step =
+      widget.onBehalfOf == null && !widget.startAtCapture
       ? PrescriptionStep.pickMethod
       : PrescriptionStep.capture;
 
@@ -146,10 +154,35 @@ class _PrescriptionScreenState extends ConsumerState<PrescriptionScreen> {
     return pairConflictMatches(durResult).isNotEmpty;
   }
 
+  /// 지금 올린 사진을 어디서 가져왔는지. 다시 고를 때 같은 길로 연다.
+  ImageSource _imageSource = ImageSource.camera;
+
+  /// 촬영 화면에서 뒤로.
+  ///
+  /// 사진이 올라와 있으면 사진만 버리고 찍는 법으로 돌아간다. 길을
+  /// 밖에서 이미 골라 들어왔으면(첫 화면의 "처방전 촬영") 길 고르는
+  /// 칸이 아니라 온 자리로 나간다 — 거기서 또 고르게 하면 눌렀던
+  /// 자리로 돌아갈 수 없다.
+  void _leaveCapture() {
+    if (_image != null) {
+      setState(() => _image = null);
+      return;
+    }
+    if (widget.startAtCapture && context.canPop()) {
+      context.pop();
+      return;
+    }
+    setState(() {
+      _image = null;
+      _step = PrescriptionStep.pickMethod;
+    });
+  }
+
   Future<void> _pick(ImageSource source) async {
     try {
       final picked = await _picker.pickImage(source: source);
       if (picked == null || !mounted) return;
+      _imageSource = source;
       String? galleryMessage;
       if (source == ImageSource.camera) {
         try {
@@ -627,12 +660,11 @@ class _PrescriptionScreenState extends ConsumerState<PrescriptionScreen> {
         return _CaptureScreen(
           image: _image,
           onBehalfOf: widget.onBehalfOf,
-          onBack: () => setState(() {
-            _image = null;
-            _step = PrescriptionStep.pickMethod;
-          }),
+          onBack: _leaveCapture,
           onUse: _read,
-          onCamera: () => _pick(ImageSource.camera),
+          fromGallery: _image != null && _imageSource == ImageSource.gallery,
+          onCamera: () =>
+              _pick(_image == null ? ImageSource.camera : _imageSource),
         );
       case PrescriptionStep.reading:
         return _ReadingScreen(image: _image);
@@ -684,12 +716,16 @@ class _CaptureScreen extends StatelessWidget {
   final VoidCallback onBack;
   final String? onBehalfOf;
 
+  /// 앨범에서 고른 사진인지. 다시 고르는 단추의 말이 달라진다.
+  final bool fromGallery;
+
   const _CaptureScreen({
     required this.image,
     required this.onBack,
     this.onBehalfOf,
     required this.onUse,
     required this.onCamera,
+    this.fromGallery = false,
   });
 
   @override
@@ -698,7 +734,12 @@ class _CaptureScreen extends StatelessWidget {
       backgroundColor: AppColors.cameraBg,
       body: Column(
         children: [
-          SeniorBackHeader(title: '처방전 촬영', onDark: true, onBack: onBack),
+          SeniorBackHeader(
+            // 찍기 전에는 찍는 화면, 사진이 올라온 뒤에는 등록 화면이다.
+            title: image == null ? '카메라 촬영' : '처방전 등록',
+            onDark: true,
+            onBack: onBack,
+          ),
           if (onBehalfOf != null)
             Padding(
               padding: const EdgeInsets.fromLTRB(22, 4, 22, 0),
@@ -717,8 +758,15 @@ class _CaptureScreen extends StatelessWidget {
                             padding: const EdgeInsets.fromLTRB(22, 18, 22, 8),
                             child: ClipRRect(
                               borderRadius: BorderRadius.circular(22),
-                              child: AspectRatio(
-                                aspectRatio: 3 / 4,
+                              // 단추 위 자리를 그대로 쓴다. 3:4로 가두면
+                              // 아래가 비는데도 처방전 글씨가 작게 들어가
+                              // 제대로 찍혔는지 알아보기 어렵다. 사진
+                              // 비율은 contain이 지키므로 잘리지 않는다.
+                              child: SizedBox(
+                                width: double.infinity,
+                                height: constraints.maxHeight > 400
+                                    ? constraints.maxHeight - 126
+                                    : 280,
                                 child: Image.file(image!, fit: BoxFit.contain),
                               ),
                             ),
@@ -753,12 +801,12 @@ class _CaptureScreen extends StatelessWidget {
                                     number: '1',
                                     text: '밝은 곳에 처방전이\n잘 보이게 펼쳐 놓으세요',
                                   ),
-                                  const _CaptureTipArrow(),
+                                  const SizedBox(height: 14),
                                   _CaptureTip(
                                     number: '2',
                                     text: '종이 네 모서리가\n사진에 다 나오게 하세요',
                                   ),
-                                  const _CaptureTipArrow(),
+                                  const SizedBox(height: 14),
                                   _CaptureTip(
                                     number: '3',
                                     text: '두 손으로 잡고\n흔들리지 않게 찍으세요',
@@ -770,26 +818,47 @@ class _CaptureScreen extends StatelessWidget {
                         const Spacer(),
                         Padding(
                           padding: const EdgeInsets.fromLTRB(22, 0, 22, 12),
-                          child: Column(
-                            children: [
-                              if (image != null) ...[
-                                SeniorButton(
-                                  label: '이 사진 사용하기',
+                          // 가는 단추를 왼쪽에, 쓰는 단추를 오른쪽에 크게
+                          // 둔다. 위아래로 쌓으면 둘 다 같은 무게로 보여
+                          // 어느 쪽이 보통 길인지 흐려진다.
+                          child: image == null
+                              ? SeniorButton(
+                                  label: '사진 찍기',
+                                  icon: TablerIcons.camera,
                                   minHeight: 74,
                                   fontSize: 25,
-                                  onPressed: onUse,
+                                  onPressed: onCamera,
+                                )
+                              : IntrinsicHeight(
+                                  child: Row(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.stretch,
+                                    children: [
+                                      Expanded(
+                                        flex: 2,
+                                        child: SeniorButton(
+                                          label: fromGallery
+                                              ? '다시 고르기'
+                                              : '다시 찍기',
+                                          kind: SeniorButtonKind.secondary,
+                                          minHeight: 74,
+                                          fontSize: 20,
+                                          onPressed: onCamera,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 10),
+                                      Expanded(
+                                        flex: 3,
+                                        child: SeniorButton(
+                                          label: '이 사진 사용하기',
+                                          minHeight: 74,
+                                          fontSize: 22,
+                                          onPressed: onUse,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
                                 ),
-                                const SizedBox(height: 14),
-                              ],
-                              SeniorButton(
-                                label: image == null ? '사진 찍기' : '다시 찍기',
-                                icon: TablerIcons.camera,
-                                minHeight: 74,
-                                fontSize: 25,
-                                onPressed: onCamera,
-                              ),
-                            ],
-                          ),
                         ),
                       ],
                     ),
@@ -879,32 +948,6 @@ class _CaptureTip extends StatelessWidget {
   }
 }
 
-class _CaptureTipArrow extends StatelessWidget {
-  const _CaptureTipArrow();
-
-  @override
-  Widget build(BuildContext context) {
-    // 긴 화살표를 번호 동그라미(40px) 바로 아래, 같은 세로줄에 둔다.
-    return const Padding(
-      padding: EdgeInsets.symmetric(vertical: 4),
-      // 화살표 그림(48)이 동그라미 칸(40)보다 넓어, 넘치는 만큼 양쪽으로
-      // 고르게 나눠 동그라미 중심과 같은 세로줄에 맞춘다.
-      child: SizedBox(
-        width: 40,
-        height: 48,
-        child: OverflowBox(
-          maxWidth: 48,
-          child: Icon(
-            TablerIcons.arrow_narrow_down,
-            size: 48,
-            color: AppColors.onDarkMuted,
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 class _ReadingScreen extends StatelessWidget {
   final File? image;
   const _ReadingScreen({required this.image});
@@ -939,7 +982,7 @@ class _ReadingScreen extends StatelessWidget {
                     ),
                     const SizedBox(height: 8),
                     Text(
-                      '잠시만 기다려 주세요. 다 읽으면 약 이름을 보여드릴게요.',
+                      '잠시만 기다려 주세요. 다 읽으면 약 정보를 보여드릴게요.',
                       textAlign: TextAlign.center,
                       style: AppText.body(),
                     ),
@@ -1169,7 +1212,6 @@ class _ConfirmScreenState extends State<_ConfirmScreen> {
     final timingGuessed =
         (item['administration_times_source']?.toString() ?? '') !=
         'PRESCRIPTION';
-    final instruction = item['dosing_instruction']?.toString().trim() ?? '';
     final nameController = TextEditingController(
       text: item['drug_name']?.toString() ?? '',
     );
@@ -1296,18 +1338,32 @@ class _ConfirmScreenState extends State<_ConfirmScreen> {
                 label: '하루 몇 번',
                 value: frequency == null ? '확인 필요' : '$frequency번',
                 needsConfirmation: frequency == null,
-                onMinus: frequency == null
-                    ? null
-                    : () => setSheetState(
-                        () =>
-                            frequency = frequency! > 1 ? frequency! - 1 : null,
-                      ),
+                // 한 번 고치면 "확인 필요"로 되돌아가지 않는다. 1에서는
+                // ─가 아예 안 눌린다 — 눌러도 그대로면 고장으로 읽힌다.
+                onMinus: (frequency ?? 1) > 1
+                    ? () => setSheetState(() => frequency = frequency! - 1)
+                    : null,
                 onPlus: () => setSheetState(
                   () => frequency = frequency == null
                       ? 1
                       : (frequency! < 6 ? frequency! + 1 : frequency),
                 ),
               ),
+              const SizedBox(height: 16),
+              _Stepper(
+                label: '며칠분',
+                value: days == null ? '확인 필요' : '$days일',
+                needsConfirmation: days == null,
+                onMinus: (days ?? 1) > 1
+                    ? () => setSheetState(() => days = days! - 1)
+                    : null,
+                onPlus: () => setSheetState(
+                  () => days = days == null
+                      ? 1
+                      : (days! < 365 ? days! + 1 : days),
+                ),
+              ),
+              // 단추로 고르는 것끼리 위에 모으고, 때 고르기는 그 아래 둔다.
               const SizedBox(height: 18),
               Row(
                 children: [
@@ -1321,35 +1377,12 @@ class _ConfirmScreenState extends State<_ConfirmScreen> {
                     ),
                 ],
               ),
-              if (instruction.isNotEmpty) ...[
-                const SizedBox(height: 4),
-                Text(
-                  '처방전에 적힌 것: $instruction',
-                  style: AppText.caption(size: 16),
-                ),
-              ],
               const SizedBox(height: 8),
               _SlotPicker(
                 selected: times,
                 onToggle: (slot) => setSheetState(() {
                   if (!times.remove(slot)) times.add(slot);
                 }),
-              ),
-              const SizedBox(height: 16),
-              _Stepper(
-                label: '며칠분',
-                value: days == null ? '확인 필요' : '$days일',
-                needsConfirmation: days == null,
-                onMinus: days == null
-                    ? null
-                    : () => setSheetState(
-                        () => days = days! > 1 ? days! - 1 : null,
-                      ),
-                onPlus: () => setSheetState(
-                  () => days = days == null
-                      ? 1
-                      : (days! < 365 ? days! + 1 : days),
-                ),
               ),
             ],
           ),
@@ -1591,7 +1624,7 @@ class _ConfirmScreenState extends State<_ConfirmScreen> {
     // 보여주면 그 시각에 드시게 된다.
     if (bySlot.isEmpty) return const [];
 
-    const order = ['아침 8시', '점심 12시', '저녁 6시', '자기 전'];
+    const order = ['아침', '점심', '저녁'];
     final rows = <Widget>[];
     final labels = order.where(bySlot.containsKey).toList();
     for (int i = 0; i < labels.length; i++) {
@@ -1624,7 +1657,7 @@ class _ConfirmScreenState extends State<_ConfirmScreen> {
   }
 
   /// 하루 안에서의 차례. 화면과 서버가 같은 순서를 쓴다.
-  static const List<String> _slotOrder = ['아침', '점심', '저녁', '취침전'];
+  static const List<String> _slotOrder = ['아침', '점심', '저녁'];
 
   /// 항목에 적힌 복용 시간대. 서버가 주는 말과 시각을 모두 받는다.
   static List<String> _slotsOf(Map<String, dynamic> item) {
@@ -1647,8 +1680,9 @@ class _ConfirmScreenState extends State<_ConfirmScreen> {
   /// 서버 말·시각을 네 때 중 하나로. 모르면 null.
   static String? _slotName(String raw) {
     final text = raw.toLowerCase().replaceAll(' ', '');
+    // 자기 전은 따로 두지 않는다 — 늦은 때는 저녁에 넣는다.
     if (text.contains('취침') || text.contains('자기') || text.contains('night')) {
-      return '취침전';
+      return '저녁';
     }
     if (text.contains('아침') || text.contains('morning')) return '아침';
     if (text.contains('점심') ||
@@ -1664,28 +1698,28 @@ class _ConfirmScreenState extends State<_ConfirmScreen> {
     }
     final hour = int.tryParse(text.split(':').first);
     if (hour == null) return null;
-    if (hour >= 21 || hour < 4) return '취침전';
-    if (hour < 11) return '아침';
-    if (hour < 16) return '점심';
+    if (hour >= 4 && hour < 11) return '아침';
+    if (hour >= 11 && hour < 16) return '점심';
     return '저녁';
   }
 
   /// 서버가 주는 복용 시간을 화면 문구로. 모르면 null.
   static String? _slotLabel(String raw) {
     final text = raw.toLowerCase();
-    if (text.contains('아침') || text.contains('morning')) return '아침 8시';
+    if (text.contains('아침') || text.contains('morning')) return '아침';
     if (text.contains('점심') ||
         text.contains('lunch') ||
         text.contains('noon')) {
-      return '점심 12시';
+      return '점심';
     }
     if (text.contains('저녁') ||
         text.contains('evening') ||
         text.contains('dinner')) {
-      return '저녁 6시';
+      return '저녁';
     }
+    // 자기 전은 따로 두지 않는다 — 늦은 때는 저녁에 넣는다.
     if (text.contains('자기') || text.contains('night') || text.contains('bed')) {
-      return '자기 전';
+      return '저녁';
     }
     return null;
   }
@@ -2055,18 +2089,19 @@ class _StepperButton extends StatelessWidget {
         child: GestureDetector(
           onTap: onTap,
           child: Container(
-            width: 72,
-            height: 72,
+            width: 56,
+            height: 56,
             alignment: Alignment.center,
             decoration: BoxDecoration(
-              color: AppColors.secondaryFill,
-              borderRadius: BorderRadius.circular(18),
-              border: Border.all(color: AppColors.strongLine, width: 2),
+              color: AppColors.surface,
+              borderRadius: BorderRadius.circular(16),
+              // 테두리 대신 그림자로 띄운다 — 다른 화면과 같은 손짓이다.
+              boxShadow: enabled ? kRaisedShadow : null,
             ),
             child: Icon(
               icon,
-              size: 32,
-              color: enabled ? AppColors.textBody : AppColors.inactive,
+              size: 26,
+              color: enabled ? AppColors.point : AppColors.inactive,
             ),
           ),
         ),
@@ -2193,60 +2228,47 @@ class _DetailLine extends StatelessWidget {
   }
 }
 
-/// "언제 드세요?" — 아침·점심·저녁·취침전을 눌러서 고른다.
+/// "언제 드세요?" — 아침·점심·저녁을 눌러서 고른다.
 ///
 /// 처방전에는 때가 안 적혀 있는 일이 흔하다. 숫자만 보고 앱이 정하면
 /// 1일 1회 약이 모두 아침으로 가는데, 저녁에 드시는 약이 적지 않다.
 /// 그래서 한 번은 사람 눈으로 보고 넘긴다.
+///
+/// 몇 시인지는 적지 않는다. 아침을 몇 시에 드시는지는 사람마다 다르고,
+/// 소리로 울릴 시각은 알림에서 따로 고른다.
 class _SlotPicker extends StatelessWidget {
   final Set<String> selected;
   final ValueChanged<String> onToggle;
 
   const _SlotPicker({required this.selected, required this.onToggle});
 
-  static const List<(String, String)> _slots = [
-    ('아침', '아침 8시'),
-    ('점심', '점심 1시'),
-    ('저녁', '저녁 8시'),
-    ('취침전', '자기 전'),
-  ];
+  static const List<String> slots = ['아침', '점심', '저녁'];
 
   @override
   Widget build(BuildContext context) {
-    return Wrap(
-      spacing: 10,
-      runSpacing: 10,
+    // 셋뿐이니 한 줄에 나란히 나눈다. 한 칸씩 쌓으면 세 줄을 차지하고,
+    // 고르는 일이 목록 읽기가 된다.
+    return Row(
       children: [
-        for (final (slot, label) in _slots)
-          Semantics(
-            button: true,
-            selected: selected.contains(slot),
-            child: GestureDetector(
-              key: ValueKey('dose-slot-$slot'),
-              onTap: () => onToggle(slot),
-              behavior: HitTestBehavior.opaque,
-              child: Container(
-                constraints: const BoxConstraints(minHeight: 58),
-                alignment: Alignment.center,
-                padding: const EdgeInsets.symmetric(horizontal: 18),
-                decoration: BoxDecoration(
-                  color: selected.contains(slot)
-                      ? AppColors.point
-                      : AppColors.secondaryFill,
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                child: Text(
-                  label,
-                  style: AppText.cardTitle(
-                    size: 19,
-                    color: selected.contains(slot)
-                        ? Colors.white
-                        : AppColors.textPrimary,
-                  ),
+        for (final slot in slots) ...[
+          if (slot != slots.first) const SizedBox(width: 10),
+          Expanded(
+            child: Semantics(
+              button: true,
+              selected: selected.contains(slot),
+              child: GestureDetector(
+                key: ValueKey('dose-slot-$slot'),
+                onTap: () => onToggle(slot),
+                behavior: HitTestBehavior.opaque,
+                child: SlotBox(
+                  label: slot,
+                  filled: selected.contains(slot),
+                  expand: true,
                 ),
               ),
             ),
           ),
+        ],
       ],
     );
   }
@@ -2272,7 +2294,6 @@ class _WhenToTakeScreen extends StatefulWidget {
 }
 
 class _WhenToTakeScreenState extends State<_WhenToTakeScreen> {
-  static const _slots = ['아침', '점심', '저녁', '취침전'];
   late final Set<String> _picked = {...widget.initialSlots};
 
   @override
@@ -2298,30 +2319,11 @@ class _WhenToTakeScreenState extends State<_WhenToTakeScreen> {
                     ),
                   ),
                   const SizedBox(height: 18),
-                  SeniorCard(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 20,
-                      vertical: 4,
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        for (int i = 0; i < _slots.length; i++) ...[
-                          if (i > 0) const SeniorDivider(),
-                          _SlotToggleRow(
-                            label: _slots[i],
-                            value: _picked.contains(_slots[i]),
-                            onChanged: (on) => setState(() {
-                              if (on) {
-                                _picked.add(_slots[i]);
-                              } else {
-                                _picked.remove(_slots[i]);
-                              }
-                            }),
-                          ),
-                        ],
-                      ],
-                    ),
+                  _SlotPicker(
+                    selected: _picked,
+                    onToggle: (slot) => setState(() {
+                      if (!_picked.remove(slot)) _picked.add(slot);
+                    }),
                   ),
                 ],
               ),
@@ -2337,7 +2339,7 @@ class _WhenToTakeScreenState extends State<_WhenToTakeScreen> {
               onPressed: _picked.isEmpty
                   ? null
                   : () => widget.onDone([
-                      for (final slot in _slots)
+                      for (final slot in _SlotPicker.slots)
                         if (_picked.contains(slot)) slot,
                     ]),
             ),
@@ -2349,32 +2351,3 @@ class _WhenToTakeScreenState extends State<_WhenToTakeScreen> {
 }
 
 /// 때 한 줄. 오른쪽 스위치로 켜고 끈다.
-class _SlotToggleRow extends StatelessWidget {
-  final String label;
-  final bool value;
-  final ValueChanged<bool> onChanged;
-
-  const _SlotToggleRow({
-    required this.label,
-    required this.value,
-    required this.onChanged,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      constraints: const BoxConstraints(minHeight: 64),
-      child: Row(
-        children: [
-          Expanded(child: Text(label, style: AppText.cardTitle(size: 21))),
-          const SizedBox(width: 10),
-          SeniorToggle(
-            value: value,
-            semanticLabel: label,
-            onChanged: onChanged,
-          ),
-        ],
-      ),
-    );
-  }
-}

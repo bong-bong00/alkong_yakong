@@ -168,7 +168,7 @@ class _PharmacistChatScreenState extends ConsumerState<PharmacistChatScreen> {
                 ],
                 if (showSuggestions) ...[
                   const SizedBox(height: 4),
-                  Text('이렇게 물어보셔도 돼요', style: AppText.caption(size: 17)),
+                  Text('이렇게 물어보세요', style: AppText.caption(size: 17)),
                   const SizedBox(height: 10),
                   for (final item in PharmacistAnswer.suggested) ...[
                     _SuggestionCard(
@@ -244,7 +244,7 @@ class _Bubble extends StatelessWidget {
                 style: AppText.body(
                   size: 20,
                   color: bot ? AppColors.textBody : Colors.white,
-                  weight: FontWeight.w700,
+                  weight: FontWeight.w600,
                 ),
               ),
               if (message.withDisclaimer) ...[

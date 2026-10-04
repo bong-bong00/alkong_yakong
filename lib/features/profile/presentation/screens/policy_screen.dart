@@ -92,7 +92,7 @@ class _Paragraph extends StatelessWidget {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('·', style: AppText.body(size: 18, weight: FontWeight.w700)),
+        Text('·', style: AppText.body(size: 18, weight: FontWeight.w600)),
         const SizedBox(width: 8),
         Expanded(
           child: Text(

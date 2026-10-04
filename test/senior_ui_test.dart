@@ -188,7 +188,7 @@ void main() {
     }
   });
 
-  testWidgets('기기가 없으면 먹었어요가 묻지 않고 바로 기록한다 (13)', (tester) async {
+  testWidgets('기기가 없으면 복용 완료가 묻지 않고 바로 기록한다 (13)', (tester) async {
     tester.view.physicalSize = const Size(390, 844);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.reset);
@@ -208,8 +208,8 @@ void main() {
     );
     await tester.pump();
 
-    expect(find.text('먹었어요'), findsOneWidget);
-    await tester.tap(find.text('먹었어요'));
+    expect(find.text('복용 완료'), findsOneWidget);
+    await tester.tap(find.text('복용 완료'));
     await tester.pumpAndSettle();
     if (find.text('네 알겠어요').evaluate().isNotEmpty) {
       await tester.tap(find.text('네 알겠어요'));
@@ -278,7 +278,7 @@ void main() {
     expect(done, 0);
     // 재고 나면 같은 단추가 약 기록으로 바뀐다.
     expect(find.text('측정'), findsNothing);
-    expect(find.text('먹었어요'), findsWidgets);
+    expect(find.text('복용 완료'), findsWidgets);
   });
 
   testWidgets('드신 뒤 재지 않고 나오면 홈에 재는 단추가 남는다', (tester) async {
@@ -312,7 +312,7 @@ void main() {
     await tester.tap(find.text('심박수'));
     await tester.pumpAndSettle();
     // 걸음 칸에도 같은 말이 있어 큰 단추 쪽을 골라 누른다.
-    await tester.tap(find.text('먹었어요').last);
+    await tester.tap(find.text('복용 완료').last);
     await tester.pumpAndSettle();
     if (find.text('네 알겠어요').evaluate().isNotEmpty) {
       await tester.tap(find.text('네 알겠어요'));
@@ -325,7 +325,7 @@ void main() {
     expect(find.text('먹은 뒤 재기'), findsOneWidget);
 
     // 지금 재지 않겠다고 할 수도 있어야 한다.
-    await tester.tap(find.text('나중에 재기'));
+    await tester.tap(find.text('측정 건너뛰기'));
     await tester.pumpAndSettle();
     expect(find.text('측정'), findsNothing);
   });
@@ -747,7 +747,7 @@ void _signupTests() {
       "title: '지금 임신 중이거나",
       "title: '담배를",
       "title: '술은 얼마나",
-      "title: '약을 먹고 거부 반응이나",
+      "title: '약을 먹고 이상 반응이",
       "title: '지금 치료받고 있는",
       "title: '예전에 크게",
       "title: '부모님이나 형제가",
@@ -1084,8 +1084,8 @@ void _homeTimelineTests() {
     );
     await tester.pump();
 
-    // 할 일은 하나다. "먹었어요"가 두 개면 무엇을 눌러야 할지 고르게 된다.
-    expect(find.text('먹었어요'), findsOneWidget);
+    // 할 일은 하나다. "복용 완료"가 두 개면 무엇을 눌러야 할지 고르게 된다.
+    expect(find.text('복용 완료'), findsOneWidget);
     // 시간 축 막대는 두지 않는다 — 카드 한 장으로 말한다.
     expect(find.byType(TimelineRow), findsNothing);
   });
@@ -1190,7 +1190,7 @@ void _homeTimelineTests() {
     expect(same.phrase, '평소와 비슷');
   });
 
-  testWidgets('드신 때와 아직인 때를 때 칩으로 말한다', (tester) async {
+  testWidgets('드신 때와 미복용인 때를 때 칩으로 말한다', (tester) async {
     await tester.pumpWidget(
       home(
         doses: const [
@@ -1211,18 +1211,18 @@ void _homeTimelineTests() {
     );
     await tester.pump();
 
-    // 약이 없는 때는 "없음". 드신 때는 드신 시각을, 아직인 때는 "아직"을
+    // 약이 없는 때는 "없음". 드신 때는 드신 시각을, 아직인 때는 "미복용"을
     // 적는다. 몇 시에 드시는지는 미리 정해 두지 않는다.
     expect(find.text('아침'), findsOneWidget);
     expect(find.text('없음'), findsOneWidget);
     expect(find.text('점심'), findsOneWidget);
     expect(find.text('드셨어요'), findsOneWidget);
     expect(find.text('저녁'), findsOneWidget);
-    expect(find.text('아직'), findsOneWidget);
+    expect(find.text('미복용'), findsOneWidget);
     // 시각을 미리 정해 두지 않는다 — 칩에 적히는 것은 드신 시각뿐이다.
     // (아래 알림 칸에는 따로 맞춰 둔 시각이 적힐 수 있다.)
     final chips = find.ancestor(
-      of: find.text('아직'),
+      of: find.text('미복용'),
       matching: find.byType(Row),
     );
     expect(
@@ -1264,7 +1264,7 @@ void _homeTimelineTests() {
     await tester.pump();
 
     // 기본은 아직 안 드신 저녁. 아침을 누르면 단추가 그쪽을 맡는다.
-    expect(find.text('먹었어요'), findsWidgets);
+    expect(find.text('복용 완료'), findsWidgets);
     await tester.tap(find.text('아침'));
     await tester.pumpAndSettle();
     expect(find.text('취소하기'), findsOneWidget);
@@ -1272,10 +1272,10 @@ void _homeTimelineTests() {
     // 되돌리면 아침은 다시 "아직"이 된다.
     await tester.tap(find.text('취소하기'));
     await tester.pumpAndSettle();
-    expect(find.text('아직'), findsWidgets);
+    expect(find.text('미복용'), findsWidgets);
 
     // 그 자리에서 다시 드시면 지금 시각이 적힌다.
-    await tester.tap(find.text('먹었어요').last);
+    await tester.tap(find.text('복용 완료').last);
     await tester.pumpAndSettle();
     if (find.text('네 알겠어요').evaluate().isNotEmpty) {
       await tester.tap(find.text('네 알겠어요'));
@@ -1351,7 +1351,7 @@ void _homeTimelineTests() {
     expect(find.text('센서 연결'), findsNothing);
   });
 
-  testWidgets('아직 드시지 않았으면 큰 단추가 "먹었어요"다', (tester) async {
+  testWidgets('아직 드시지 않았으면 큰 단추가 "복용 완료"다', (tester) async {
     await tester.pumpWidget(
       home(
         doses: const [
@@ -1369,15 +1369,16 @@ void _homeTimelineTests() {
     await tester.pump();
 
     expect(find.textContaining('2번 남았어요'), findsOneWidget);
-    expect(find.text('먹었어요'), findsOneWidget);
-    // 알림 화면으로 가는 네모 칸. 맞춰 둔 시각만 적는다(자명종 그림이 있다).
-    // 어느 시각이 나오는지는 지금 몇 시인지에 따라 다르다 — 꼴만 본다.
+    expect(find.text('복용 완료'), findsOneWidget);
+    // 알림 화면으로 가는 네모 칸. 다음에 울릴 시각을 "다음 알람 18:00"처럼
+    // 적는다. 어느 시각인지는 지금 몇 시인지에 따라 다르다 — 꼴만 본다.
     expect(
       find.byWidgetPredicate(
         (widget) =>
-            widget is Text && RegExp(r'^\d{2}:\d{2}$').hasMatch(widget.data ?? ''),
+            widget is Text &&
+            RegExp(r'^다음 알람 \d{2}:\d{2}$').hasMatch(widget.data ?? ''),
       ),
-      findsWidgets,
+      findsOneWidget,
     );
   });
 
@@ -1595,8 +1596,9 @@ void _medicinesByTimeTests() {
     final source = File(
       'lib/features/medicines/presentation/screens/my_medicines_screen.dart',
     ).readAsStringSync();
-    // 시안 38은 "지금 드시는 약" 옆에 이 말을 붙여 둔다.
-    expect(source.contains('누르면 설명이 나와요'), isTrue);
+    // 머리말은 두지 않는다. 약 줄이 바로 보이면 더 설명할 것이 없다.
+    expect(source.contains('누르면 설명이 나와요'), isFalse);
+    expect(source.contains('현재 사용하는 약'), isFalse);
     // 약마다 같은 사진 자리를 쓴다. 다른 모양이면 다른 약으로 읽힌다.
     // 크기는 화면마다 다를 수 있으므로 같은 위젯을 쓰는지만 본다.
     expect(source.contains('PillPhoto(size:'), isTrue);
@@ -1661,12 +1663,12 @@ void _confirmPreviewTests() {
 
 /// 3장 — 화면별 문구·경로가 9/11 병합에서 빠졌던 자리들.
 void _screenCopyTests() {
-  test('손으로 적기는 확인되지 않은 복용 시각을 만들지 않는다 (10)', () {
+  test('직접 작성은 확인되지 않은 복용 시각을 만들지 않는다 (10)', () {
     final source = File(
       'lib/features/prescription/presentation/screens/manual_medicine_screen.dart',
     ).readAsStringSync();
     // 시각을 지어내지 않는다 — 드시는 때를 고르지 않으면 등록하지 않는다.
-    expect(source.contains('드시는 때를 한 개 이상 골라 주세요.'), isTrue);
+    expect(source.contains('복용 시간대를 한 개 이상 골라 주세요.'), isTrue);
     expect(source.contains("'administration_times': _slots.toList()"), isTrue);
     expect(source.contains('공식 약 이름을 찾지 못했어요.'), isTrue);
   });

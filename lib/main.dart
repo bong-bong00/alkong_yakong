@@ -82,7 +82,10 @@ final _router = GoRouter(
     // 화면 확인용 임시 경로. 확인이 끝나면 지운다.
     GoRoute(
       path: '/prescription',
-      builder: (context, state) => const PrescriptionScreen(),
+      // ?start=camera 로 들어오면 길 고르는 칸을 건너뛴다.
+      builder: (context, state) => PrescriptionScreen(
+        startAtCapture: state.uri.queryParameters['start'] == 'camera',
+      ),
     ),
     GoRoute(
       path: '/manual-medicine',
@@ -226,15 +229,13 @@ Future<void> _restoreSession(ProviderContainer container) async {
   // 가짜 데이터로 볼 때는 로그인 화면을 건너뛴다(dev_mock.dart와 함께 꺼진다).
   // 저장된 세션을 읽은 **뒤**에 연다 — 읽는 쪽이 세션을 지우기 때문이다.
   await applyMockSession();
+  // 가짜가 아니어도 개발 빌드에서는 로그인 화면을 세우지 않는다.
+  // 저장된 로그인이 있으면 그 사람이 이긴다.
+  if (restoredUser == null) await applyDevSession();
   if (restoredUser != null) {
     container.read(userRoleProvider.notifier).state = restoredUser.isGuardian
         ? UserRole.guardian
         : UserRole.patient;
-  }
-  // No login is required for the demonstration medicine. Session restoration
-  // clears the ID when signed out, so initialize the shared demo user here.
-  if (restoredUser == null || !restoredUser.isGuardian) {
-    await AuthSession.ensurePresentationMedicine();
   }
   debugPrint('[STARTUP_DIAG] session_restore_ms=${timer.elapsedMilliseconds}');
 }

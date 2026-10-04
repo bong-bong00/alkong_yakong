@@ -176,7 +176,7 @@ void main() {
       ...data(),
       'ingredient_highlight': '정해진 작용',
       'treatment_uses': [
-        {'title': '치통', 'description': '성인에만 사용한다.'},
+        {'title': '치통', 'description': '치통에 쓰고 성인에만 사용한다.'},
       ],
     });
     final text = tester
@@ -185,21 +185,22 @@ void main() {
     final spans = (text.textSpan! as TextSpan).children!.cast<TextSpan>();
     final highlighted = spans.singleWhere((s) => s.text == '정해진 작용');
     expect(highlighted.style!.color, AppColors.point);
-    expect(highlighted.style!.fontWeight, FontWeight.w800);
-    // 쓰임 줄은 짧은 말 한 줄이다. 긴 설명 문장은 위 문단이 맡는다.
-    // 그 안에서 짚을 낱말만 파랑게 둔다.
-    expect(shown(tester), contains('치통'));
-    expect(shown(tester), isNot(contains('성인에만 사용한다.')));
+    expect(highlighted.style!.fontWeight, FontWeight.w700);
+    // 쓰임 줄은 설명 문장으로 선다. 낱말만 따로 한 줄 세우면 같은
+    // 말이 두 줄이 된다 — 짚을 낱말은 그 문장 안에서 파랗게 둔다.
+    expect(shown(tester), contains('치통에 쓰고 성인에만 사용한다.'));
+    expect(find.text('치통'), findsNothing);
     final useLine = tester.widget<Text>(
       find.byWidgetPredicate(
         (widget) =>
-            widget is Text && widget.textSpan?.toPlainText() == '치통',
+            widget is Text &&
+            widget.textSpan?.toPlainText() == '치통에 쓰고 성인에만 사용한다.',
       ),
     );
     final useSpans = (useLine.textSpan! as TextSpan).children!.cast<TextSpan>();
     final blue = useSpans.singleWhere((span) => span.text == '치통');
     expect(blue.style!.color, AppColors.point);
-    expect(blue.style!.fontWeight, FontWeight.w800);
+    expect(blue.style!.fontWeight, FontWeight.w700);
   });
 
   testWidgets(
@@ -261,10 +262,10 @@ void main() {
     // 세 탭으로 나누면서 "전체 허가 목적" 펼침 카드는 두지 않는다.
     expect(find.byType(ExpansionTile), findsNothing);
     expect(find.text('전체 허가 목적'), findsNothing);
-    // 쓰임 줄은 짧은 말로 선다. 긴 문장은 올리지 않는다.
-    expect(shown(tester), contains('치통'));
+    // 쓰임 줄은 설명 문장으로 선다. 낱말만 따로 세우지 않는다.
+    expect(find.text('치통'), findsNothing);
     expect(shown(tester), contains(entries[0]));
-    expect(shown(tester), isNot(contains(entries[1])));
+    expect(shown(tester), contains(entries[1]));
     expect(tester.takeException(), isNull);
   });
 

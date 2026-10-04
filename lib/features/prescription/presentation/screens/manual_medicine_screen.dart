@@ -43,7 +43,7 @@ class _ManualMedicineScreenState extends ConsumerState<ManualMedicineScreen> {
   int? _frequency;
   int? _days;
 
-  /// 드시는 때. 이게 없으면 알림 시각을 정할 수 없다.
+  /// 복용 시간대. 이게 없으면 알림 시각을 정할 수 없다.
   final Set<String> _slots = <String>{};
   bool _searching = false;
   bool _saving = false;
@@ -164,7 +164,7 @@ class _ManualMedicineScreenState extends ConsumerState<ManualMedicineScreen> {
       return;
     }
     if (_slots.isEmpty) {
-      _showError('드시는 때를 한 개 이상 골라 주세요.');
+      _showError('복용 시간대를 한 개 이상 골라 주세요.');
       return;
     }
     // 용량과 날수는 나중에 채워도 된다. 여기서 다 물으면 대부분 포기한다.
@@ -264,7 +264,7 @@ class _ManualMedicineScreenState extends ConsumerState<ManualMedicineScreen> {
       body: Column(
         children: [
           SeniorBackHeader(
-            title: '손으로 적기',
+            title: '직접 작성',
             onBack: widget.onBack ?? () => context.pop(),
           ),
           Expanded(
@@ -349,7 +349,7 @@ class _ManualMedicineScreenState extends ConsumerState<ManualMedicineScreen> {
                         crossAxisAlignment: CrossAxisAlignment.baseline,
                         textBaseline: TextBaseline.alphabetic,
                         children: [
-                          Text('드시는 때', style: AppText.cardTitle(size: 20)),
+                          Text('복용 시간대', style: AppText.cardTitle(size: 20)),
                           const SizedBox(width: 6),
                           Expanded(
                             child: Text(
@@ -398,7 +398,7 @@ class _ManualMedicineScreenState extends ConsumerState<ManualMedicineScreen> {
   }
 }
 
-/// 드시는 때 후보. 한 번에 여러 개를 고를 수 있다.
+/// 복용 시간대 후보. 한 번에 여러 개를 고를 수 있다.
 const List<String> _slotLabels = ['아침', '점심', '저녁'];
 
 /// 하루 몇 번, 며칠분. 목록을 펼치게 하지 않고 눌러서 고른다.
@@ -489,7 +489,7 @@ class _SlotChip extends StatelessWidget {
   }
 }
 
-/// 굴림판으로 고르는 줄 (손으로 적기).
+/// 굴림판으로 고르는 줄 (직접 작성).
 ///
 /// 숫자를 자판으로 적게 하지 않는다 — 잘못 눌러도 알아채기 어렵다.
 /// 카드 안이라 흰 면 대신 #F0F1F5로 채워 카드와 구별한다.

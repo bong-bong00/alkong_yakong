@@ -73,7 +73,7 @@ class BiosignalEventScreen extends StatelessWidget {
         elevation: 0,
         title: const Text(
           '심박 이상 이벤트',
-          style: TextStyle(fontWeight: FontWeight.w800),
+          style: TextStyle(fontWeight: FontWeight.w700),
         ),
       ),
       body: SafeArea(child: samples.isEmpty ? _empty() : _content()),
@@ -98,7 +98,7 @@ class BiosignalEventScreen extends StatelessWidget {
               textAlign: TextAlign.center,
               style: TextStyle(
                 fontSize: 18,
-                fontWeight: FontWeight.w800,
+                fontWeight: FontWeight.w700,
                 color: kText,
               ),
             ),
@@ -144,7 +144,7 @@ class BiosignalEventScreen extends StatelessWidget {
                       eventType,
                       style: const TextStyle(
                         fontSize: 18,
-                        fontWeight: FontWeight.w800,
+                        fontWeight: FontWeight.w700,
                         color: kText,
                       ),
                     ),
@@ -178,7 +178,7 @@ class BiosignalEventScreen extends StatelessWidget {
           '심박 추이',
           style: TextStyle(
             fontSize: 16,
-            fontWeight: FontWeight.w800,
+            fontWeight: FontWeight.w700,
             color: kText,
           ),
         ),
@@ -351,7 +351,7 @@ class BiosignalEventScreen extends StatelessWidget {
                   value,
                   style: TextStyle(
                     fontSize: 22,
-                    fontWeight: FontWeight.w800,
+                    fontWeight: FontWeight.w700,
                     color: color,
                   ),
                 ),
@@ -420,7 +420,7 @@ class BiosignalEventScreen extends StatelessWidget {
                 title,
                 style: const TextStyle(
                   fontSize: 14.5,
-                  fontWeight: FontWeight.w800,
+                  fontWeight: FontWeight.w700,
                   color: kText,
                 ),
               ),
