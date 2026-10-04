@@ -89,10 +89,34 @@ class _CoachMarksState extends State<CoachMarks> {
     }
 
     final screen = MediaQuery.sizeOf(context);
+    final safe = MediaQuery.paddingOf(context);
     // 동그라미는 칸보다 조금 크게 둘러 칸이 가려지지 않게 한다.
     final hole = rect.inflate(mark.boxed ? 8 : 10);
-    final below = hole.bottom + 20;
-    final putBelow = below + 220 < screen.height;
+    final cut = _cutRect(hole, mark.boxed);
+
+    // 설명은 실제로 밝힌 자리의 위아래 중 넓은 쪽에 붙인다. 칸 크기로
+    // 재면 동그라미가 칸보다 클 때 설명이 동그라미를 덮거나 화면 밖으로
+    // 잘린다.
+    const gap = 20.0;
+    final spaceBelow = screen.height - safe.bottom - cut.bottom - gap * 2;
+    final spaceAbove = cut.top - safe.top - gap * 2;
+    final putBelow = spaceBelow >= spaceAbove;
+    // 어느 쪽도 설명 한 장이 들어갈 만큼 넉넉하지 않으면 화면 아래에
+    // 겹쳐 띄운다. 짚는 자리가 조금 가려도 글이 잘리는 것보다 낫다.
+    final fits = math.max(spaceBelow, spaceAbove) >= _bubbleRoom;
+    final top = !fits
+        ? safe.top + gap
+        : putBelow
+        ? cut.bottom + gap
+        : safe.top + gap;
+    final bottom = !fits
+        ? safe.bottom + gap
+        : putBelow
+        ? safe.bottom + gap
+        : screen.height - cut.top + gap;
+    final alignment = !fits || !putBelow
+        ? Alignment.bottomCenter
+        : Alignment.topCenter;
 
     return Semantics(
       container: true,
@@ -116,16 +140,22 @@ class _CoachMarksState extends State<CoachMarks> {
               Positioned(
                 left: 18,
                 right: 18,
-                top: putBelow ? below : null,
-                bottom: putBelow ? null : screen.height - hole.top + 20,
-                child: _Bubble(
-                  step: _at + 1,
-                  total: widget.marks.length,
-                  title: mark.title,
-                  body: mark.body,
-                  isLast: _isLast,
-                  onNext: _next,
-                  onClose: () => Navigator.of(context).maybePop(),
+                top: top,
+                bottom: bottom,
+                child: Align(
+                  alignment: alignment,
+                  // 글자 배율이 커서 자리보다 길어지면 잘리지 않고 밀린다.
+                  child: SingleChildScrollView(
+                    child: _Bubble(
+                      step: _at + 1,
+                      total: widget.marks.length,
+                      title: mark.title,
+                      body: mark.body,
+                      isLast: _isLast,
+                      onNext: _next,
+                      onClose: () => Navigator.of(context).maybePop(),
+                    ),
+                  ),
                 ),
               ),
             ],
@@ -135,6 +165,22 @@ class _CoachMarksState extends State<CoachMarks> {
     );
   }
 }
+
+/// 설명 한 장이 들어가는 데 드는 높이. 이보다 좁으면 겹쳐 띄운다.
+const double _bubbleRoom = 260;
+
+/// 그늘에서 실제로 뚫리는 자리.
+///
+/// 동그라미는 칸의 **짧은 변**에 맞춘다. 긴 변에 맞추면 가로로 넓은 칸
+/// (예: 화면 폭 전체를 받는 큰 단추 자리)에서 동그라미가 칸보다 훨씬
+/// 커져 위아래 칸까지 밝히고 설명 자리를 먹는다. 가로로 긴 칸은
+/// [CoachMark.boxed]로 두른다.
+Rect _cutRect(Rect hole, bool boxed) => boxed
+    ? hole
+    : Rect.fromCircle(
+        center: hole.center,
+        radius: math.min(hole.width, hole.height) / 2,
+      );
 
 /// 짚는 자리만 남기고 덮는 그늘.
 class _ScrimPainter extends CustomPainter {
@@ -149,12 +195,7 @@ class _ScrimPainter extends CustomPainter {
         ? (Path()..addRRect(
             RRect.fromRectAndRadius(hole, const Radius.circular(22)),
           ))
-        : (Path()..addOval(
-            Rect.fromCircle(
-              center: hole.center,
-              radius: math.max(hole.width, hole.height) / 2,
-            ),
-          ));
+        : (Path()..addOval(_cutRect(hole, false)));
     canvas.drawPath(
       Path.combine(
         PathOperation.difference,
@@ -162,13 +203,6 @@ class _ScrimPainter extends CustomPainter {
         cut,
       ),
       Paint()..color = AppColors.scrim,
-    );
-    canvas.drawPath(
-      cut,
-      Paint()
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 4
-        ..color = AppColors.point,
     );
   }
 
@@ -218,21 +252,26 @@ class _Bubble extends StatelessWidget {
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
+                // 마지막 장에서는 그만둘 것이 없다. 단추 둘을 두면 어느 쪽이
+                // 끝내는 길인지 다시 고르게 된다. 자리만 비워 두어 끝내는
+                // 단추가 "다음"과 같은 크기·같은 자리에 선다.
                 Expanded(
                   flex: 2,
-                  child: SeniorButton(
-                    label: '그만 보기',
-                    kind: SeniorButtonKind.secondary,
-                    minHeight: 62,
-                    fontSize: 19,
-                    onPressed: onClose,
-                  ),
+                  child: isLast
+                      ? const SizedBox.shrink()
+                      : SeniorButton(
+                          label: '그만 보기',
+                          kind: SeniorButtonKind.secondary,
+                          minHeight: 62,
+                          fontSize: 19,
+                          onPressed: onClose,
+                        ),
                 ),
                 const SizedBox(width: 10),
                 Expanded(
                   flex: 3,
                   child: SeniorButton(
-                    label: isLast ? '다 봤어요' : '다음',
+                    label: isLast ? '알겠어요' : '다음',
                     minHeight: 62,
                     fontSize: 21,
                     onPressed: onNext,

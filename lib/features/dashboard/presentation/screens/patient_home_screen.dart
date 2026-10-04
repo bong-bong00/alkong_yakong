@@ -101,8 +101,8 @@ class _PatientHomeScreenState extends ConsumerState<PatientHomeScreen> {
         target: _slotsKey,
         title: '아침 · 점심 · 저녁',
         body:
-            '드신 때를 누르면 파랗게 바뀌어요. 아침 약을 낮에 드셔도 됩니다 — '
-            '고른 때로 적힙니다.',
+            '드신 때를 누르면 파랗게 바뀌어요. 아침 약을 낮에 드셔도 됩니다 '
+            '(선택한 시간대로 기록됩니다).',
         boxed: true,
       ),
       if (usesDevice)
@@ -125,8 +125,8 @@ class _PatientHomeScreenState extends ConsumerState<PatientHomeScreen> {
         target: _tilesKey,
         title: '알람과 센서',
         body:
-            '왼쪽은 다음에 울릴 시각이에요. 눌러서 바꿀 수 있어요. '
-            '오른쪽으로 심박 센서를 연결하거나 끊습니다.',
+            '왼쪽 박스는 다음에 울릴 시각이에요. 눌러서 바꿀 수 있어요. '
+            '오른쪽 박스로 심박 센서를 연결하거나 끊습니다.',
         boxed: true,
       ),
     ]);
@@ -575,7 +575,7 @@ class _PatientHomeScreenState extends ConsumerState<PatientHomeScreen> {
                       _Fill(
                         scrolls: scrolls,
                         child: _BigDoseButton(
-                          key: _bigButtonKey,
+                          focusKey: _bigButtonKey,
                           done: pickedTaken,
                           // 기기를 쓰는 분은 먹기 전에 먼저 잰다.
                           measureFirst:
@@ -966,8 +966,12 @@ class _BigDoseButton extends StatefulWidget {
   final VoidCallback? onTake;
   final VoidCallback? onUndo;
 
+  /// 도움말이 짚을 자리. 둘레 테와 여백을 뺀 진한 동그라미에만 단다 —
+  /// 단추 자리 전체를 짚으면 동그라미가 위아래 칸까지 덮는다.
+  final GlobalKey? focusKey;
+
   const _BigDoseButton({
-    super.key,
+    this.focusKey,
     required this.done,
     this.measureFirst = false,
     this.measureAfter = false,
@@ -1169,6 +1173,7 @@ class _BigDoseButtonState extends State<_BigDoseButton>
                                     ),
                                   ),
                                   Container(
+                                    key: widget.focusKey,
                                     width: size,
                                     height: size,
                                     alignment: Alignment.center,

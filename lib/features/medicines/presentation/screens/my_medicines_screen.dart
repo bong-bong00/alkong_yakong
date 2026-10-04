@@ -7,6 +7,8 @@ import '../../../../core/constants/app_colors.dart';
 import '../../../../core/theme/medicine_preserved_typography.dart';
 import '../../../../core/widgets/recovery_view.dart';
 import '../../../../core/widgets/senior_button.dart';
+import '../../../../core/widgets/coach_marks.dart';
+import '../../../../core/widgets/help_button.dart';
 import '../../../../core/widgets/senior_card.dart';
 import '../../../../core/widgets/senior_header.dart';
 import '../../application/user_medicines_controller.dart';
@@ -62,11 +64,42 @@ class MyMedicinesScreen extends ConsumerWidget {
   }
 }
 
-class _MedicineList extends StatelessWidget {
+class _MedicineList extends StatefulWidget {
   final List<UserMedicine> items;
   final bool asTab;
 
   const _MedicineList({required this.items, this.asTab = false});
+
+  @override
+  State<_MedicineList> createState() => _MedicineListState();
+}
+
+class _MedicineListState extends State<_MedicineList> {
+  // 도움말이 동그라미를 칠 자리들.
+  final _actionsKey = GlobalKey();
+  final _listKey = GlobalKey();
+
+  /// 이 화면을 짚어 가며 설명한다.
+  void _showHelp() {
+    CoachMarks.show(context, [
+      CoachMark(
+        target: _actionsKey,
+        title: '약 넣기와 챗봇',
+        body:
+            '왼쪽 박스로 처방전을 찍어 약을 넣어요. '
+            '오른쪽 박스를 누르면 챗봇에게 약을 물어볼 수 있어요.',
+        boxed: true,
+      ),
+      CoachMark(
+        target: _listKey,
+        title: '지금 드시는 약',
+        body:
+            '약을 누르면 무슨 약인지, 얼마나 언제 드시는지 볼 수 있어요. '
+            '빨간 테두리는 다른 약과 겹치는 데가 있다는 뜻이에요.',
+        boxed: true,
+      ),
+    ]);
+  }
 
   /// 시안 38 — 제목 아래 큰 두 칸. 처방전 넣기는 파란 면으로 두어
   /// 이 화면에서 가장 먼저 눈에 들어오게 한다.
@@ -100,7 +133,7 @@ class _MedicineList extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (items.isEmpty) {
+    if (widget.items.isEmpty) {
       return Padding(
         padding: const EdgeInsets.fromLTRB(20, 24, 20, 28),
         child: Column(
@@ -136,23 +169,36 @@ class _MedicineList extends StatelessWidget {
       );
     }
 
-    final active = items.where((item) => item.status == 'active').toList();
-    final past = items.where((item) => item.status != 'active').toList();
+    final active = widget.items
+        .where((item) => item.status == 'active')
+        .toList();
+    final past = widget.items.where((item) => item.status != 'active').toList();
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 18, 16, 28),
       children: [
-        if (asTab) ...[
+        if (widget.asTab) ...[
           Padding(
             padding: const EdgeInsets.fromLTRB(6, 0, 6, 0),
-            child: Text('내 약', style: AppText.screenTitle(size: 28)),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text('내 약', style: AppText.screenTitle(size: 28)),
+                ),
+                const SizedBox(width: 10),
+                HelpButton(onTap: _showHelp),
+              ],
+            ),
           ),
           const SizedBox(height: 14),
         ],
-        _actions(context),
+        KeyedSubtree(key: _actionsKey, child: _actions(context)),
         // 머리말을 두지 않는다. 약 줄이 바로 보이면 무엇을 누를지
         // 더 설명할 것이 없다.
         const SizedBox(height: 18),
-        _GroupedMedicines(medicines: active),
+        KeyedSubtree(
+          key: _listKey,
+          child: _GroupedMedicines(medicines: active),
+        ),
         // 지금 안 드시는 약은 줄 하나로 접어 둔다. 목록을 보는 이유는
         // 대부분 "지금 먹는 약"이기 때문이다.
         if (past.isNotEmpty) ...[

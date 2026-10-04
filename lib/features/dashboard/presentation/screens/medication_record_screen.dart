@@ -5,6 +5,8 @@ import 'package:flutter_tabler_icons/flutter_tabler_icons.dart';
 
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
+import '../../../../core/widgets/coach_marks.dart';
+import '../../../../core/widgets/help_button.dart';
 import '../../../../core/widgets/senior_card.dart';
 import '../../../../core/widgets/senior_header.dart';
 import '../../../medication/application/medication_controller.dart';
@@ -52,6 +54,39 @@ class _MedicationRecordScreenState
     extends ConsumerState<MedicationRecordScreen> {
   /// 한 주 칸에서 누른 날. 아무것도 안 눌렀으면 오늘이다.
   DateTime? _picked;
+
+  // 도움말이 동그라미를 칠 자리들.
+  final _calendarKey = GlobalKey();
+  final _dayKey = GlobalKey();
+  final _heartKey = GlobalKey();
+
+  /// 이 화면을 짚어 가며 설명한다.
+  void _showHelp() {
+    CoachMarks.show(context, [
+      CoachMark(
+        target: _calendarKey,
+        title: '한 주 달력',
+        body:
+            '약을 다 드신 날과 거르신 날이 색으로 갈려요. '
+            '날짜를 누르면 그날 기록이 아래 박스에 나옵니다.',
+        boxed: true,
+      ),
+      CoachMark(
+        target: _dayKey,
+        title: '그날의 아침 · 점심 · 저녁',
+        body: '복용 완료를 누른 시각이 적혀요. 아직 안 드셨으면 "미복용"입니다.',
+        boxed: true,
+      ),
+      CoachMark(
+        target: _heartKey,
+        title: '오늘 심박수',
+        body:
+            '약 드시기 전과 드신 뒤에 잰 값이에요. '
+            '누르면 심박수 관리 화면으로 갑니다.',
+        boxed: true,
+      ),
+    ]);
+  }
 
   /// 아래 칸이 보여줄 날.
   DateTime get _detailDate => _picked ?? dateOnly(DateTime.now());
@@ -132,23 +167,31 @@ class _MedicationRecordScreenState
                     if (!showBack) ...[
                       Padding(
                         padding: const EdgeInsets.fromLTRB(6, 6, 6, 0),
-                        child: Text.rich(
-                          TextSpan(
-                            children: [
-                              TextSpan(
-                                text: patientName == null
-                                    ? '나의 '
-                                    : '$patientName님 ',
-                                style: AppText.screenTitle(
-                                  size: 26,
-                                ).copyWith(fontWeight: FontWeight.w500),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: Text.rich(
+                                TextSpan(
+                                  children: [
+                                    TextSpan(
+                                      text: patientName == null
+                                          ? '나의 '
+                                          : '$patientName님 ',
+                                      style: AppText.screenTitle(
+                                        size: 26,
+                                      ).copyWith(fontWeight: FontWeight.w500),
+                                    ),
+                                    TextSpan(
+                                      text: '복약 기록',
+                                      style: AppText.screenTitle(size: 28),
+                                    ),
+                                  ],
+                                ),
                               ),
-                              TextSpan(
-                                text: '복약 기록',
-                                style: AppText.screenTitle(size: 28),
-                              ),
-                            ],
-                          ),
+                            ),
+                            const SizedBox(width: 10),
+                            HelpButton(onTap: _showHelp),
+                          ],
                         ),
                       ),
                       const SizedBox(height: 14),
@@ -156,6 +199,7 @@ class _MedicationRecordScreenState
                     // 간편 화면에는 탭이 없다. 거기서만 돌아가는 길을 낸다 —
                     // 탭이 있는 일반 화면에서는 시안대로 두지 않는다.
                     AdherenceWeekCard(
+                      key: _calendarKey,
                       days: weekAdherenceStatuses(today, history),
                       picked: _picked,
                       onOpenCalendar: () => Navigator.of(context).push(
@@ -172,6 +216,7 @@ class _MedicationRecordScreenState
                     // 오늘 하루를 시간대별로 한 장에 둔다. 날짜별 카드를 쌓는 대신
                     // 달력이 날짜를 맡고, 여기서는 오늘 상태만 본다.
                     DayDoseDetail(
+                      key: _dayKey,
                       dayLabel:
                           '${_detailDate.month}월 ${_detailDate.day}일'
                           '${_isToday ? ' 오늘' : ''}',
@@ -185,6 +230,7 @@ class _MedicationRecordScreenState
                     // 길이 사라지면 어디로 가야 할지 알 수 없다.
                     const SizedBox(height: 12),
                     _TodayHeartCard(
+                      key: _heartKey,
                       check: heartCheck,
                       // push로 쌓아 연다 — go()로 바꿔치우면 뒤로가기가
                       // 돌아갈 자리를 잃어 앱이 꺼진다.
@@ -218,7 +264,7 @@ class _TodayHeartCard extends StatelessWidget {
   final DoseHeartCheck? check;
   final VoidCallback? onTap;
 
-  const _TodayHeartCard({required this.check, this.onTap});
+  const _TodayHeartCard({super.key, required this.check, this.onTap});
 
   @override
   Widget build(BuildContext context) {

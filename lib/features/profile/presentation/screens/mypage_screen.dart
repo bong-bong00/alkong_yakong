@@ -5,6 +5,8 @@ import 'package:flutter_tabler_icons/flutter_tabler_icons.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../prescription/presentation/screens/prescription_history_screen.dart';
 import '../../../../core/theme/app_typography.dart';
+import '../../../../core/widgets/coach_marks.dart';
+import '../../../../core/widgets/help_button.dart';
 import '../../../../core/widgets/senior_card.dart';
 import '../../../../core/widgets/senior_header.dart';
 import '../../../../core/widgets/senior_feedback.dart';
@@ -37,6 +39,32 @@ class MyPageScreen extends ConsumerStatefulWidget {
 }
 
 class _MyPageScreenState extends ConsumerState<MyPageScreen> {
+  // 도움말이 동그라미를 칠 자리들.
+  final _healthKey = GlobalKey();
+  final _tilesKey = GlobalKey();
+
+  /// 이 화면을 짚어 가며 설명한다.
+  void _showHelp() {
+    CoachMarks.show(context, [
+      CoachMark(
+        target: _healthKey,
+        title: '내 건강 정보',
+        body:
+            '나이 · 혈액형 · 알레르기 · 앓는 병이에요. 약이 서로 맞는지 '
+            '볼 때 씁니다. 오른쪽 위 "수정"으로 고치세요.',
+        boxed: true,
+      ),
+      CoachMark(
+        target: _tilesKey,
+        title: '알람 · 센서 · 가족',
+        body:
+            '왼쪽 박스로 약 드실 시각을 맞추고, 가운데 박스로 심박 센서를 '
+            '연결해요. 오른쪽 박스에서 보호자를 더할 수 있어요.',
+        boxed: true,
+      ),
+    ]);
+  }
+
   /// 39 시트를 그대로 쓴다. 보호자 화면에 있는 것과 같은 길이다.
   Future<void> _inviteFamily() async {
     // 어르신 계정이다. 돌볼 분이 아니라 나를 돌볼 보호자를 더한다.
@@ -85,31 +113,41 @@ class _MyPageScreenState extends ConsumerState<MyPageScreen> {
                     // ── 이름 ──
                     Padding(
                       padding: const EdgeInsets.fromLTRB(6, 6, 6, 0),
-                      child: Text.rich(
-                        TextSpan(
-                          children: [
-                            TextSpan(
-                              text:
-                                  profile?.name ??
-                                  (loadFailed ? '내 정보' : '불러오는 중이에요'),
-                              style: AppText.screenTitle(size: 28),
-                            ),
-                            if (profile?.name != null)
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Text.rich(
                               TextSpan(
-                                text: ' 님',
-                                style: AppText.screenTitle(size: 28).copyWith(
-                                  fontWeight: FontWeight.w500,
-                                  color: AppColors.textSecondary,
-                                ),
+                                children: [
+                                  TextSpan(
+                                    text:
+                                        profile?.name ??
+                                        (loadFailed ? '내 정보' : '불러오는 중이에요'),
+                                    style: AppText.screenTitle(size: 28),
+                                  ),
+                                  if (profile?.name != null)
+                                    TextSpan(
+                                      text: ' 님',
+                                      style: AppText.screenTitle(size: 28)
+                                          .copyWith(
+                                            fontWeight: FontWeight.w500,
+                                            color: AppColors.textSecondary,
+                                          ),
+                                    ),
+                                ],
                               ),
-                          ],
-                        ),
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          HelpButton(onTap: _showHelp),
+                        ],
                       ),
                     ),
                     const SizedBox(height: 14),
 
                     // ── 내 건강 정보 ──
                     _BodyInfoCard(
+                      key: _healthKey,
                       ageLine: ageLine,
                       bloodType: profile?.bloodType,
                       allergies: profile?.allergies ?? const [],
@@ -127,6 +165,7 @@ class _MyPageScreenState extends ConsumerState<MyPageScreen> {
 
                     // ── 알림 · 센서 · 가족 세 칸 ──
                     IntrinsicHeight(
+                      key: _tilesKey,
                       child: Row(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
@@ -369,6 +408,7 @@ class _BodyInfoCard extends StatelessWidget {
   final VoidCallback onEdit;
 
   const _BodyInfoCard({
+    super.key,
     required this.ageLine,
     required this.bloodType,
     required this.allergies,
