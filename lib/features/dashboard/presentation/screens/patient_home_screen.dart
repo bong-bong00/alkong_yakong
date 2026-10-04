@@ -8,7 +8,8 @@ import 'package:flutter_tabler_icons/flutter_tabler_icons.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../dev_mock.dart';
 import '../../../../core/theme/app_typography.dart';
-import '../../../../core/widgets/mode_badge.dart';
+import '../../../../core/widgets/coach_marks.dart';
+import '../../../../core/widgets/help_button.dart';
 import '../../../../core/widgets/senior_button.dart';
 import '../../../../core/widgets/senior_card.dart';
 import '../../../../core/widgets/senior_feedback.dart';
@@ -86,6 +87,51 @@ class PatientHomeScreen extends ConsumerStatefulWidget {
 }
 
 class _PatientHomeScreenState extends ConsumerState<PatientHomeScreen> {
+  // 도움말이 동그라미를 칠 자리들. 화면에 없으면 그 걸음은 건너뛴다.
+  final _slotsKey = GlobalKey();
+  final _bigButtonKey = GlobalKey();
+  final _stepsKey = GlobalKey();
+  final _tilesKey = GlobalKey();
+
+  /// 홈 화면을 하나씩 짚어 가며 설명한다.
+  void _openHelp() {
+    final usesDevice = ref.read(heartDevicePairedProvider);
+    CoachMarks.show(context, [
+      CoachMark(
+        target: _slotsKey,
+        title: '아침 · 점심 · 저녁',
+        body:
+            '드신 때를 누르면 파랗게 바뀌어요. 아침 약을 낮에 드셔도 됩니다 — '
+            '고른 때로 적힙니다.',
+        boxed: true,
+      ),
+      if (usesDevice)
+        CoachMark(
+          target: _stepsKey,
+          title: '세 걸음',
+          body:
+              '센서를 차고 계시면 먹기 전에 한 번, 복용 완료한 뒤에 한 번 '
+              '심박수를 잽니다. 지금 걸음이 파랗게 표시돼요.',
+          boxed: true,
+        ),
+      CoachMark(
+        target: _bigButtonKey,
+        title: '가운데 큰 단추',
+        body:
+            '약을 드신 뒤 누르세요. 누른 그 시각으로 적힙니다. '
+            '잘못 눌렀으면 같은 자리가 "취소하기"로 바뀌어요.',
+      ),
+      CoachMark(
+        target: _tilesKey,
+        title: '알람과 센서',
+        body:
+            '왼쪽은 다음에 울릴 시각이에요. 눌러서 바꿀 수 있어요. '
+            '오른쪽으로 심박 센서를 연결하거나 끊습니다.',
+        boxed: true,
+      ),
+    ]);
+  }
+
   /// 방금 기록한 시간대. 파란 띠로 알리고, X를 누르면 사라진다.
   DoseSlot? _recordedSlot;
 
@@ -419,6 +465,7 @@ class _PatientHomeScreenState extends ConsumerState<PatientHomeScreen> {
           if (!widget.easyMode)
             HomeTopBar(
               userName: ref.watch(currentUserNameProvider),
+              onHelp: _openHelp,
               date: now,
               easyMode: widget.easyMode,
             ),
@@ -493,6 +540,7 @@ class _PatientHomeScreenState extends ConsumerState<PatientHomeScreen> {
                       _TodayHeadline(remaining: remaining),
                       const SizedBox(height: 18),
                       _SlotChips(
+                        key: _slotsKey,
                         today: today,
                         picked: pickedSlot,
                         onPick: (slot) => setState(() => _pickedSlot = slot),
@@ -514,6 +562,7 @@ class _PatientHomeScreenState extends ConsumerState<PatientHomeScreen> {
                             ? Padding(
                                 padding: const EdgeInsets.only(top: 14),
                                 child: _HeartSteps(
+                                  key: _stepsKey,
                                   beforeBpm:
                                       _beforeBpm[afterSlot ?? pickedSlot],
                                   afterPending: afterSlot != null,
@@ -526,6 +575,7 @@ class _PatientHomeScreenState extends ConsumerState<PatientHomeScreen> {
                       _Fill(
                         scrolls: scrolls,
                         child: _BigDoseButton(
+                          key: _bigButtonKey,
                           done: pickedTaken,
                           // 기기를 쓰는 분은 먹기 전에 먼저 잰다.
                           measureFirst:
@@ -560,6 +610,7 @@ class _PatientHomeScreenState extends ConsumerState<PatientHomeScreen> {
                       // 위아래 여백을 같게 둔다. 두 칸 정가운데에 단추가 온다.
                       SizedBox(height: gap),
                       _HomeTiles(
+                        key: _tilesKey,
                         alarmLabel: _nextAlarmLabel(
                           ref.watch(alarmPreferencesProvider),
                         ),
@@ -647,6 +698,7 @@ class _SlotChips extends StatelessWidget {
   final ValueChanged<DoseSlot> onPick;
 
   const _SlotChips({
+    super.key,
     required this.today,
     required this.picked,
     required this.onPick,
@@ -793,7 +845,11 @@ class _HeartSteps extends StatelessWidget {
   /// 드신 뒤 재기가 남은 상태. 세 번째 걸음을 가리킨다.
   final bool afterPending;
 
-  const _HeartSteps({required this.beforeBpm, this.afterPending = false});
+  const _HeartSteps({
+    super.key,
+    required this.beforeBpm,
+    this.afterPending = false,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -911,6 +967,7 @@ class _BigDoseButton extends StatefulWidget {
   final VoidCallback? onUndo;
 
   const _BigDoseButton({
+    super.key,
     required this.done,
     this.measureFirst = false,
     this.measureAfter = false,
@@ -1246,6 +1303,7 @@ class _HomeTiles extends StatelessWidget {
   final VoidCallback? onOpenMedicines;
 
   const _HomeTiles({
+    super.key,
     required this.alarmLabel,
     this.onOpenAlarm,
     this.onConnectDevice,
@@ -1376,12 +1434,17 @@ class _RefillRow extends StatelessWidget {
 
 class HomeTopBar extends StatelessWidget {
   final String userName;
+
+  /// 도움말 — 홈 화면을 짚어 가며 설명한다. 짚을 칸이 없는 화면에서는
+  /// 비워 두고, 그때는 단추를 세우지 않는다.
+  final VoidCallback? onHelp;
   final DateTime date;
   final bool easyMode;
 
   const HomeTopBar({
     super.key,
     required this.userName,
+    this.onHelp,
     required this.date,
     this.easyMode = false,
   });
@@ -1414,8 +1477,9 @@ class HomeTopBar extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 10),
-          // 지금 어느 화면인지는 두 모드 모두에서 보여야 한다.
-          const Flexible(child: ModeBadge()),
+          // 쓰는 법이 궁금할 때 누르는 자리. 글자 단추를 두면 이름을
+          // 밀어내므로 동그란 "i" 하나만 둔다.
+          if (onHelp != null) HelpButton(onTap: onHelp!),
         ],
       ),
     );
