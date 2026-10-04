@@ -47,14 +47,17 @@ bool get mockData => kMockData && kDebugMode;
 ///
 /// 가짜 데이터([kMockData])와는 다르다. 서버에 그대로 묻고 서버가 주는
 /// 것만 그린다 — 화면이 비면 그 사람에게 등록된 약이 없는 것이다.
-/// 비워 두면 평소대로 로그인 화면이 뜬다.
+/// 비워 두면 평소대로 로그인 화면이 뜬다. 쓰려면
+/// `--dart-define=DEV_USER_ID=<내 아이디>`로 넣는다.
+///
+/// 기본값은 비워 둔다. 예전에는 `mvp-user`로 두었는데, 저장된 로그인이
+/// 사라지면 로그인 화면 대신 그 아이디로 조용히 들어가 버렸다. 서버는
+/// `mvp-user`를 계정으로 인정하지 않으므로 내 정보가 "불러오지 못했어요"로
+/// 남고, 로그인이 풀린 줄도 알 수 없었다.
 ///
 /// 저장된 로그인이 있으면 그쪽이 이긴다. 팀원이 이 가지를 받아도 자기
 /// 계정이 그대로 열린다.
-const String kDevUserId = String.fromEnvironment(
-  'DEV_USER_ID',
-  defaultValue: 'mvp-user',
-);
+const String kDevUserId = String.fromEnvironment('DEV_USER_ID');
 
 /// 배포 빌드에서는 절대 먹지 않는다.
 bool get devSession => kDevUserId.isNotEmpty && kDebugMode && !mockData;

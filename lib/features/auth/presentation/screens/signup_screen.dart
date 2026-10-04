@@ -392,7 +392,7 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
     big(
       _StepDef(
         title: '어떤 분이신가요?',
-        subtitle: '고르시면 여쭤보는 것이 달라져요.',
+        subtitle: '선택에 따라 질문이 달라져요.',
         validate: () => _rolePicked ? null : '어떤 분이신지 골라주세요',
         // 둘을 나란히 두면 칸이 좁아 설명이 두세 줄로 접힌다.
         // 위아래로 쌓아 한 줄씩 읽게 둔다.

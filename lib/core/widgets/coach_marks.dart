@@ -133,7 +133,21 @@ class _CoachMarksState extends State<CoachMarks> {
     final rect = CoachMarks._rectOf(mark.target);
     if (rect == null) return;
     final screen = MediaQuery.sizeOf(context);
+    final safe = MediaQuery.paddingOf(context);
     final onScreen = rect.top >= 0 && rect.bottom <= screen.height;
+    final hole = rect.inflate(mark.padding);
+    final roomBelow = screen.height - safe.bottom - hole.bottom - 40;
+    final roomAbove = hole.top - safe.top - 40;
+    // 이미 보이고 정한 쪽에 설명 자리도 있으면 굴리지 않는다. 괜히 굴리면
+    // 장을 넘길 때마다 화면이 출렁인다.
+    final settled =
+        onScreen &&
+        switch (mark.placement) {
+          CoachPlacement.below => roomBelow >= _bubbleRoom,
+          CoachPlacement.above => roomAbove >= _bubbleRoom,
+          CoachPlacement.auto => true,
+        };
+    if (settled) return;
     // 칸과 설명이 한 화면에 함께 들어갈 때만 굴려 자리를 낸다. 긴 목록을
     // 굴리면 칸의 머리가 화면 밖으로 밀려 정작 짚을 것이 안 보인다.
     final roomy = rect.height + _bubbleRoom < screen.height;
@@ -144,13 +158,24 @@ class _CoachMarksState extends State<CoachMarks> {
       _ => onScreen ? null : 0.5,
     };
     if (alignment == null) return;
-    await Scrollable.ensureVisible(
-      target,
-      alignment: alignment,
-      duration: const Duration(milliseconds: 250),
-      curve: Curves.easeOut,
-    );
-    if (mounted) setState(() {});
+    // 굴리는 동안에도 밝힌 자리가 칸을 따라가게 매 프레임 다시 잰다.
+    final position = Scrollable.of(target).position;
+    void follow() {
+      if (mounted) setState(() {});
+    }
+
+    position.addListener(follow);
+    try {
+      await Scrollable.ensureVisible(
+        target,
+        alignment: alignment,
+        duration: const Duration(milliseconds: 250),
+        curve: Curves.easeOut,
+      );
+    } finally {
+      position.removeListener(follow);
+    }
+    follow();
   }
 
   @override
