@@ -5,6 +5,7 @@ import pytest
 from init_db import TABLE_DEFINITIONS
 from scripts.seed_presentation_history import seed_hearts, seed_medications, DEMO_SOURCE
 from scripts.seed_presentation_history import configure_demo_health, DEMO_HEALTH_PROFILE
+from scripts.seed_presentation_history import seed_extreme_hearts, DEMO_EXTREME_HEARTS
 import json
 
 
@@ -54,3 +55,25 @@ def test_demo_health_requires_exact_phone_and_preserves_password():
         assert row["drinking"] == "자주 마셔요"
         assert json.loads(row["diseases"]) == DEMO_HEALTH_PROFILE["diseases"]
         assert json.loads(row["allergies"]) == DEMO_HEALTH_PROFILE["allergies"]
+
+
+def test_extremes_are_dedicated_past_demo_only_and_do_not_trigger_alerts():
+    with database() as conn:
+        with pytest.raises(ValueError):
+            seed_extreme_hearts(conn, "demo")
+        with pytest.raises(ValueError):
+            seed_extreme_hearts(conn, "real")
+        conn.execute("UPDATE users SET phone='010-1234-5678' WHERE id='demo'")
+        assert seed_hearts(conn, "demo") == 30
+        assert seed_extreme_hearts(conn, "demo") == 4
+        assert seed_extreme_hearts(conn, "demo") == 0
+        assert conn.execute("SELECT COUNT(*) FROM heart_rate_logs").fetchone()[0] == 34
+        for at, bpm, context in DEMO_EXTREME_HEARTS:
+            row = conn.execute("SELECT * FROM heart_rate_logs WHERE measured_at=?", (at,)).fetchone()
+            assert row["bpm"] == bpm
+            assert row["measurement_context"] == context
+            assert row["source"] == DEMO_SOURCE
+            assert row["device_id"] == "DEMO-NOT-A-REAL-SENSOR"
+            assert at < "2026-10-06"
+        for table in ("abnormal_events", "notifications", "baseline_heart_rate"):
+            assert conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0] == 0

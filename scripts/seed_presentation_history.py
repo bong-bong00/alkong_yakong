@@ -12,6 +12,12 @@ from pathlib import Path
 DEMO_SOURCE = "DEMO_SYNTHETIC_20261006"
 DEMO_MEDICINE = "DEMO-PRESENTATION-20261006"
 DEMO_PHONE = "010-1234-5678"
+DEMO_EXTREME_HEARTS = (
+    ("2026-10-02T14:00:00+09:00", 48, "general"),
+    ("2026-10-03T14:00:00+09:00", 125, "general"),
+    ("2026-10-04T18:00:00+09:00", 78, "before_medication"),
+    ("2026-10-04T18:45:00+09:00", 118, "after_medication"),
+)
 DEMO_HEALTH_PROFILE = {
     "smoking": "폈어요",
     "drinking": "자주 마셔요",
@@ -67,6 +73,28 @@ def seed_hearts(conn, user_id):
                     (user_id, bpm, at, "DEMO-NOT-A-REAL-SENSOR", DEMO_SOURCE, context),
                 )
                 inserted += 1
+    return inserted
+
+
+def seed_extreme_hearts(conn, user_id):
+    """Historical demo only: no sensor, baseline, abnormal event or notification writes."""
+    check_demo_user(conn, user_id)
+    phone = conn.execute("SELECT phone FROM users WHERE id=?", (user_id,)).fetchone()[0]
+    if "".join(char for char in str(phone or "") if char.isdigit()) != "01012345678":
+        raise ValueError("요청한 010-1234-5678 계정이 아닙니다.")
+    inserted = 0
+    for at, bpm, context in DEMO_EXTREME_HEARTS:
+        if conn.execute(
+            "SELECT 1 FROM heart_rate_logs WHERE user_id=? AND measured_at=? AND source=?",
+            (user_id, at, DEMO_SOURCE),
+        ).fetchone():
+            continue
+        conn.execute(
+            "INSERT INTO heart_rate_logs(user_id,bpm,measured_at,device_id,source,measurement_context) "
+            "VALUES(?,?,?,?,?,?)",
+            (user_id, bpm, at, "DEMO-NOT-A-REAL-SENSOR", DEMO_SOURCE, context),
+        )
+        inserted += 1
     return inserted
 
 
