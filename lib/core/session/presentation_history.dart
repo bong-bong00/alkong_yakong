@@ -159,15 +159,13 @@ abstract final class PresentationHistory {
   static Map<String, dynamic> get prescription => {
     'id': prescriptionId,
     'prescribed_date': '2026-09-21',
-    'hospital_name': '시연용 가상 처방전',
+    // Fictional presentation clinic; this is not an actual prescription.
+    'hospital_name': '미래의원',
     'marker': marker,
     'status': 'EXPIRED',
     'items': [
-      {
-        'medicine_code': medicineCode,
-        'product_name': medicineName,
-        'duration_days': 7,
-      },
+      for (final name in ['타이레놀정500밀리그램', '베아제정', '알마겔정'])
+        {'product_name': name, 'duration_days': 7, 'marker': marker},
     ],
   };
 }
