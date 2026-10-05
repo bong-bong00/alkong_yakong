@@ -142,3 +142,16 @@ def test_explicit_half_dose_is_preserved_not_truncated_to_zero(dose):
     assert float(item["dosage"]) == 0.5
     assert item.get("times_per_take") != 0
     assert item["frequency_per_day"] == 3
+
+
+def test_description_line_between_dose_and_frequency_is_skipped():
+    """줄 단위 표에서 투약량 다음에 약 설명 줄이 끼어도 횟수·일수를 잇는다."""
+    raw = (
+        "약 품 명 및 용 량\n복 용 법\n1회\n1일\n투약량 투여횟수\n투약\n일수\n"
+        "테스트정 (알러지질환약)\n0.50\n알러지 증상을 개선하는 약\n3\n7\n"
+        "다른캡슐\n1.00\n2\n4\n속을 편하게 하는 약"
+    )
+    by_name = {item["drug_name"]: item for item in parse_prescription_text(raw)["items"]}
+    assert (by_name["테스트정"]["dosage"], by_name["테스트정"]["frequency_per_day"]) == ("0.50", 3)
+    assert by_name["테스트정"]["duration_days"] == 7
+    assert (by_name["다른캡슐"]["frequency_per_day"], by_name["다른캡슐"]["duration_days"]) == (2, 4)

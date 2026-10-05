@@ -12,6 +12,7 @@ from app.database import get_connection
 from app.services.drug_explain_service import reviewed_detail_payload
 from app.services.dur_service import pair_card_fields, person_cautions_for_medicine
 from app.services.medication_user_service import ensure_medication_user
+from app.services.prescription_service import DEFAULT_SCHEDULE_TIMES
 from app.services.today_medication_service import _visible_medicine_item
 
 
@@ -26,6 +27,20 @@ def _parse_administration_times(raw: Any) -> list[str]:
         except json.JSONDecodeError:
             return []
     return []
+
+
+def _default_times(frequency: Any) -> list[str]:
+    """하루 횟수만 알고 시각이 비어 있을 때 쓰는 기본 시각.
+
+    예전에는 같은 처방전을 다시 등록하면 시각이 저장되지 않았다. 그렇게
+    남은 약은 하루 3번인 줄 알면서도 "언제"가 비어 보였다. 일정을 만들 때와
+    같은 기본 시각(아침·점심·저녁)으로 채운다. 횟수를 모르면 지어내지 않는다.
+    """
+    try:
+        count = int(frequency)
+    except (TypeError, ValueError):
+        return []
+    return [clock for clock, _slot in DEFAULT_SCHEDULE_TIMES.get(count) or []]
 
 
 def _latest_interaction_result(conn, user_id: str) -> dict[str, Any] | None:
@@ -185,7 +200,9 @@ def _interaction_for_medicine(
         }
     return {
         "interaction_status": "none",
-        "interaction_risk_level": str(latest.get("risk_level") or "LOW"),
+        # 최근 검사의 위험도는 사용자 약 전체의 것이다. 이 약은 거기 걸리지
+        # 않았으니 "문제없음"에 "HIGH"를 붙여 보내지 않는다.
+        "interaction_risk_level": "LOW",
         "interaction_conflict_names": [],
         "interaction_summary": "최근 검사에서 이 약과 관련된 함께먹기 주의를 찾지 못했어요.",
         "interaction_risk_factor": "",
@@ -251,7 +268,7 @@ def _enrich_medicine_row(
     item["frequency_per_day"] = row.get("frequency_per_day")
     item["administration_times"] = _parse_administration_times(
         row.get("administration_times")
-    )
+    ) or _default_times(row.get("frequency_per_day"))
     end_date = str(row.get("end_date") or "").strip()
     explicitly_active = bool(row.get("is_active", 1))
     item["status"] = (
@@ -300,6 +317,13 @@ def get_user_medicines(user_id: str) -> dict[str, Any]:
             )
             is not None
         ]
+        # 목록에도 상세와 같은 주의(이 사람 나이·임신에 해당하는 것)만 싣는다.
+        # 원문 낱말로 고른 주의("졸리거나 어지러울 수 있어요" 등)는 거의
+        # 모든 약에 붙어, 목록에서는 있고 상세에서는 없는 엇갈림이 생긴다.
+        for item in medicines:
+            cautions = person_cautions_for_medicine(conn, user_id=uid, medicine=item)
+            item["key_caution"] = cautions[0] if cautions else None
+            item["key_cautions"] = cautions
         return {
             "user_id": uid,
             "medicines": medicines,

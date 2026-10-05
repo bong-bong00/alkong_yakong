@@ -19,6 +19,7 @@ from app.models.schemas import (
 )
 from app.services.matching.name_matcher import compare_key
 from app.services.medicine_display import (
+    compact_product_name,
     ingredient_strength_from,
     infer_dosage_form,
     preferred_card_ingredient,
@@ -510,7 +511,10 @@ def _create_medication_schedules(
                     }
                 )
 
-    if created_schedules and not _confirmed_clock_times(item.administration_times):
+    # 일정이 새로 생기지 않았어도(같은 처방전을 다시 등록하면 이미 있다)
+    # 시각은 적어 둔다. 새로 생긴 때만 적으면 다시 등록한 약은 "언제"가
+    # 끝까지 비어 약 화면에 "처방전대로 드세요"만 남는다.
+    if not _confirmed_clock_times(item.administration_times):
         cursor.execute(
             """
             UPDATE user_medicines
@@ -1588,19 +1592,44 @@ def get_user_prescriptions(user_id: str) -> list[dict]:
             (user_id,),
         ).fetchall()
         result = []
+        seen: set[tuple] = set()
         for prescription in prescriptions:
             data = dict(prescription)
-            items = conn.execute(
-                """
-                SELECT pi.*, m.product_name, m.ingredient
-                FROM prescription_items pi
-                LEFT JOIN medicines m ON m.medicine_code = pi.medicine_code
-                WHERE pi.prescription_id = ?
-                ORDER BY pi.id
-                """,
-                (prescription["id"],),
-            ).fetchall()
-            data["items"] = [dict(item) for item in items]
+            items = [
+                dict(item)
+                for item in conn.execute(
+                    """
+                    SELECT pi.*, m.product_name, m.ingredient
+                    FROM prescription_items pi
+                    LEFT JOIN medicines m ON m.medicine_code = pi.medicine_code
+                    WHERE pi.prescription_id = ?
+                    ORDER BY pi.id
+                    """,
+                    (prescription["id"],),
+                ).fetchall()
+            ]
+            # 같은 처방전을 여러 번 찍어 넣으면 줄이 그만큼 쌓인다. 처방전
+            # 기록은 "언제 어디서 받은 처방전인지"를 보는 자리라 같은 것을
+            # 여러 번 보여 줄 까닭이 없다. 가장 나중에 넣은 것 하나만 둔다.
+            key = (
+                data.get("registration_fingerprint")
+                or (
+                    str(data.get("hospital_name") or "").strip(),
+                    str(data.get("prescribed_date") or "").strip(),
+                    tuple(sorted(str(item.get("medicine_code") or "") for item in items)),
+                )
+            )
+            if key in seen:
+                continue
+            seen.add(key)
+            for item in items:
+                # 허가 제품명은 그대로 두고, 화면에 적을 이름을 따로 준다.
+                # "…(수출명:TAGAMENT…)", "…(메퀴타진)" 같은 꼬리를 뗀 이름이다.
+                item["display_name"] = compact_product_name(
+                    item.get("product_name") or item.get("ocr_drug_name"),
+                    item.get("ingredient"),
+                )
+            data["items"] = items
             result.append(data)
         return result
     finally:

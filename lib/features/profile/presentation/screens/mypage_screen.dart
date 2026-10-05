@@ -540,7 +540,8 @@ class _BodyInfoCard extends StatelessWidget {
   static String _first(List<String> items) {
     if (items.isEmpty) return '없어요';
     if (items.length == 1) return items.first;
-    return '${items.first} 외 ${items.length - 1}';
+    // 줄바꿈 없는 공백( )으로 이어 "외 / 1"로 끊기지 않게 한다.
+    return '${items.first} 외 ${items.length - 1}';
   }
 
   Widget _cell(String label, String value) {
@@ -553,13 +554,10 @@ class _BodyInfoCard extends StatelessWidget {
           style: AppText.label(size: 16, color: AppColors.textSecondary),
         ),
         const SizedBox(height: 4),
-        // 세 칸이 가로를 나눠 쓰는 자리다. "페니실린 외 1"처럼 길어지면
-        // 접히지 않고 글자가 줄어든다 — 접히면 "외 / 1"로 끊긴다.
-        FittedBox(
-          fit: BoxFit.scaleDown,
-          alignment: Alignment.centerLeft,
-          child: Text(value, maxLines: 1, style: AppText.cardTitle(size: 20)),
-        ),
+        // 세 칸 글자 크기를 같게 둔다. 길면 줄여 넣지 않고 다음 줄로 넘긴다
+        // — 한 칸만 글자가 작으면 그 값이 덜 중요해 보인다. "외 1"이
+        // 갈라지지 않게 하는 건 [_first]가 맡는다.
+        Text(value, style: AppText.cardTitle(size: 20)),
       ],
     );
   }

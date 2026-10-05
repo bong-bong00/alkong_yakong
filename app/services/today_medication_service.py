@@ -50,6 +50,17 @@ _EXPLICIT_TIME_LABELS = {
 }
 
 
+def _josa(word: str, with_final: str, without_final: str) -> str:
+    """앞말 끝 글자의 받침에 맞는 조사. "코다론정과", "아디팜정은".
+
+    괄호나 숫자로 끝나면 그 앞의 한글을 본다. 한글이 없으면 받침 없는 쪽.
+    """
+    for char in reversed(re.sub(r"\([^)]*\)\s*$", "", word or "").strip()):
+        if "가" <= char <= "힣":
+            return with_final if (ord(char) - ord("가")) % 28 else without_final
+    return without_final
+
+
 def _confirmed_clock(value: object) -> str | None:
     text = str(value or "").strip()
     if re.fullmatch(r"(?:[01]\d|2[0-3]):[0-5]\d", text):
@@ -203,8 +214,10 @@ def get_today_medicines(user_id: str, target_date: str | None = None) -> dict[st
                 if interaction_cards:
                     first = interaction_cards[0]
                     other = first.get("name_b") or ""
+                    name_a = str(first.get("name_a") or "")
                     interaction_alert = (
-                        f"{first.get('name_a')}과 {other}는 함께 먹을 때 주의가 필요해요."
+                        f"{name_a}{_josa(name_a, '과', '와')} "
+                        f"{other}{_josa(other, '은', '는')} 함께 먹을 때 주의가 필요해요."
                         if other
                         else str(
                             latest_risk["description"] or "함께 먹을 때 주의가 필요해요."
