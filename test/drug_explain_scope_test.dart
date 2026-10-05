@@ -58,6 +58,82 @@ void main() {
     SharedPreferences.setMockInitialValues({});
   });
 
+  for (final intent in ['efficacy', 'health_precautions']) {
+    testWidgets('$intent 답변의 짧은 약 이름은 파랑, 건강 주의사항은 빨강', (tester) async {
+      const reply =
+          '아디팜정, 프리마란정, 휴온스시메티딘정의 안내예요. '
+          '고혈압과 알코올에 주의하세요. 흡연 관련 안내를 찾지 못했어요. '
+          '아디팜정서방정은 선택한 약이 아니에요.';
+      final client = MockClient((request) async {
+        if (request.method == 'POST') {
+          return response({
+            'reply': reply,
+            'resolved_intent': intent,
+            'health_highlight_terms': ['고혈압', '알코올', '흡연'],
+          });
+        }
+        return response({
+          'medicines': [
+            {
+              'medicine_code': '202400001',
+              'product_name': '아디팜정',
+              'official_product_name': '아디팜정(히드록시진염산염)',
+              'status': 'active',
+            },
+            {
+              'medicine_code': '202400002',
+              'product_name': '프리마란정',
+              'official_product_name': '프리마란정(메퀴타진)',
+              'status': 'active',
+            },
+            {
+              'medicine_code': '202400003',
+              'product_name': '휴온스시메티딘정200밀리그램',
+              'official_product_name':
+                  '휴온스시메티딘정200밀리그램(수출명:TAGAMENTTab.200밀리그램)',
+              'status': 'active',
+            },
+          ],
+        });
+      });
+      await tester.pumpWidget(
+        MaterialApp(
+          home: DrugExplainScreen(
+            apiClient: ApiClient(client: client),
+            medicationApiClient: ApiClient(client: client),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byType(TextField).last,
+        intent == 'efficacy' ? '어디에 쓰는 약이에요?' : '내 건강에 맞춰서',
+      );
+      await tester.testTextInput.receiveAction(TextInputAction.send);
+      await tester.pumpAndSettle();
+      final answer = tester.widget<Text>(
+        find.byWidgetPredicate(
+          (widget) => widget is Text && widget.textSpan?.toPlainText() == reply,
+        ),
+      );
+      final spans = (answer.textSpan! as TextSpan).children!
+          .whereType<TextSpan>();
+      expect(
+        spans
+            .where((span) => span.style?.color == AppColors.point)
+            .map((span) => span.text),
+        ['아디팜정', '프리마란정', '휴온스시메티딘정'],
+      );
+      expect(
+        spans
+            .where((span) => span.style?.color == AppColors.danger)
+            .map((span) => span.text),
+        intent == 'health_precautions' ? ['고혈압', '알코올'] : isEmpty,
+      );
+      expect(tester.takeException(), isNull);
+    });
+  }
+
   testWidgets('같은 빠른 질문은 저장해 둔 답을 다시 보여 준다', (tester) async {
     var calls = 0;
     final client = MockClient((request) async {

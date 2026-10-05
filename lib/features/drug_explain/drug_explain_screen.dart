@@ -2049,11 +2049,7 @@ class _ChatBubble extends StatelessWidget {
                     TextSpan(
                       children: _officialProductNameSpans(
                         text,
-                        isMe
-                            ? const []
-                            : isHealthReply
-                            ? healthHighlightTerms
-                            : officialProductNames,
+                        isMe ? const [] : officialProductNames,
                         // 약 이름 말고도 어르신이 놓치면 안 되는 토막을
                         // 짚는다 — 얼마나·언제는 파랑, 하지 말 것은 빨강.
                         extraTerms: isMe || isHealthReply
@@ -2066,10 +2062,10 @@ class _ChatBubble extends StatelessWidget {
                           size: 20,
                           color: isMe ? Colors.white : AppColors.textPrimary,
                         ),
-                        emphasisColor: isHealthReply
-                            ? AppColors.danger
-                            : AppColors.point,
-                        healthWarningsOnly: isHealthReply,
+                        emphasisColor: AppColors.point,
+                        healthTerms: isMe || !isHealthReply
+                            ? const []
+                            : healthHighlightTerms,
                       ),
                     ),
                   ),
@@ -2096,12 +2092,13 @@ List<TextSpan> _officialProductNameSpans(
   List<String> officialProductNames,
   TextStyle baseStyle, {
   Color emphasisColor = AppColors.detailEmphasis,
-  bool healthWarningsOnly = false,
+  List<String> healthTerms = const [],
   List<String> extraTerms = const [],
   List<String> warnTerms = const [],
 }) {
   final names =
       officialProductNames
+          .expand(_officialNameHighlightAliases)
           .map((name) => name.trim())
           .where((name) => name.isNotEmpty)
           .toSet()
@@ -2123,7 +2120,7 @@ List<TextSpan> _officialProductNameSpans(
           .toSet()
           .toList()
         ..sort((left, right) => right.length.compareTo(left.length));
-  if (names.isEmpty && extras.isEmpty && warns.isEmpty) {
+  if (names.isEmpty && extras.isEmpty && warns.isEmpty && healthTerms.isEmpty) {
     return [TextSpan(text: text, style: baseStyle)];
   }
 
@@ -2134,8 +2131,7 @@ List<TextSpan> _officialProductNameSpans(
     for (final name in names) {
       var start = text.indexOf(name, cursor);
       while (start >= 0 &&
-          (!_hasOfficialProductNameBoundary(text, start, name) ||
-              (healthWarningsOnly && !_isHealthWarningSentence(text, start)))) {
+          !_hasOfficialProductNameBoundary(text, start, name)) {
         start = text.indexOf(name, start + 1);
       }
       if (start < 0) continue;
@@ -2146,14 +2142,22 @@ List<TextSpan> _officialProductNameSpans(
         next = candidate;
       }
     }
-    for (final (index, group) in [extras, warns].indexed) {
+    for (final (index, group) in [extras, warns, healthTerms].indexed) {
       for (final term in group) {
-        final start = text.indexOf(term, cursor);
+        if (term.trim().isEmpty) continue;
+        var start = text.indexOf(term, cursor);
+        // 건강정보는 기존처럼 주의 문장에서만 빨갛게 표시한다.
+        while (index == 2 &&
+            start >= 0 &&
+            (!_hasOfficialProductNameBoundary(text, start, term) ||
+                !_isHealthWarningSentence(text, start))) {
+          start = text.indexOf(term, start + 1);
+        }
         if (start < 0) continue;
         final candidate = (
           start: start,
           end: start + term.length,
-          warn: index == 1,
+          warn: index != 0,
         );
         if (next == null ||
             candidate.start < next.start ||
@@ -2192,6 +2196,20 @@ List<TextSpan> _officialProductNameSpans(
     spans.add(TextSpan(text: text.substring(cursor), style: baseStyle));
   }
   return spans;
+}
+
+/// Only derive shortened labels from a confirmed product name, never from
+/// arbitrary words in the answer. Keep boundary checks for other formulations.
+Iterable<String> _officialNameHighlightAliases(String name) sync* {
+  final full = name.trim();
+  if (full.isEmpty) return;
+  yield full;
+  final withoutExport = stripExportAlias(full);
+  yield withoutExport;
+  yield nameWithoutStrength(withoutExport);
+  final withoutIngredient = withoutExport.split('(').first.trim();
+  yield withoutIngredient;
+  yield nameWithoutStrength(withoutIngredient);
 }
 
 bool _isHealthWarningSentence(String text, int start) {
