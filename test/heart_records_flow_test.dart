@@ -495,7 +495,7 @@ void main() {
         findsOneWidget,
       );
       expect(
-        find.descendant(of: todayCard, matching: find.text('일반 범위')),
+        find.descendant(of: todayCard, matching: find.text('정상 심박수')),
         findsOneWidget,
       );
       expect(
@@ -555,11 +555,11 @@ void main() {
         matching: find.byType(SeniorCard),
       );
       expect(
-        find.descendant(of: todayCard, matching: find.text('느린 범위')),
+        find.descendant(of: todayCard, matching: find.text('느린 심박수')),
         findsOneWidget,
       );
       expect(
-        find.descendant(of: todayCard, matching: find.text('일반 범위')),
+        find.descendant(of: todayCard, matching: find.text('정상 심박수')),
         findsOneWidget,
       );
       expect(

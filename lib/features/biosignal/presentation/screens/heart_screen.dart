@@ -756,9 +756,9 @@ class _HeartRateRangeLabel extends StatelessWidget {
 }
 
 String _heartRateRange(int bpm) {
-  if (bpm < 60) return '느린 범위';
-  if (bpm <= 100) return '일반 범위';
-  return '빠른 범위';
+  if (bpm < 60) return '느린 심박수';
+  if (bpm <= 100) return '정상 심박수';
+  return '빠른 심박수';
 }
 
 /// 아직 저장된 기록을 읽어오지 못했을 때.
