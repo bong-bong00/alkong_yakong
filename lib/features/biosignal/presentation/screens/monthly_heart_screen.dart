@@ -36,12 +36,18 @@ class MonthlyHeartScreen extends StatefulWidget {
 
 class _MonthlyHeartScreenState extends State<MonthlyHeartScreen> {
   late final int _month = (widget.now ?? DateTime.now()).month;
+  bool _showAllReadings = false;
 
   @override
   Widget build(BuildContext context) {
     final data = widget.data;
     final readings = data.readingsFor(monthly: true);
     final comparison = _MonthlyComparison.fromReadings(readings);
+    final newestFirst = List<HeartReading>.of(readings)
+      ..sort((a, b) {
+        final byTime = b.measuredAt.compareTo(a.measuredAt);
+        return byTime != 0 ? byTime : b.id.compareTo(a.id);
+      });
     return Scaffold(
       backgroundColor: AppColors.bg,
       body: Column(
@@ -100,9 +106,31 @@ class _MonthlyHeartScreenState extends State<MonthlyHeartScreen> {
                     if (readings.isNotEmpty) ...[
                       const SizedBox(height: 12),
                       HeartReadingsCard(
-                        readings: readings,
+                        readings: _showAllReadings
+                            ? newestFirst
+                            : newestFirst.take(2).toList(growable: false),
                         hasComparison: comparison.pairCount > 0,
                       ),
+                      if (newestFirst.length > 2)
+                        TextButton.icon(
+                          key: const Key('monthly-heart-toggle-readings'),
+                          style: TextButton.styleFrom(
+                            foregroundColor: AppColors.point,
+                            minimumSize: const Size(0, 48),
+                          ),
+                          onPressed: () => setState(
+                            () => _showAllReadings = !_showAllReadings,
+                          ),
+                          icon: Icon(
+                            _showAllReadings
+                                ? Icons.keyboard_arrow_up
+                                : Icons.keyboard_arrow_down,
+                          ),
+                          label: Text(
+                            _showAllReadings ? '접기' : '이전 기록 더 보기',
+                            style: AppText.label(size: 18),
+                          ),
+                        ),
                     ],
                   ],
                 ),

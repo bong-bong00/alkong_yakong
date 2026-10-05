@@ -19,7 +19,7 @@ int? presentationLunchBeforeBpm(
     if (reading.id == 47 &&
         reading.measurementContext ==
             HeartMeasurementContext.beforeMedication &&
-        reading.bpm == 75 &&
+        reading.bpm == 57 &&
         at.year == 2026 &&
         at.month == 10 &&
         at.day == 6 &&

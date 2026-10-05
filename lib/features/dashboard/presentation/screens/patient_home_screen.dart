@@ -899,7 +899,7 @@ class _HeartSteps extends StatelessWidget {
         : done
         ? 1
         : 0;
-    final labels = [done ? '먹기 전 $beforeBpm회' : '먹기 전 재기', '복용 완료', '먹은 뒤 재기'];
+    final labels = [done ? '먹기 전 $beforeBpm회' : '먹기 전 측정', '복용 완료', '먹은 뒤 측정'];
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),

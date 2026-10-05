@@ -233,7 +233,7 @@ void main() {
     await tester.pump();
 
     expect(find.text('심박수 재기'), findsNothing);
-    expect(find.text('먹기 전 재기'), findsNothing);
+    expect(find.text('먹기 전 측정'), findsNothing);
   });
 
   testWidgets('기기를 쓰면 먹기 전 심박수부터 재게 한다 (13)', (tester) async {
@@ -323,7 +323,7 @@ void main() {
     // 걸음 칸은 세 번째를 가리키고, 큰 단추는 다시 측정을 말한다.
     expect(find.text('심박수'), findsOneWidget);
     expect(find.text('측정'), findsOneWidget);
-    expect(find.text('먹은 뒤 재기'), findsOneWidget);
+    expect(find.text('먹은 뒤 측정'), findsOneWidget);
 
     // 지금 재지 않겠다고 할 수도 있어야 한다.
     await tester.tap(find.text('측정 건너뛰기'));
@@ -1318,7 +1318,7 @@ void _homeTimelineTests() {
           .first,
     );
 
-    expect(find.text('먹기 전 재기'), findsOneWidget);
+    expect(find.text('먹기 전 측정'), findsOneWidget);
     final small = circle().width;
 
     // 센서를 떼면(연결 끊기) 걸음 칸이 접히고 그만큼 동그라미가
@@ -1329,7 +1329,7 @@ void _homeTimelineTests() {
     ).read(heartDevicePairedProvider.notifier).set(false);
     await tester.pumpAndSettle();
 
-    expect(find.text('먹기 전 재기'), findsNothing);
+    expect(find.text('먹기 전 측정'), findsNothing);
     expect(circle().width, greaterThan(small));
   });
 

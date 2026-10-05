@@ -523,6 +523,90 @@ void main() {
   );
 
   testWidgets(
+    'today card keeps only the latest two general readings without losing medication values',
+    (tester) async {
+      final now = DateTime.now();
+      final payload = body();
+      payload['today'] = {'before': 57, 'after': 81};
+      payload['readings'] = [
+        for (final row in [(1, 72, 9, 0), (2, 75, 12, 5), (3, 112, 12, 0)])
+          {
+            'id': row.$1,
+            'bpm': row.$2,
+            'measured_at': DateTime(
+              now.year,
+              now.month,
+              now.day,
+              row.$3,
+              row.$4,
+            ).toUtc().toIso8601String(),
+            'measurement_context': 'general',
+          },
+        {
+          'id': 4,
+          'bpm': 57,
+          'measured_at': DateTime(
+            now.year,
+            now.month,
+            now.day,
+            13,
+            55,
+          ).toUtc().toIso8601String(),
+          'measurement_context': 'before_medication',
+        },
+      ];
+      final repository = HeartRepository(
+        apiClient: ApiClient(
+          client: MockClient(
+            (_) async => http.Response(
+              jsonEncode(payload),
+              200,
+              headers: {'content-type': 'application/json'},
+            ),
+          ),
+        ),
+      );
+      await tester.pumpWidget(wrap(HeartScreen(repository: repository)));
+      await tester.pumpAndSettle();
+      final todayCard = find.ancestor(
+        of: find.text('오늘 측정'),
+        matching: find.byType(SeniorCard),
+      );
+      expect(
+        find.descendant(of: todayCard, matching: find.text('평소 심박 측정')),
+        findsNWidgets(2),
+      );
+      expect(
+        find.descendant(of: todayCard, matching: find.text('72회/분')),
+        findsNothing,
+      );
+      expect(
+        find.descendant(of: todayCard, matching: find.text('75회/분')),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(of: todayCard, matching: find.text('112회/분')),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(of: todayCard, matching: find.text('57')),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(of: todayCard, matching: find.text('81')),
+        findsOneWidget,
+      );
+      final latest = tester.getTopLeft(
+        find.descendant(of: todayCard, matching: find.text('75회/분')),
+      );
+      final older = tester.getTopLeft(
+        find.descendant(of: todayCard, matching: find.text('112회/분')),
+      );
+      expect(latest.dy, lessThan(older.dy));
+    },
+  );
+
+  testWidgets(
     'today medication comparison shows ranges, difference, and caveat',
     (tester) async {
       tester.view.physicalSize = const Size(320, 700);

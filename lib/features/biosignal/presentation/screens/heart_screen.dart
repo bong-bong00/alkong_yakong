@@ -498,6 +498,7 @@ class _TodayCard extends StatelessWidget {
           (reading) =>
               reading.measurementContext == HeartMeasurementContext.general,
         )
+        .take(2)
         .toList(growable: false);
     final hasMedicationReading = today.before != null || today.after != null;
     final measuredToday = hasMedicationReading || generalReadings.isNotEmpty;

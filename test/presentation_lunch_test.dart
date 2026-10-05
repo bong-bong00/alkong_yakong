@@ -7,7 +7,7 @@ void main() {
   final day = DateTime(2026, 10, 6, 14);
   HeartReading reading({
     int id = 47,
-    int bpm = 75,
+    int bpm = 57,
     HeartMeasurementContext context = HeartMeasurementContext.beforeMedication,
     int hour = 13,
     int minute = 55,
@@ -21,7 +21,7 @@ void main() {
   test('restores only stored demo lunch pre-measurement', () {
     expect(
       presentationLunchBeforeBpm(PresentationHistory.userId, day, [reading()]),
-      75,
+      57,
     );
   });
   test('does not prepare other accounts or dates', () {
@@ -40,6 +40,7 @@ void main() {
       [],
       [reading(id: 51)],
       [reading(bpm: 78)],
+      [reading(bpm: 75)],
       [reading(hour: 8, minute: 5)],
       [reading(context: HeartMeasurementContext.general)],
       [reading(context: HeartMeasurementContext.afterMedication)],
