@@ -8,7 +8,8 @@ import 'package:flutter_tabler_icons/flutter_tabler_icons.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../dev_mock.dart';
 import '../../../../core/theme/app_typography.dart';
-import '../../../../core/widgets/mode_badge.dart';
+import '../../../../core/widgets/coach_marks.dart';
+import '../../../../core/widgets/help_button.dart';
 import '../../../../core/widgets/senior_button.dart';
 import '../../../../core/widgets/senior_card.dart';
 import '../../../../core/widgets/senior_feedback.dart';
@@ -86,6 +87,64 @@ class PatientHomeScreen extends ConsumerStatefulWidget {
 }
 
 class _PatientHomeScreenState extends ConsumerState<PatientHomeScreen> {
+  // 도움말이 동그라미를 칠 자리들. 화면에 없으면 그 걸음은 건너뛴다.
+  final _slotsKey = GlobalKey();
+  final _bigButtonKey = GlobalKey();
+  final _stepsKey = GlobalKey();
+  final _alarmTileKey = GlobalKey();
+  final _sensorTileKey = GlobalKey();
+
+  /// 홈 화면을 하나씩 짚어 가며 설명한다.
+  void _openHelp() {
+    final usesDevice = ref.read(heartDevicePairedProvider);
+    CoachMarks.show(context, [
+      CoachMark(
+        target: _slotsKey,
+        title: '복용 시간대 선택',
+        body:
+            '복용할 시간대를 선택하세요. 정해진 시간과 다른 때에 복용하더라도 '
+            '선택한 시간대로 기록됩니다.',
+        boxed: true,
+        radius: 22,
+      ),
+      if (usesDevice)
+        CoachMark(
+          target: _stepsKey,
+          title: '심박수 측정 단계',
+          body:
+              '센서가 연결되어 있으면 복용 전과 복용 후에 각각 심박수를 '
+              '측정합니다. 현재 단계가 파란색으로 표시됩니다.',
+          boxed: true,
+          radius: 18,
+        ),
+      CoachMark(
+        target: _bigButtonKey,
+        title: '복용 완료 버튼',
+        body:
+            '약을 복용한 뒤 누르면 누른 시각으로 복용이 기록됩니다. 잘못 '
+            '눌렀다면 같은 버튼이 "취소하기"로 바뀌어 기록을 취소할 수 있습니다.',
+        // 테가 뛸 때 1.09배까지 커진다. 그만큼 둘레를 더 밝혀 둔다.
+        padding: 16,
+      ),
+      CoachMark(
+        target: _alarmTileKey,
+        title: '알람',
+        body: '다음 복약 알람 시각입니다. 누르면 알람 시각을 변경할 수 있습니다.',
+        boxed: true,
+        radius: 18,
+      ),
+      CoachMark(
+        target: _sensorTileKey,
+        title: usesDevice ? '기기 연결 해제' : '센서 연결',
+        body: usesDevice
+            ? '연결된 심박 센서의 연결을 해제합니다.'
+            : '심박 센서를 연결합니다. 연결하면 복용 전후로 심박수를 측정할 수 있습니다.',
+        boxed: true,
+        radius: 18,
+      ),
+    ]);
+  }
+
   /// 방금 기록한 시간대. 파란 띠로 알리고, X를 누르면 사라진다.
   DoseSlot? _recordedSlot;
 
@@ -419,6 +478,7 @@ class _PatientHomeScreenState extends ConsumerState<PatientHomeScreen> {
           if (!widget.easyMode)
             HomeTopBar(
               userName: ref.watch(currentUserNameProvider),
+              onHelp: _openHelp,
               date: now,
               easyMode: widget.easyMode,
             ),
@@ -493,6 +553,7 @@ class _PatientHomeScreenState extends ConsumerState<PatientHomeScreen> {
                       _TodayHeadline(remaining: remaining),
                       const SizedBox(height: 18),
                       _SlotChips(
+                        key: _slotsKey,
                         today: today,
                         picked: pickedSlot,
                         onPick: (slot) => setState(() => _pickedSlot = slot),
@@ -514,6 +575,7 @@ class _PatientHomeScreenState extends ConsumerState<PatientHomeScreen> {
                             ? Padding(
                                 padding: const EdgeInsets.only(top: 14),
                                 child: _HeartSteps(
+                                  key: _stepsKey,
                                   beforeBpm:
                                       _beforeBpm[afterSlot ?? pickedSlot],
                                   afterPending: afterSlot != null,
@@ -526,6 +588,7 @@ class _PatientHomeScreenState extends ConsumerState<PatientHomeScreen> {
                       _Fill(
                         scrolls: scrolls,
                         child: _BigDoseButton(
+                          focusKey: _bigButtonKey,
                           done: pickedTaken,
                           // 기기를 쓰는 분은 먹기 전에 먼저 잰다.
                           measureFirst:
@@ -560,6 +623,8 @@ class _PatientHomeScreenState extends ConsumerState<PatientHomeScreen> {
                       // 위아래 여백을 같게 둔다. 두 칸 정가운데에 단추가 온다.
                       SizedBox(height: gap),
                       _HomeTiles(
+                        alarmKey: _alarmTileKey,
+                        sensorKey: _sensorTileKey,
                         alarmLabel: _nextAlarmLabel(
                           ref.watch(alarmPreferencesProvider),
                         ),
@@ -647,6 +712,7 @@ class _SlotChips extends StatelessWidget {
   final ValueChanged<DoseSlot> onPick;
 
   const _SlotChips({
+    super.key,
     required this.today,
     required this.picked,
     required this.onPick,
@@ -693,6 +759,11 @@ class _SlotChips extends StatelessWidget {
         : isPicked
         ? Colors.white
         : AppColors.point;
+    // 아래 줄(미복용·드신 시각)은 검정으로 둔다. 위 이름까지 파랑이면
+    // 칸 전체가 한 덩어리로 보여 상태가 눈에 들어오지 않는다.
+    final underColor = dose != null && !isPicked
+        ? AppColors.textPrimary
+        : foreground;
 
     return Semantics(
       button: dose != null,
@@ -734,7 +805,7 @@ class _SlotChips extends StatelessWidget {
                     Text(
                       under,
                       textAlign: TextAlign.center,
-                      style: AppText.cardTitle(size: 16, color: foreground),
+                      style: AppText.cardTitle(size: 16, color: underColor),
                     ),
                   ],
                 ),
@@ -793,7 +864,11 @@ class _HeartSteps extends StatelessWidget {
   /// 드신 뒤 재기가 남은 상태. 세 번째 걸음을 가리킨다.
   final bool afterPending;
 
-  const _HeartSteps({required this.beforeBpm, this.afterPending = false});
+  const _HeartSteps({
+    super.key,
+    required this.beforeBpm,
+    this.afterPending = false,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -910,7 +985,13 @@ class _BigDoseButton extends StatefulWidget {
   final VoidCallback? onTake;
   final VoidCallback? onUndo;
 
+  /// 도움말이 짚을 자리. 뛰는 둘레 테까지 감싸는 자리에 단다 — 단추
+  /// 자리 전체를 짚으면 위아래 칸까지 덮고, 진한 동그라미만 짚으면
+  /// 뛰는 테가 그늘 밖으로 삐져나온다.
+  final GlobalKey? focusKey;
+
   const _BigDoseButton({
+    this.focusKey,
     required this.done,
     this.measureFirst = false,
     this.measureAfter = false,
@@ -1094,19 +1175,26 @@ class _BigDoseButtonState extends State<_BigDoseButton>
                                   OverflowBox(
                                     maxWidth: halo,
                                     maxHeight: halo,
-                                    child: AnimatedBuilder(
-                                      animation: _pulse,
-                                      builder: (context, child) =>
-                                          Transform.scale(
-                                            scale: beating ? _pulse.value : 1.0,
-                                            child: child,
+                                    child: SizedBox(
+                                      key: widget.focusKey,
+                                      width: halo,
+                                      height: halo,
+                                      child: AnimatedBuilder(
+                                        animation: _pulse,
+                                        builder: (context, child) =>
+                                            Transform.scale(
+                                              scale: beating
+                                                  ? _pulse.value
+                                                  : 1.0,
+                                              child: child,
+                                            ),
+                                        child: Container(
+                                          width: halo,
+                                          height: halo,
+                                          decoration: const BoxDecoration(
+                                            color: AppColors.pointHalo,
+                                            shape: BoxShape.circle,
                                           ),
-                                      child: Container(
-                                        width: halo,
-                                        height: halo,
-                                        decoration: const BoxDecoration(
-                                          color: AppColors.pointHalo,
-                                          shape: BoxShape.circle,
                                         ),
                                       ),
                                     ),
@@ -1245,7 +1333,13 @@ class _HomeTiles extends StatelessWidget {
   final VoidCallback? onDisconnectDevice;
   final VoidCallback? onOpenMedicines;
 
+  /// 도움말이 칸 하나하나를 따로 짚을 자리.
+  final GlobalKey? alarmKey;
+  final GlobalKey? sensorKey;
+
   const _HomeTiles({
+    this.alarmKey,
+    this.sensorKey,
     required this.alarmLabel,
     this.onOpenAlarm,
     this.onConnectDevice,
@@ -1259,6 +1353,7 @@ class _HomeTiles extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Expanded(
+          key: alarmKey,
           child: _tile(
             icon: TablerIcons.alarm,
             label: alarmLabel,
@@ -1267,6 +1362,7 @@ class _HomeTiles extends StatelessWidget {
         ),
         const SizedBox(width: 16),
         Expanded(
+          key: sensorKey,
           child: onConnectDevice != null
               ? _tile(
                   icon: TablerIcons.heart,
@@ -1376,12 +1472,17 @@ class _RefillRow extends StatelessWidget {
 
 class HomeTopBar extends StatelessWidget {
   final String userName;
+
+  /// 도움말 — 홈 화면을 짚어 가며 설명한다. 짚을 칸이 없는 화면에서는
+  /// 비워 두고, 그때는 단추를 세우지 않는다.
+  final VoidCallback? onHelp;
   final DateTime date;
   final bool easyMode;
 
   const HomeTopBar({
     super.key,
     required this.userName,
+    this.onHelp,
     required this.date,
     this.easyMode = false,
   });
@@ -1414,8 +1515,9 @@ class HomeTopBar extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 10),
-          // 지금 어느 화면인지는 두 모드 모두에서 보여야 한다.
-          const Flexible(child: ModeBadge()),
+          // 쓰는 법이 궁금할 때 누르는 자리. 글자 단추를 두면 이름을
+          // 밀어내므로 동그란 "i" 하나만 둔다.
+          if (onHelp != null) HelpButton(onTap: onHelp!),
         ],
       ),
     );

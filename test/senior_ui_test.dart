@@ -29,6 +29,7 @@ import 'package:http/testing.dart';
 import 'package:alkong_yakong/core/widgets/senior_card.dart';
 import 'package:alkong_yakong/features/dashboard/presentation/screens/home_screen.dart';
 import 'package:alkong_yakong/features/easy_flow/domain/easy_flow.dart';
+import 'package:alkong_yakong/features/easy_flow/presentation/easy_flow_shell.dart';
 import 'package:alkong_yakong/core/widgets/senior_bottom_nav.dart';
 import 'package:alkong_yakong/core/widgets/senior_header.dart';
 import 'package:alkong_yakong/core/widgets/senior_timeline.dart';
@@ -414,7 +415,7 @@ void _easyModeTests() {
           theme: AppTheme.build(),
           home: const MediaQuery(
             data: MediaQueryData(disableAnimations: true),
-            child: HomeScreen(),
+            child: EasyFlowShell(),
           ),
         ),
       ),
@@ -445,7 +446,7 @@ void _easyModeTests() {
           theme: AppTheme.build(),
           home: const MediaQuery(
             data: MediaQueryData(disableAnimations: true),
-            child: HomeScreen(),
+            child: EasyFlowShell(),
           ),
         ),
       ),
@@ -1683,11 +1684,13 @@ void _screenCopyTests() {
     expect(source.contains("labels: const ['일반', '간편 화면']"), isFalse);
   });
 
-  test('간편 화면으로 가는 길은 홈 헤더에 남아 있다', () {
+  test('홈 머리띠에는 도움말 단추가 선다', () {
     final source = File(
       'lib/features/dashboard/presentation/screens/patient_home_screen.dart',
     ).readAsStringSync();
-    expect(source.contains('ModeBadge()'), isTrue);
+    // 간편 화면은 걷었다. 그 자리에 쓰는 법을 여는 동그란 "i"를 둔다.
+    expect(source.contains('HelpButton('), isTrue);
+    expect(source.contains('ModeBadge()'), isFalse);
   });
 }
 
