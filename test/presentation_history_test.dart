@@ -148,6 +148,13 @@ void main() {
       real.first,
     );
     expect(PresentationHistory.prescription['status'], 'EXPIRED');
+    expect(PresentationHistory.prescription['hospital_name'], '미래의원');
+    expect(
+      (PresentationHistory.prescription['items'] as List).map(
+        (item) => item['product_name'],
+      ),
+      ['타이레놀정500밀리그램', '베아제정', '알마겔정'],
+    );
     expect(
       PresentationHistory.prescription['marker'],
       PresentationHistory.marker,
