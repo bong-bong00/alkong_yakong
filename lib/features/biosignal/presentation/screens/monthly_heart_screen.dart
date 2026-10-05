@@ -5,6 +5,7 @@ import '../../../../core/polar_pharmacist_ui/theme/app_typography.dart';
 import '../../../../core/polar_pharmacist_ui/widgets/senior_card.dart';
 import '../../../../core/polar_pharmacist_ui/widgets/senior_feedback.dart';
 import '../../../../core/polar_pharmacist_ui/widgets/senior_header.dart';
+import '../../../../core/session/presentation_history.dart';
 import '../../domain/heart_data.dart';
 import '../widgets/heart_readings_card.dart';
 
@@ -18,6 +19,7 @@ import '../widgets/heart_readings_card.dart';
 class MonthlyHeartScreen extends StatefulWidget {
   final HeartData data;
   final String guardianTitle;
+  final String? userId;
 
   /// 날짜에 붙일 "몇 월". 서버는 이번 달 날짜만 보내므로 기본은 오늘이다.
   /// 테스트에서 날짜를 고정할 때만 넘긴다.
@@ -27,6 +29,7 @@ class MonthlyHeartScreen extends StatefulWidget {
     super.key,
     required this.data,
     this.guardianTitle = '',
+    this.userId,
     this.now,
   });
 
@@ -42,6 +45,30 @@ class _MonthlyHeartScreenState extends State<MonthlyHeartScreen> {
     final data = widget.data;
     final readings = data.readingsFor(monthly: true);
     final comparison = _MonthlyComparison.fromReadings(readings);
+    final showDemo =
+        widget.userId != null &&
+        PresentationHistory.applies(widget.userId!) &&
+        (widget.now ?? data.periodDate ?? DateTime.now()).year == 2026 &&
+        _month == 10;
+    // These historical examples are graph-only, not saved readings or analysis.
+    final demoReadings = <HeartReading>[
+      for (final entry in [
+        (1, 76, 78),
+        (2, 48, 54),
+        (3, 104, 125),
+        (4, 78, 118),
+        (5, 79, 77),
+      ])
+        for (final after in [false, true])
+          HeartReading(
+            id: -(entry.$1 * 2 + (after ? 1 : 0)),
+            bpm: after ? entry.$3 : entry.$2,
+            measuredAt: DateTime(2026, 10, entry.$1, after ? 9 : 8),
+            measurementContext: after
+                ? HeartMeasurementContext.afterMedication
+                : HeartMeasurementContext.beforeMedication,
+          ),
+    ];
     return Scaffold(
       backgroundColor: AppColors.bg,
       body: Column(
@@ -97,6 +124,14 @@ class _MonthlyHeartScreenState extends State<MonthlyHeartScreen> {
                     // 잰 것이 없어도 그래프 자리는 그대로 둔다. 자리가
                     // 사라지면 어제 보던 것이 어디 갔는지부터 찾게 된다.
                     _DailyBars(month: _month, readings: readings),
+                    if (showDemo) ...[
+                      const SizedBox(height: 12),
+                      _DailyBars(
+                        month: _month,
+                        readings: demoReadings,
+                        isDemo: true,
+                      ),
+                    ],
                     if (readings.isNotEmpty) ...[
                       const SizedBox(height: 12),
                       HeartReadingsCard(
@@ -247,8 +282,13 @@ class _Cell extends StatelessWidget {
 class _DailyBars extends StatelessWidget {
   final int month;
   final List<HeartReading> readings;
+  final bool isDemo;
 
-  const _DailyBars({required this.month, required this.readings});
+  const _DailyBars({
+    required this.month,
+    required this.readings,
+    this.isDemo = false,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -287,7 +327,14 @@ class _DailyBars extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text('날마다 복약 전·후', style: AppText.cardTitle()),
+          Text(
+            isDemo ? '날마다 복약 전·후 · 시연 예시' : '날마다 복약 전·후',
+            style: AppText.cardTitle(),
+          ),
+          if (isDemo) ...[
+            const SizedBox(height: 6),
+            Text('가상 데이터 · 실제 측정 아님', style: AppText.caption(size: 16)),
+          ],
           const SizedBox(height: 6),
           Text(
             allValues.isEmpty
@@ -299,7 +346,7 @@ class _DailyBars extends StatelessWidget {
           const _BarLegend(),
           const SizedBox(height: 16),
           SingleChildScrollView(
-            key: const Key('daily-heart-bars'),
+            key: Key(isDemo ? 'demo-daily-heart-bars' : 'daily-heart-bars'),
             scrollDirection: Axis.horizontal,
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.end,
@@ -340,7 +387,7 @@ class _DayPair extends StatelessWidget {
 
   double _height(int? value) {
     if (value == null || highest == 0) return 3;
-    return 18 + (value / highest) * 76;
+    return (value / highest) * 94;
   }
 
   @override
@@ -352,17 +399,18 @@ class _DayPair extends StatelessWidget {
           : '$day일 잰 기록 없음',
       child: ExcludeSemantics(
         child: SizedBox(
-          width: 44,
+          width: 108,
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               SizedBox(
-                height: 112,
+                height: 104 + MediaQuery.textScalerOf(context).scale(16) * 2,
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
                     _Bar(
+                      value: before,
                       height: _height(before),
                       color: before == null
                           ? AppColors.divider
@@ -370,6 +418,7 @@ class _DayPair extends StatelessWidget {
                     ),
                     const SizedBox(width: 4),
                     _Bar(
+                      value: after,
                       height: _height(after),
                       color: after == null
                           ? AppColors.divider
@@ -417,17 +466,36 @@ class _WeekAverage {
 class _Bar extends StatelessWidget {
   final double height;
   final Color color;
+  final int? value;
 
-  const _Bar({required this.height, required this.color});
+  const _Bar({required this.height, required this.color, this.value});
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      width: 16,
-      height: height,
-      decoration: BoxDecoration(
-        color: color,
-        borderRadius: BorderRadius.circular(5),
+    final outside = value != null && (value! < 60 || value! > 100);
+    return SizedBox(
+      width: 48,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (outside) ...[
+            Text(
+              '$value',
+              key: Key('heart-bar-value-$value'),
+              maxLines: 1,
+              style: AppText.label(size: 16),
+            ),
+            const SizedBox(height: 4),
+          ],
+          Container(
+            width: 16,
+            height: height,
+            decoration: BoxDecoration(
+              color: color,
+              borderRadius: BorderRadius.circular(5),
+            ),
+          ),
+        ],
       ),
     );
   }
