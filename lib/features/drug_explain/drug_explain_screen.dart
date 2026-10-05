@@ -1861,10 +1861,31 @@ class _PreviousConversationsScreenState
                                   key: ValueKey(
                                     'delete-conversation-${record['id']}',
                                   ),
+                                  style: TextButton.styleFrom(
+                                    minimumSize: const Size(0, 36),
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 8,
+                                      vertical: 4,
+                                    ),
+                                    textStyle: const TextStyle(
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                    side: const BorderSide(
+                                      color: AppColors.divider,
+                                    ),
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                    tapTargetSize: MaterialTapTargetSize.padded,
+                                  ),
                                   onPressed: _deleting
                                       ? null
                                       : () => _deleteConversation(record),
-                                  icon: const Icon(Icons.delete_outline),
+                                  icon: const Icon(
+                                    Icons.delete_outline,
+                                    size: 18,
+                                  ),
                                   label: const Text('대화 삭제'),
                                 ),
                               ],

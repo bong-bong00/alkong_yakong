@@ -136,6 +136,10 @@ void main() {
       final delete = find.byKey(
         const ValueKey('delete-conversation-delete-test'),
       );
+      final deleteButton = tester.widget<TextButton>(delete);
+      expect(deleteButton.style!.minimumSize!.resolve({}), const Size(0, 36));
+      expect(deleteButton.style!.textStyle!.resolve({})!.fontSize, 14);
+      expect(tester.getSize(delete).width, lessThan(130));
       await tester.tap(delete);
       await tester.pumpAndSettle();
       expect(find.text('이 대화를 삭제할까요?'), findsOneWidget);

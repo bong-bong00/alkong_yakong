@@ -62,6 +62,7 @@ class HeartScreen extends ConsumerStatefulWidget {
 }
 
 class _HeartScreenState extends ConsumerState<HeartScreen> {
+  bool _showAllWeeklyReadings = false;
   late final HeartSensor? _sensor =
       widget.sensor ??
       (widget.userId == null ? ref.read(heartSensorProvider) : null);
@@ -223,6 +224,12 @@ class _HeartScreenState extends ConsumerState<HeartScreen> {
   @override
   Widget build(BuildContext context) {
     final data = _data;
+    final weeklyReadings =
+        data?.readingsFor(monthly: false) ?? <HeartReading>[];
+    weeklyReadings.sort((a, b) {
+      final byTime = b.measuredAt.compareTo(a.measuredAt);
+      return byTime != 0 ? byTime : b.id.compareTo(a.id);
+    });
     return Scaffold(
       backgroundColor: AppColors.bg,
       body: Column(
@@ -295,12 +302,35 @@ class _HeartScreenState extends ConsumerState<HeartScreen> {
                     ),
                   ],
                   if (data != null) ...[
-                    if (data.readingsFor(monthly: false).isNotEmpty) ...[
+                    if (weeklyReadings.isNotEmpty) ...[
                       const SizedBox(height: 12),
                       HeartReadingsCard(
-                        readings: data.readingsFor(monthly: false),
+                        readings: _showAllWeeklyReadings
+                            ? weeklyReadings
+                            : weeklyReadings.take(2).toList(growable: false),
                         hasComparison: data.today.isComplete,
                       ),
+                      if (weeklyReadings.length > 2)
+                        TextButton.icon(
+                          key: const Key('weekly-heart-toggle-readings'),
+                          style: TextButton.styleFrom(
+                            foregroundColor: AppColors.point,
+                            minimumSize: const Size(0, 48),
+                          ),
+                          onPressed: () => setState(
+                            () => _showAllWeeklyReadings =
+                                !_showAllWeeklyReadings,
+                          ),
+                          icon: Icon(
+                            _showAllWeeklyReadings
+                                ? Icons.keyboard_arrow_up
+                                : Icons.keyboard_arrow_down,
+                          ),
+                          label: Text(
+                            _showAllWeeklyReadings ? '접기' : '이전 기록 더 보기',
+                            style: AppText.label(size: 18),
+                          ),
+                        ),
                     ],
                   ],
                   if (!_viewingOther) ...[
