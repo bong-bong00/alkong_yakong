@@ -826,6 +826,7 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
       }
       final requestKey = PharmacistAnswerCache.canonical({
         ...body,
+        if (intent == 'health_precautions') 'health_reply_version': 2,
         'scope': _asksAboutAllMedicines ? 'all' : 'selection',
         'recent_history':
             message == null || isFollowup || pendingQuestion != null

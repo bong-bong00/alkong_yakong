@@ -291,6 +291,67 @@ def test_old_unknown_and_negative_lifestyle_are_not_active_conditions():
     assert not health._mentions("암모니아", "암")
 
 
+def test_flattened_long_cautions_deliver_actions_for_each_drug_not_keyword_placeholders():
+    official = [
+        {"product_name": "아디팜정(히드록시진염산염)",
+         "cautions": "긴 배경 설명. " * 80 + "1) 다른 안내 2) 이 약 복용 시 알코올섭취를 삼가해야 한다. 3) 다른 안내"},
+        {"product_name": "프리마란정(메퀴타진)",
+         "cautions": "긴 배경 설명. " * 80 + "1) 신장애 환자 2) 천식 환자 3) 알코올 섭취에 의해 상호 작용이 증가될 수 있으므로 신중히 투여한다."},
+        {"product_name": "휴온스시메티딘정200밀리그램(수출명:TAGAMENTTab.200밀리그램)",
+         "cautions": "긴 배경 설명. " * 80 + "1) 신장애 환자(혈중 농도가 지속되므로 투여량을 감소하거나 투여간격을 두고 사용한다) 2) 간장애 환자"},
+    ]
+    result = health._evidence_reply(official, ["신장", "천식", "알코올", "당뇨"], "")
+    assert len(result) <= 600
+    for name in ("아디팜정", "프리마란정", "휴온스시메티딘정200밀리그램"):
+        assert name in result
+    for content in ("술을 피해야", "상호 작용이 증가", "의료진이 조절"):
+        assert content in result
+    assert "관련 내용이 공식" not in result
+    assert "수출명" not in result and "히드록시진염산염" not in result
+    assert "콩팥 기능이 떨어지면" in result
+
+
+def test_warning_excerpts_keep_parenthetical_conditions_and_decimal_numbers():
+    source = "1) 신장애 환자(예 : 중등증의 경우 1일 용량의 1/2로 감량하고, 중증은 1/4로 감량함) " \
+             "2) 당뇨병 환자의 위험은 비교위험도 1.63으로 증가할 수 있다."
+    units = health._warning_excerpts(source, ["신장", "당뇨"])
+    assert any("1/2" in unit and "1/4" in unit and "중등증" in unit for unit in units) is False
+    # A bare patient list / dose fragment is not presented as standalone advice.
+    assert "신장애 환자" not in units
+    assert "당뇨병 환자의 위험은 비교위험도 1.63으로 증가할 수 있다." in units
+
+
+def test_health_prompt_uses_short_labels_and_requests_actual_warning_details():
+    prompt = health.build_health_prompt("질문", {}, [{
+        **MEDICINE, "display_name": "확인약정", "cautions": "음주 시에는 사용하지 않는다.",
+    }], incomplete=False)
+    assert "건강정보 전체를 서두에 나열하지" in prompt
+    assert "키워드 나열로 대신하지" in prompt
+    assert "display_name" in prompt
+
+
+def test_plain_warning_requires_exact_conditions_not_disease_keywords():
+    assert health._plain_warning("신장애 환자") is None
+    assert health._plain_warning("중증 신장애 환자(혈중 농도가 지속되므로 투여량을 감소하거나 투여간격을 두고 사용한다)") is None
+    assert health._plain_warning("이 약 복용 시 알코올섭취를 삼가해야 한다.") == "이 약을 먹는 동안 술을 피해야 해요."
+
+
+def test_health_verifier_rejects_personal_dose_fractions_and_self_adjustment():
+    assert not health._reply_grounded(None, {}, [], "아디팜정은 용량을 1/2로 줄여야 합니다.")
+    assert not health._reply_grounded(None, {}, [], "약의 양과 복용 간격을 조절해야 합니다.")
+
+
+def test_health_delivery_shortens_labels_even_if_model_ignores_display_instruction(context, monkeypatch):
+    medicine = {"medicine_code": "197800210", "product_name": "아디팜정(히드록시진염산염)"}
+    monkeypatch.setattr(gemini, "GEMINI_API_KEY", "test-key")
+    monkeypatch.setattr("google.genai.Client", MagicMock())
+    monkeypatch.setattr(gemini, "_generate_complete_chat_reply", lambda *args, **kwargs:
+                        "아디팜정(히드록시진염산염)을 먹는 동안 음주를 삼가야 합니다.")
+    monkeypatch.setattr(health, "_reply_grounded", lambda *args: True)
+    result = ask(selected_medicine=medicine)
+    assert "아디팜정" in result and "히드록시진염산염" not in result
+
+
 def test_allergy_matches_official_ingredient_and_generic_hypersensitivity_warning(context, monkeypatch):
     monkeypatch.setattr(health, "_official_cautions", lambda medicine: {
         "product_name": medicine["product_name"], "ingredient": "페니실린 100mg",
