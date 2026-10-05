@@ -11,6 +11,7 @@ import '../../../../core/widgets/senior_card.dart' show PillPhoto, kCardShadow;
 import '../../../../core/widgets/senior_header.dart';
 import '../../../../core/widgets/slot_box.dart';
 import '../../application/user_medicines_controller.dart';
+import '../../domain/demo_side_effects.dart';
 import '../../domain/display_policy.dart';
 import '../../domain/ingredient_explanation_display.dart';
 import '../../domain/explanation_highlight.dart';
@@ -134,9 +135,15 @@ class _DetailBody extends StatelessWidget {
       medicine.interactionStatus == 'risk_found' &&
       (medicine.interactionSummary ?? '').trim().isNotEmpty;
 
-  /// 주의 탭에 붉은 점을 붙일지. 볼 것이 있을 때만 붙인다.
-  bool get _hasCaution =>
-      _hasConflict || _cautions.isNotEmpty || medicine.askDoctorWhen.isNotEmpty;
+  /// 주의 탭에 붉은 점을 붙일지. 이 사람이 꼭 봐야 할 것이 있을 때만
+  /// 붙인다 — 함께 먹으면 안 되는 약이 있거나, 이 사람에게 해당하는 주의가
+  /// 있을 때다.
+  ///
+  /// "불편하면 의사나 약사에게 알려주세요" 같은 안내([UserMedicine.askDoctorWhen])
+  /// 로는 붙이지 않는다. 서버가 어느 약에나 넣어 주는 말이라, 거기에 점을
+  /// 붙이면 눌러 봐도 별말이 없는 일이 되풀이되고, 정작 점이 필요한 약에서
+  /// 점을 흘려 보게 된다.
+  bool get _hasCaution => _hasConflict || _cautions.isNotEmpty;
 
   @override
   Widget build(BuildContext context) {
@@ -348,13 +355,20 @@ class _WorkTab extends StatelessWidget {
   /// 없으면 성분 설명을 쓴다. 두 가지를 같이 적지 않는다.
   String get _explanation {
     final spoken = medicine.detailSpoken ?? '';
-    if (spoken.trim().isNotEmpty) return spoken;
+    if (spoken.trim().isNotEmpty && _isSentence(spoken)) return spoken;
     // 팀원이 더한 다듬기 — "이 약의 주성분으로," 뒤의 군더더기를 걷는다.
-    return ingredientExplanationDisplay(
+    final ingredient = ingredientExplanationDisplay(
       medicine.ingredientExplanation,
       medicine.ingredientHighlight,
     );
+    return _isSentence(ingredient) ? ingredient : '';
   }
+
+  /// 끝맺은 문장인지. 예전에 저장된 설명에는 "…주성분이에요. 주요 우울증"
+  /// 처럼 허가 원문 조각이 꼬리에 붙은 것이 남아 있다. 말이 끊긴 문단을
+  /// 세우느니 비우고 아래 쓰임 줄만 보여 준다.
+  static bool _isSentence(String text) =>
+      RegExp(r'[요다]\.?$').hasMatch(text.trim());
 
   /// 이 약이 쓰이는 경우. 한 줄에 문장을 적고, 그 안에서 짚을 낱말만
   /// 파랗게 한다. 낱말만 따로 한 줄 세우면 같은 말이 두 줄이 된다.
@@ -605,9 +619,20 @@ class _CautionTab extends StatelessWidget {
         .where((name) => name.isNotEmpty)
         .toList();
 
-    if (!_hasConflict && cautions.isEmpty && medicine.askDoctorWhen.isEmpty) {
+    // [임시 · 시연 보기용] 서버가 주는 부작용이 없으면 시연용 문장을 쓴다.
+    // 서버 문장에는 짚을 낱말이 따로 없으니 칠하지 않는다.
+    final sideEffects = medicine.possibleSideEffects.isNotEmpty
+        ? [for (final text in medicine.possibleSideEffects) DemoSideEffect(text)]
+        : demoSideEffects[medicine.medicineCode.trim()] ??
+              const <DemoSideEffect>[];
+
+    if (!_hasConflict &&
+        cautions.isEmpty &&
+        medicine.askDoctorWhen.isEmpty &&
+        sideEffects.isEmpty) {
       return Text('이 약에 따로 적힌 주의사항이 없어요.', style: AppText.body(size: 19));
     }
+    final hasAbove = _hasConflict || cautions.isNotEmpty;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -642,12 +667,77 @@ class _CautionTab extends StatelessWidget {
           const SizedBox(height: 12),
           _Marked(text: caution, marks: _marks),
         ],
+        // [임시 · 시연 보기용] 나타날 수 있는 증상.
+        if (sideEffects.isNotEmpty) ...[
+          if (hasAbove) ...[
+            const SizedBox(height: 18),
+            const SeniorDivider(),
+            const SizedBox(height: 16),
+          ],
+          Text('나타날 수 있는 증상', style: AppText.cardTitle(size: 21)),
+          for (final effect in sideEffects) ...[
+            const SizedBox(height: 10),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('·  ', style: AppText.body(size: 19)),
+                // 문장 전체를 칠하지 않는다. 문장마다 골라 둔 낱말만 칠한다
+                // — 주의 탭이라 모두 빨강이다.
+                Expanded(child: _KeyWords(effect)),
+              ],
+            ),
+          ],
+          if (medicine.askDoctorWhen.isNotEmpty) const SizedBox(height: 6),
+        ],
         for (final ask in medicine.askDoctorWhen) ...[
           const SizedBox(height: 12),
           _Marked(text: ask, marks: _marks),
         ],
       ],
     );
+  }
+}
+
+/// [임시 · 시연 보기용] 증상 한 문장. 골라 둔 낱말만 빨강으로 짚는다.
+///
+/// 주의 탭이라 강조는 모두 빨강이다. 파랑은 약 소개 탭의 몫이다.
+class _KeyWords extends StatelessWidget {
+  final DemoSideEffect effect;
+
+  const _KeyWords(this.effect);
+
+  @override
+  Widget build(BuildContext context) {
+    final base = AppText.body(size: 19);
+    final strong = base.copyWith(
+      color: AppColors.danger,
+      fontWeight: FontWeight.w700,
+    );
+    final styles = {for (final word in effect.marks) word: strong};
+
+    final spans = <TextSpan>[];
+    var rest = effect.text;
+    while (rest.isNotEmpty) {
+      // 가장 앞에서 걸리는 낱말을 찾는다. 같은 자리면 긴 쪽을 짚는다.
+      var at = -1;
+      var hit = '';
+      for (final word in styles.keys) {
+        final found = rest.indexOf(word);
+        if (found < 0) continue;
+        if (at < 0 || found < at || (found == at && word.length > hit.length)) {
+          at = found;
+          hit = word;
+        }
+      }
+      if (at < 0) {
+        spans.add(TextSpan(text: rest, style: base));
+        break;
+      }
+      if (at > 0) spans.add(TextSpan(text: rest.substring(0, at), style: base));
+      spans.add(TextSpan(text: hit, style: styles[hit]));
+      rest = rest.substring(at + hit.length);
+    }
+    return Text.rich(TextSpan(children: spans), style: base);
   }
 }
 
@@ -722,7 +812,15 @@ class _DosingTab extends StatelessWidget {
       final slot = _slotName(time);
       if (slot.isNotEmpty && !slots.contains(slot)) slots.add(slot);
     }
-    return slots;
+    if (slots.isNotEmpty) return slots;
+    // 시각이 저장되지 않았어도 하루 횟수를 알면 서버가 일정을 만들 때와
+    // 같은 기본 때로 적는다(하루 1번 아침, 2번 아침·저녁, 3번 아침·점심·저녁).
+    return switch (medicine.frequencyPerDay) {
+      1 => const ['아침'],
+      2 => const ['아침', '저녁'],
+      3 => const ['아침', '점심', '저녁'],
+      _ => const [],
+    };
   }
 
   /// "08:00" → "아침". 읽을 수 없는 값이면 빈 말이다.
@@ -748,7 +846,9 @@ class _DosingTab extends StatelessWidget {
     // 말하는 말이고, 뒤에 오는 "고령자 :"와 짝을 이룬다. 앞의 하나만
     // 지우면 남은 머리말이 엉뚱한 문단에 붙은 것처럼 읽힌다.
     final usage = dropLoneAdultHeading(
-      orderOfficialUsageSections(formatOfficialUsage(medicine.officialUsage)),
+      orderOfficialUsageSections(
+        formatOfficialUsage(untangleUsageOutline(medicine.officialUsage)),
+      ),
     );
     // ingredientLabel 에 용량이 이미 들어 있다. 또 붙이면 "100mg · 100mg".
     final label = medicine.ingredientLabel.trim();
@@ -762,26 +862,30 @@ class _DosingTab extends StatelessWidget {
     final rows = <(String, Widget)>[
       if (_confirmedDosing.isNotEmpty)
         ('얼마나', _RowValue(text: _confirmedDosing.join(' · '))),
-      (
-        '언제',
-        slots.isEmpty
-            // 때를 모르면 지어내지 않는다.
-            ? const _RowValue(text: '처방전대로 드세요.')
-            : Padding(
-                padding: const EdgeInsets.only(top: 2),
-                child: Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: [
-                    // 누르는 칸이 아니다. 파랑으로 채우면 단추로 읽힌다.
-                    for (final slot in slots) SlotBox(label: slot),
-                  ],
-                ),
-              ),
-      ),
+      // 때를 모르면 지어내지 않고 줄을 두지 않는다. "처방전대로 드세요"
+      // 같은 빈자리 말은 아무것도 알려 주지 않는다.
+      if (slots.isNotEmpty)
+        (
+          '언제',
+          Padding(
+            padding: const EdgeInsets.only(top: 2),
+            child: Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                // 누르는 칸이 아니다. 파랑으로 채우면 단추로 읽힌다.
+                for (final slot in slots) SlotBox(label: slot),
+              ],
+            ),
+          ),
+        ),
+      // 설명서 용법은 처방과 다를 수 있다("얼마나"는 하루 3번, 설명서는
+      // 1일 2회). 숨기지 않고 "설명서 기준"이라고 출처를 앞에 밝혀, 위의
+      // 처방과 다른 이야기라는 걸 알 수 있게 한다.
       // 설명서에서 그대로 온 용법은 열 줄을 넘기도 한다.
       // 다 펴 두면 아래 줄이 화면 밖으로 밀린다.
-      if (usage.isNotEmpty) ('복용법', _RowValue(text: usage, foldable: true)),
+      if (usage.isNotEmpty)
+        ('복용법', _RowValue(text: '설명서 기준으로, $usage', foldable: true)),
       if (ingredient.isNotEmpty) ('성분', _RowValue(text: ingredient)),
     ];
 

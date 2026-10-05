@@ -67,9 +67,13 @@ class PrescriptionRecord {
           for (final item in items)
             if (item is Map)
               PrescriptionLine(
-                name: text(item['product_name']).isNotEmpty
-                    ? text(item['product_name'])
-                    : text(item['ocr_drug_name']),
+                // 서버가 "(수출명:…)", "(성분명)" 꼬리를 뗀 이름을 준다.
+                // 예전 서버면 없으니 허가 제품명으로 물러선다.
+                name: [
+                  text(item['display_name']),
+                  text(item['product_name']),
+                  text(item['ocr_drug_name']),
+                ].firstWhere((name) => name.isNotEmpty, orElse: () => ''),
                 days: int.tryParse(text(item['duration_days'])),
               ),
       ].where((line) => line.name.isNotEmpty).toList(),
