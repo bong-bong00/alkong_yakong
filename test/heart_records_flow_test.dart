@@ -498,6 +498,16 @@ void main() {
         find.descendant(of: todayCard, matching: find.text('정상 심박수')),
         findsOneWidget,
       );
+      final normalLabel = tester.widget<Text>(find.text('정상 심박수'));
+      expect(normalLabel.maxLines, 1);
+      expect(normalLabel.softWrap, isFalse);
+      expect(
+        find.ancestor(
+          of: find.text('정상 심박수'),
+          matching: find.byType(FittedBox),
+        ),
+        findsOneWidget,
+      );
       expect(
         find.descendant(
           of: todayCard,

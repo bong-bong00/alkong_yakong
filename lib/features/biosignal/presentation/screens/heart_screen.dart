@@ -744,11 +744,17 @@ class _HeartRateRangeLabel extends StatelessWidget {
         color: background ?? AppColors.pointTint,
         borderRadius: BorderRadius.circular(999),
       ),
-      child: Text(
-        _heartRateRange(value),
-        style: AppText.caption(
-          size: 16,
-          color: color ?? AppColors.textSecondary,
+      child: FittedBox(
+        fit: BoxFit.scaleDown,
+        alignment: Alignment.centerLeft,
+        child: Text(
+          _heartRateRange(value),
+          maxLines: 1,
+          softWrap: false,
+          style: AppText.caption(
+            size: 16,
+            color: color ?? AppColors.textSecondary,
+          ),
         ),
       ),
     );
