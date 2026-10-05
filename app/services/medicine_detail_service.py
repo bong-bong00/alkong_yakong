@@ -9,6 +9,7 @@ prescription registration or a detail-screen request.
 from __future__ import annotations
 
 import hashlib
+import html
 import json
 import logging
 import re
@@ -38,6 +39,33 @@ _STRENGTH = re.compile(
 _SPACE = re.compile(r"\s+")
 _HTML = re.compile(r"<\s*/?\s*[A-Za-z][^>]*>")
 _LEADING_MARK = re.compile(r"^(?:\d+[.)]|[가-하][.)]|[-•·※]+)\s*")
+# 허가정보 "사용상의 주의사항"의 목차 제목. 내용이 아니라 칸 이름이다.
+_SECTION_HEADING = re.compile(
+    r"^(?:"
+    r".*사용상\s*의\s*주의.*"
+    # "다음 환자에는 투여하지 말 것.", "이 약을 복용하는 동안 다음의 약을
+    # 복용하지 말 것." — 아래 목록을 가리키는 머리말이라 홀로 두면 빈말이다.
+    r"|.*다음(?:의|과\s*같은)?\s.*것"
+    # "상담 시 가능한 한 이 첨부문서를 소지할 것." — 종이 설명서 안내다.
+    r"|.*첨부\s*문서.*"
+    r"|.*에\s*(?:대한|의)\s*(?:투여|영향)"
+    r"|과량\s*투여\s*시?의?\s*처치"
+    r"|(?:적용|저장|보관(?:\s*및\s*취급)?)\s*상의?\s*주의(?:사항)?"
+    r"|일반적\s*주의|이상\s*반응|상호\s*작용"
+    r"|기타(?:\s.*(?:주의(?:사항)?|주의할\s*사항))?"
+    # "적용상의 주의(주사제에 한함.)"처럼 뒤에 붙는 단서와, "…말 것 2."처럼
+    # 다음 항 번호가 끌려 붙은 것까지 목차다.
+    r")(?:\s*\([^)]*\))?\.?(?:\s*\d+[.)]?)?$"
+)
+# 내용 앞에 붙어 온 목차 이름. 뒤에 내용이 이어질 때만 뗀다.
+_HEADING_PREFIX = re.compile(
+    r"^(?:기타|[가-힣 ]{1,20}에\s*대한\s*투여(?:\s*\([^)]*\))?)\s*[:：]?\s+(?=\S)"
+)
+# 목차 밑에 늘어선 "○○ 환자" 같은 조각. 목차("투여하지 말 것" 등)를 떼고
+# 홀로 두면 먹으면 안 된다는 건지 조심하라는 건지 알 수 없다.
+_PATIENT_GROUP = re.compile(
+    r"(?:(?:환자|영아|유아|소아|고령자|임부|수유부|사람)(?:\s*\([^)]*\))?|\s등)$"
+)
 PARSER_VERSION = "3.0"
 _BOILERPLATE_PURPOSES = (
     "다음 질환에도 사용할 수 있다",
@@ -67,13 +95,28 @@ _PURPOSE_GROUPS: tuple[tuple[re.Pattern[str], str, str, str], ...] = (
         "염증과 통증",
     ),
     (
+        re.compile(r"피부염|습진|건선|피부\s*질환"),
+        "피부 염증·습진",
+        "습진이나 피부염 같은 피부 염증을 가라앉히는 데 사용해요.",
+        "피부 염증",
+    ),
+    (
         re.compile(r"가려움|두드러기|알레르기|알러지"),
         "알레르기로 인한 가려움",
         "알레르기로 인한 가려움 같은 증상을 줄이는 데 사용해요.",
         "가려움",
     ),
     (
-        re.compile(r"불안|긴장|초조|신경증"),
+        # "우울증에 수반하는 불안"은 불안에 쓰는 약이다.
+        re.compile(r"우울(?!증?에\s*수반)"),
+        "우울한 기분",
+        "우울한 기분을 나아지게 하는 데 사용해요.",
+        "우울",
+    ),
+    (
+        # "불안정형 협심증"의 "불안", "월경전긴장증"의 "긴장"은 불안 증상이
+        # 아니다.
+        re.compile(r"불안(?!정)|긴장(?!증)|초조|신경증"),
         "불안·긴장",
         "불안하거나 긴장된 증상을 완화할 목적으로 사용될 수 있어요.",
         "불안·긴장",
@@ -83,6 +126,13 @@ _PURPOSE_GROUPS: tuple[tuple[re.Pattern[str], str, str, str], ...] = (
         "속쓰림·위 불편감",
         "위산과 관련된 속쓰림이나 위 불편감을 줄이는 데 사용해요.",
         "속쓰림",
+    ),
+    (
+        # "심부전이 없거나"는 심부전에 쓰는 말이 아니다.
+        re.compile(r"심부전(?!이?\s*없)"),
+        "약해진 심장(심부전)",
+        "심장이 피를 내보내는 힘이 약해졌을 때 심장을 돕는 데 사용해요.",
+        "심부전",
     ),
     (
         re.compile(r"부정맥|심실세동|심방세동|빈맥"),
@@ -151,12 +201,76 @@ _PURPOSE_GROUPS: tuple[tuple[re.Pattern[str], str, str, str], ...] = (
         "소화",
     ),
     (
+        re.compile(r"치매|알츠하이머|기억력\s*저하"),
+        "기억력 저하(치매)",
+        "기억력과 생각하는 힘이 떨어지는 것을 늦추는 데 사용해요.",
+        "기억력",
+    ),
+    (
+        re.compile(r"비타민|자양강장|영양\s*보급"),
+        "비타민 보충",
+        "모자란 비타민을 채워 피로를 푸는 데 사용해요.",
+        "비타민",
+    ),
+    (
+        re.compile(r"변비"),
+        "변비",
+        "변비로 굳은 변을 무르게 해 배변을 돕는 데 사용해요.",
+        "변비",
+    ),
+    (
         re.compile(r"불면|수면장애|입면"),
         "잠들기 어려움",
         "잠들기 어렵거나 자주 깨실 때 쓰는 약이에요.",
         "잠들기",
     ),
 )
+# 쓰임을 찾을 때 걷어낼 부분. 괄호 속은 대개 "고위험군 환자(고혈압, 당뇨
+# 등)"처럼 누구에게 쓰는지를 덧붙인 말이라, 거기 든 병 이름을 쓰임으로 읽으면
+# 아스피린이 혈압·혈당 약이 된다. 닫는 괄호가 잘려 나간 원문도 있어 줄 끝까지
+# 걷는다.
+_PURPOSE_ASIDE = re.compile(r"[(\[（][^)\]）]*(?:[)\]）]|$)")
+# "울혈성심부전 : 판막질환, 고혈압 … 에 의한 것."처럼 콜론 뒤에 원인을
+# 늘어놓은 말. 원인으로 적힌 병은 이 약의 쓰임이 아니다.
+_PURPOSE_CAUSE = re.compile(r"[:：][^\n:：]*에\s*의한\s*것\.?")
+
+
+def _purpose_search_text(items: list[str]) -> str:
+    """Text to match purpose keywords against, without asides or causes.
+
+    "기타 …"로 시작하는 줄은 덧붙인 쓰임이라 대표 쓰임을 고를 때 읽지 않는다.
+    긴 줄은 첫 문장까지만 읽는다. 뒤따르는 설명문은 증상을 늘어놓는 일이
+    많아(“유방통증, 두통, 관절통…”) 우울증 약이 통증 약으로 읽힌다.
+    """
+    lines = []
+    for item in items:
+        for line in str(item or "").splitlines():
+            line = line.strip()
+            if not line or line.startswith("기타"):
+                continue
+            if len(line) > 120:
+                line = re.split(r"(?<=다)\.\s", line, maxsplit=1)[0]
+            line = _PURPOSE_CAUSE.sub(" ", line)
+            lines.append(_PURPOSE_ASIDE.sub(" ", line))
+    return " ".join(lines)
+
+
+def _matched_purpose_groups(
+    text: str,
+) -> list[tuple[re.Pattern[str], str, str, str]]:
+    """Purpose groups found in [text], in the order the text mentions them.
+
+    목록 순서대로 고르면 원문 맨 끝에 덧붙은 쓰임이 앞에 온 주된 쓰임을
+    밀어낸다. 원문에 먼저 나온 쓰임이 대개 그 약의 주된 쓰임이다.
+    """
+    found = []
+    for index, group in enumerate(_PURPOSE_GROUPS):
+        match = group[0].search(text)
+        if match:
+            found.append((match.start(), index, group))
+    return [group for _, _, group in sorted(found)]
+
+
 def normalize_ingredient_key(value: str | None) -> str:
     """Make a stable reuse key without changing the official display value."""
     text = _HTML.sub(" ", str(value or ""))
@@ -601,7 +715,14 @@ def _build_profile(cursor, medicine: dict[str, Any]) -> dict[str, Any]:
             iter(approved_uses or all_approved_uses),
             "",
         )
-    if len(ingredients) == 1 and not ingredient_explanation and purpose_for_ingredient:
+    # 쓰임이 다듬은 문장("~요.")일 때만 이어 붙인다. 허가 원문 조각("주요
+    # 우울증", "변비 - 만성변비 …")을 붙이면 "…주성분이에요. 주요 우울증"처럼
+    # 말이 끊긴 채로 화면에 나간다. 그럴 바엔 비워 두고 검토를 기다린다.
+    if (
+        len(ingredients) == 1
+        and not ingredient_explanation
+        and purpose_for_ingredient.rstrip().endswith("요.")
+    ):
         ingredient_name = ingredients[0]["name"]
         ingredient_explanation = clean_ingredient_explanation(
             f"{ingredient_name}{_topic_particle(ingredient_name)} 이 약의 주성분이에요. "
@@ -618,7 +739,8 @@ def _build_profile(cursor, medicine: dict[str, Any]) -> dict[str, Any]:
     side_effects = [item for item in side_effects if _complete_user_text(item)][:4]
     ask_doctor_when = _load_list(card.get("ask_doctor_when")) if card else []
     if not ask_doctor_when and key_cautions:
-        ask_doctor_when = ["복용 중 불편한 증상이 생기거나 복용 방법이 걱정될 때 의사나 약사에게 알려주세요."]
+        # 바르는 약·붙이는 약에도 붙는 말이라 "복용"이라 하지 않는다.
+        ask_doctor_when = ["약을 쓰는 동안 불편한 증상이 생기거나 사용 방법이 걱정될 때 의사나 약사에게 알려주세요."]
 
     has_official = any(
         str(medicine.get(key) or "").strip()
@@ -742,13 +864,29 @@ def _store_reviewed_ingredient(
 
 
 def _official_items(value: Any, *, limit: int) -> list[str]:
-    text = _HTML.sub(" ", str(value or ""))
+    # 허가 원문에는 "&nbsp;" 같은 HTML 기호가 그대로 들어 있기도 하다.
+    text = html.unescape(_HTML.sub(" ", str(value or ""))).replace("\xa0", " ")
     text = text.replace("\r", "\n")
     candidates = re.split(r"(?:\n+|(?<=[.!?다요])\s+|\s+[※•])", text)
     result: list[str] = []
     for candidate in candidates:
         item = _LEADING_MARK.sub("", _SPACE.sub(" ", candidate)).strip(" -•·")
+        # "기타 이 약은 …", "고령자에 대한 투여(캡슐제에 한함.) 고령자에게는 …"
+        # 처럼 목차 이름이 내용 앞에 붙어 온 것은 이름만 뗀다.
+        item = _HEADING_PREFIX.sub("", item)
         if not _complete_user_text(item) or len(item) > 240 or item in result:
+            continue
+        if _SECTION_HEADING.match(item) or _PATIENT_GROUP.search(item):
+            continue
+        # "다음 의약품의 작용이 …"은 아래 목록을 가리키는 말이라 홀로 서지 못한다.
+        if item.startswith("다음"):
+            continue
+        # 끝맺지 않은 조각("…투여 시보다", "피부염, 상처부위")은 줄바꿈에서
+        # 잘린 문장이거나 목록의 한 칸이라 홀로 두면 뜻이 서지 않는다.
+        # "보다"는 "다"로 끝나도 비교하는 말이라 문장이 끝난 게 아니다.
+        if not re.search(r"[.!?다요]\)?$", item) or re.search(
+            r"(?:보다|처럼|만큼)$", item
+        ):
             continue
         result.append(item)
         if len(result) >= limit:
@@ -772,7 +910,8 @@ def _parse_official_purposes(value: Any) -> dict[str, list[str]]:
         )
 
     chunks: list[str] = []
-    for block in re.split(r"\n+|[;；]", cleaned):
+    # 글머리표(●○■)가 줄바꿈 없이 한 줄에 이어 붙은 원문도 있다.
+    for block in re.split(r"\n+|[;；]|\s*[●○■]\s*", cleaned):
         for item in _split_top_level_commas(block):
             text = _clean_purpose_item(item)
             if text:
@@ -787,9 +926,10 @@ def _parse_official_purposes(value: Any) -> dict[str, list[str]]:
         flags.append("unparsed_long_text")
 
     representative: list[str] = []
-    joined = " ".join(all_items)
-    for pattern, _title, sentence, _highlight in _PURPOSE_GROUPS:
-        if pattern.search(joined) and sentence not in representative:
+    for _pattern, _title, sentence, _highlight in _matched_purpose_groups(
+        _purpose_search_text([cleaned])
+    ):
+        if sentence not in representative:
             representative.append(sentence)
         if len(representative) == 3:
             break
@@ -860,17 +1000,26 @@ def treatment_use_items(
             approved_summary,
         ]
     )
-    joined = " ".join(source_items)
     result: list[dict[str, str]] = []
-    for pattern, title, description, highlight in _PURPOSE_GROUPS:
-        if pattern.search(joined):
-            result.append(
-                {
-                    "title": title,
-                    "description": description,
-                    "highlight": highlight,
-                }
-            )
+    # 대표 쓰임을 이미 골라 두었으면 그 결과를 그대로 따른다. 다시 찾으면
+    # 대표 쓰임 문장 속 낱말과 원문 조각이 섞여 쓰임 줄이 따로 논다.
+    by_sentence = {group[2]: group for group in _PURPOSE_GROUPS}
+    chosen = [
+        by_sentence[item]
+        for item in [*approved_uses, approved_summary]
+        if item in by_sentence
+    ]
+    groups = list(dict.fromkeys(chosen)) or _matched_purpose_groups(
+        _purpose_search_text(source_items)
+    )
+    for _pattern, title, description, highlight in groups:
+        result.append(
+            {
+                "title": title,
+                "description": description,
+                "highlight": highlight,
+            }
+        )
         if len(result) == 3:
             return result
 
@@ -976,6 +1125,10 @@ def _clean_purpose_item(value: str) -> str:
             return ""
         text = re.sub(rf"^{re.escape(phrase)}\s*[.:：]?\s*", "", text, flags=re.I)
     if not text or _looks_like_heading(text):
+        return ""
+    # "1", "2" 같은 항 번호만 남은 조각이나 한글이 하나도 없는 영문 균주명
+    # 목록은 쓰임이 아니다.
+    if not re.search(r"[가-힣]", text):
         return ""
     return text
 

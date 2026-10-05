@@ -233,7 +233,9 @@ def get_medication_calendar(user_id: str, year: int | None = None, month: int | 
         if current == today:
             mark = "today"
         elif not slots:
-            mark = "future"
+            # 약 일정이 없던 지난날은 "아직 오지 않은 날"이 아니다. 앱은
+            # 이 둘을 같은 모양으로 그리지만 화면 읽기에서는 다르게 읽는다.
+            mark = "future" if current > today else "noRecord"
         elif current > today:
             mark = "future"
         else:

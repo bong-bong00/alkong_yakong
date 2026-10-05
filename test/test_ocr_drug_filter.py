@@ -201,3 +201,13 @@ def test_compact_scan_does_not_invent_naju_or_jinjung():
     assert "진정" not in names
     assert any("옴니세프" in name for name in names)
     assert any("헤라신" in name for name in names)
+
+
+def test_tablet_notation_take_amount_is_kept_but_pack_count_is_not():
+    from app.services.ocr.parser import persistable_take_dosage
+
+    # 처방전의 "0.5T"는 반 알이다. 버리면 1회 투약량이 비어 저장된다.
+    assert persistable_take_dosage("0.5T") == "0.5T"
+    assert persistable_take_dosage("1C") == "1C"
+    # "30T"는 한 통에 든 개수다.
+    assert persistable_take_dosage("30T") is None

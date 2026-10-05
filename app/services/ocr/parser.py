@@ -65,11 +65,15 @@ def persistable_take_dosage(value: str | None) -> str | None:
     text = str(value or "").strip()
     if not text or is_strength_dosage(text):
         return None
-    if re.match(
-        r"^\d+(?:\.\d+)?\s*(T|C|EA|PKG)$",
+    package = re.match(
+        r"^(\d+(?:\.\d+)?)\s*(T|C|EA|PKG)$",
         text.replace(" ", ""),
         re.IGNORECASE,
-    ):
+    )
+    # "30T"는 한 통에 든 개수지만 "0.5T"·"1T"는 처방전의 1회 투약량이다.
+    # 한 번에 열 알 넘게 먹는 일은 없으니 그보다 크면 포장 수량으로 본다.
+    # 전에는 모두 버려 "0.5T"로 적힌 반 알이 저장되지 않았다.
+    if package and float(package.group(1)) > 10:
         return None
     return text
 
@@ -913,7 +917,22 @@ def _dosing_from_window(
     window: str, *, allow_unlabelled_duration: bool = False
 ) -> dict[str, Any]:
     window = _numeric_dosing_text(window)
-    triple = _DOSE_TRIPLE_RE.search(window)
+    # 숫자 표("0.50 / 3 / 7")를 읽을 글. 항목명으로 읽는 쪽(_labelled_dosing)은
+    # 아래에서 원래 window를 그대로 쓴다.
+    numbers = window
+    if (
+        allow_unlabelled_duration
+        and not _DOSE_PAIR_RE.search(window)
+        and not _labelled_dosing(window)
+    ):
+        # 표를 줄 단위로 읽으면 "0.50" 다음에 약 설명 줄이 끼고 그 뒤에야
+        # "3", "7"이 오기도 한다. 숫자 없는 설명 줄을 걷어 숫자끼리 잇는다.
+        # 같은 약 구간 안에서만, 항목명 없이 숫자만 늘어선 표에서만 한다 —
+        # 설명문 속 아무 숫자나 횟수로 읽지 않기 위해서다.
+        numbers = "\n".join(
+            line for line in window.splitlines() if re.search(r"\d", line)
+        )
+    triple = _DOSE_TRIPLE_RE.search(numbers)
     if triple:
         days = int(triple.group("days"))
         result = {
@@ -924,7 +943,7 @@ def _dosing_from_window(
             result["duration_days"] = days
     else:
         result = {}
-    pair = _DOSE_PAIR_RE.search(window)
+    pair = _DOSE_PAIR_RE.search(numbers)
     if pair:
         result["dosage"] = pair.group("dose")
         result["frequency_per_day"] = int(pair.group("freq"))
@@ -933,7 +952,7 @@ def _dosing_from_window(
         separate_days = {
             int(match.group(1))
             for match in re.finditer(
-                r"(?m)^\s*(\d{1,3})\s*$", window[pair.end() :]
+                r"(?m)^\s*(\d{1,3})\s*$", numbers[pair.end() :]
             )
         }
         if allow_unlabelled_duration and len(separate_days) == 1:

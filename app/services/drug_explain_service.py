@@ -1,3 +1,4 @@
+import html
 import json
 import logging
 import re
@@ -323,7 +324,8 @@ def reviewed_detail_payload(cursor, medicine: dict[str, Any]) -> dict[str, Any]:
         },
         "official_usage": {
             "available": bool(official_usage),
-            "text": official_usage,
+            # 허가 원문에 남은 "&nbsp;" 같은 HTML 기호를 글자로 푼다.
+            "text": html.unescape(official_usage).replace("\xa0", " "),
             "notice": "제품 설명서의 일반적인 사용법이에요. 실제로는 처방전과 의료진의 안내대로 복용하세요.",
         },
         "safety": {
