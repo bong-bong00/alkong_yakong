@@ -34,6 +34,7 @@ import '../../data/prescription_help_repository.dart';
 import '../../../onboarding/presentation/screens/first_run_screen.dart';
 import 'add_medicine_screen.dart';
 import 'manual_medicine_screen.dart';
+import 'prescription_history_screen.dart';
 import '../widgets/fix_name_sheet.dart';
 
 /// 처방전 등록 흐름의 단계.
@@ -465,6 +466,7 @@ class _PrescriptionScreenState extends ConsumerState<PrescriptionScreen> {
       refreshFailed = true;
     }
     ref.invalidate(medicationHistoryProvider);
+    ref.invalidate(prescriptionHistoryProvider);
     if (ref.read(userMedicinesProvider).hasError) {
       refreshFailed = true;
     }

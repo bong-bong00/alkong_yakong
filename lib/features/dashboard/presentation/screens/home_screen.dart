@@ -8,6 +8,7 @@ import '../../../../core/widgets/senior_bottom_nav.dart';
 import '../../../../core/widgets/senior_feedback.dart';
 import '../../../biosignal/presentation/screens/measure_screen.dart';
 import '../../../biosignal/domain/heart_data.dart';
+import '../../../biosignal/application/heart_device.dart';
 import '../../../medicines/presentation/screens/my_medicines_screen.dart';
 import '../../../profile/presentation/screens/mypage_screen.dart';
 import 'medication_record_screen.dart';
@@ -75,9 +76,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             onMeasureBefore: (_) async {
               final bpm = await Navigator.of(context).push<Object?>(
                 MaterialPageRoute(
-                  builder: (_) => const MeasureScreen(
+                  builder: (_) => MeasureScreen(
+                    sensor: ref.read(heartSensorProvider),
                     returnToPreviousScreen: true,
                     beforeDose: true,
+                    measurementContext:
+                        HeartMeasurementContext.beforeMedication,
                   ),
                 ),
               );
@@ -88,9 +92,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             onMeasure: (_) async {
               final bpm = await Navigator.of(context).push<Object?>(
                 MaterialPageRoute(
-                  builder: (_) => const MeasureScreen(
+                  builder: (_) => MeasureScreen(
+                    sensor: ref.read(heartSensorProvider),
                     returnToPreviousScreen: true,
                     measurementContext: HeartMeasurementContext.afterMedication,
+                    returnBpm: true,
                   ),
                 ),
               );

@@ -1856,15 +1856,15 @@ class _PreviousConversationsScreenState
                                     overflow: TextOverflow.ellipsis,
                                   ),
                                 ),
-                                IconButton(
+                                TextButton.icon(
                                   key: ValueKey(
                                     'delete-conversation-${record['id']}',
                                   ),
-                                  tooltip: '이 대화 삭제',
                                   onPressed: _deleting
                                       ? null
                                       : () => _deleteConversation(record),
                                   icon: const Icon(Icons.delete_outline),
+                                  label: const Text('대화 삭제'),
                                 ),
                               ],
                             ),

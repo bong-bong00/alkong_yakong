@@ -29,7 +29,7 @@ import 'polar_screen.dart';
 /// 이 화면은 **서버에서 읽어 온 기록만** 그린다. 읽는 중이면 읽는 중,
 /// 못 읽었으면 못 읽었다, 기록이 없으면 없다고 말한다. 예시 숫자로
 /// 빈자리를 채우면 어르신도 보호자도 그 숫자를 진짜로 읽는다.
-class HeartScreen extends StatefulWidget {
+class HeartScreen extends ConsumerStatefulWidget {
   final String guardianTitle;
 
   /// 누구의 기록을 볼지. null이면 로그인한 사람(MvpSession) 본인이다.
@@ -40,7 +40,7 @@ class HeartScreen extends StatefulWidget {
   final HeartRepository? repository;
 
   /// 지금 붙어 있는 센서. 배터리와 연결 상태가 여기서 온다.
-  /// 없으면 이 화면은 센서를 붙잡지 않는다 — 목록만 보는 화면이기 때문이다.
+  /// 본인 화면에서는 없으면 공유 센서를 쓴다. 타인 기록 조회는 연결하지 않는다.
   final HeartSensor? sensor;
 
   /// 앱의 /biosignal route에서 열렸을 때 측정 화면도 GoRouter 경로로 연다.
@@ -58,10 +58,13 @@ class HeartScreen extends StatefulWidget {
   });
 
   @override
-  State<HeartScreen> createState() => _HeartScreenState();
+  ConsumerState<HeartScreen> createState() => _HeartScreenState();
 }
 
-class _HeartScreenState extends State<HeartScreen> {
+class _HeartScreenState extends ConsumerState<HeartScreen> {
+  late final HeartSensor? _sensor =
+      widget.sensor ??
+      (widget.userId == null ? ref.read(heartSensorProvider) : null);
   late final HeartRepository _repository =
       widget.repository ?? HeartRepository();
 
@@ -84,7 +87,7 @@ class _HeartScreenState extends State<HeartScreen> {
   @override
   void initState() {
     super.initState();
-    widget.sensor?.addListener(_onSensor);
+    _sensor?.addListener(_onSensor);
     unawaited(_load());
   }
 
@@ -103,7 +106,7 @@ class _HeartScreenState extends State<HeartScreen> {
 
   @override
   void dispose() {
-    widget.sensor?.removeListener(_onSensor);
+    _sensor?.removeListener(_onSensor);
     super.dispose();
   }
 
@@ -169,9 +172,7 @@ class _HeartScreenState extends State<HeartScreen> {
     }
     final pairedBefore = _paired;
     await Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (_) => PolarScreen(sensor: widget.sensor),
-      ),
+      MaterialPageRoute<void>(builder: (_) => PolarScreen(sensor: _sensor)),
     );
     if (!mounted) return;
     // 연결하고 나오셨을 때만 이어서 재러 간다. 그냥 뒤로 나오셨으면
@@ -181,7 +182,7 @@ class _HeartScreenState extends State<HeartScreen> {
   }
 
   /// 지금 실제로 심박이 들어오는지.
-  bool get _streaming => widget.sensor?.status == HeartSensorStatus.streaming;
+  bool get _streaming => _sensor?.status == HeartSensorStatus.streaming;
 
   /// 앱이 기억하는 연결 여부. 화면이 센서를 들고 있지 않을 때 쓴다.
   bool get _paired => ProviderScope.containerOf(
@@ -199,7 +200,7 @@ class _HeartScreenState extends State<HeartScreen> {
             '/biosignal/measure',
             extra: HeartMeasureRouteArgs(
               guardianTitle: guardianTitle,
-              sensor: widget.sensor,
+              sensor: _sensor,
               measurementContext: measurementContext,
               onSaved: () => _load(quiet: true),
             ),
@@ -208,7 +209,7 @@ class _HeartScreenState extends State<HeartScreen> {
             MaterialPageRoute<bool>(
               builder: (_) => MeasureScreen(
                 guardianTitle: guardianTitle,
-                sensor: widget.sensor,
+                sensor: _sensor,
                 measurementContext: measurementContext,
                 returnToPreviousScreen: true,
               ),

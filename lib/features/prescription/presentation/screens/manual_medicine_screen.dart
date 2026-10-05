@@ -18,6 +18,7 @@ import '../../../../core/widgets/senior_wheel.dart';
 import '../../../dashboard/application/medication_history_provider.dart';
 import '../../../medication/application/medication_controller.dart';
 import '../../../medicines/application/user_medicines_controller.dart';
+import 'prescription_history_screen.dart';
 
 /// 처방전 없이 공식 약 이름을 찾아 등록한다.
 class ManualMedicineScreen extends ConsumerStatefulWidget {
@@ -230,6 +231,7 @@ class _ManualMedicineScreenState extends ConsumerState<ManualMedicineScreen> {
       refreshFailed = true;
     }
     ref.invalidate(medicationHistoryProvider);
+    ref.invalidate(prescriptionHistoryProvider);
     if (ref.read(userMedicinesProvider).hasError) {
       refreshFailed = true;
     }

@@ -9,6 +9,7 @@ import '../../dashboard/application/medication_history_provider.dart';
 import '../../guardian/application/guardians_provider.dart';
 import '../../medication/application/medication_controller.dart';
 import '../../medicines/application/user_medicines_controller.dart';
+import '../../prescription/presentation/screens/prescription_history_screen.dart';
 import '../domain/user_profile.dart';
 import '../data/user_repository.dart';
 import 'current_user_controller.dart';
@@ -95,6 +96,7 @@ void resetUserScopedData(WidgetRef ref) {
     ..invalidate(medicationProvider)
     ..invalidate(userMedicinesProvider)
     ..invalidate(medicationHistoryProvider);
+  ref.invalidate(prescriptionHistoryProvider);
 }
 
 /// 이 전화기에서 나간다.

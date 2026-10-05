@@ -134,7 +134,7 @@ class _PolarScreenState extends ConsumerState<PolarScreen> {
 
   Future<void> _search() async {
     setState(() => _searching = true);
-    await _sensor.start();
+    await _sensor.start(measure: false);
     if (!mounted) return;
     setState(() => _searching = false);
 
@@ -142,6 +142,7 @@ class _PolarScreenState extends ConsumerState<PolarScreen> {
     final found = _sensor.status == HeartSensorStatus.streaming;
     // 한 번 붙으면 홈이 심박 흐름으로 간다.
     if (found) await ref.read(heartDevicePairedProvider.notifier).set(true);
+    if (!mounted) return;
     showSeniorSnackbar(
       context,
       found ? '폴라 센서를 찾았어요' : '센서를 찾지 못했어요. 단추를 한 번 눌러 주세요.',

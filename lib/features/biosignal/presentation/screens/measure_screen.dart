@@ -30,6 +30,9 @@ class MeasureScreen extends StatefulWidget {
 
   /// 약을 들기 전에 재는 길. 다 재면 잰 값을 돌려주고 홈으로 돌아간다.
   final bool beforeDose;
+
+  /// 홈은 저장된 BPM을 받아 다음 걸음으로 넘어간다.
+  final bool returnBpm;
   final Future<void> Function()? onSaved;
 
   const MeasureScreen({
@@ -40,6 +43,7 @@ class MeasureScreen extends StatefulWidget {
     this.returnToPreviousScreen = false,
     this.returnToCaller = false,
     this.beforeDose = false,
+    this.returnBpm = false,
     this.onSaved,
   });
 
@@ -400,9 +404,11 @@ class _MeasureScreenState extends State<MeasureScreen> {
                           if (confirmed == true) {
                             // 먹기 전 재기였으면 홈이 그 값을 걸음 표시에
                             // 적어야 한다. 참이 아니라 잰 값을 돌려준다.
-                            Navigator.of(
-                              context,
-                            ).pop<Object?>(widget.beforeDose ? savedBpm : true);
+                            Navigator.of(context).pop<Object?>(
+                              widget.beforeDose || widget.returnBpm
+                                  ? savedBpm
+                                  : true,
+                            );
                           } else {
                             setState(() => _openingSaved = false);
                           }
