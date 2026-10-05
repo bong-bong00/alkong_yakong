@@ -1,6 +1,5 @@
-import '../../../core/network/api_client.dart';
-import '../../../core/network/api_config.dart';
 import '../../../core/session/mvp_session.dart';
+import '../../../core/session/presentation_history.dart';
 import '../../../dev_mock.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -48,13 +47,11 @@ final medicationMonthSlotsProvider =
           ? key.patientId!.trim()
           : MvpSession.userId.trim();
       if (rawUserId.isEmpty) return const {};
-      final userId = Uri.encodeComponent(rawUserId);
-      final response = await ApiClient(baseUrl: ApiConfig.localFeatureBaseUrl)
-          .get(
-            '/api/v1/users/$userId/medication-calendar'
-            '?year=${key.year}&month=${key.month}',
-          );
-      if (response is! Map) return const {};
+      final response = await PresentationHistory.fetchCalendar(
+        rawUserId,
+        key.year,
+        key.month,
+      );
       final days = response['days'];
       if (days is! List) return const {};
       final result = <int, Map<String, bool>>{};

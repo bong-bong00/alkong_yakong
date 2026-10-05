@@ -5,6 +5,7 @@ import '../../../../core/constants/app_colors.dart';
 import '../../../../core/network/api_client.dart';
 import '../../../../core/network/api_config.dart';
 import '../../../../core/session/mvp_session.dart';
+import '../../../../core/session/presentation_history.dart';
 import '../../../../core/theme/medicine_preserved_typography.dart';
 import '../../../../core/widgets/recovery_view.dart';
 import '../../../../core/widgets/senior_card.dart';
@@ -92,13 +93,25 @@ final prescriptionHistoryProvider = FutureProvider<List<PrescriptionRecord>>((
 ) async {
   final userId = MvpSession.userId.trim();
   if (userId.isEmpty) return const [];
-  final response = await ApiClient(
-    baseUrl: ApiConfig.localFeatureBaseUrl,
-  ).get('/api/v1/users/${Uri.encodeComponent(userId)}/prescriptions');
+  dynamic response;
+  try {
+    response = await ApiClient(
+      baseUrl: ApiConfig.localFeatureBaseUrl,
+    ).get('/api/v1/users/${Uri.encodeComponent(userId)}/prescriptions');
+  } catch (_) {
+    if (!PresentationHistory.applies(userId)) rethrow;
+    response = [];
+  }
   if (response is! List) {
     throw const ApiException('처방전 기록을 읽을 수 없습니다.');
   }
   return [
+    if (PresentationHistory.applies(userId) &&
+        !response.any(
+          (row) =>
+              row is Map && row['id'] == PresentationHistory.prescriptionId,
+        ))
+      PrescriptionRecord.fromJson(PresentationHistory.prescription),
     for (final row in response)
       if (row is Map)
         PrescriptionRecord.fromJson(Map<String, dynamic>.from(row)),

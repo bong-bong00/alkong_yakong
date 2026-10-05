@@ -4,9 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/constants/app_colors.dart';
-import '../../../../core/network/api_client.dart';
-import '../../../../core/network/api_config.dart';
 import '../../../../core/session/mvp_session.dart';
+import '../../../../core/session/presentation_history.dart';
 import '../../../../dev_mock.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../core/widgets/senior_card.dart';
@@ -31,8 +30,14 @@ class CalendarDay {
 
   /// 그날 시간대별 결과. 칸을 누르면 아래 카드가 이것으로 바뀐다.
   final List<CalendarSlot> slots;
+  final bool presentation;
 
-  const CalendarDay(this.day, this.mark, {this.slots = const []});
+  const CalendarDay(
+    this.day,
+    this.mark, {
+    this.slots = const [],
+    this.presentation = false,
+  });
 }
 
 /// 그날 한 끼. 달력 칸에는 그리지 않고, 눌렀을 때만 쓴다.
@@ -41,8 +46,9 @@ class CalendarSlot {
   /// "아침" / "점심" / "저녁"
   final String slot;
   final bool taken;
+  final DateTime? takenAt;
 
-  const CalendarSlot({required this.slot, required this.taken});
+  const CalendarSlot({required this.slot, required this.taken, this.takenAt});
 
   DoseSlot? get doseSlot => switch (slot) {
     '아침' => DoseSlot.morning,
@@ -162,6 +168,9 @@ class _MonthCalendarScreenState extends ConsumerState<MonthCalendarScreen> {
           CalendarSlot(
             slot: row['slot'].toString(),
             taken: row['taken'] == true,
+            takenAt: DateTime.tryParse(
+              row['taken_at']?.toString() ?? '',
+            )?.toLocal(),
           ),
     ];
   }
@@ -180,12 +189,12 @@ class _MonthCalendarScreenState extends ConsumerState<MonthCalendarScreen> {
       final rawUserId = widget.patientUserId?.trim().isNotEmpty == true
           ? widget.patientUserId!.trim()
           : MvpSession.userId.trim();
-      final userId = Uri.encodeComponent(rawUserId);
-      final response = await ApiClient(baseUrl: ApiConfig.localFeatureBaseUrl)
-          .get(
-            '/api/v1/users/$userId/medication-calendar?year=$_year&month=$_month',
-          );
-      if (!mounted || response is! Map) {
+      final response = await PresentationHistory.fetchCalendar(
+        rawUserId,
+        _year,
+        _month,
+      );
+      if (!mounted) {
         if (mounted) {
           setState(() => _loading = false);
         }
@@ -207,6 +216,7 @@ class _MonthCalendarScreenState extends ConsumerState<MonthCalendarScreen> {
                       (row['day'] as num?)?.toInt() ?? 0,
                       _markOf(row['mark']?.toString() ?? ''),
                       slots: _slotsOf(row['slots']),
+                      presentation: row['marker'] == PresentationHistory.marker,
                     ),
               ].where((item) => item.day > 0).toList()
             : _days;
@@ -297,6 +307,7 @@ class _MonthCalendarScreenState extends ConsumerState<MonthCalendarScreen> {
             slot: slot.doseSlot!,
             medicines: const [],
             taken: slot.taken,
+            takenAt: slot.takenAt,
           ),
     ];
   }
@@ -446,7 +457,14 @@ class _MonthCalendarScreenState extends ConsumerState<MonthCalendarScreen> {
                           dayLabel: _detailLabel,
                           date: _detailDate,
                           doses: _detailDoses,
-                          footnote: null,
+                          footnote:
+                              _days.any(
+                                (day) =>
+                                    day.day == _detailDate.day &&
+                                    day.presentation,
+                              )
+                              ? '시연용 가상약(실제 약 아님) · 앱 내부 시연 기록'
+                              : null,
                         ),
                       ],
                     ),

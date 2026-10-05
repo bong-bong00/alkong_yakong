@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/network/api_config.dart';
 import '../../../core/session/mvp_session.dart';
+import '../../../core/session/presentation_history.dart';
 import '../../medication/domain/medication_models.dart';
 
 /// 하루치 복약 기록. 시간대 단위로 센다.
@@ -54,7 +55,12 @@ Future<Map<DateTime, DayAdherence>> fetchMedicationHistory(
   final monday = today.subtract(Duration(days: today.weekday - 1));
   final sunday = monday.add(const Duration(days: 6));
   final monthStart = DateTime(today.year, today.month);
-  final start = monday.isBefore(monthStart) ? monday : monthStart;
+  final normalStart = monday.isBefore(monthStart) ? monday : monthStart;
+  final start =
+      PresentationHistory.applies(id) &&
+          normalStart.isAfter(DateTime(2026, 9, 21))
+      ? DateTime(2026, 9, 21)
+      : normalStart;
   // 이번 주 남은 약 있는 날을 기록 칸에 그리려면 오늘 이후도 받는다.
   final end = sunday.isAfter(today) ? sunday : today;
 
@@ -62,14 +68,20 @@ Future<Map<DateTime, DayAdherence>> fetchMedicationHistory(
       '${d.year}-${d.month.toString().padLeft(2, '0')}-'
       '${d.day.toString().padLeft(2, '0')}';
 
-  final response =
-      await (apiClient ?? ApiClient(baseUrl: ApiConfig.localFeatureBaseUrl))
-          .get(
-            '/api/v1/users/${Uri.encodeComponent(id)}/medication-history'
-            '?start=${day(start)}&end=${day(end)}',
-          );
-  final rows = response is Map ? response['days'] : null;
-  if (rows is! List) return const {};
+  dynamic response;
+  try {
+    response =
+        await (apiClient ?? ApiClient(baseUrl: ApiConfig.localFeatureBaseUrl))
+            .get(
+              '/api/v1/users/${Uri.encodeComponent(id)}/medication-history'
+              '?start=${day(start)}&end=${day(end)}',
+            );
+  } catch (_) {
+    if (!PresentationHistory.applies(id)) rethrow;
+    debugPrint('[PRESENTATION_HISTORY] 서버 기록 조회 실패: 시연 기록만 표시');
+  }
+  final raw = response is Map ? response['days'] : null;
+  final rows = PresentationHistory.mergeHistory(id, raw is List ? raw : []);
 
   final result = <DateTime, DayAdherence>{};
   for (final row in rows) {
