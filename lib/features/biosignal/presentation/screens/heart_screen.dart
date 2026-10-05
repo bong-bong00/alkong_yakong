@@ -12,8 +12,6 @@ import '../../../../core/polar_pharmacist_ui/widgets/senior_button.dart';
 import '../../../../core/polar_pharmacist_ui/widgets/senior_card.dart';
 import '../../../../core/polar_pharmacist_ui/widgets/senior_feedback.dart';
 import '../../../../core/polar_pharmacist_ui/widgets/senior_header.dart';
-import '../../../../core/session/mvp_session.dart';
-import '../../../../core/session/presentation_history.dart';
 import '../../../medication/domain/medication_models.dart';
 import '../../application/heart_device.dart';
 import '../../application/heart_sensor.dart';
@@ -31,8 +29,6 @@ import 'polar_screen.dart';
 /// 이 화면은 **서버에서 읽어 온 기록만** 그린다. 읽는 중이면 읽는 중,
 /// 못 읽었으면 못 읽었다, 기록이 없으면 없다고 말한다. 예시 숫자로
 /// 빈자리를 채우면 어르신도 보호자도 그 숫자를 진짜로 읽는다.
-/// 단, 전용 시연 계정의 debug 빌드에서는 실제 기록과 분리한 범위 예시를
-/// 명시적으로 표시한다. 이 예시는 저장·분석·알림에 사용하지 않는다.
 class HeartScreen extends ConsumerStatefulWidget {
   final String guardianTitle;
 
@@ -87,9 +83,6 @@ class _HeartScreenState extends ConsumerState<HeartScreen> {
 
   /// 다른 사람(어르신)의 기록을 보는 중인지. 그러면 이 전화기로 재지 않는다.
   bool get _viewingOther => widget.userId != null;
-
-  bool get _showPresentationRanges =>
-      PresentationHistory.applies(widget.userId ?? MvpSession.userId);
 
   @override
   void initState() {
@@ -161,7 +154,6 @@ class _HeartScreenState extends ConsumerState<HeartScreen> {
       MaterialPageRoute(
         builder: (_) => MonthlyHeartScreen(
           data: data,
-          userId: widget.userId ?? MvpSession.userId,
           guardianTitle: resolveGuardianTitle(context, widget.guardianTitle),
         ),
       ),
@@ -291,28 +283,10 @@ class _HeartScreenState extends ConsumerState<HeartScreen> {
                     const _LoadingCard()
                   else if (_failed && data == null)
                     _FailedCard(onRetry: () => unawaited(_load()))
-                  else if (data != null &&
-                      !data.hasReadings &&
-                      !_showPresentationRanges)
+                  else if (data != null && !data.hasReadings)
                     _EmptyCard(viewingOther: _viewingOther)
                   else if (data != null)
-                    _TodayCard(
-                      data: data,
-                      showPresentationRanges: _showPresentationRanges,
-                    ),
-                  if (data == null && _showPresentationRanges) ...[
-                    const SizedBox(height: 12),
-                    SeniorCard(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          Text('오늘 측정', style: AppText.cardTitle()),
-                          const SizedBox(height: 12),
-                          const _PresentationRanges(),
-                        ],
-                      ),
-                    ),
-                  ],
+                    _TodayCard(data: data),
                   if ((_failed || _reloadFailed) && data != null) ...[
                     const SizedBox(height: 12),
                     Text(
@@ -502,8 +476,7 @@ class _EmptyCard extends StatelessWidget {
 /// 오늘 잰 것 — 전·후 두 값을 나란히.
 class _TodayCard extends StatelessWidget {
   final HeartData data;
-  final bool showPresentationRanges;
-  const _TodayCard({required this.data, this.showPresentationRanges = false});
+  const _TodayCard({required this.data});
 
   /// 잰 시각만 짧게. 둘 다 없으면 이 줄을 그리지 않는다.
   ///
@@ -644,10 +617,6 @@ class _TodayCard extends StatelessWidget {
               ),
             ),
           ],
-          if (showPresentationRanges) ...[
-            const SizedBox(height: 12),
-            const _PresentationRanges(),
-          ],
           if (drop != null) ...[
             const SizedBox(height: 14),
             Container(
@@ -701,40 +670,6 @@ class _TodayCard extends StatelessWidget {
       ),
     );
   }
-}
-
-/// Display-only examples for the dedicated debug presentation account.
-/// Never enter stored readings, comparisons, baseline calculations or alerts.
-class _PresentationRanges extends StatelessWidget {
-  const _PresentationRanges();
-
-  @override
-  Widget build(BuildContext context) => Column(
-    crossAxisAlignment: CrossAxisAlignment.stretch,
-    children: [
-      Text('시연 예시 · 실제 측정 아님', style: AppText.caption(size: 16)),
-      for (final bpm in [48, 125]) ...[
-        const SizedBox(height: 10),
-        Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: AppColors.sunken,
-            borderRadius: BorderRadius.circular(16),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('평소 심박 측정', style: AppText.label(size: 17)),
-              const SizedBox(height: 4),
-              Text('$bpm회/분', style: AppText.emphasis(size: 24)),
-              const SizedBox(height: 4),
-              _HeartRateRangeLabel(value: bpm),
-            ],
-          ),
-        ),
-      ],
-    ],
-  );
 }
 
 class _ValueBox extends StatelessWidget {

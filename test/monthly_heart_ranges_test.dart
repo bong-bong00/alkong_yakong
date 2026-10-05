@@ -1,4 +1,3 @@
-import 'package:alkong_yakong/core/session/presentation_history.dart';
 import 'package:alkong_yakong/features/biosignal/domain/heart_data.dart';
 import 'package:alkong_yakong/features/biosignal/presentation/screens/monthly_heart_screen.dart';
 import 'package:flutter/material.dart';
@@ -7,74 +6,51 @@ import 'package:flutter_test/flutter_test.dart';
 import 'heart_records_flow_test.dart' show monthlyData;
 
 void main() {
-  testWidgets('dedicated demo graph is separate from real records', (
-    tester,
-  ) async {
-    await tester.pumpWidget(
-      MaterialApp(
-        home: MonthlyHeartScreen(
-          data: monthlyData(const []),
-          now: DateTime(2026, 10, 6),
-          userId: PresentationHistory.userId,
-        ),
-      ),
-    );
-    await tester.pumpAndSettle();
-    expect(find.byKey(const Key('daily-heart-bars')), findsOneWidget);
-    expect(find.byKey(const Key('demo-daily-heart-bars')), findsOneWidget);
-    expect(find.text('가상 데이터 · 실제 측정 아님'), findsOneWidget);
-    for (final value in [48, 54, 104, 125, 118]) {
-      expect(find.byKey(Key('heart-bar-value-$value')), findsOneWidget);
-    }
-    expect(find.byKey(const Key('heart-bar-value-76')), findsNothing);
-    expect(find.text('저장된 심박 기록'), findsNothing);
-    expect(tester.takeException(), isNull);
-  });
-
   testWidgets(
-    'ordinary records show only out-of-range labels, including at large text',
+    'stored range labels preserve compact bars and have no demo block',
     (tester) async {
       tester.view.physicalSize = const Size(320, 900);
       tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.resetPhysicalSize);
       addTearDown(tester.view.resetDevicePixelRatio);
       final readings = <HeartReading>[
-        for (final value in [48, 60, 100, 125])
+        for (final entry in [(1, 48), (2, 60), (3, 100), (4, 125)])
           HeartReading(
-            id: value,
-            bpm: value,
-            measuredAt: DateTime(
-              2026,
-              9,
-              value == 48
-                  ? 1
-                  : value == 60
-                  ? 2
-                  : value == 100
-                  ? 3
-                  : 4,
-            ),
+            id: entry.$1,
+            bpm: entry.$2,
+            measuredAt: DateTime(2026, 9, entry.$1),
             measurementContext: HeartMeasurementContext.beforeMedication,
           ),
       ];
+      final data = monthlyData(readings);
       await tester.pumpWidget(
         MaterialApp(
           home: MediaQuery(
             data: const MediaQueryData(textScaler: TextScaler.linear(1.3)),
-            child: MonthlyHeartScreen(
-              data: monthlyData(readings),
-              now: DateTime(2026, 9, 28),
-              userId: 'ordinary',
-            ),
+            child: MonthlyHeartScreen(data: data, now: DateTime(2026, 9, 28)),
           ),
         ),
       );
       await tester.pumpAndSettle();
+      expect(find.byKey(const Key('daily-heart-bars')), findsOneWidget);
       expect(find.byKey(const Key('demo-daily-heart-bars')), findsNothing);
+      expect(find.textContaining('시연 예시'), findsNothing);
       expect(find.byKey(const Key('heart-bar-value-48')), findsOneWidget);
       expect(find.byKey(const Key('heart-bar-value-125')), findsOneWidget);
       expect(find.byKey(const Key('heart-bar-value-60')), findsNothing);
       expect(find.byKey(const Key('heart-bar-value-100')), findsNothing);
+      final label = find.byKey(const Key('heart-bar-value-48'));
+      final labelSizer = find
+          .ancestor(of: label, matching: find.byType(SizedBox))
+          .first;
+      expect(tester.getSize(labelSizer).width, 16);
+      final daySemantics = find.byWidgetPredicate(
+        (widget) =>
+            widget is Semantics &&
+            widget.properties.label == '1일 복약 전 48 복약 후 없음',
+      );
+      expect(tester.getSize(daySemantics).width, 44);
+      expect(data.readings.length, 4);
       expect(tester.takeException(), isNull);
     },
   );
