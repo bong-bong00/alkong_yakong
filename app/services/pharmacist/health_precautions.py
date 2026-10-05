@@ -174,6 +174,9 @@ def _scope(*, user_id, selected_medicine, selected_medicines, temporary_medicine
     from app.services.gemini_service import _merge_temporary_medicines, _selected_medicines_context
     from app.services.medication_feature_dur_client import load_remote_current_medicines
 
+    # Keep all selected drugs even when an older caller also supplies the first.
+    if len(selected_medicines or []) >= 2:
+        return _selected_medicines_context(selected_medicines)
     if selected_medicine is not None:
         context = _selected_medicines_context([selected_medicine])
         if len(context["items"]) == 1:

@@ -24,6 +24,10 @@ def chat_with_pharmacist(request: DrugExplainChatRequest):
     message, intent, selected, selected_many, clarification = resolve_followup(
         request.message, request.intent, history, selected, selected_many,
     )
+    # Older clients send the first selection alongside the full list. The
+    # explicit multi-selection is authoritative, not its first item.
+    if len(selected_many) >= 2:
+        selected = None
     with conversation_context(history) as evidence:
         reply = clarification or generate_chat_response(
             message,

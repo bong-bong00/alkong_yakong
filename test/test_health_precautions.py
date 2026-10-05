@@ -105,6 +105,35 @@ def test_multiple_scope_preserves_every_selected_medicine(context, monkeypatch):
     assert "확인약정" in result and "다른약정" in result and "음주" in result
 
 
+def test_legacy_first_selection_cannot_hide_other_health_selections(context, monkeypatch):
+    third = {"medicine_code": "200403137", "product_name": "세번째약정"}
+    medicines = [MEDICINE, SECOND, third]
+    seen = []
+
+    def lookup(medicine):
+        seen.append(medicine)
+        return {**medicine, "source": "식약처 의약품 허가정보",
+                "cautions": "음주 시에는 사용하지 않는다."}
+
+    monkeypatch.setattr(health, "_official_cautions", lookup)
+    result = ask(selected_medicine=MEDICINE, selected_medicines=medicines)
+    assert seen == medicines
+    assert all(item["product_name"] in result for item in medicines)
+
+    seen.clear()
+    api = FastAPI()
+    api.include_router(router)
+    response = TestClient(api).post("/api/v1/drug-explain/chat", json={
+        "user_id": "health-user", "message": "내 건강 상태에서 주의할 점은?",
+        "intent": "health_precautions", "selected_medicine": MEDICINE,
+        "selected_medicines": medicines,
+    })
+    assert response.status_code == 200
+    assert seen == medicines
+    assert response.json()["conversation_medicines"] == medicines
+    assert all(item["product_name"] in response.json()["reply"] for item in medicines)
+
+
 def test_all_scope_uses_team_medicine_service_and_temporary_selection(context, monkeypatch):
     remote = MagicMock(return_value={"status": "current", "items": [MEDICINE]})
     monkeypatch.setattr("app.services.medication_feature_dur_client.load_remote_current_medicines", remote)

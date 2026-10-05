@@ -792,7 +792,7 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
       };
       if (intent != null) body['intent'] = intent;
       final selectedOfficial = _selectedOfficialMedicine;
-      if (selectedOfficial?.itemSeq != null) {
+      if (_selectedMedicines.length == 1 && selectedOfficial?.itemSeq != null) {
         body['selected_medicine'] = {
           'medicine_code': selectedOfficial!.itemSeq,
           'product_name': selectedOfficial.itemName,

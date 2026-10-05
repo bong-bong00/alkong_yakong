@@ -232,6 +232,64 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('건강 질문은 세 약 목록만 보내고 단독 선택은 유지한다', (tester) async {
+    final sent = <Map<String, dynamic>>[];
+    final client = MockClient((request) async {
+      if (request.method == 'POST') {
+        sent.add(jsonDecode(request.body) as Map<String, dynamic>);
+        return response({
+          'reply': '선택한 약들의 주의사항이에요.',
+          'resolved_intent': 'health_precautions',
+        });
+      }
+      return response({
+        'medicines': [
+          for (final index in [1, 2, 3])
+            {
+              'medicine_code': '12345678$index',
+              'product_name': '선택약$index정',
+              'official_product_name': '선택약$index정',
+              'status': 'active',
+            },
+        ],
+      });
+    });
+    await tester.pumpWidget(
+      MaterialApp(
+        home: DrugExplainScreen(
+          apiClient: ApiClient(client: client),
+          medicationApiClient: ApiClient(client: client),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('ai-subject-card')));
+    await tester.pumpAndSettle();
+    for (final index in [1, 2, 3]) {
+      await tester.tap(find.byKey(ValueKey('medicine-selection-선택약$index정')));
+      await tester.pumpAndSettle();
+    }
+    await tester.tap(find.text('확인'));
+    await tester.pumpAndSettle();
+    final field = find.byType(TextField).last;
+    await tester.enterText(field, '내 건강 상태에서 주의할 점은?');
+    await tester.testTextInput.receiveAction(TextInputAction.send);
+    await tester.pumpAndSettle();
+    expect(sent.single.containsKey('selected_medicine'), isFalse);
+    expect(
+      (sent.single['selected_medicines'] as List).map(
+        (m) => m['medicine_code'],
+      ),
+      ['123456781', '123456782', '123456783'],
+    );
+    await clearPick(tester);
+    await pick(tester, '선택약1정');
+    await ask(tester);
+    expect(sent.last['selected_medicine']['medicine_code'], '123456781');
+    expect(sent.last.containsKey('selected_medicines'), isFalse);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('이름으로 찾은 약은 고른 뒤엔 하나로, 뺀 뒤엔 전체에 실린다', (tester) async {
     final sent = <Map<String, dynamic>>[];
     final client = MockClient((request) async {
