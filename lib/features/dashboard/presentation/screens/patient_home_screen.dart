@@ -15,6 +15,10 @@ import '../../../../core/widgets/senior_card.dart';
 import '../../../../core/widgets/senior_feedback.dart';
 import '../../../../core/widgets/senior_header.dart';
 import '../../../../core/network/api_client.dart';
+import '../../../../core/session/mvp_session.dart';
+import '../../../../core/session/presentation_history.dart';
+import '../../application/presentation_lunch.dart';
+import '../../../biosignal/data/heart_repository.dart';
 import '../../../guardian/application/guardians_provider.dart';
 import '../../../guardian/data/guardian_repository.dart';
 import '../../../biosignal/application/heart_device.dart';
@@ -168,6 +172,7 @@ class _PatientHomeScreenState extends ConsumerState<PatientHomeScreen> {
   @override
   void initState() {
     super.initState();
+    unawaited(_restorePresentationLunch());
     // 잔여일이 0이면 홈에 들어오는 순간 리필 시트를 연다. 하루 한 번만.
     WidgetsBinding.instance.addPostFrameCallback((_) => _maybeAskRefill());
     // 가족이 대신 넣어 준 약이 있으면 홈에 들어서자마자 알린다.
@@ -178,6 +183,22 @@ class _PatientHomeScreenState extends ConsumerState<PatientHomeScreen> {
     WidgetsBinding.instance.addPostFrameCallback(
       (_) => _onNotificationAction(),
     );
+  }
+
+  Future<void> _restorePresentationLunch() async {
+    final id = MvpSession.userId;
+    final now = DateTime.now();
+    if (!PresentationHistory.applies(id) ||
+        now.year != 2026 ||
+        now.month != 10 ||
+        now.day != 6) {
+      return;
+    }
+    final data = await HeartRepository().fetch(userId: id);
+    if (!mounted || MvpSession.userId != id || data == null) return;
+    final bpm = presentationLunchBeforeBpm(id, DateTime.now(), data.readings);
+    if (bpm == null || _beforeBpm.containsKey(DoseSlot.lunch)) return;
+    setState(() => _beforeBpm[DoseSlot.lunch] = bpm);
   }
 
   @override
