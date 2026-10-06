@@ -7,6 +7,7 @@ import '../../../core/session/mvp_session.dart';
 import '../../medicines/domain/display_policy.dart';
 import '../../reminder/domain/reminder_ladder.dart';
 import '../domain/medication_models.dart';
+import '../domain/presentation_medication.dart';
 
 /// 복약 시각에서 이만큼 지나면 지연 복약으로 본다.
 const Duration kLateDoseThreshold = Duration(hours: 4);
@@ -55,9 +56,12 @@ String resolveGuardianTitle(BuildContext context, String? given) {
 /// 서버 응답을 우선하며, 첫 로딩·조회 실패·실제 빈 목록을 구분한다.
 class MedicationController extends Notifier<TodayMedication> {
   final ApiClient _api;
+  final DateTime Function() _now;
+  bool _presentationLunchTaken = false;
 
-  MedicationController({ApiClient? apiClient})
-    : _api = apiClient ?? ApiClient(baseUrl: ApiConfig.localFeatureBaseUrl);
+  MedicationController({ApiClient? apiClient, DateTime Function()? now})
+    : _api = apiClient ?? ApiClient(baseUrl: ApiConfig.localFeatureBaseUrl),
+      _now = now ?? DateTime.now;
 
   @override
   TodayMedication build() {
@@ -86,7 +90,12 @@ class MedicationController extends Notifier<TodayMedication> {
       }
       final parsed = parse(Map<String, dynamic>.from(response));
       // 정상적인 빈 응답은 빈 목록으로 반영한다.
-      state = parsed;
+      state = preparePresentationMedication(
+        parsed,
+        userId: userId,
+        now: _now(),
+        lunchTaken: _presentationLunchTaken,
+      );
       debugPrint(
         '[TODAY_MEDICINES_DIAG] status=ok doses=${parsed.doses.length} '
         'elapsed_ms=${timer.elapsedMilliseconds}',
@@ -237,6 +246,10 @@ class MedicationController extends Notifier<TodayMedication> {
 
   Future<void> _record(DoseSlot slot, DateTime at) async {
     await _postTakenLogs(slot);
+    if (slot == DoseSlot.lunch &&
+        appliesPresentationMedication(MvpSession.userId, _now())) {
+      _presentationLunchTaken = true;
+    }
     state = state.copyWith(
       doses: [
         for (final dose in state.doses)
@@ -273,6 +286,10 @@ class MedicationController extends Notifier<TodayMedication> {
   }
 
   void undo(DoseSlot slot) {
+    if (slot == DoseSlot.lunch &&
+        appliesPresentationMedication(MvpSession.userId, _now())) {
+      _presentationLunchTaken = false;
+    }
     state = state.copyWith(
       doses: [
         for (final dose in state.doses)
