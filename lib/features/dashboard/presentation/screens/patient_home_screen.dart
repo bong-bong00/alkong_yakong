@@ -279,7 +279,13 @@ class _PatientHomeScreenState extends ConsumerState<PatientHomeScreen> {
 
   /// 홈 알림 칸에 적을 말. 다음에 울릴 시각을 "다음 알람 18:00"처럼
   /// 적는다 — 시각만 적으면 무슨 시각인지 알 길이 없다.
-  static String _nextAlarmLabel(AlarmPreferences alarm) {
+  static String _nextAlarmLabel(
+    AlarmPreferences alarm, {
+    required bool hasDoses,
+  }) {
+    // 넣은 약이 없으면 울릴 알람도 없다. 시각을 적어 두면 그 시각에
+    // 소리가 날 것으로 믿고 기다리시게 된다.
+    if (!hasDoses) return '알람 없음';
     final times = alarm.ringingTimes;
     if (!alarm.autoAlarm || times.isEmpty) return '알림 꺼짐';
     final now = DateTime.now();
@@ -651,6 +657,7 @@ class _PatientHomeScreenState extends ConsumerState<PatientHomeScreen> {
                       sensorKey: _sensorTileKey,
                       alarmLabel: _nextAlarmLabel(
                         ref.watch(alarmPreferencesProvider),
+                        hasDoses: today.doses.isNotEmpty,
                       ),
                       onOpenAlarm: _openAlarmSettings,
                       // 아직 기기를 안 쓰시는 분께는 연결 길을 먼저

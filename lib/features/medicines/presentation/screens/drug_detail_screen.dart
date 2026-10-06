@@ -570,9 +570,15 @@ class _Bullet extends StatelessWidget {
       children: [
         SizedBox(
           width: 68,
-          child: Text(
-            tag,
-            style: AppText.label(size: 18, color: AppColors.textTertiary),
+          child: FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerLeft,
+            child: Text(
+              tag,
+              maxLines: 1,
+              softWrap: false,
+              style: AppText.label(size: 18, color: AppColors.textTertiary),
+            ),
           ),
         ),
         const SizedBox(width: 10),
@@ -909,9 +915,18 @@ class _DosingTab extends StatelessWidget {
             children: [
               SizedBox(
                 width: 68,
-                child: Text(
-                  rows[i].$1,
-                  style: AppText.label(size: 18, color: AppColors.textTertiary),
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    rows[i].$1,
+                    maxLines: 1,
+                    softWrap: false,
+                    style: AppText.label(
+                      size: 18,
+                      color: AppColors.textTertiary,
+                    ),
+                  ),
                 ),
               ),
               const SizedBox(width: 10),
