@@ -92,6 +92,7 @@ class PatientHomeScreen extends ConsumerStatefulWidget {
 
 class _PatientHomeScreenState extends ConsumerState<PatientHomeScreen> {
   // 도움말이 동그라미를 칠 자리들. 화면에 없으면 그 걸음은 건너뛴다.
+  final _emptyKey = GlobalKey();
   final _slotsKey = GlobalKey();
   final _bigButtonKey = GlobalKey();
   final _stepsKey = GlobalKey();
@@ -102,6 +103,17 @@ class _PatientHomeScreenState extends ConsumerState<PatientHomeScreen> {
   void _openHelp() {
     final usesDevice = ref.read(heartDevicePairedProvider);
     CoachMarks.show(context, [
+      // 약이 없을 때만 그려지는 칸이다. 약이 들어오면 이 걸음은 저절로
+      // 건너뛴다 — 처음 쓰시는 분께 가장 먼저 할 말이 이것이다.
+      CoachMark(
+        target: _emptyKey,
+        title: '처방전 등록',
+        body:
+            '처방전을 등록하면 오늘 드실 약과 복용 시간이 이 화면에 나옵니다. '
+            '사진으로 찍거나 손으로 적어 넣을 수 있습니다.',
+        boxed: true,
+        radius: 22,
+      ),
       CoachMark(
         target: _slotsKey,
         title: '복용 시간대 선택',
@@ -530,6 +542,7 @@ class _PatientHomeScreenState extends ConsumerState<PatientHomeScreen> {
                   children: [
                     if (today.doses.isEmpty)
                       SeniorCard(
+                        key: _emptyKey,
                         padding: const EdgeInsets.all(22),
                         child: Column(
                           children: [
