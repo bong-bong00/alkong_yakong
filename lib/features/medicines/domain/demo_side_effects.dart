@@ -51,14 +51,8 @@ const Map<String, List<DemoSideEffect>> demoSideEffects = {
   ],
   // 아디팜정(히드록시진)
   '197800210': [
-    DemoSideEffect(
-      '졸음이 아주 흔해요. 운전이나 위험한 기계 조작은 피하세요.',
-      marks: ['졸음', '운전'],
-    ),
-    DemoSideEffect(
-      '머리가 아프거나 피곤하고 입이 마를 수 있어요.',
-      marks: ['머리가 아프거나', '입이 마를'],
-    ),
+    DemoSideEffect('졸음이 아주 흔해요. 운전이나 위험한 기계 조작은 피하세요.', marks: ['졸음', '운전']),
+    DemoSideEffect('머리가 아프거나 피곤하고 입이 마를 수 있어요.', marks: ['머리가 아프거나', '입이 마를']),
     DemoSideEffect('어지럽거나 잠이 잘 안 올 수 있어요.', marks: ['어지럽거나', '잠']),
     DemoSideEffect(
       '가려움, 발진, 두드러기가 생기면 의사나 약사에게 알리세요.',
@@ -68,14 +62,8 @@ const Map<String, List<DemoSideEffect>> demoSideEffects = {
   // 휴온스시메티딘정(시메티딘)
   '200403137': [
     DemoSideEffect('피로감을 느낄 수 있어요.', marks: ['피로감']),
-    DemoSideEffect(
-      '배가 더부룩하거나 변비·설사가 생길 수 있어요.',
-      marks: ['더부룩하거나', '변비·설사'],
-    ),
-    DemoSideEffect(
-      '드물게 머리가 아프거나 어지럽고 졸릴 수 있어요.',
-      marks: ['머리가 아프거나', '어지럽고'],
-    ),
+    DemoSideEffect('배가 더부룩하거나 변비·설사가 생길 수 있어요.', marks: ['더부룩하거나', '변비·설사']),
+    DemoSideEffect('드물게 머리가 아프거나 어지럽고 졸릴 수 있어요.', marks: ['머리가 아프거나', '어지럽고']),
     DemoSideEffect(
       '열이 나고 기운이 없거나 멍·출혈이 잘 생기면 바로 의사에게 알리세요.',
       marks: ['열이 나고', '멍·출혈'],
@@ -83,10 +71,7 @@ const Map<String, List<DemoSideEffect>> demoSideEffects = {
   ],
   // 프레벨액(프레드니카르베이트)
   '200401147': [
-    DemoSideEffect(
-      '바른 자리가 따갑거나 화끈거리고, 가렵거나 붉어질 수 있어요.',
-      marks: ['따갑거나 화끈거리고'],
-    ),
+    DemoSideEffect('바른 자리가 따갑거나 화끈거리고, 가렵거나 붉어질 수 있어요.', marks: ['따갑거나 화끈거리고']),
     DemoSideEffect(
       '3주 넘게 계속 바르면 피부가 얇아지거나 실핏줄이 비쳐 보일 수 있어요.',
       marks: ['3주', '피부가 얇아지거나'],
@@ -95,9 +80,6 @@ const Map<String, List<DemoSideEffect>> demoSideEffects = {
       '바른 자리에 여드름이나 고름이 생기면 세균·곰팡이 감염일 수 있으니 사용을 멈추고 상의하세요.',
       marks: ['여드름이나 고름'],
     ),
-    DemoSideEffect(
-      '눈꺼풀 주변에 바르면 안압이 오를 수 있어 주의가 필요해요.',
-      marks: ['눈꺼풀', '안압'],
-    ),
+    DemoSideEffect('눈꺼풀 주변에 바르면 안압이 오를 수 있어 주의가 필요해요.', marks: ['눈꺼풀', '안압']),
   ],
 };

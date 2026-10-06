@@ -622,7 +622,10 @@ class _CautionTab extends StatelessWidget {
     // [임시 · 시연 보기용] 서버가 주는 부작용이 없으면 시연용 문장을 쓴다.
     // 서버 문장에는 짚을 낱말이 따로 없으니 칠하지 않는다.
     final sideEffects = medicine.possibleSideEffects.isNotEmpty
-        ? [for (final text in medicine.possibleSideEffects) DemoSideEffect(text)]
+        ? [
+            for (final text in medicine.possibleSideEffects)
+              DemoSideEffect(text),
+          ]
         : demoSideEffects[medicine.medicineCode.trim()] ??
               const <DemoSideEffect>[];
 

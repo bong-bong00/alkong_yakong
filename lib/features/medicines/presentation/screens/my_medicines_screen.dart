@@ -6,7 +6,6 @@ import 'package:go_router/go_router.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/theme/medicine_preserved_typography.dart';
 import '../../../../core/widgets/recovery_view.dart';
-import '../../../../core/widgets/senior_button.dart';
 import '../../../../core/widgets/coach_marks.dart';
 import '../../../../core/widgets/help_button.dart';
 import '../../../../core/widgets/senior_card.dart';
@@ -146,42 +145,6 @@ class _MedicineListState extends State<_MedicineList> {
 
   @override
   Widget build(BuildContext context) {
-    if (widget.items.isEmpty) {
-      return Padding(
-        padding: const EdgeInsets.fromLTRB(20, 24, 20, 28),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            SeniorCard(
-              padding: const EdgeInsets.all(24),
-              child: Column(
-                children: [
-                  const Icon(
-                    TablerIcons.pill,
-                    size: 42,
-                    color: AppColors.point,
-                  ),
-                  const SizedBox(height: 14),
-                  Text('등록된 약이 없어요', style: AppText.cardTitle(size: 22)),
-                  const SizedBox(height: 8),
-                  Text(
-                    '처방전 사진을 찍으면 약을 확인한 뒤 등록할 수 있어요.',
-                    textAlign: TextAlign.center,
-                    style: AppText.body(color: AppColors.textSecondary),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 16),
-            SeniorButton(
-              label: '처방전 등록하기',
-              onPressed: () => context.push('/prescription'),
-            ),
-          ],
-        ),
-      );
-    }
-
     final active = widget.items
         .where((item) => item.status == 'active')
         .toList();
@@ -208,7 +171,26 @@ class _MedicineListState extends State<_MedicineList> {
         // 머리말을 두지 않는다. 약 줄이 바로 보이면 무엇을 누를지
         // 더 설명할 것이 없다.
         const SizedBox(height: 18),
-        _GroupedMedicines(medicines: active, focusKey: _medicineKey),
+        if (active.isEmpty)
+          SeniorCard(
+            key: _medicineKey,
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              children: [
+                const Icon(TablerIcons.pill, size: 42, color: AppColors.point),
+                const SizedBox(height: 14),
+                Text('등록된 약이 없어요', style: AppText.cardTitle(size: 22)),
+                const SizedBox(height: 8),
+                Text(
+                  '처방전을 등록하면 여기에 약이 나옵니다.',
+                  textAlign: TextAlign.center,
+                  style: AppText.body(color: AppColors.textSecondary),
+                ),
+              ],
+            ),
+          )
+        else
+          _GroupedMedicines(medicines: active, focusKey: _medicineKey),
         // 지금 안 드시는 약은 줄 하나로 접어 둔다. 목록을 보는 이유는
         // 대부분 "지금 먹는 약"이기 때문이다.
         if (past.isNotEmpty) ...[

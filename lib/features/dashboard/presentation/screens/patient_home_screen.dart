@@ -641,27 +641,29 @@ class _PatientHomeScreenState extends ConsumerState<PatientHomeScreen> {
                                 ),
                         ),
                       ),
-                      // 위아래 여백을 같게 둔다. 두 칸 정가운데에 단추가 온다.
-                      SizedBox(height: gap),
-                      _HomeTiles(
-                        alarmKey: _alarmTileKey,
-                        sensorKey: _sensorTileKey,
-                        alarmLabel: _nextAlarmLabel(
-                          ref.watch(alarmPreferencesProvider),
-                        ),
-                        onOpenAlarm: _openAlarmSettings,
-                        // 아직 기기를 안 쓰시는 분께는 연결 길을 먼저
-                        // 보여 드린다. 약 보기는 아래 “내 약” 칸에도 있다.
-                        onConnectDevice: usesDevice ? null : _openHeartDevice,
-                        onDisconnectDevice: usesDevice
-                            ? _disconnectHeartDevice
-                            : null,
-                        onOpenMedicines: widget.onOpenMedicines,
+                    ],
+                    // 알람과 센서는 약이 없어도 쓸 수 있다. 등록을 기다리게
+                    // 할 까닭이 없으므로 빈 화면에서도 자리를 지킨다.
+                    // 위아래 여백을 같게 둔다. 두 칸 정가운데에 단추가 온다.
+                    SizedBox(height: gap),
+                    _HomeTiles(
+                      alarmKey: _alarmTileKey,
+                      sensorKey: _sensorTileKey,
+                      alarmLabel: _nextAlarmLabel(
+                        ref.watch(alarmPreferencesProvider),
                       ),
-                      if (today.daysLeft != null) ...[
-                        const SizedBox(height: 16),
-                        _RefillRow(daysLeft: today.daysLeft!),
-                      ],
+                      onOpenAlarm: _openAlarmSettings,
+                      // 아직 기기를 안 쓰시는 분께는 연결 길을 먼저
+                      // 보여 드린다. 약 보기는 아래 “내 약” 칸에도 있다.
+                      onConnectDevice: usesDevice ? null : _openHeartDevice,
+                      onDisconnectDevice: usesDevice
+                          ? _disconnectHeartDevice
+                          : null,
+                      onOpenMedicines: widget.onOpenMedicines,
+                    ),
+                    if (today.daysLeft != null) ...[
+                      const SizedBox(height: 16),
+                      _RefillRow(daysLeft: today.daysLeft!),
                     ],
                   ],
                 );
