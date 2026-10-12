@@ -266,9 +266,9 @@ class _HeartScreenState extends ConsumerState<HeartScreen> {
                       ),
                     ),
                     if (_viewingOther)
-                      IconButton(
+                      TextButton.icon(
                         key: const Key('guardian-heart-refresh'),
-                        tooltip: '심박 기록 새로고침',
+                        label: const Text('새로고침'),
                         onPressed: _loading
                             ? null
                             : () => unawaited(_load(quiet: true)),

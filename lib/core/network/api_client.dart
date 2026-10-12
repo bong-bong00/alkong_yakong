@@ -5,6 +5,9 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
 import 'api_config.dart';
+import '../session/session_credentials.dart';
+import '../session/mvp_session.dart';
+import '../session/offline_status.dart';
 
 class ApiException implements Exception {
   final int? statusCode;
@@ -34,8 +37,32 @@ class ApiClient {
     }
   }
 
-  Future<dynamic> get(String path) =>
-      _send(() => _client.get(_uri(path), headers: _headers));
+  Future<dynamic> get(String path) async {
+    final id = MvpSession.userId.trim();
+    final cacheable =
+        id.isNotEmpty &&
+        path.startsWith('/api/v1/users/${Uri.encodeComponent(id)}/medicines') &&
+        SessionCredentials.validFor(id);
+    final key = '$_baseUrl$path';
+    try {
+      final data = await _send(
+        () => _client.get(_uri(path), headers: _headers),
+      );
+      if (cacheable && data != null) {
+        await SessionCredentials.cacheResponse(key, data);
+      }
+      OfflineStatus.fresh(key);
+      return data;
+    } on ApiException catch (error) {
+      if (!cacheable || error.statusCode != null && error.statusCode! < 500) {
+        rethrow;
+      }
+      final saved = await SessionCredentials.cachedResponse(key);
+      if (saved == null) rethrow;
+      OfflineStatus.cached(key);
+      return saved;
+    }
+  }
 
   Future<dynamic> post(
     String path, {
@@ -133,8 +160,10 @@ class ApiClient {
     throw ApiException(message, statusCode: response.statusCode);
   }
 
-  static const Map<String, String> _headers = {
+  Map<String, String> get _headers => {
     'Accept': 'application/json',
     'Content-Type': 'application/json; charset=UTF-8',
+    if (SessionCredentials.accessToken?.isNotEmpty == true)
+      'Authorization': 'Bearer ${SessionCredentials.accessToken}',
   };
 }

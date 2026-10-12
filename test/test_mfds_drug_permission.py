@@ -103,10 +103,16 @@ def test_xml_strips_html_tags():
 
 
 def test_permission_db_has_full_list():
+    import os, pytest
+    if os.getenv("RUN_MFDS_DATASET_TESTS") != "1":
+        pytest.skip("Full official dataset integration test; set RUN_MFDS_DATASET_TESTS=1 with a populated permission DB")
     stats = count_stats()
     assert stats["total"] >= 40000
 
 
 def test_permission_db_finds_primalan():
+    import os, pytest
+    if os.getenv("RUN_MFDS_DATASET_TESTS") != "1":
+        pytest.skip("Requires the downloaded official permission dataset")
     names = search_permission_names("프리마란", limit=5)
     assert any("프리마란" in name for name in names)

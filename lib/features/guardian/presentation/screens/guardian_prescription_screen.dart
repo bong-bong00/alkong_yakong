@@ -9,6 +9,9 @@ import '../../../../core/widgets/senior_header.dart';
 import '../../../dashboard/presentation/screens/patient_data.dart';
 import '../../../prescription/presentation/screens/prescription_screen.dart';
 import '../../application/guardians_provider.dart';
+import '../../../medicines/application/user_medicines_controller.dart';
+import '../../../medication/application/medication_controller.dart';
+import '../../../dashboard/application/medication_history_provider.dart';
 
 /// 그 어르신 대신 처방전을 찍는 화면을 연다 (프로토타입 80).
 Future<void> openGuardianPrescription(
@@ -21,6 +24,11 @@ Future<void> openGuardianPrescription(
         onBehalfOf: patient.title,
         onBehalfOfUserId: patient.patientId,
         onCompleted: (_) {
+          final container = ProviderScope.containerOf(context, listen: false);
+          container.invalidate(careOverviewProvider);
+          container.invalidate(patientMedicinesProvider(patient.patientId));
+          container.invalidate(patientTodayProvider(patient.patientId));
+          container.invalidate(patientHistoryProvider(patient.patientId));
           Navigator.of(context).maybePop();
           if (!context.mounted) return;
           showSeniorSnackbar(context, '${patient.title} 님께 약을 넣어드렸어요');
@@ -126,7 +134,7 @@ class GuardianPickPatientScreen extends ConsumerWidget {
                         ),
                         const SizedBox(height: 6),
                         Text(
-                          '등록이 끝나면 그 어르신 전화기에 "약을 넣어드렸어요" 알림이 갑니다.',
+                          '등록이 끝나면 그 어르신 앱에서 등록된 약을 확인할 수 있어요.',
                           style: AppText.body(size: 18),
                         ),
                       ],

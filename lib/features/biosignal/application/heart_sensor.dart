@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math';
 
 import 'package:flutter/foundation.dart';
 import 'package:permission_handler/permission_handler.dart';
@@ -62,6 +63,8 @@ class HeartSensor extends ChangeNotifier {
   Completer<void>? _connectionSettled;
   bool _disposed = false;
   int _session = 0;
+  String _uploadId =
+      '${DateTime.now().microsecondsSinceEpoch}-${Random.secure().nextInt(1 << 32)}';
   bool _acceptSamples = false;
   bool _measurementActive = true;
   Timer? _progressTimer;
@@ -107,6 +110,8 @@ class HeartSensor extends ChangeNotifier {
   }) {
     if (_disposed) return;
     _session++;
+    _uploadId =
+        '${DateTime.now().microsecondsSinceEpoch}-${Random.secure().nextInt(1 << 32)}';
     _stopMeasurement(clearBaseline: true);
     _measurementActive = true;
     _elapsedSeconds = 0;
@@ -403,6 +408,7 @@ class HeartSensor extends ChangeNotifier {
         '/api/v1/biosignal/heart-rate',
         body: {
           'user_id': userId,
+          'client_request_id': _uploadId,
           'bpm': average.round(),
           'device_id': _deviceId ?? PolarService.defaultDeviceId,
           'source': 'POLAR_30S_AVERAGE',

@@ -64,12 +64,12 @@ class BiosignalPolicyTest(unittest.TestCase):
 
             self.assertEqual(counts["heart_rate_logs"], 1)
             self.assertEqual(counts["baseline_heart_rate"], 0)
-            self.assertEqual(counts["abnormal_events"], 0)
-            self.assertEqual(counts["notifications"], 0)
+            self.assertEqual(counts["abnormal_events"], 1)
+            self.assertEqual(counts["notifications"], 1)
             self.assertEqual(source, "POLAR_30S_AVERAGE")
             self.assertEqual(measurement_context, "general")
             self.assertIsNone(result["baseline"])
-            self.assertIsNone(result["abnormal_event"])
+            self.assertEqual(result["abnormal_event"]["event_type"], "HIGH_HEART_RATE")
             response = HeartRateResponse.model_validate(result)
             self.assertIsNone(response.baseline)
         finally:

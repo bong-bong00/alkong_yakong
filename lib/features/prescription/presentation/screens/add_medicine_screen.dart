@@ -427,8 +427,8 @@ class _AskedCard extends StatelessWidget {
                       style: AppText.cardTitle(size: 21),
                     ),
                     Text(
-                      '$guardianTitle 전화기에 알림이 갔어요. '
-                      '찍어서 보내시면 이 화면에 약이 나타납니다',
+                      '$guardianTitle 앱에 부탁을 남겼어요. '
+                      '처방전을 등록하시면 이 화면에서 확인할 수 있어요.',
                       style: AppText.caption(size: 17.5),
                     ),
                   ],

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -44,7 +45,47 @@ class GuardianHomeScreen extends ConsumerStatefulWidget {
   ConsumerState<GuardianHomeScreen> createState() => _GuardianHomeScreenState();
 }
 
-class _GuardianHomeScreenState extends ConsumerState<GuardianHomeScreen> {
+class _GuardianHomeScreenState extends ConsumerState<GuardianHomeScreen>
+    with WidgetsBindingObserver {
+  Timer? _refreshTimer;
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _startRefreshing();
+  }
+
+  void _startRefreshing() {
+    _refreshTimer?.cancel();
+    _refreshTimer = Timer.periodic(const Duration(seconds: 30), (_) {
+      if (mounted && (ModalRoute.of(context)?.isCurrent ?? true)) {
+        _refreshRecords();
+      }
+    });
+  }
+
+  void _refreshRecords() {
+    _askedAboutHelp = false;
+    ref.invalidate(careOverviewProvider);
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _refreshRecords();
+      _startRefreshing();
+    } else {
+      _refreshTimer?.cancel();
+    }
+  }
+
+  @override
+  void dispose() {
+    _refreshTimer?.cancel();
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
   int _index = 0;
 
   /// 부탁 팝업을 이번에 켠 동안 한 번만 본다.
@@ -182,7 +223,7 @@ Future<void> _callPatient(BuildContext context, CarePatient patient) async {
 
 /// 보호자가 할 수 있는 일: 조회 · 전화 · 대신 등록.
 /// **대신 복약 체크는 할 수 없다** — 오기록을 막기 위해서다.
-class GuardianStatusScreen extends ConsumerWidget {
+class GuardianStatusScreen extends ConsumerStatefulWidget {
   final CarePatient patient;
   final HeartRepository? heartRepository;
 
@@ -201,12 +242,60 @@ class GuardianStatusScreen extends ConsumerWidget {
     this.heartRepository,
   });
 
+  @override
+  ConsumerState<GuardianStatusScreen> createState() =>
+      _GuardianStatusScreenState();
+}
+
+class _GuardianStatusScreenState extends ConsumerState<GuardianStatusScreen>
+    with WidgetsBindingObserver {
+  Timer? _poll;
+  HeartRepository? get heartRepository => widget.heartRepository;
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _start();
+  }
+
+  void _start() {
+    _poll?.cancel();
+    _poll = Timer.periodic(const Duration(seconds: 30), (_) {
+      if (mounted && (ModalRoute.of(context)?.isCurrent ?? true)) _refresh();
+    });
+  }
+
+  void _refresh() {
+    ref.invalidate(careOverviewProvider);
+    ref.invalidate(patientTodayProvider(widget.patient.patientId));
+    ref.invalidate(patientHistoryProvider(widget.patient.patientId));
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _refresh();
+      _start();
+    } else {
+      _poll?.cancel();
+    }
+  }
+
+  @override
+  void dispose() {
+    _poll?.cancel();
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
   /// 그 시간대를 드신 시각 — "8시 10분". 기록이 없으면 null.
   ///
   /// 값은 서버가 슬롯마다 실어 보낸 것만 쓴다. "오늘 있었던 일" 글귀를
   /// 문자열로 뒤져 찾으면 그 글귀가 한 글자만 바뀌어도 시각이 조용히 사라진다.
   static String? _takenAt(CareSlot slot) {
     if (!slot.taken) return null;
+    final moment = DateTime.tryParse(slot.time)?.toLocal();
+    if (moment != null) return DoseSlot.absoluteTime(moment);
     final parts = slot.time.split(':');
     if (parts.length != 2) return null;
     final hour = int.tryParse(parts[0]);
@@ -216,7 +305,27 @@ class GuardianStatusScreen extends ConsumerWidget {
   }
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget build(BuildContext context) {
+    final overview = ref.watch(careOverviewProvider);
+    final matching = overview.valueOrNull?.patients
+        .where((p) => p.patientId == widget.patient.patientId)
+        .toList();
+    if (overview.hasValue && matching?.isEmpty == true) {
+      return Scaffold(
+        body: Column(
+          children: [
+            SeniorBackHeader(title: widget.patient.title),
+            const Padding(
+              padding: EdgeInsets.all(24),
+              child: Text('환자 연결을 확인할 수 없어요. 돌보는 분 목록에서 다시 확인해 주세요.'),
+            ),
+          ],
+        ),
+      );
+    }
+    final patient = matching?.isNotEmpty == true
+        ? matching!.first
+        : widget.patient;
     final slots = patient.slots;
     final heartRate = patient.heartRate;
     // 복약 달력은 어르신 화면과 같은 것을 쓴다. 보호자가 보는 그림과
@@ -260,9 +369,16 @@ class GuardianStatusScreen extends ConsumerWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
+                  if (overview.hasError) ...[
+                    Text(
+                      '현재 상태를 갱신하지 못했어요. 이전 조회 내용을 표시합니다.',
+                      style: AppText.body(size: 18, color: AppColors.danger),
+                    ),
+                    const SizedBox(height: 12),
+                  ],
                   if (patient.needsAttention) ...[
                     _AttentionCard(
-                      text: '${patient.nextDoseLabel} 약을 드시지 않았어요',
+                      text: '${patient.nextDoseLabel} 복용 완료 기록이 아직 없어요',
                       onCall: () => _callPatient(context, patient),
                     ),
                     const SizedBox(height: 14),
@@ -298,8 +414,12 @@ class GuardianStatusScreen extends ConsumerWidget {
                             label: '심박수',
                             value:
                                 '$heartRate'
-                                '${patient.heartRateNormal == false ? ' 빠름' : ' 정상'}',
-                            danger: patient.heartRateNormal == false,
+                                '${heartRate < 60
+                                    ? ' 느림'
+                                    : heartRate > 100
+                                    ? ' 빠름'
+                                    : ' 정상'}',
+                            danger: heartRate < 60 || heartRate > 100,
                           ),
                         ],
                       ],
@@ -477,7 +597,35 @@ class GuardianAlertsTab extends StatefulWidget {
 }
 
 class _GuardianAlertsTabState extends State<GuardianAlertsTab> {
+  Timer? _poll;
+  @override
+  void dispose() {
+    _poll?.cancel();
+    super.dispose();
+  }
+
   final Set<int> _acknowledged = <int>{};
+  String get _ackKey =>
+      'guardian_ack_${MvpSession.userId}_${widget.patient.patientId}';
+  Future<void> _acknowledge(int? id) async {
+    if (id == null) return;
+    final key = _ackKey;
+    setState(() => _acknowledged.add(id));
+    try {
+      await (await SharedPreferences.getInstance()).setStringList(
+        key,
+        _acknowledged.map((id) => '$id').toList(),
+      );
+    } catch (_) {
+      if (mounted) {
+        showSeniorSnackbar(
+          context,
+          '확인 표시를 저장하지 못했어요. 다시 확인해 주세요.',
+          error: true,
+        );
+      }
+    }
+  }
 
   late final AlertRepository _repository =
       widget.repository ?? AlertRepository();
@@ -497,9 +645,11 @@ class _GuardianAlertsTabState extends State<GuardianAlertsTab> {
       'refill',
       'prescription',
       'done',
+      'shared',
+      'past',
     };
     if (!actionable.contains(alert.type)) return false;
-    if (alert.type == 'alert' && alert.desc.contains('정상')) return false;
+    if (alert.type == 'alert' && alert.desc.contains('모두 정상이었어요')) return false;
     return true;
   }
 
@@ -507,10 +657,20 @@ class _GuardianAlertsTabState extends State<GuardianAlertsTab> {
   void initState() {
     super.initState();
     unawaited(_load());
+    _poll = Timer.periodic(const Duration(seconds: 30), (_) {
+      if (mounted && (ModalRoute.of(context)?.isCurrent ?? true)) {
+        unawaited(_load());
+      }
+    });
   }
 
   Future<void> _load() async {
     setState(() => _failed = false);
+    try {
+      final saved =
+          (await SharedPreferences.getInstance()).getStringList(_ackKey) ?? [];
+      _acknowledged.addAll(saved.map(int.tryParse).whereType<int>());
+    } catch (_) {}
     final loaded = await _repository.fetch(widget.patient.patientId);
     if (!mounted) return;
     // 못 읽으면 못 읽었다고 말한다. 예시 알림으로 갈아끼우지 않는다.
@@ -575,12 +735,14 @@ class _GuardianAlertsTabState extends State<GuardianAlertsTab> {
                           style: AppText.caption(size: 17),
                         );
                       }
+                      final notificationId =
+                          alerts[index].id ?? -(1000000000 + index);
                       return _AlertCard(
                         alert: alerts[index],
                         patient: widget.patient,
-                        acknowledged: _acknowledged.contains(index),
+                        acknowledged: _acknowledged.contains(notificationId),
                         onAcknowledge: () =>
-                            setState(() => _acknowledged.add(index)),
+                            unawaited(_acknowledge(notificationId)),
                       );
                     },
                   ),

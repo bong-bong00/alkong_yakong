@@ -292,6 +292,8 @@ Future<void> applyMockSession() async {
 /// 없을 때만 부른다 — 로그인해 둔 사람을 밀어내지 않는다.
 Future<void> applyDevSession() async {
   if (!devSession) return;
+  // A debug user ID is not authentication. Real servers require normal login.
+  if (!AuthSession.isLoggedIn) return;
   // 스스로 나가신 분은 다시 끌고 들어오지 않는다.
   if (await AuthSession.devAutoLoginBlocked) return;
   MvpSession.userId = kDevUserId;

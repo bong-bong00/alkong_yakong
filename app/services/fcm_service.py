@@ -34,14 +34,8 @@ def send_push_notification(token: str, title: str, body: str, data: Optional[dic
         return False
         
     if not FCM_INITIALIZED:
-        logger.info(f"\n📱 [Mock Push Notification] ----------------------------")
-        logger.info(f"  To (Token): {token}")
-        logger.info(f"  Title: {title}")
-        logger.info(f"  Body: {body}")
-        if data:
-            logger.info(f"  Data: {data}")
-        logger.info(f"----------------------------------------------------\n")
-        return True
+        logger.info("Push delivery unavailable: Firebase is not configured")
+        return False
         
     try:
         from firebase_admin import messaging

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -8,6 +9,7 @@ import '../../medicines/domain/display_policy.dart';
 import '../../reminder/domain/reminder_ladder.dart';
 import '../domain/medication_models.dart';
 import '../domain/presentation_medication.dart';
+import '../../reminder/application/reminder_notifications.dart';
 
 /// 복약 시각에서 이만큼 지나면 지연 복약으로 본다.
 const Duration kLateDoseThreshold = Duration(hours: 4);
@@ -260,6 +262,7 @@ class MedicationController extends Notifier<TodayMedication> {
       ],
     );
     ref.read(reminderSchedulerProvider).cancelSlot(slot);
+    await ref.read(reminderNotificationsProvider).cancelSlotForToday(slot);
     _snoozeCount.remove(slot);
     _guardianNotified.add(slot);
   }
@@ -270,22 +273,35 @@ class MedicationController extends Notifier<TodayMedication> {
     if (userId.isEmpty) {
       throw const ApiException('복약 완료를 저장할 사용자 정보가 없습니다.');
     }
-    var posted = false;
-    for (final med in dose.medicines) {
-      final scheduleId = med.scheduleId;
-      if (scheduleId == null || scheduleId <= 0) continue;
-      await _api.post(
-        '/api/v1/medication-logs',
-        body: {'user_id': userId, 'schedule_id': scheduleId},
-      );
-      posted = true;
-    }
-    if (!posted) {
+    final ids = dose.medicines
+        .map((med) => med.scheduleId)
+        .whereType<int>()
+        .where((id) => id > 0)
+        .toSet()
+        .toList();
+    if (ids.isEmpty) {
       throw const ApiException('복약 일정 정보를 확인할 수 없습니다.');
     }
+    await _api.post(
+      '/api/v1/medication-logs/batch',
+      body: {'user_id': userId, 'schedule_ids': ids},
+    );
   }
 
-  void undo(DoseSlot slot) {
+  Future<void> undo(DoseSlot slot) async {
+    final ids = state
+        .doseOf(slot)
+        .medicines
+        .map((m) => m.scheduleId)
+        .whereType<int>()
+        .where((id) => id > 0)
+        .toSet()
+        .toList();
+    if (ids.isEmpty) throw const ApiException('취소할 복약 일정 정보를 확인하지 못했어요.');
+    await _api.post(
+      '/api/v1/medication-logs/undo',
+      body: {'user_id': MvpSession.userId, 'schedule_ids': ids},
+    );
     if (slot == DoseSlot.lunch &&
         appliesPresentationMedication(MvpSession.userId, _now())) {
       _presentationLunchTaken = false;
@@ -301,6 +317,7 @@ class MedicationController extends Notifier<TodayMedication> {
     );
     _guardianNotified.remove(slot);
     _scheduleLadder(slot);
+    await ref.read(reminderNotificationsProvider).restoreSlotForToday(slot);
   }
 
   DateTime snooze(DoseSlot slot, {DateTime? now}) {
@@ -308,7 +325,9 @@ class MedicationController extends Notifier<TodayMedication> {
     final count = (_snoozeCount[slot] ?? 0) + 1;
     _snoozeCount[slot] = count;
 
-    final until = slot.todayAt(at).add(ReminderLadder.snoozeInterval * count);
+    final planned = slot.todayAt(at).add(ReminderLadder.snoozeInterval * count);
+    final minimum = at.add(ReminderLadder.snoozeInterval);
+    final until = planned.isAfter(minimum) ? planned : minimum;
     state = state.copyWith(
       doses: [
         for (final dose in state.doses)
@@ -316,6 +335,14 @@ class MedicationController extends Notifier<TodayMedication> {
       ],
     );
     _scheduleLadder(slot, now: at);
+    unawaited(
+      ref
+          .read(reminderNotificationsProvider)
+          .snoozeSlot(slot, until)
+          .catchError((Object error) {
+            debugPrint('복약 재알림 예약 실패: ${error.runtimeType}');
+          }),
+    );
     return until;
   }
 

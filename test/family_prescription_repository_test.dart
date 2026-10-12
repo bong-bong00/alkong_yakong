@@ -12,6 +12,28 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   setUp(() => SharedPreferences.setMockInitialValues({}));
 
+  test(
+    'same prescription ID with a new registration revision is detected',
+    () async {
+      var revision = 'first';
+      final api = ApiClient(
+        client: MockClient(
+          (_) async => http.Response(
+            jsonEncode([
+              {'id': 'same', 'registration_revision': revision, 'items': []},
+            ]),
+            200,
+          ),
+        ),
+      );
+      final repo = FamilyPrescriptionRepository(apiClient: api);
+      await repo.begin('patient');
+      expect(await repo.arrivals('patient'), isEmpty);
+      revision = 'again';
+      expect((await repo.arrivals('patient')).single['id'], 'same');
+    },
+  );
+
   Map<String, dynamic> prescription(String id) => {
     'id': id,
     'items': [

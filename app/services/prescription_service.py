@@ -1400,6 +1400,7 @@ def confirm_prescription(request: PrescriptionConfirmRequest) -> dict:
                 user_id=request.user_id,
                 prescription_id=duplicate["id"],
             )
+            cursor.execute("UPDATE prescriptions SET registration_revision=? WHERE id=?", (str(uuid.uuid4()), duplicate["id"]))
             conn.commit()
             return _registration_result(
                 prescription_id=duplicate["id"],
@@ -1564,6 +1565,7 @@ def confirm_prescription(request: PrescriptionConfirmRequest) -> dict:
                 }
             )
 
+        cursor.execute("UPDATE prescriptions SET registration_revision=? WHERE id=?", (str(uuid.uuid4()), prescription_id))
         conn.commit()
         return _registration_result(
             prescription_id=prescription_id,

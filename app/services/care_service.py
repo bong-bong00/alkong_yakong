@@ -13,6 +13,9 @@ from app.services.account_lookup import phone_digits
 from app.services.heart_reading import latest_heart_reading
 from app.services.medication_history_service import get_medication_history
 from app.services.today_medication_service import _slot_from_time, get_today_medicines
+from app.services.medication_gateway import medication_get
+from app.core.kst import today_kst
+from app.core.config import MEDICATION_FEATURE_BASE_URL
 
 _KST = timezone(timedelta(hours=9))
 _SLOT_LABELS = {"morning": "아침", "lunch": "점심", "dinner": "저녁"}
@@ -45,6 +48,12 @@ def linked_rows(conn: sqlite3.Connection, guardian) -> list:
             and digits
             and phone_digits(row["phone"]) == digits
         ):
+            from app.core.auth import enforced
+            if enforced():
+                conn.execute("UPDATE guardians SET guardian_user_id=?, status='PENDING', requested_by='GUARDIAN' WHERE id=?", (guardian["id"], row["id"]))
+                result.append(conn.execute("""SELECT g.*,u.name AS patient_name,u.phone AS patient_phone,u.birth_date AS patient_birth_date
+                                           FROM guardians g JOIN users u ON u.id=g.user_id WHERE g.id=?""", (row["id"],)).fetchone())
+                continue
             conn.execute(
                 "UPDATE guardians SET guardian_user_id = ? WHERE id = ?",
                 (guardian["id"], row["id"]),
@@ -85,17 +94,17 @@ def get_care_overview(guardian_user_id: str) -> dict[str, Any]:
 
 def _patient_summary(row) -> dict[str, Any]:
     patient_id = row["user_id"]
-    today = date.today()
-    doses = get_today_medicines(patient_id).get("doses") or []
+    today = today_kst()
+    doses = medication_get(patient_id, "/today-medicines", local=lambda: get_today_medicines(patient_id)).get("doses") or []
     slots = [
-        {"label": _SLOT_LABELS.get(dose["slot"], dose["slot"]), "taken": bool(dose.get("taken"))}
+        {"label": _SLOT_LABELS.get(dose["slot"], dose["slot"]), "taken": bool(dose.get("taken")), "taken_at": dose.get("taken_at")}
         for dose in doses
     ]
     next_slot = next((slot["label"] for slot in slots if not slot["taken"]), None)
 
-    week = get_medication_history(
-        patient_id, (today - timedelta(days=6)).isoformat(), today.isoformat()
-    )["days"]
+    start, end = (today - timedelta(days=6)).isoformat(), today.isoformat()
+    week = medication_get(patient_id, "/medication-history", params={"start": start, "end": end},
+                          local=lambda: get_medication_history(patient_id, start, end))["days"]
     week_total = sum(day["total"] for day in week)
     week_taken = sum(day["taken"] for day in week)
 
@@ -105,6 +114,13 @@ def _patient_summary(row) -> dict[str, Any]:
         activities = _activities(conn, patient_id, today.isoformat())
     finally:
         conn.close()
+    if MEDICATION_FEATURE_BASE_URL:
+        activities = [
+            {"text": f"{_SLOT_LABELS.get(dose['slot'], dose['slot'])} 약 완료 기록", "time": _clock(dose['taken_at'], stored_in_utc=True)}
+            for dose in doses if dose.get("taken") and dose.get("taken_at")
+        ]
+        activities.sort(key=lambda item: item["time"], reverse=True)
+        activities = activities[:_MAX_ACTIVITIES]
 
     return {
         "link_id": row["id"],

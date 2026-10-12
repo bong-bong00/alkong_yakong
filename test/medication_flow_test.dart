@@ -163,7 +163,7 @@ void main() {
       await controller().take(DoseSlot.dinner, now: now);
       expect(controller().guardianNotifiedFor(DoseSlot.dinner), isTrue);
 
-      controller().undo(DoseSlot.dinner);
+      await controller().undo(DoseSlot.dinner);
       final dose = container.read(medicationProvider).doseOf(DoseSlot.dinner);
       expect(dose.taken, isFalse);
       expect(dose.takenAt, isNull);

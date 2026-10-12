@@ -12,6 +12,7 @@ from typing import Any
 from urllib.parse import quote
 
 import requests
+from app.core.auth import service_headers
 
 from app.core.config import (
     MEDICATION_FEATURE_BASE_URL,
@@ -38,6 +39,7 @@ def load_remote_current_medicines(*, user_id: str) -> dict[str, Any]:
     try:
         response = requests.get(
             f"{MEDICATION_FEATURE_BASE_URL}/api/v1/users/{quote(uid, safe='')}/medicines",
+            headers=service_headers(uid),
             timeout=MEDICATION_FEATURE_TIMEOUT_SECONDS,
         )
         response.raise_for_status()
@@ -176,6 +178,7 @@ def load_remote_combination_context(
         requested_codes = list(names_by_code)
         dur_response = requests.post(
             f"{MEDICATION_FEATURE_BASE_URL}/api/v1/dur/analyze",
+            headers=service_headers(uid),
             json={
                 "user_id": uid,
                 "medicine_codes": requested_codes,

@@ -10,6 +10,7 @@ import 'package:go_router/go_router.dart';
 
 import 'core/providers/user_role.dart';
 import 'core/session/auth_session.dart';
+import 'core/session/offline_status.dart';
 import 'core/theme/app_theme.dart';
 import 'features/auth/presentation/screens/login_screen.dart';
 import 'features/auth/presentation/screens/signup_screen.dart';
@@ -279,6 +280,27 @@ class AlkongYakongApp extends StatelessWidget {
       title: '알콩약콩',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.build(),
+      builder: (context, child) => ValueListenableBuilder<bool>(
+        valueListenable: OfflineStatus.active,
+        builder: (context, offline, _) => Column(
+          children: [
+            Expanded(child: child ?? const SizedBox()),
+            if (offline)
+              const Material(
+                child: SafeArea(
+                  top: false,
+                  child: Padding(
+                    padding: EdgeInsets.all(10),
+                    child: Text(
+                      '오프라인 · 저장된 정보입니다. 변경·복약 기록은 연결 후 가능합니다.',
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
       // 앱 안에 글자 크기 설정을 두지 않고 시스템 설정을 그대로 따른다.
       // (MediaQuery.textScaler를 건드리지 않는 것이 곧 그 구현이다.)
       routerConfig: _router,

@@ -543,11 +543,11 @@ class _PrescriptionScreenState extends ConsumerState<PrescriptionScreen> {
         final who = result.guardians.isEmpty
             ? '가족'
             : result.guardians.join(', ');
-        showSeniorSnackbar(context, '$who 님에게 부탁을 보냈어요');
+        showSeniorSnackbar(context, '$who 님의 앱에 부탁을 남겼어요');
       case PrescriptionHelpOutcome.noGuardian:
         showSeniorSnackbar(
           context,
-          '등록된 가족이 없어요. 내 정보에서 가족을 먼저 등록해 주세요.',
+          '함께 보기 연결이 완료된 가족이 없어요. 보호자 가입과 연결 수락을 먼저 확인해 주세요.',
           error: true,
         );
       case PrescriptionHelpOutcome.failed:

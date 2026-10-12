@@ -13,6 +13,7 @@ import '../../prescription/presentation/screens/prescription_history_screen.dart
 import '../domain/user_profile.dart';
 import '../data/user_repository.dart';
 import 'current_user_controller.dart';
+import '../../reminder/application/reminder_notifications.dart';
 
 /// Restore only after the backend confirms both the saved UUID and role.
 /// A cached preference alone cannot unlock protected screens.
@@ -104,6 +105,7 @@ void resetUserScopedData(WidgetRef ref) {
 /// 일반 모드로 되돌린다. 다음 사람이 쉬운 모드에 갇힌 채로
 /// 로그인 화면을 만나지 않도록.
 Future<void> endSession(WidgetRef ref) async {
+  await ref.read(reminderNotificationsProvider).clearUserReminders();
   await ref.read(appModeProvider.notifier).set(AppMode.normal);
   await AuthSession.logout();
   MvpSession.medicineCode = '';

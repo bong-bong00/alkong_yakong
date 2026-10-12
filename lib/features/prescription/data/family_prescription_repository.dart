@@ -32,7 +32,10 @@ class FamilyPrescriptionRepository {
     final prefs = await SharedPreferences.getInstance();
     final saved = await prefs.setString(
       _key(userId),
-      jsonEncode(records.map((row) => row['id'].toString()).toList()),
+      jsonEncode({
+        for (final row in records)
+          row['id'].toString(): row['registration_revision']?.toString() ?? '',
+      }),
     );
     if (!saved) throw const ApiException('부탁한 내용을 저장하지 못했어요.');
   }
@@ -45,12 +48,19 @@ class FamilyPrescriptionRepository {
     if (raw == null) {
       throw const ApiException('가족에게 부탁하기를 다시 눌러 주세요.');
     }
-    final baseline = (jsonDecode(raw) as List)
-        .map((id) => id.toString())
-        .toSet();
-    return (await _load(
-      userId,
-    )).where((row) => !baseline.contains(row['id'].toString())).toList();
+    final decoded = jsonDecode(raw);
+    final baseline = decoded is Map
+        ? Map<String, dynamic>.from(decoded)
+        : {for (final id in decoded as List) id.toString(): null};
+    return (await _load(userId))
+        .where(
+          (row) =>
+              !baseline.containsKey(row['id'].toString()) ||
+              baseline[row['id'].toString()] != null &&
+                  baseline[row['id'].toString()] !=
+                      (row['registration_revision']?.toString() ?? ''),
+        )
+        .toList();
   }
 
   Future<void> finish(String userId) async {

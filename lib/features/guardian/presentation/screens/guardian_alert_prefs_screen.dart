@@ -5,6 +5,7 @@ import '../../../../core/constants/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../core/widgets/senior_card.dart';
 import '../../../../core/widgets/senior_header.dart';
+import '../../application/guardian_alert_preferences.dart';
 
 /// 보호자 · 알림 받는 방법 (프로토타입 95).
 ///
@@ -19,15 +20,7 @@ class GuardianAlertPrefsScreen extends StatefulWidget {
 }
 
 class _GuardianAlertPrefsScreenState extends State<GuardianAlertPrefsScreen> {
-  static const _keys = <String, bool>{
-    'guardian_alert_push': true,
-    'guardian_alert_sound': true,
-    'guardian_alert_sms': true,
-    'guardian_alert_missed': true,
-    'guardian_alert_heart': true,
-    'guardian_alert_new_medicine': false,
-    'guardian_alert_quiet_night': true,
-  };
+  static const _keys = GuardianAlertPreferences.defaults;
 
   final Map<String, bool> _values = Map.of(_keys);
 
@@ -38,11 +31,11 @@ class _GuardianAlertPrefsScreenState extends State<GuardianAlertPrefsScreen> {
   }
 
   Future<void> _load() async {
-    final prefs = await SharedPreferences.getInstance();
+    final saved = await GuardianAlertPreferences.read();
     if (!mounted) return;
     setState(() {
       for (final entry in _keys.entries) {
-        _values[entry.key] = prefs.getBool(entry.key) ?? entry.value;
+        _values[entry.key] = saved[entry.key] ?? entry.value;
       }
     });
   }
@@ -50,7 +43,7 @@ class _GuardianAlertPrefsScreenState extends State<GuardianAlertPrefsScreen> {
   Future<void> _set(String key, bool value) async {
     setState(() => _values[key] = value);
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(key, value);
+    await prefs.setBool(GuardianAlertPreferences.key(key), value);
   }
 
   @override
@@ -66,21 +59,18 @@ class _GuardianAlertPrefsScreenState extends State<GuardianAlertPrefsScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  _group('어떻게 받을까요', const {
-                    'guardian_alert_push': '앱 알림',
-                    'guardian_alert_sound': '소리',
-                    'guardian_alert_sms': '문자',
-                  }),
+                  _group('어떻게 받을까요', const {'guardian_alert_in_app': '앱 안 알림'}),
                   const SizedBox(height: 22),
                   _group('언제 알릴까요', const {
                     'guardian_alert_missed': '약을 안 드셨을 때',
-                    'guardian_alert_heart': '심박수가 빠를 때',
+                    'guardian_alert_heart': '심박수가 느리거나 빠를 때',
                     'guardian_alert_new_medicine': '새 약이 등록됐을 때',
                   }),
                   const SizedBox(height: 22),
-                  _group('밤 시간', const {
-                    'guardian_alert_quiet_night': '밤 10시~7시 소리 끄기',
-                  }),
+                  Text(
+                    '앱을 열었을 때 알림을 확인할 수 있어요. 휴대폰 푸시·문자는 현재 지원하지 않아요.',
+                    style: AppText.body(size: 18),
+                  ),
                 ],
               ),
             ),

@@ -220,12 +220,19 @@ class _PatientHomeScreenState extends ConsumerState<PatientHomeScreen> {
     final action = ReminderNotifications.pendingAction.value;
     if (action == null || !mounted) return;
     ReminderNotifications.pendingAction.value = null;
-    final next = ref.read(medicationProvider).nextDose;
-    if (next == null) return;
-    if (action == ReminderNotifications.takeActionId) {
-      unawaited(_take(next.slot));
-    } else if (action == ReminderNotifications.snoozeActionId) {
-      _snooze(next.slot);
+    final parts = action.split(':');
+    if (parts.length > 2 && parts[2] != MvpSession.userId) return;
+    final candidates = DoseSlot.values.where(
+      (slot) => parts.length > 1 && slot.name == parts[1],
+    );
+    final slot = candidates.isNotEmpty
+        ? candidates.first
+        : ref.read(medicationProvider).nextDose?.slot;
+    if (slot == null) return;
+    if (parts.first == ReminderNotifications.takeActionId) {
+      unawaited(_take(slot));
+    } else if (parts.first == ReminderNotifications.snoozeActionId) {
+      _snooze(slot);
     }
   }
 
@@ -370,6 +377,20 @@ class _PatientHomeScreenState extends ConsumerState<PatientHomeScreen> {
   /// 센서를 차고 계신지 묻지 않는다. 기기를 쓰는 분인지는 앱이 이미 알고,
   /// 모르는 것을 물어 흐름을 끊을 이유가 없다.
   Future<void> _take(DoseSlot slot) async {
+    try {
+      await _takeChecked(slot);
+    } catch (_) {
+      if (mounted) {
+        showSeniorSnackbar(
+          context,
+          '복용 기록을 저장하지 못했어요. 연결을 확인한 뒤 다시 시도해 주세요.',
+          error: true,
+        );
+      }
+    }
+  }
+
+  Future<void> _takeChecked(DoseSlot slot) async {
     final controller = ref.read(medicationProvider.notifier);
 
     // 이미 기록된 시간대는 묻기 전에 막는다. 사후 안내가 아니라 사전 차단이다.
@@ -432,13 +453,27 @@ class _PatientHomeScreenState extends ConsumerState<PatientHomeScreen> {
     await showDuplicateDoseSheet(
       context: context,
       dose: dose,
-      onUndo: () => ref.read(medicationProvider.notifier).undo(slot),
+      onUndo: () => _undoRecord(slot),
     );
   }
 
-  void _undo(DoseSlot slot) {
-    ref.read(medicationProvider.notifier).undo(slot);
-    setState(() => _recordedSlot = null);
+  Future<void> _undo(DoseSlot slot) async {
+    try {
+      await _undoRecord(slot);
+    } catch (_) {
+      if (mounted) {
+        showSeniorSnackbar(
+          context,
+          '복용 취소를 저장하지 못했어요. 다시 시도해 주세요.',
+          error: true,
+        );
+      }
+    }
+  }
+
+  Future<void> _undoRecord(DoseSlot slot) async {
+    await ref.read(medicationProvider.notifier).undo(slot);
+    if (mounted) setState(() => _recordedSlot = null);
   }
 
   void _snooze(DoseSlot slot) {

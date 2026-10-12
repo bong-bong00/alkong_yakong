@@ -17,6 +17,7 @@ import '../medicines/domain/display_policy.dart';
 import 'chat_highlight.dart';
 import 'conversation_store.dart';
 import 'answer_cache.dart';
+import '../../core/session/offline_status.dart';
 
 class DrugExplainScreen extends StatefulWidget {
   final ApiClient? apiClient;
@@ -838,6 +839,7 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
         requestKey,
       );
       final contextFresh =
+          !OfflineStatus.active.value &&
           _contextVerifiedAt != null &&
           DateTime.now().difference(_contextVerifiedAt!) <
               const Duration(minutes: 5);

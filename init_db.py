@@ -140,6 +140,7 @@ TABLE_DEFINITIONS = {
             original_image_path TEXT,
             ocr_text TEXT,
             registration_fingerprint TEXT,
+            registration_revision TEXT,
             ocr_status TEXT NOT NULL DEFAULT 'COMPLETED',
             status TEXT NOT NULL DEFAULT 'ACTIVE',
             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -254,6 +255,7 @@ TABLE_DEFINITIONS = {
             measured_at TEXT NOT NULL,
             device_id TEXT,
             source TEXT NOT NULL DEFAULT 'POLAR',
+            client_request_id TEXT,
             measurement_context TEXT NOT NULL DEFAULT 'general'
                 CHECK (measurement_context IN ('general', 'before_medication', 'after_medication')),
             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -469,6 +471,7 @@ INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_medication_logs_user_taken ON medication_logs(user_id, taken_at)",
     "CREATE INDEX IF NOT EXISTS idx_risk_results_user_created ON risk_results(user_id, created_at)",
     "CREATE INDEX IF NOT EXISTS idx_heart_rate_user_measured ON heart_rate_logs(user_id, measured_at)",
+    "CREATE UNIQUE INDEX IF NOT EXISTS idx_heart_rate_request ON heart_rate_logs(user_id, client_request_id) WHERE client_request_id IS NOT NULL",
     "CREATE INDEX IF NOT EXISTS idx_biosignal_test_sessions_filter ON biosignal_test_sessions(participant_id, scenario, is_synthetic, started_at)",
     "CREATE INDEX IF NOT EXISTS idx_biosignal_test_samples_session_measured ON biosignal_test_samples(session_id, measured_at)",
     "CREATE INDEX IF NOT EXISTS idx_abnormal_events_user_occurred ON abnormal_events(user_id, occurred_at)",
@@ -535,6 +538,7 @@ ADDITIVE_COLUMNS = {
     },
     "prescriptions": {
         "registration_fingerprint": "TEXT",
+        "registration_revision": "TEXT",
     },
     "medicines": {
         "easy_category": "TEXT",
@@ -585,6 +589,7 @@ ADDITIVE_COLUMNS = {
         "family_illnesses": "TEXT NOT NULL DEFAULT '[]'",
     },
     "heart_rate_logs": {
+        "client_request_id": "TEXT",
         "measurement_context": "TEXT NOT NULL DEFAULT 'general' CHECK (measurement_context IN ('general', 'before_medication', 'after_medication'))",
     },
 }

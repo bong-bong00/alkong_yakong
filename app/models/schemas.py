@@ -62,6 +62,11 @@ class UserLogin(BaseModel):
     password: str
 
 
+class MedicationBatchRequest(BaseModel):
+    user_id: str
+    schedule_ids: List[int] = Field(min_length=1, max_length=50)
+
+
 class GuardianCreate(BaseModel):
     user_id: str
     guardian_name: str
@@ -185,6 +190,7 @@ class MarkMissedRequest(BaseModel):
 
 class HeartRateCreate(BaseModel):
     user_id: str
+    client_request_id: Optional[str] = Field(default=None, max_length=100)
     bpm: int = Field(gt=0)
     measured_at: Optional[str] = None
     device_id: Optional[str] = None

@@ -153,7 +153,7 @@ void main() {
             DoseCheckOutcome.recorded,
           );
         }
-        expect(posts.single['schedule_id'], 2);
+        expect(posts.single['schedule_ids'], [2]);
         await controller.refreshFromServer();
         expect(
           container.read(medicationProvider).doseOf(DoseSlot.lunch).taken,

@@ -4,6 +4,8 @@ import 'package:flutter/foundation.dart';
 import '../network/api_client.dart';
 import '../network/api_config.dart';
 import 'mvp_session.dart';
+import 'session_credentials.dart';
+import 'offline_status.dart';
 
 /// 로그인 유지용 간단 세션.
 /// 앱을 껐다 켜도 로그인 상태가 유지되도록 SharedPreferences에 저장한다.
@@ -13,6 +15,7 @@ class AuthSession {
   static SharedPreferences? _prefs;
 
   static Future<void> load() async {
+    await SessionCredentials.load();
     _prefs = await SharedPreferences.getInstance();
     isLoggedIn = _prefs?.getBool('isLoggedIn') ?? false;
     role = _prefs?.getString('role') ?? 'patient';
@@ -95,6 +98,8 @@ class AuthSession {
   }
 
   static Future<void> logout() async {
+    OfflineStatus.clear();
+    await SessionCredentials.clear();
     _prefs ??= await SharedPreferences.getInstance();
     // 나가셨으면 다음에 켤 때 로그인 화면이 떠야 한다. 개발 빌드가
     // 체험 계정으로 다시 들어가 버리면 나간 것이 아니다.

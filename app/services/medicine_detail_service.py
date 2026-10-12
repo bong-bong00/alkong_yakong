@@ -441,7 +441,7 @@ def ensure_medicine_detail(cursor, medicine_code: str) -> dict[str, Any] | None:
 
     try:
         existing_profile = get_medicine_detail_profile(cursor, code)
-        if not existing_profile or existing_profile.get("source_hash") != official_source_hash(medicine):
+        if existing_profile and existing_profile.get("source_hash") != official_source_hash(medicine):
             # Keep the old snapshot stored, but never merge its reviewed copy
             # into a different official product snapshot.
             cursor.execute("UPDATE ai_explanation_cards SET review_status='OUTDATED' WHERE medicine_code=? AND review_status='REVIEWED'", (code,))

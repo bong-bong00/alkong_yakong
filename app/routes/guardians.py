@@ -19,6 +19,12 @@ def _load_link(conn, guardian_id: str):
     return row
 
 
+def _public_link(row):
+    data = dict(row)
+    data.pop("fcm_token", None)
+    return data
+
+
 @router.post("", response_model=GuardianCreateResponse)
 def create_guardian(guardian: GuardianCreate):
     """어르신이 가족을 등록한다. 어르신 본인이 넣은 것이라 바로 연결된다."""
@@ -52,7 +58,7 @@ def create_guardian(guardian: GuardianCreate):
             ),
         )
         conn.commit()
-        return dict(_load_link(conn, guardian_id))
+        return _public_link(_load_link(conn, guardian_id))
     finally:
         conn.close()
 
@@ -65,7 +71,7 @@ def get_user_guardians(user_id: str):
             "SELECT * FROM guardians WHERE user_id = ? ORDER BY created_at",
             (user_id,),
         ).fetchall()
-        return [dict(row) for row in rows]
+        return [_public_link(row) for row in rows]
     finally:
         conn.close()
 
@@ -96,6 +102,10 @@ def request_link(request: GuardianLinkRequest):
                 digits and phone_digits(row["phone"]) == digits
             )
             if same_guardian:
+                if row["guardian_user_id"] is None:
+                    conn.execute("UPDATE guardians SET guardian_user_id=?,status='PENDING',requested_by='GUARDIAN' WHERE id=?", (guardian["id"], row["id"]))
+                    conn.commit()
+                    return {"id": row["id"], "patient_name": patient["name"], "patient_phone": patient["phone"], "patient_relation": request.patient_relation, "status": "PENDING"}
                 pending = str(row["status"] or "").upper() == "PENDING"
                 raise HTTPException(
                     status_code=409,
@@ -144,7 +154,7 @@ def update_link_status(guardian_id: str, update: GuardianStatusUpdate):
             "UPDATE guardians SET status = 'ACCEPTED' WHERE id = ?", (guardian_id,)
         )
         conn.commit()
-        return dict(_load_link(conn, guardian_id))
+        return _public_link(_load_link(conn, guardian_id))
     finally:
         conn.close()
 
