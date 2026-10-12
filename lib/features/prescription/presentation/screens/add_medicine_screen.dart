@@ -38,7 +38,7 @@ class AddMedicineScreen extends StatefulWidget {
   ///
   /// 넣었으면 부른 쪽이 다음 화면으로 넘기고 true를 돌려준다.
   /// 아직이면 false를 돌려주고, 이 화면이 "아직 안 넣으셨어요"라고 말한다.
-  final Future<bool> Function()? onCheckFamily;
+  final Future<bool?> Function()? onCheckFamily;
 
   const AddMedicineScreen({
     super.key,
@@ -54,7 +54,53 @@ class AddMedicineScreen extends StatefulWidget {
   State<AddMedicineScreen> createState() => _AddMedicineScreenState();
 }
 
-class _AddMedicineScreenState extends State<AddMedicineScreen> {
+class _AddMedicineScreenState extends State<AddMedicineScreen>
+    with WidgetsBindingObserver {
+  Timer? _poll;
+  bool _arrived = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    if (_asked) _startPolling();
+  }
+
+  @override
+  void didUpdateWidget(covariant AddMedicineScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.familyAsked && !oldWidget.familyAsked) {
+      _asked = true;
+      _startPolling();
+    }
+  }
+
+  void _startPolling() {
+    _poll?.cancel();
+    if (!_asked || _arrived || widget.onCheckFamily == null) return;
+    _poll = Timer.periodic(const Duration(seconds: 10), (_) {
+      if (mounted && (ModalRoute.of(context)?.isCurrent ?? true)) {
+        unawaited(_checkFamily());
+      }
+    });
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _startPolling();
+    } else {
+      _poll?.cancel();
+    }
+  }
+
+  @override
+  void dispose() {
+    _poll?.cancel();
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
   /// 가족에게 부탁했는지. 화면을 옮기지 않고 자리에서 카드로 바뀐다.
   late bool _asked = widget.familyAsked;
 
@@ -85,7 +131,10 @@ class _AddMedicineScreenState extends State<AddMedicineScreen> {
       _asking = false;
       _asked = sent;
     });
-    if (sent) unawaited(_checkFamily());
+    if (sent) {
+      _startPolling();
+      unawaited(_checkFamily());
+    }
   }
 
   /// 가족이 넣었는지 확인한다. 넣었으면 부른 쪽이 다음 화면으로 넘긴다.
@@ -96,12 +145,24 @@ class _AddMedicineScreenState extends State<AddMedicineScreen> {
       _checking = true;
       _notYet = false;
     });
-    final arrived = await check();
+    bool? arrived;
+    try {
+      arrived = await check();
+    } catch (_) {
+      // Query errors must not be interpreted as an unregistered prescription.
+      arrived = null;
+    }
     if (!mounted) return;
     setState(() {
       _checking = false;
-      _notYet = !arrived;
+      _notYet = arrived == false;
+      _arrived = arrived == true;
     });
+    if (arrived == true || arrived == null) {
+      _poll?.cancel();
+    } else {
+      _startPolling();
+    }
   }
 
   @override

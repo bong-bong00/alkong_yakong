@@ -29,8 +29,8 @@ import '../../../medication/application/medication_controller.dart';
 import '../../../medicines/application/user_medicines_controller.dart';
 import '../../../medicines/application/family_medicine_inbox.dart';
 import '../../../medicines/domain/display_policy.dart';
-import '../../../medicines/domain/user_medicine_models.dart';
 import '../../data/prescription_help_repository.dart';
+import '../../data/family_prescription_repository.dart';
 import '../../../onboarding/presentation/screens/first_run_screen.dart';
 import 'add_medicine_screen.dart';
 import 'manual_medicine_screen.dart';
@@ -105,6 +105,28 @@ class PrescriptionScreen extends ConsumerStatefulWidget {
 }
 
 class _PrescriptionScreenState extends ConsumerState<PrescriptionScreen> {
+  final _familyRegistrations = FamilyPrescriptionRepository();
+  bool _familyAsked = false;
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(_restoreFamilyRequest());
+  }
+
+  Future<void> _restoreFamilyRequest() async {
+    if (widget.onBehalfOfUserId != null) return;
+    try {
+      final userId = MvpSession.userId.trim();
+      final pending = await _familyRegistrations.isPending(userId);
+      if (mounted && pending && MvpSession.userId.trim() == userId) {
+        setState(() => _familyAsked = true);
+      }
+    } catch (_) {
+      // A failed local restore must not block prescription registration.
+    }
+  }
+
   /// 약을 누구 것으로 넣을지. 대신 넣는 중이면 그 어르신이다.
   String get _targetUserId {
     final onBehalf = widget.onBehalfOfUserId?.trim() ?? '';
@@ -538,49 +560,55 @@ class _PrescriptionScreenState extends ConsumerState<PrescriptionScreen> {
     return result.isSent;
   }
 
-  /// 가족이 처방전을 넣었는지 서버에 다시 물어본다.
-  ///
-  /// 서버는 "누가 넣었는지"를 알려주지 않는다. 그래서 이 기기가 본 적 없는
-  /// 약이 들어와 있으면 가족이 넣은 것으로 본다 — 홈에서 쓰는 장부와
-  /// 같은 규칙이다. 넣으셨으면 "약이 들어왔어요"로 넘기고 true를 돌려준다.
-  Future<bool> _checkFamilyPrescription() async {
+  /// null means the query failed, not that the guardian has not registered.
+  Future<bool?> _checkFamilyPrescription() async {
     final userId = MvpSession.userId.trim();
-    if (userId.isEmpty) return false;
+    if (userId.isEmpty) return null;
     try {
-      await ref.read(userMedicinesProvider.notifier).refresh();
-    } catch (_) {
-      // 못 읽었으면 "안 넣으셨다"고 단정하지 않는다. 다시 눌러 보시면 된다.
+      final prescriptions = await _familyRegistrations.arrivals(userId);
+      if (prescriptions.isEmpty) return false;
+      final rows = <Map<String, dynamic>>[
+        for (final prescription in prescriptions)
+          for (final item in (prescription['items'] as List? ?? const []))
+            if (item is Map)
+              {
+                'name': nameWithoutStrength(
+                  (item['display_name'] ??
+                          item['product_name'] ??
+                          item['ocr_drug_name'] ??
+                          '')
+                      .toString(),
+                ),
+                'dose': (item['dosage'] ?? item['dose_amount'] ?? '')
+                    .toString(),
+              },
+      ].where((row) => row['name'].toString().trim().isNotEmpty).toList();
+      if (rows.isEmpty) throw const ApiException('등록된 약 정보를 확인하지 못했어요.');
+      await Future.wait<void>([
+        ref.read(userMedicinesProvider.notifier).refresh(),
+        ref.read(medicationProvider.notifier).refreshFromServer(),
+      ]);
+      ref.invalidate(prescriptionHistoryProvider);
+      ref.invalidate(medicationHistoryProvider);
+      if (!mounted || MvpSession.userId.trim() != userId) return null;
+      // Retain the existing explicit confirmation screen; never open on home entry.
+      await _familyRegistrations.finish(userId);
+      if (!mounted) return null;
+      _familyAsked = false;
+      context.push('/medicine-arrived', extra: {'medicines': rows});
+      return true;
+    } catch (error) {
       if (mounted) {
         showSeniorSnackbar(
           context,
-          '지금은 확인하지 못했어요. 잠시 뒤 다시 눌러 주세요.',
+          error is ApiException
+              ? error.message
+              : '지금은 확인하지 못했어요. 잠시 뒤 다시 눌러 주세요.',
           error: true,
         );
       }
-      return false;
+      return null;
     }
-    final medicines =
-        ref.read(userMedicinesProvider).valueOrNull ?? const <UserMedicine>[];
-    final arrived = await FamilyMedicineInbox.unseen(
-      userId,
-      medicines.map((medicine) => medicine.medicineCode),
-    );
-    if (arrived.isEmpty) return false;
-
-    final rows = [
-      for (final medicine in medicines)
-        if (arrived.contains(medicine.medicineCode))
-          {
-            'name': nameWithoutStrength(medicine.displayName),
-            'dose': medicine.amount,
-          },
-    ];
-    if (rows.isEmpty) return false;
-
-    await FamilyMedicineInbox.markSeen(userId, arrived);
-    if (!mounted) return true;
-    context.push('/medicine-arrived', extra: {'medicines': rows});
-    return true;
   }
 
   /// 전화기 뒤로가기. 찍는 중이면 화면을 닫지 않고 등록 화면으로 돌아간다.
@@ -614,6 +642,7 @@ class _PrescriptionScreenState extends ConsumerState<PrescriptionScreen> {
           onGoHome: widget.onGoHome ?? () => Navigator.of(context).maybePop(),
           onAskFamily: _askFamilyForPrescription,
           onCheckFamily: _checkFamilyPrescription,
+          familyAsked: _familyAsked,
           onPick: (method) {
             switch (method) {
               case AddMedicineMethod.camera:
