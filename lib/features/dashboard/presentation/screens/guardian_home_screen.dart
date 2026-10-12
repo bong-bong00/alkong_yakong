@@ -26,6 +26,8 @@ import '../../../medication/domain/medication_models.dart';
 import 'medication_record_screen.dart';
 import 'month_calendar_screen.dart';
 import 'patient_data.dart';
+import '../../../biosignal/data/heart_repository.dart';
+import '../../../biosignal/presentation/screens/heart_screen.dart';
 
 /// 보호자 쉘 — 탭은 프로토타입대로 **돌보는 분 · 정보** 둘이다.
 ///
@@ -182,6 +184,7 @@ Future<void> _callPatient(BuildContext context, CarePatient patient) async {
 /// **대신 복약 체크는 할 수 없다** — 오기록을 막기 위해서다.
 class GuardianStatusScreen extends ConsumerWidget {
   final CarePatient patient;
+  final HeartRepository? heartRepository;
 
   /// 목록에서 몇 번째 분인지. "3명 중 1번째"로 읽힌다.
   final int position;
@@ -195,6 +198,7 @@ class GuardianStatusScreen extends ConsumerWidget {
     required this.position,
     required this.total,
     this.alertsRepository,
+    this.heartRepository,
   });
 
   /// 그 시간대를 드신 시각 — "8시 10분". 기록이 없으면 null.
@@ -311,6 +315,34 @@ class GuardianStatusScreen extends ConsumerWidget {
                     ),
                   const SizedBox(height: 12),
                   // 처음엔 이번 주만. "달력으로 보기"를 누르면 한 달로 넓힌다.
+                  if (patient.patientId.trim().isNotEmpty) ...[
+                    SeniorCard(
+                      key: const Key('guardian-open-heart-records'),
+                      onTap: () => Navigator.of(context).push(
+                        MaterialPageRoute<void>(
+                          builder: (_) => HeartScreen(
+                            userId: patient.patientId,
+                            patientTitle: patient.title,
+                            repository: heartRepository,
+                          ),
+                        ),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(TablerIcons.heart, color: AppColors.point),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Text(
+                              '심박수 기록 보기',
+                              style: AppText.cardTitle(size: 21),
+                            ),
+                          ),
+                          const Icon(Icons.chevron_right),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                  ],
                   AdherenceWeekCard(
                     days: weekAdherenceStatuses(today, history),
                     onOpenCalendar: () => Navigator.of(context).push(

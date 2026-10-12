@@ -18,6 +18,7 @@ import '../widgets/heart_readings_card.dart';
 class MonthlyHeartScreen extends StatefulWidget {
   final HeartData data;
   final String guardianTitle;
+  final String? patientTitle;
 
   /// 날짜에 붙일 "몇 월". 서버는 이번 달 날짜만 보내므로 기본은 오늘이다.
   /// 테스트에서 날짜를 고정할 때만 넘긴다.
@@ -27,6 +28,7 @@ class MonthlyHeartScreen extends StatefulWidget {
     super.key,
     required this.data,
     this.guardianTitle = '',
+    this.patientTitle,
     this.now,
   });
 
@@ -68,6 +70,13 @@ class _MonthlyHeartScreenState extends State<MonthlyHeartScreen> {
                     ),
                   ],
                 ),
+                if (widget.patientTitle != null) ...[
+                  const SizedBox(height: 6),
+                  Text(
+                    '${widget.patientTitle} · 기록 조회',
+                    style: AppText.caption(size: 17),
+                  ),
+                ],
                 const SizedBox(height: 14),
                 SeniorSegmented(
                   labels: const ['이번 주', '한 달'],
@@ -102,7 +111,7 @@ class _MonthlyHeartScreenState extends State<MonthlyHeartScreen> {
                     const SizedBox(height: 12),
                     // 잰 것이 없어도 그래프 자리는 그대로 둔다. 자리가
                     // 사라지면 어제 보던 것이 어디 갔는지부터 찾게 된다.
-                    _DailyBars(month: _month, readings: readings),
+                    HeartDailyBars(month: _month, readings: readings),
                     if (readings.isNotEmpty) ...[
                       const SizedBox(height: 12),
                       HeartReadingsCard(
@@ -272,20 +281,44 @@ class _Cell extends StatelessWidget {
 /// 한 달 치를 가로로 늘어놓고, 잰 날에만 막대를 세운다. **잰 것이 하나도
 /// 없어도 이 칸은 그린다** — 자리가 통째로 사라지면 기록이 없는 것인지
 /// 화면이 잘못된 것인지 알 수 없다.
-class _DailyBars extends StatelessWidget {
+class HeartDailyBars extends StatelessWidget {
   final int month;
   final List<HeartReading> readings;
+  final DateTime? weekStart;
 
-  const _DailyBars({required this.month, required this.readings});
+  const HeartDailyBars({
+    super.key,
+    required this.month,
+    required this.readings,
+    this.weekStart,
+  });
 
   @override
   Widget build(BuildContext context) {
-    final byDay = <int, _DayMeasurements>{};
+    final year =
+        weekStart?.year ??
+        (readings.isEmpty
+            ? DateTime.now().year
+            : readings.first.measuredAt.toLocal().year);
+    final dates = weekStart != null
+        ? [
+            for (var day = 0; day < 7; day++)
+              DateTime(weekStart!.year, weekStart!.month, weekStart!.day + day),
+          ]
+        : [
+            for (var day = 1; day <= DateTime(year, month + 1, 0).day; day++)
+              DateTime(year, month, day),
+          ];
+    final byDay = <DateTime, _DayMeasurements>{};
     for (final reading in readings) {
       final at = reading.measuredAt.toLocal();
-      if (at.month != month) continue;
+      final date = DateTime(at.year, at.month, at.day);
+      if (!dates.contains(date) ||
+          reading.measurementContext == HeartMeasurementContext.general) {
+        continue;
+      }
       final values = byDay.putIfAbsent(
-        at.day,
+        date,
         () => _DayMeasurements(DateTime(at.year, at.month, at.day)),
       );
       switch (reading.measurementContext) {
@@ -298,10 +331,6 @@ class _DailyBars extends StatelessWidget {
       }
     }
 
-    final year = readings.isEmpty
-        ? DateTime.now().year
-        : readings.first.measuredAt.toLocal().year;
-    final dayCount = DateTime(year, month + 1, 0).day;
     final allValues = [
       for (final values in byDay.values) ...values.before,
       for (final values in byDay.values) ...values.after,
@@ -319,7 +348,9 @@ class _DailyBars extends StatelessWidget {
           const SizedBox(height: 6),
           Text(
             allValues.isEmpty
-                ? '$month월에는 아직 잰 기록이 없어요'
+                ? (weekStart == null
+                      ? '$month월에는 아직 잰 기록이 없어요'
+                      : '이번 주에는 아직 복약 전·후 기록이 없어요')
                 : '단위: 회/분 · 잰 날 ${byDay.length}일',
             style: AppText.caption(size: 16),
           ),
@@ -332,15 +363,15 @@ class _DailyBars extends StatelessWidget {
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
-                for (int day = 1; day <= dayCount; day++)
+                for (final date in dates)
                   _DayPair(
-                    day: day,
-                    before: byDay[day]?.before.isEmpty ?? true
+                    day: date.day,
+                    before: byDay[date]?.before.isEmpty ?? true
                         ? null
-                        : _average(byDay[day]!.before),
-                    after: byDay[day]?.after.isEmpty ?? true
+                        : _average(byDay[date]!.before),
+                    after: byDay[date]?.after.isEmpty ?? true
                         ? null
-                        : _average(byDay[day]!.after),
+                        : _average(byDay[date]!.after),
                     highest: highest,
                   ),
               ],
