@@ -88,6 +88,7 @@ class PatientHomeScreen extends ConsumerStatefulWidget {
 
 class _PatientHomeScreenState extends ConsumerState<PatientHomeScreen> {
   // 도움말이 동그라미를 칠 자리들. 화면에 없으면 그 걸음은 건너뛴다.
+  final _emptyKey = GlobalKey();
   final _slotsKey = GlobalKey();
   final _bigButtonKey = GlobalKey();
   final _stepsKey = GlobalKey();
@@ -98,6 +99,17 @@ class _PatientHomeScreenState extends ConsumerState<PatientHomeScreen> {
   void _openHelp() {
     final usesDevice = ref.read(heartDevicePairedProvider);
     CoachMarks.show(context, [
+      // 약이 없을 때만 그려지는 칸이다. 약이 들어오면 이 걸음은 저절로
+      // 건너뛴다 — 처음 쓰시는 분께 가장 먼저 할 말이 이것이다.
+      CoachMark(
+        target: _emptyKey,
+        title: '처방전 등록',
+        body:
+            '처방전을 등록하면 오늘 드실 약과 복용 시간이 이 화면에 나옵니다. '
+            '사진으로 찍거나 손으로 적어 넣을 수 있습니다.',
+        boxed: true,
+        radius: 22,
+      ),
       CoachMark(
         target: _slotsKey,
         title: '복용 시간대 선택',
@@ -275,7 +287,13 @@ class _PatientHomeScreenState extends ConsumerState<PatientHomeScreen> {
 
   /// 홈 알림 칸에 적을 말. 다음에 울릴 시각을 "다음 알람 18:00"처럼
   /// 적는다 — 시각만 적으면 무슨 시각인지 알 길이 없다.
-  static String _nextAlarmLabel(AlarmPreferences alarm) {
+  static String _nextAlarmLabel(
+    AlarmPreferences alarm, {
+    required bool hasDoses,
+  }) {
+    // 넣은 약이 없으면 울릴 알람도 없다. 시각을 적어 두면 그 시각에
+    // 소리가 날 것으로 믿고 기다리시게 된다.
+    if (!hasDoses) return '알람 없음';
     final times = alarm.ringingTimes;
     if (!alarm.autoAlarm || times.isEmpty) return '알림 꺼짐';
     final now = DateTime.now();
@@ -486,6 +504,7 @@ class _PatientHomeScreenState extends ConsumerState<PatientHomeScreen> {
                   children: [
                     if (today.doses.isEmpty)
                       SeniorCard(
+                        key: _emptyKey,
                         padding: const EdgeInsets.all(22),
                         child: Column(
                           children: [
@@ -603,27 +622,30 @@ class _PatientHomeScreenState extends ConsumerState<PatientHomeScreen> {
                                 ),
                         ),
                       ),
-                      // 위아래 여백을 같게 둔다. 두 칸 정가운데에 단추가 온다.
-                      SizedBox(height: gap),
-                      _HomeTiles(
-                        alarmKey: _alarmTileKey,
-                        sensorKey: _sensorTileKey,
-                        alarmLabel: _nextAlarmLabel(
-                          ref.watch(alarmPreferencesProvider),
-                        ),
-                        onOpenAlarm: _openAlarmSettings,
-                        // 아직 기기를 안 쓰시는 분께는 연결 길을 먼저
-                        // 보여 드린다. 약 보기는 아래 “내 약” 칸에도 있다.
-                        onConnectDevice: usesDevice ? null : _openHeartDevice,
-                        onDisconnectDevice: usesDevice
-                            ? _disconnectHeartDevice
-                            : null,
-                        onOpenMedicines: widget.onOpenMedicines,
+                    ],
+                    // 알람과 센서는 약이 없어도 쓸 수 있다. 등록을 기다리게
+                    // 할 까닭이 없으므로 빈 화면에서도 자리를 지킨다.
+                    // 위아래 여백을 같게 둔다. 두 칸 정가운데에 단추가 온다.
+                    SizedBox(height: gap),
+                    _HomeTiles(
+                      alarmKey: _alarmTileKey,
+                      sensorKey: _sensorTileKey,
+                      alarmLabel: _nextAlarmLabel(
+                        ref.watch(alarmPreferencesProvider),
+                        hasDoses: today.doses.isNotEmpty,
                       ),
-                      if (today.daysLeft != null) ...[
-                        const SizedBox(height: 16),
-                        _RefillRow(daysLeft: today.daysLeft!),
-                      ],
+                      onOpenAlarm: _openAlarmSettings,
+                      // 아직 기기를 안 쓰시는 분께는 연결 길을 먼저
+                      // 보여 드린다. 약 보기는 아래 “내 약” 칸에도 있다.
+                      onConnectDevice: usesDevice ? null : _openHeartDevice,
+                      onDisconnectDevice: usesDevice
+                          ? _disconnectHeartDevice
+                          : null,
+                      onOpenMedicines: widget.onOpenMedicines,
+                    ),
+                    if (today.daysLeft != null) ...[
+                      const SizedBox(height: 16),
+                      _RefillRow(daysLeft: today.daysLeft!),
                     ],
                   ],
                 );

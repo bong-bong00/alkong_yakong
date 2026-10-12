@@ -570,9 +570,15 @@ class _Bullet extends StatelessWidget {
       children: [
         SizedBox(
           width: 68,
-          child: Text(
-            tag,
-            style: AppText.label(size: 18, color: AppColors.textTertiary),
+          child: FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerLeft,
+            child: Text(
+              tag,
+              maxLines: 1,
+              softWrap: false,
+              style: AppText.label(size: 18, color: AppColors.textTertiary),
+            ),
           ),
         ),
         const SizedBox(width: 10),
@@ -622,7 +628,10 @@ class _CautionTab extends StatelessWidget {
     // [임시 · 시연 보기용] 서버가 주는 부작용이 없으면 시연용 문장을 쓴다.
     // 서버 문장에는 짚을 낱말이 따로 없으니 칠하지 않는다.
     final sideEffects = medicine.possibleSideEffects.isNotEmpty
-        ? [for (final text in medicine.possibleSideEffects) DemoSideEffect(text)]
+        ? [
+            for (final text in medicine.possibleSideEffects)
+              DemoSideEffect(text),
+          ]
         : demoSideEffects[medicine.medicineCode.trim()] ??
               const <DemoSideEffect>[];
 
@@ -906,9 +915,18 @@ class _DosingTab extends StatelessWidget {
             children: [
               SizedBox(
                 width: 68,
-                child: Text(
-                  rows[i].$1,
-                  style: AppText.label(size: 18, color: AppColors.textTertiary),
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    rows[i].$1,
+                    maxLines: 1,
+                    softWrap: false,
+                    style: AppText.label(
+                      size: 18,
+                      color: AppColors.textTertiary,
+                    ),
+                  ),
                 ),
               ),
               const SizedBox(width: 10),
