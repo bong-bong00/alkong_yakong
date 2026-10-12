@@ -1075,10 +1075,14 @@ def _summarize_chat_reply(client, reply: str, *, medicine_names: tuple[str, ...]
     """Condense an accepted answer, never truncate it or invent a safety conclusion."""
     if len(reply) <= CHAT_REPLY_MAX_CHARS:
         return reply
-    required_names = tuple(
-        name for name in medicine_names
-        if _compact_product_name(name) in _compact_product_name(reply)
-    )
+    from app.services.pharmacist.conversation import medicine_name_aliases, medicine_mention_position
+    required_names = tuple(dict.fromkeys(
+        alias for name in medicine_names
+        if (alias := next((
+            value for value in reversed(medicine_name_aliases(name))
+            if medicine_mention_position(reply, value) is not None
+        ), None))
+    ))
     # Conservatively retain numeric conditions (including ranges and decimals).
     numbers = set(re.findall(r"\d+(?:\.\d+)?", reply))
     instruction = (
@@ -1158,7 +1162,13 @@ def generate_chat_response(
     medicines = [*(selected_medicines or []), *(temporary_medicines or [])]
     if selected_medicine:
         medicines.append(selected_medicine)
-    names = tuple(str(m.get("name") or m.get("itemName") or "").strip() for m in medicines)
+    from app.services.pharmacist.conversation import evidence_medicines
+    medicines.extend(evidence_medicines())
+    names = tuple(dict.fromkeys(
+        str(m.get("product_name") or m.get("name") or m.get("itemName") or "").strip()
+        for m in medicines
+        if m.get("product_name") or m.get("name") or m.get("itemName")
+    ))
     try:
         from google import genai
         with genai.Client(api_key=GEMINI_API_KEY) as client:

@@ -6,6 +6,8 @@ from datetime import date
 
 from app.database import get_connection
 
+REPLY_POLICY_VERSION = 3
+
 
 def health_cache_context(user_id: str) -> dict:
     conn = None
@@ -20,6 +22,9 @@ def health_cache_context(user_id: str) -> dict:
                   "past_history", "family_history", "smoking", "drinking",
                   "is_pregnant", "pregnancy_status")
         snapshot = {field: data.get(field) for field in fields}
+        # Invalidate automatic reuse of answers produced before the display-name,
+        # medicine-coverage and plain-language corrections. Historical viewing remains.
+        snapshot["reply_policy_version"] = REPLY_POLICY_VERSION
         snapshot["day"] = date.today().isoformat()
         token = hashlib.sha256(json.dumps(snapshot, sort_keys=True,
                                          ensure_ascii=False).encode()).hexdigest()

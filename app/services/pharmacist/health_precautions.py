@@ -243,10 +243,14 @@ def generate_health_reply(
     fallback = _evidence_reply(relevant, terms, notice)
     from app.services.pharmacist.conversation import dialogue_prompt, record_evidence
     def delivered(reply):
+        from app.services.pharmacist.plain_language import explain_health_terms
         for item in sorted(relevant, key=lambda item: -len(item["product_name"])):
             reply = reply.replace(item["product_name"], item["display_name"])
         record_evidence(relevant)
-        return reply
+        explained = explain_health_terms(reply)
+        if len(explained) > 600 and reply != fallback:
+            return explain_health_terms(fallback)
+        return explained
     from app.services import gemini_service as gemini
     if not gemini.GEMINI_API_KEY:
         return delivered(fallback)
@@ -342,9 +346,11 @@ def _evidence_reply(official, terms, notice: str) -> str:
     Quote a complete short official sentence when possible, never cut a warning
     or invent personal applicability. Large scopes use an explicit limited view.
     """
+    from app.services.pharmacist.plain_language import explain_health_terms
     parts = []
     closing = "\n" + CONSULT
-    budget = 600 - len(notice) - len(closing)
+    limited_notice = "\n일부 핵심 내용만 안내했어요."
+    budget = 600 - len(notice) - len(closing) - len(limited_notice)
     for index, item in enumerate(official):
         matches = [term for term in terms if _mentions(str(item["cautions"]), term)]
         source = str(item["cautions"]).strip()
@@ -354,7 +360,7 @@ def _evidence_reply(official, terms, notice: str) -> str:
         plain = next((value for unit in excerpts if (value := _plain_warning(unit))), None)
         chosen = []
         for unit in excerpts:
-            if len(" ".join([*chosen, unit])) + len(label) + 11 <= share:
+            if len(explain_health_terms(" ".join([*chosen, unit]))) + len(label) + 11 <= share:
                 chosen.append(unit)
             if len(chosen) == 2:
                 break
@@ -368,13 +374,13 @@ def _evidence_reply(official, terms, notice: str) -> str:
             )
             if paragraph:
                 detail += f' 공식 주의사항: “{paragraph}”'
-        part = f"{label}: {detail}"
+        part = explain_health_terms(f"{label}: {detail}")
         if len("\n".join([*parts, part])) > budget:
             break
         parts.append(part)
     if not parts:
         parts = ["등록한 건강 정보와 관련될 수 있는 공식 주의사항이 있어요."]
-    limited = "\n일부 핵심 내용만 안내했어요." if len(parts) < len(official) else ""
+    limited = limited_notice if len(parts) < len(official) else ""
     return notice + "\n".join(parts) + limited + closing
 
 
@@ -428,6 +434,8 @@ past_history가 true인데 병명 배열이 비면 과거 병명을 모르는 �
 인사·서론 없이 약별 짧은 문단으로 바로 시작하세요. 관련 없는 건강정보나 알레르기 미일치 설명은 쓰지 마세요.
 음주 관련 공식 안내가 있으면 술을 마실 때의 구체적인 주의를 우선 설명하세요.
 신장애는 '콩팥 기능 저하', 간장애는 '간 기능 저하'처럼 쉬운 말로 설명하세요.
+QT 간격 연장·저칼륨혈증·저마그네슘혈증·Torsade de pointes 같은 전문 용어를 설명 없이 나열하지 마세요.
+꼭 필요한 용어는 같은 문장에서 쉬운 뜻을 설명하고, 관련 없는 전문 문단 전체를 옮기지 마세요.
 감량 비율·용량 계산 대신 해당 상태에서 의료진의 용량 조절이 필요한지를 설명하세요.
 단, 예외나 금지 조건을 없애거나 본인에게 해당한다고 단정하지 마세요.
 약의 양·복용 간격은 반드시 의료진이 조절한다고 표현하고 사용자가 스스로 조절하도록 쓰지 마세요.

@@ -126,3 +126,47 @@ def test_all_health_summary_reloads_full_scope_not_first_twenty():
     result = resolve_followup("짧게 요약해줘", None, previous, None, [])
     assert result[2] is None and result[3] == []
     assert result[1] == "health_precautions"
+
+
+def test_ordinal_after_short_display_names_keeps_official_identity_and_order():
+    a = {"medicine_code": "197800210", "product_name": "아디팜정(히드록시진염산염)"}
+    b = {"medicine_code": "197800308", "product_name": "프리마란정(메퀴타진)"}
+    previous = history([a, b], "프리마란정: 주의하세요.\n아디팜정: 주의하세요.", "health_precautions")
+    result = resolve_followup("두 번째 약은?", None, previous, None, [a, b])
+    assert result[2] == a and result[3] == [] and result[4] is None
+    assert result[1] == "health_precautions"
+    named = resolve_followup("그럼 프리마란정은?", None, previous, None, [a, b])
+    assert named[2] == b and named[4] is None
+    named = resolve_followup("프리마란정은?", None, previous, None, [a, b])
+    assert named[2] == b and named[4] is None and named[1] == "health_precautions"
+
+
+def test_same_short_label_does_not_guess_a_product():
+    a = {"medicine_code": "123456789", "product_name": "시험정(성분가)"}
+    b = {"medicine_code": "987654321", "product_name": "시험정(성분나)"}
+    previous = history([a, b], "시험정: 주의하세요.")
+    assert resolve_followup("첫 번째 약은?", None, previous, None, [a, b])[4]
+
+
+def test_strengths_and_longer_product_names_are_not_collapsed():
+    a = {"medicine_code": "123456789", "product_name": "시험정5밀리그램(성분가)"}
+    b = {"medicine_code": "987654321", "product_name": "시험정10밀리그램(성분가)"}
+    previous = history([a, b], "시험정10밀리그램: 주의하세요.\n시험정5밀리그램: 주의하세요.")
+    assert resolve_followup("첫 번째 약은?", None, previous, None, [a, b])[2] == b
+    previous = history([A], "긴첫약정: 주의하세요.")
+    assert resolve_followup("첫 번째 약은?", None, previous, None, [A])[4]
+
+
+def test_short_name_ordinal_route_passes_the_correct_official_product_to_generator():
+    a = {"medicine_code": "197800210", "product_name": "아디팜정(히드록시진염산염)"}
+    b = {"medicine_code": "197800308", "product_name": "프리마란정(메퀴타진)"}
+    app = FastAPI()
+    app.include_router(router)
+    with patch("app.services.gemini_service.generate_chat_response", return_value="확인한 답변이에요.") as generate:
+        response = TestClient(app).post("/api/v1/drug-explain/chat", json={
+            "user_id": "synthetic", "message": "두 번째 약은?",
+            "selected_medicines": [a, b],
+            "recent_history": history([a, b], "아디팜정: 주의하세요.\n프리마란정: 주의하세요."),
+        })
+    assert response.status_code == 200
+    assert generate.call_args.kwargs["selected_medicine"] == b
