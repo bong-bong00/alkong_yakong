@@ -7,6 +7,7 @@ import '../../../../core/theme/app_typography.dart';
 import '../../../../core/widgets/senior_button.dart';
 import '../../../../core/widgets/senior_card.dart';
 import '../../../../core/widgets/senior_header.dart';
+import '../../../../core/widgets/senior_feedback.dart';
 import '../../../dashboard/presentation/screens/patient_home_screen.dart';
 import '../../../profile/application/current_user_controller.dart';
 import '../widgets/dose_flow_sheets.dart';
@@ -34,6 +35,16 @@ class DoseDoneScreen extends ConsumerWidget {
     // 아직 남은 시간대가 있으면 그 약을 먼저 말한다. 방금 기록한 것은
     // 아래 "오늘 복약" 줄의 체크로 이미 보인다.
     final pending = today.nextDose;
+    Future<void> undoDose() async {
+      try {
+        await ref.read(medicationProvider.notifier).undo(slot);
+        if (context.mounted) onUndone?.call();
+      } catch (_) {
+        if (context.mounted) {
+          showSeniorSnackbar(context, '취소하지 못했어요. 다시 시도해 주세요.', error: true);
+        }
+      }
+    }
 
     return Column(
       children: [
@@ -56,10 +67,7 @@ class DoseDoneScreen extends ConsumerWidget {
                   _SuccessCard(
                     slot: slot,
                     allTaken: today.allTaken,
-                    onUndo: () {
-                      ref.read(medicationProvider.notifier).undo(slot);
-                      onUndone?.call();
-                    },
+                    onUndo: undoDose,
                   )
                 else
                   _PendingCard(
@@ -75,10 +83,7 @@ class DoseDoneScreen extends ConsumerWidget {
                     kind: SeniorButtonKind.neutral,
                     minHeight: 58,
                     fontSize: 19,
-                    onPressed: () {
-                      ref.read(medicationProvider.notifier).undo(slot);
-                      onUndone?.call();
-                    },
+                    onPressed: undoDose,
                   ),
                 ],
                 const SizedBox(height: 12),

@@ -436,9 +436,15 @@ class _PatientHomeScreenState extends ConsumerState<PatientHomeScreen> {
     );
   }
 
-  void _undo(DoseSlot slot) {
-    ref.read(medicationProvider.notifier).undo(slot);
-    setState(() => _recordedSlot = null);
+  Future<void> _undo(DoseSlot slot) async {
+    try {
+      await ref.read(medicationProvider.notifier).undo(slot);
+      if (mounted) setState(() => _recordedSlot = null);
+    } catch (_) {
+      if (mounted) {
+        showSeniorSnackbar(context, '취소하지 못했어요. 다시 시도해 주세요.', error: true);
+      }
+    }
   }
 
   void _snooze(DoseSlot slot) {

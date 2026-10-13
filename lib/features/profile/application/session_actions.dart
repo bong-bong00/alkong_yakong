@@ -5,8 +5,13 @@ import '../../../core/mode/app_mode.dart';
 import '../../../core/providers/user_role.dart';
 import '../../../core/session/auth_session.dart';
 import '../../../core/session/mvp_session.dart';
+import '../../../core/session/session_credentials.dart';
+import '../../../core/network/api_client.dart';
 import '../../dashboard/application/medication_history_provider.dart';
 import '../../guardian/application/guardians_provider.dart';
+import '../../guardian/presentation/screens/care_patient_screen.dart';
+import '../../biosignal/application/heart_device.dart';
+import '../../reminder/application/alarm_preferences.dart';
 import '../../medication/application/medication_controller.dart';
 import '../../medicines/application/user_medicines_controller.dart';
 import '../../prescription/presentation/screens/prescription_history_screen.dart';
@@ -35,7 +40,11 @@ Future<UserProfile?> restorePersistedSession(UserRepository repository) async {
     debugPrint(
       '[STARTUP_DIAG] team_user_fetch_ms=${timer.elapsedMilliseconds}',
     );
-    if (user.id != savedId) return null;
+    if (user.id != savedId ||
+        user.role.toLowerCase() != SessionCredentials.role) {
+      await AuthSession.logout();
+      return null;
+    }
     // 서버는 모르는 아이디로 물어 오면 "사용자"라는 빈 줄을 급히 만들어
     // 둔다(전화번호도 비밀번호도 없다). 그 껍데기로 들어가면 이름도
     // 건강 정보도 비어 있는 채로 로그인한 것처럼 보인다. 내 계정이
@@ -54,10 +63,24 @@ Future<UserProfile?> restorePersistedSession(UserRepository repository) async {
       '[STARTUP_DIAG] session_restore_failed_ms=${timer.elapsedMilliseconds} '
       'error_type=${error.runtimeType}',
     );
-    AuthSession.isLoggedIn = false;
-    AuthSession.role = 'patient';
-    MvpSession.userId = '';
-    MvpSession.isPregnant = null;
+    if (error is ApiException &&
+        (error.statusCode == null ||
+            const [502, 503, 504].contains(error.statusCode)) &&
+        SessionCredentials.isValid &&
+        SessionCredentials.profile != null) {
+      final cached = UserProfile.fromJson(SessionCredentials.profile!);
+      if (cached.id == SessionCredentials.userId &&
+          (cached.phone ?? '').isNotEmpty) {
+        MvpSession.userId = cached.id;
+        MvpSession.isPregnant = cached.isPregnant;
+        await AuthSession.setLoggedIn(
+          cached.isGuardian ? 'guardian' : 'patient',
+        );
+        SessionCredentials.offline.value = true;
+        return cached;
+      }
+    }
+    await AuthSession.logout();
     return null;
   }
 }
@@ -73,6 +96,11 @@ Future<void> startSession(WidgetRef ref, UserProfile user) async {
       id == 'mvp-user' ||
       (role != 'patient' && role != 'guardian')) {
     throw StateError('서버 사용자 정보를 확인할 수 없습니다.');
+  }
+  if (!SessionCredentials.isValid ||
+      SessionCredentials.userId != id ||
+      SessionCredentials.role != role) {
+    throw const ApiException('로그인 확인이 필요해요. 다시 로그인해 주세요.');
   }
   MvpSession.userId = id;
   MvpSession.isPregnant = user.isPregnant;
@@ -95,6 +123,11 @@ void resetUserScopedData(WidgetRef ref) {
     ..invalidate(careOverviewProvider)
     ..invalidate(medicationProvider)
     ..invalidate(userMedicinesProvider)
+    ..invalidate(patientMedicinesProvider)
+    ..invalidate(patientTodayProvider)
+    ..invalidate(carePatientProfileProvider)
+    ..invalidate(heartSensorProvider)
+    ..invalidate(alarmPreferencesProvider)
     ..invalidate(medicationHistoryProvider);
   ref.invalidate(prescriptionHistoryProvider);
 }

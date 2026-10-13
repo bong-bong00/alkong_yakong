@@ -495,15 +495,15 @@ void main() {
         findsOneWidget,
       );
       expect(
-        find.descendant(of: todayCard, matching: find.text('정상 심박수')),
+        find.descendant(of: todayCard, matching: find.text('참고 범위 안')),
         findsOneWidget,
       );
-      final normalLabel = tester.widget<Text>(find.text('정상 심박수'));
+      final normalLabel = tester.widget<Text>(find.text('참고 범위 안'));
       expect(normalLabel.maxLines, 1);
       expect(normalLabel.softWrap, isFalse);
       expect(
         find.ancestor(
-          of: find.text('정상 심박수'),
+          of: find.text('참고 범위 안'),
           matching: find.byType(FittedBox),
         ),
         findsOneWidget,
@@ -649,11 +649,11 @@ void main() {
         matching: find.byType(SeniorCard),
       );
       expect(
-        find.descendant(of: todayCard, matching: find.text('느린 심박수')),
+        find.descendant(of: todayCard, matching: find.text('참고 범위 아래')),
         findsOneWidget,
       );
       expect(
-        find.descendant(of: todayCard, matching: find.text('정상 심박수')),
+        find.descendant(of: todayCard, matching: find.text('참고 범위 안')),
         findsOneWidget,
       );
       expect(

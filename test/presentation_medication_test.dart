@@ -89,7 +89,9 @@ void main() {
           if (request.method == 'POST') {
             posts.add(jsonDecode(request.body) as Map<String, dynamic>);
             return http.Response(
-              failedSave ? '{}' : '{"status":"TAKEN","duplicate":true}',
+              failedSave
+                  ? '{}'
+                  : '{"results":[{"schedule_id":2,"status":"TAKEN","duplicate":true}]}',
               failedSave ? 500 : 200,
               headers: {'content-type': 'application/json'},
             );
@@ -153,7 +155,7 @@ void main() {
             DoseCheckOutcome.recorded,
           );
         }
-        expect(posts.single['schedule_id'], 2);
+        expect(posts.single['schedule_ids'], [2]);
         await controller.refreshFromServer();
         expect(
           container.read(medicationProvider).doseOf(DoseSlot.lunch).taken,

@@ -132,6 +132,7 @@ class DetailPhase1Test(unittest.TestCase):
         self.assertEqual(result['explanation']['treatment_uses'][0], {
             'title': self.profile['approved_uses'][0],
             'description': '',
+            'highlight': '',
         })
         self.assertEqual(result['medicine']['medicine_code'], 'synthetic')
 
@@ -174,7 +175,7 @@ class DetailPhase1Test(unittest.TestCase):
 
     def test_unmatched_official_items_keep_title_only(self):
         items = mds.treatment_use_items('', [], ['성인: 1회 사용한다.'])
-        self.assertEqual(items, [{'title': '성인: 1회 사용한다.', 'description': ''}])
+        self.assertEqual(items, [{'title': '성인: 1회 사용한다.', 'description': '', 'highlight': ''}])
 
     def test_single_ingredient_compose_uses_role_and_use_help(self):
         entries = mds.ingredient_entries('시메티딘')

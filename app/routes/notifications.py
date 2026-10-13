@@ -1,4 +1,5 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
+from app.core.auth import auth_enforced
 
 from app.models.schemas import MedicationReminderRequest
 from app.models.response_schemas import (
@@ -25,8 +26,9 @@ def generate_reminders(request: MedicationReminderRequest):
 
 
 @router.get("/users/{user_id}/notifications", response_model=list[NotificationResponse])
-def list_notifications(user_id: str):
-    return get_user_notifications(user_id)
+def list_notifications(user_id: str, request: Request):
+    viewer = request.state.auth_identity["id"] if auth_enforced() else user_id
+    return get_user_notifications(user_id, viewer_id=viewer)
 
 
 @router.post(

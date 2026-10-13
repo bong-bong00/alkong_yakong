@@ -15,6 +15,7 @@ import 'package:http/testing.dart';
 
 import 'core/network/api_client.dart';
 import 'core/session/auth_session.dart';
+import 'core/session/session_credentials.dart';
 import 'core/session/mvp_session.dart';
 import 'features/biosignal/application/heart_device.dart';
 import 'features/biosignal/data/heart_repository.dart';
@@ -292,11 +293,14 @@ Future<void> applyMockSession() async {
 /// 없을 때만 부른다 — 로그인해 둔 사람을 밀어내지 않는다.
 Future<void> applyDevSession() async {
   if (!devSession) return;
+  if (!SessionCredentials.isValid || SessionCredentials.userId != kDevUserId) {
+    return;
+  }
   // 스스로 나가신 분은 다시 끌고 들어오지 않는다.
   if (await AuthSession.devAutoLoginBlocked) return;
   MvpSession.userId = kDevUserId;
-  // 등록된 약이 하나도 없으면 화면이 통째로 비어 무엇이 잘못됐는지
-  // 알 수 없다. setLoggedIn이 보기용 약을 서버에 심어 준다.
+  // 저장된 실제 인증이 있는 사용자만 복원한다. URL의 ID만으로
+  // 로그인하지 않으며 보기용 약도 여기서 자동 등록하지 않는다.
   await AuthSession.setLoggedIn('patient');
 }
 

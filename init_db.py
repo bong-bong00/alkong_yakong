@@ -45,6 +45,7 @@ TABLE_DEFINITIONS = {
             patient_relation TEXT,
             status TEXT NOT NULL DEFAULT 'ACCEPTED',
             requested_by TEXT NOT NULL DEFAULT 'PATIENT',
+            consent_verified_at TEXT,
             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
         )
@@ -140,6 +141,7 @@ TABLE_DEFINITIONS = {
             original_image_path TEXT,
             ocr_text TEXT,
             registration_fingerprint TEXT,
+            registration_revision INTEGER NOT NULL DEFAULT 1,
             ocr_status TEXT NOT NULL DEFAULT 'COMPLETED',
             status TEXT NOT NULL DEFAULT 'ACTIVE',
             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -254,6 +256,7 @@ TABLE_DEFINITIONS = {
             measured_at TEXT NOT NULL,
             device_id TEXT,
             source TEXT NOT NULL DEFAULT 'POLAR',
+            client_request_id TEXT,
             measurement_context TEXT NOT NULL DEFAULT 'general'
                 CHECK (measurement_context IN ('general', 'before_medication', 'after_medication')),
             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -469,6 +472,7 @@ INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_medication_logs_user_taken ON medication_logs(user_id, taken_at)",
     "CREATE INDEX IF NOT EXISTS idx_risk_results_user_created ON risk_results(user_id, created_at)",
     "CREATE INDEX IF NOT EXISTS idx_heart_rate_user_measured ON heart_rate_logs(user_id, measured_at)",
+    "CREATE UNIQUE INDEX IF NOT EXISTS idx_heart_rate_client_request ON heart_rate_logs(user_id, client_request_id) WHERE client_request_id IS NOT NULL",
     "CREATE INDEX IF NOT EXISTS idx_biosignal_test_sessions_filter ON biosignal_test_sessions(participant_id, scenario, is_synthetic, started_at)",
     "CREATE INDEX IF NOT EXISTS idx_biosignal_test_samples_session_measured ON biosignal_test_samples(session_id, measured_at)",
     "CREATE INDEX IF NOT EXISTS idx_abnormal_events_user_occurred ON abnormal_events(user_id, occurred_at)",
@@ -535,6 +539,7 @@ ADDITIVE_COLUMNS = {
     },
     "prescriptions": {
         "registration_fingerprint": "TEXT",
+        "registration_revision": "INTEGER NOT NULL DEFAULT 1",
     },
     "medicines": {
         "easy_category": "TEXT",
@@ -567,6 +572,7 @@ ADDITIVE_COLUMNS = {
         "patient_relation": "TEXT",
         "status": "TEXT NOT NULL DEFAULT 'ACCEPTED'",
         "requested_by": "TEXT NOT NULL DEFAULT 'PATIENT'",
+        "consent_verified_at": "TEXT",
     },
     "users": {
         "is_pregnant": "INTEGER NOT NULL DEFAULT 0",
@@ -585,6 +591,7 @@ ADDITIVE_COLUMNS = {
         "family_illnesses": "TEXT NOT NULL DEFAULT '[]'",
     },
     "heart_rate_logs": {
+        "client_request_id": "TEXT",
         "measurement_context": "TEXT NOT NULL DEFAULT 'general' CHECK (measurement_context IN ('general', 'before_medication', 'after_medication'))",
     },
 }
@@ -871,21 +878,57 @@ def seed_reviewed_detail_explanations(cursor: sqlite3.Cursor) -> None:
     )
 
 
-def initialize_database() -> None:
+def initialize_database(*, preserve_records: bool = False) -> None:
     conn = sqlite3.connect(DB_PATH)
     conn.execute("PRAGMA foreign_keys = ON")
+    conn.execute("BEGIN IMMEDIATE")
+    try:
+        _initialize_database(conn, preserve_records=preserve_records)
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+def _initialize_database(conn, *, preserve_records: bool) -> None:
     cursor = conn.cursor()
     suffix = datetime.now().strftime("%Y%m%d%H%M%S")
 
     for table in OBSOLETE_TABLES:
-        if _existing_columns(cursor, table):
+        if not preserve_records and _existing_columns(cursor, table):
             cursor.execute(f"ALTER TABLE {table} RENAME TO legacy_{table}_{suffix}")
 
     ensure_additive_columns(cursor)
 
+    # A legacy guardian-initiated ACCEPTED request could only have reached that
+    # state through the patient's accept action. Keep that explicit link live.
+    # PATIENT-created rows may have been bound later by the old phone-matching
+    # read path, so preserve the row but require a fresh acceptance.
+    if "consent_verified_at" in _existing_columns(cursor, "guardians"):
+        cursor.execute(
+            """
+            UPDATE guardians SET consent_verified_at = CURRENT_TIMESTAMP
+            WHERE guardian_user_id IS NOT NULL
+              AND consent_verified_at IS NULL
+              AND status = 'ACCEPTED'
+              AND requested_by = 'GUARDIAN'
+            """
+        )
+        cursor.execute(
+            """
+            UPDATE guardians SET status = 'PENDING'
+            WHERE guardian_user_id IS NOT NULL
+              AND consent_verified_at IS NULL
+              AND status = 'ACCEPTED'
+            """
+        )
+
     for table, definition in TABLE_DEFINITIONS.items():
         existing = _existing_columns(cursor, table)
         if existing and not REQUIRED_COLUMNS[table].issubset(existing):
+            if preserve_records:
+                raise RuntimeError(f"Existing {table} schema needs a reviewed migration; no table was replaced")
             cursor.execute(f"ALTER TABLE {table} RENAME TO legacy_{table}_{suffix}")
         cursor.execute(definition.replace(f"CREATE TABLE {table}", f"CREATE TABLE IF NOT EXISTS {table}"))
 
@@ -896,9 +939,10 @@ def initialize_database() -> None:
     _invalidate_unusable_ingredient_explanations(cursor)
     _seed_reviewed_ingredient_explanations(cursor)
     seed_reviewed_detail_explanations(cursor)
-    _deactivate_legacy_demo_medicines(cursor)
-    conn.commit()
-    purge_ocr_placeholder_rows(conn)
+    if not preserve_records:
+        _deactivate_legacy_demo_medicines(cursor)
+        conn.commit()
+        purge_ocr_placeholder_rows(conn)
     # 기존 의약품도 새 복수 목적/핵심 주의 구조로 채운다.
     # REVIEWED 행은 동기화 함수가 보존하므로 운영 검토값이 다시 덮이지 않는다.
     from app.services.pharmacist.easy_category import sync_medicine_guidance
@@ -912,7 +956,6 @@ def initialize_database() -> None:
 
     prepare_all_medicine_details(cursor)
     conn.commit()
-    conn.close()
 
 
 if __name__ == "__main__":

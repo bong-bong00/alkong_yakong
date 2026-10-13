@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
 import 'api_config.dart';
+import '../session/session_credentials.dart';
 
 class ApiException implements Exception {
   final int? statusCode;
@@ -34,8 +35,29 @@ class ApiClient {
     }
   }
 
-  Future<dynamic> get(String path) =>
-      _send(() => _client.get(_uri(path), headers: _headers));
+  Future<dynamic> get(String path) async {
+    final generation = SessionCredentials.generation;
+    try {
+      final data = await _send(
+        () => _client.get(_uri(path), headers: _headersFor(path)),
+      );
+      await SessionCredentials.cacheRead(_baseUrl, path, data, generation);
+      SessionCredentials.markAvailable(_baseUrl, path);
+      return data;
+    } on ApiException catch (error) {
+      if (error.statusCode == null ||
+          const [502, 503, 504].contains(error.statusCode)) {
+        SessionCredentials.markUnavailable(_baseUrl, path);
+        final cached = await SessionCredentials.cachedRead(
+          _baseUrl,
+          path,
+          generation,
+        );
+        if (cached != null) return cached;
+      }
+      rethrow;
+    }
+  }
 
   Future<dynamic> post(
     String path, {
@@ -45,7 +67,7 @@ class ApiClient {
   }) => _send(
     () => _client.post(
       _uri(path),
-      headers: {..._headers, ...headers},
+      headers: {..._headersFor(path), ...headers},
       body: jsonEncode(body),
     ),
     timeout: timeout,
@@ -55,29 +77,39 @@ class ApiClient {
       _send(
         () => _client.patch(
           _uri(path),
-          headers: _headers,
+          headers: _headersFor(path),
           body: jsonEncode(body),
         ),
       );
 
   Future<dynamic> delete(String path) =>
-      _send(() => _client.delete(_uri(path), headers: _headers));
+      _send(() => _client.delete(_uri(path), headers: _headersFor(path)));
 
   Future<dynamic> _send(
     Future<http.Response> Function() request, {
     Duration timeout = _defaultTimeout,
   }) async {
+    final generation = SessionCredentials.generation;
+    final hadCredential = SessionCredentials.isValid;
     try {
       final response = await request().timeout(timeout);
+      if (hadCredential && generation != SessionCredentials.generation) {
+        throw const ApiException('사용자가 바뀌었어요. 다시 확인해 주세요.');
+      }
+      if (response.statusCode == 401 && hadCredential) {
+        await SessionCredentials.clear();
+      }
       return _decodeResponse(response);
     } on ApiException {
       rethrow;
     } on TimeoutException {
+      if (SessionCredentials.isValid) SessionCredentials.offline.value = true;
       // 무료 서버는 아무도 안 쓰면 잠든다. 처음 깨우는 데 30초 넘게
       // 걸리기도 한다. 고장이 아니라 기다리면 되는 일이라고 말한다.
       throw const ApiException('서버를 깨우는 중이에요. 잠시 뒤 다시 해 주세요.');
     } catch (error) {
-      throw ApiException('서버에 연결할 수 없습니다: $error');
+      if (SessionCredentials.isValid) SessionCredentials.offline.value = true;
+      throw const ApiException('서버에 연결할 수 없어요. 잠시 뒤 다시 시도해 주세요.');
     }
   }
 
@@ -137,4 +169,20 @@ class ApiClient {
     'Accept': 'application/json',
     'Content-Type': 'application/json; charset=UTF-8',
   };
+
+  Map<String, String> _headersFor(String path) {
+    final token = SessionCredentials.accessToken;
+    final publicLogin =
+        path == '/api/v1/users/login' || path == '/api/v1/users';
+    final origin = Uri.parse(_baseUrl).origin;
+    final trusted = {
+      Uri.parse(ApiConfig.baseUrl).origin,
+      Uri.parse(ApiConfig.localFeatureBaseUrl).origin,
+    }.contains(origin);
+    return {
+      ..._headers,
+      if (token != null && trusted && !publicLogin)
+        'Authorization': 'Bearer $token',
+    };
+  }
 }

@@ -3,64 +3,127 @@ from datetime import datetime, timedelta
 from fastapi import HTTPException
 
 from app.database import get_connection
-from app.models.schemas import MarkMissedRequest, MedicationLogCreate
+from app.models.schemas import MarkMissedRequest, MedicationBatchRequest, MedicationLogCreate
+
+
+def get_taken_activities(user_id: str, day: str) -> list[dict]:
+    from app.services.today_medication_service import _slot_from_time
+
+    conn = get_connection()
+    try:
+        rows = conn.execute(
+            """SELECT ms.time_slot, ms.scheduled_time, ml.taken_at
+               FROM medication_logs ml JOIN medication_schedules ms ON ms.id = ml.schedule_id
+               WHERE ml.user_id = ? AND ms.scheduled_date = ? AND ms.status = 'TAKEN'
+                 AND ml.status = 'TAKEN'
+                 AND ml.id = (SELECT MAX(id) FROM medication_logs WHERE schedule_id = ms.id)
+               ORDER BY ml.id""", (user_id, day),
+        ).fetchall()
+        by_slot = {}
+        for row in rows:
+            slot = _slot_from_time(row["time_slot"], row["scheduled_time"])
+            by_slot[slot] = {"slot": slot, "taken_at": row["taken_at"]}
+        return list(by_slot.values())
+    finally:
+        conn.close()
 
 
 def mark_medication_taken(request: MedicationLogCreate) -> dict:
+    return _change_medication_status(
+        request.user_id, [request.schedule_id], action="TAKEN"
+    )[0]
+
+
+def cancel_medication_taken(request: MedicationLogCreate) -> dict:
+    return _change_medication_status(
+        request.user_id, [request.schedule_id], action="CANCELLED"
+    )[0]
+
+
+def mark_medications_taken(request: MedicationBatchRequest) -> dict:
+    return {
+        "results": _change_medication_status(
+            request.user_id, request.schedule_ids, action="TAKEN"
+        )
+    }
+
+
+def cancel_medications_taken(request: MedicationBatchRequest) -> dict:
+    return {
+        "results": _change_medication_status(
+            request.user_id, request.schedule_ids, action="CANCELLED"
+        )
+    }
+
+
+def _change_medication_status(
+    user_id: str, schedule_ids: list[int], *, action: str
+) -> list[dict]:
+    ids = list(dict.fromkeys(schedule_ids))
+    if not ids or len(ids) != len(schedule_ids) or any(i <= 0 for i in ids):
+        raise HTTPException(status_code=422, detail="복약 일정 ID가 올바르지 않아요.")
     conn = get_connection()
     try:
         cursor = conn.cursor()
-        schedule = cursor.execute(
-            """
-            SELECT id, user_id, user_medicine_id, scheduled_date, scheduled_time
-            FROM medication_schedules
-            WHERE id = ? AND user_id = ?
-            """,
-            (request.schedule_id, request.user_id),
-        ).fetchone()
-        if not schedule:
-            raise HTTPException(status_code=404, detail="복약 일정이 없습니다.")
+        cursor.execute("BEGIN IMMEDIATE")
+        schedules = {}
+        for schedule_id in ids:
+            schedule = cursor.execute(
+                """
+                SELECT id, user_medicine_id, status
+                FROM medication_schedules WHERE id = ? AND user_id = ?
+                """,
+                (schedule_id, user_id),
+            ).fetchone()
+            if not schedule:
+                raise HTTPException(status_code=404, detail="복약 일정이 없습니다.")
+            schedules[schedule_id] = schedule
 
-        existing = cursor.execute(
-            """
-            SELECT id, status, taken_at FROM medication_logs
-            WHERE schedule_id = ? AND user_id = ? AND status = 'TAKEN'
-            ORDER BY id DESC LIMIT 1
-            """,
-            (request.schedule_id, request.user_id),
-        ).fetchone()
-        if existing:
-            return {
-                "id": existing["id"],
-                "schedule_id": request.schedule_id,
-                "status": existing["status"],
-                "taken_at": existing["taken_at"],
-                "duplicate": True,
-            }
+        results = []
+        for schedule_id in ids:
+            schedule = schedules[schedule_id]
+            current_status = str(schedule["status"] or "PENDING").upper()
+            latest = cursor.execute(
+                """
+                SELECT id, schedule_id, status, taken_at FROM medication_logs
+                WHERE schedule_id = ? AND user_id = ?
+                ORDER BY id DESC LIMIT 1
+                """,
+                (schedule_id, user_id),
+            ).fetchone()
+            if action == "TAKEN" and current_status == "TAKEN":
+                if not latest or latest["status"] != "TAKEN":
+                    raise HTTPException(
+                        status_code=409, detail="복약 상태와 기록이 일치하지 않아요."
+                    )
+                results.append({**dict(latest), "duplicate": True})
+                continue
+            if action == "CANCELLED" and current_status != "TAKEN":
+                if latest and latest["status"] == "CANCELLED":
+                    results.append({**dict(latest), "duplicate": True})
+                    continue
+                raise HTTPException(status_code=409, detail="취소할 복용 기록이 없어요.")
 
-        cursor.execute(
-            """
-            INSERT INTO medication_logs (
-                user_id, schedule_id, user_medicine_id, status
-            ) VALUES (?, ?, ?, 'TAKEN')
-            """,
-            (
-                request.user_id,
-                request.schedule_id,
-                schedule["user_medicine_id"],
-            ),
-        )
-        log_id = cursor.lastrowid
-        cursor.execute(
-            "UPDATE medication_schedules SET status = 'TAKEN' WHERE id = ?",
-            (request.schedule_id,),
-        )
-        log = cursor.execute(
-            "SELECT id, schedule_id, status, taken_at FROM medication_logs WHERE id = ?",
-            (log_id,),
-        ).fetchone()
+            cursor.execute(
+                """
+                INSERT INTO medication_logs (
+                    user_id, schedule_id, user_medicine_id, status
+                ) VALUES (?, ?, ?, ?)
+                """,
+                (user_id, schedule_id, schedule["user_medicine_id"], action),
+            )
+            log_id = cursor.lastrowid
+            cursor.execute(
+                "UPDATE medication_schedules SET status = ? WHERE id = ? AND user_id = ?",
+                ("PENDING" if action == "CANCELLED" else "TAKEN", schedule_id, user_id),
+            )
+            log = cursor.execute(
+                "SELECT id, schedule_id, status, taken_at FROM medication_logs WHERE id = ?",
+                (log_id,),
+            ).fetchone()
+            results.append({**dict(log), "duplicate": False})
         conn.commit()
-        return {**dict(log), "duplicate": False}
+        return results
     except Exception:
         conn.rollback()
         raise
@@ -83,7 +146,7 @@ def mark_missed_medications(request: MarkMissedRequest) -> dict:
         schedules = cursor.execute(
             """
             SELECT ms.id, ms.user_medicine_id, ms.scheduled_date,
-                   ms.scheduled_time, m.product_name
+                   ms.scheduled_time, ms.status, m.product_name
             FROM medication_schedules ms
             JOIN user_medicines um ON um.id = ms.user_medicine_id
             JOIN medicines m ON m.medicine_code = um.medicine_code
@@ -102,27 +165,12 @@ def mark_missed_medications(request: MarkMissedRequest) -> dict:
         skipped_taken = 0
         skipped_duplicate = 0
         for schedule in schedules:
-            taken = cursor.execute(
-                """
-                SELECT 1 FROM medication_logs
-                WHERE user_id = ? AND schedule_id = ? AND status = 'TAKEN'
-                LIMIT 1
-                """,
-                (request.user_id, schedule["id"]),
-            ).fetchone()
-            if taken:
+            current_status = str(schedule["status"] or "PENDING").upper()
+            if current_status == "TAKEN":
                 skipped_taken += 1
                 continue
 
-            existing = cursor.execute(
-                """
-                SELECT id, taken_at FROM medication_logs
-                WHERE user_id = ? AND schedule_id = ? AND status = 'MISSED'
-                ORDER BY id DESC LIMIT 1
-                """,
-                (request.user_id, schedule["id"]),
-            ).fetchone()
-            if existing:
+            if current_status == "MISSED":
                 skipped_duplicate += 1
                 continue
 
@@ -198,6 +246,8 @@ def _store_guardian_missed_notifications(
         """
         SELECT id FROM guardians
         WHERE user_id = ? AND notification_enabled = 1
+          AND guardian_user_id IS NOT NULL AND status = 'ACCEPTED'
+          AND consent_verified_at IS NOT NULL
         """,
         (user_id,),
     ).fetchall()

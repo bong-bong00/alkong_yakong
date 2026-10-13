@@ -34,7 +34,9 @@ class HeartbeatWiringTest(unittest.TestCase):
     def test_baseline_then_average_policy_is_owned_by_sensor(self):
         sensor_source = self.SENSOR.read_text(encoding="utf-8")
         polar_source = self.POLAR.read_text(encoding="utf-8")
-        self.assertIn("bpm == null || bpm <= 0", sensor_source)
+        self.assertIn("if (bpm == null)", sensor_source)
+        self.assertLess(sensor_source.index("if (bpm <= 0) return;"),
+                        sensor_source.index("_datasetCollector.addPolarBpm"))
         self.assertIn("Duration(seconds: 15)", sensor_source)
         self.assertIn("averageValidHeartRates(_baselineSamples)", sensor_source)
         self.assertIn("_polar.startAverageMonitoring()", sensor_source)

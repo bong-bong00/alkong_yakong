@@ -1,4 +1,5 @@
 import '../../../core/network/api_client.dart';
+import '../../../core/session/session_credentials.dart';
 import '../domain/user_profile.dart';
 
 /// 가입 · 로그인 · 내 정보 읽기/고치기 · 탈퇴.
@@ -10,16 +11,22 @@ class UserRepository {
   static String _path(String userId) =>
       '/api/v1/users/${Uri.encodeComponent(userId)}';
 
-  Future<UserProfile> fetch(String userId) async =>
-      _profile(await _api.get(_path(userId)));
+  Future<UserProfile> fetch(String userId) async {
+    final response = await _api.get(_path(userId));
+    final user = _profile(response);
+    await SessionCredentials.updateProfile(
+      Map<String, dynamic>.from(response as Map),
+    );
+    return user;
+  }
 
   Future<UserProfile> signUp(Map<String, dynamic> body) async =>
-      _profile(await _api.post('/api/v1/users', body: body));
+      _authenticatedProfile(await _api.post('/api/v1/users', body: body));
 
   Future<UserProfile> login({
     required String phone,
     required String password,
-  }) async => _profile(
+  }) async => _authenticatedProfile(
     await _api.post(
       '/api/v1/users/login',
       body: {'phone': phone, 'password': password},
@@ -29,9 +36,28 @@ class UserRepository {
   Future<UserProfile> update(
     String userId,
     Map<String, dynamic> changes,
-  ) async => _profile(await _api.patch(_path(userId), body: changes));
+  ) async {
+    final response = await _api.patch(_path(userId), body: changes);
+    final user = _profile(response);
+    await SessionCredentials.updateProfile(
+      Map<String, dynamic>.from(response as Map),
+    );
+    return user;
+  }
 
   Future<void> delete(String userId) => _api.delete(_path(userId));
+
+  static Future<UserProfile> _authenticatedProfile(dynamic response) async {
+    final user = _profile(response);
+    try {
+      await SessionCredentials.install(
+        Map<String, dynamic>.from(response as Map),
+      );
+    } catch (_) {
+      throw const ApiException('로그인 정보를 안전하게 저장하지 못했어요. 다시 로그인해 주세요.');
+    }
+    return user;
+  }
 
   static UserProfile _profile(dynamic response) {
     if (response is Map) {

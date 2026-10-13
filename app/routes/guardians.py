@@ -1,6 +1,7 @@
 import uuid
+from datetime import datetime, timezone
 
-from fastapi import APIRouter, HTTPException, Response
+from fastapi import APIRouter, HTTPException, Query, Response
 
 from app.database import get_connection
 from app.models.schemas import GuardianCreate, GuardianLinkRequest, GuardianStatusUpdate
@@ -10,6 +11,23 @@ from app.services.care_service import get_care_overview
 
 
 router = APIRouter(prefix="/api/v1/guardians", tags=["Guardians"])
+
+
+@router.get("/internal/authorization")
+def authorize_guardian_access(
+    guardian_id: str = Query(...), patient_id: str = Query(...)
+):
+    """Service-token-only consent check; authorization dependency guards it."""
+    conn = get_connection()
+    try:
+        allowed = conn.execute(
+            """SELECT 1 FROM guardians WHERE guardian_user_id = ? AND user_id = ?
+               AND status = 'ACCEPTED' AND consent_verified_at IS NOT NULL""",
+            (guardian_id, patient_id),
+        ).fetchone() is not None
+        return {"allowed": allowed}
+    finally:
+        conn.close()
 
 
 def _load_link(conn, guardian_id: str):
@@ -31,14 +49,15 @@ def create_guardian(guardian: GuardianCreate):
         account = find_account_by_phone(
             conn, guardian.phone, exclude_id=guardian.user_id
         )
+        account_id = account["id"] if account else None
         guardian_id = str(uuid.uuid4())
         conn.execute(
             """
             INSERT INTO guardians (
                 id, user_id, guardian_name, relationship, phone,
                 fcm_token, notification_enabled, guardian_user_id,
-                status, requested_by
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'ACCEPTED', 'PATIENT')
+                status, requested_by, consent_verified_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'PATIENT', ?)
             """,
             (
                 guardian_id,
@@ -48,7 +67,9 @@ def create_guardian(guardian: GuardianCreate):
                 guardian.phone,
                 guardian.fcm_token,
                 int(guardian.notification_enabled),
-                account["id"] if account else None,
+                account_id,
+                "ACCEPTED" if account_id else "PENDING",
+                datetime.now(timezone.utc).isoformat() if account_id else None,
             ),
         )
         conn.commit()
@@ -92,6 +113,55 @@ def request_link(request: GuardianLinkRequest):
         for row in conn.execute(
             "SELECT * FROM guardians WHERE user_id = ?", (patient["id"],)
         ):
+            phone_only_invite = (
+                row["guardian_user_id"] is None
+                and digits
+                and phone_digits(row["phone"]) == digits
+            )
+            if phone_only_invite:
+                # A phone-only contact is not an accepted account link. Turn
+                # it into a request and require the patient to accept again.
+                relation = (request.patient_relation or "").strip() or None
+                conn.execute(
+                    """
+                    UPDATE guardians
+                    SET guardian_user_id = ?, guardian_name = ?, phone = ?,
+                        patient_relation = ?, status = 'PENDING',
+                        requested_by = 'GUARDIAN'
+                    WHERE id = ? AND guardian_user_id IS NULL
+                    """,
+                    (
+                        guardian["id"], guardian["name"], guardian["phone"],
+                        relation, row["id"],
+                    ),
+                )
+                conn.commit()
+                return {
+                    "id": row["id"],
+                    "patient_name": patient["name"],
+                    "patient_phone": patient["phone"],
+                    "patient_relation": relation,
+                    "status": "PENDING",
+                }
+            if row["guardian_user_id"] == guardian["id"] and not row[
+                "consent_verified_at"
+            ]:
+                conn.execute(
+                    """
+                    UPDATE guardians SET status = 'PENDING',
+                        requested_by = 'GUARDIAN'
+                    WHERE id = ?
+                    """,
+                    (row["id"],),
+                )
+                conn.commit()
+                return {
+                    "id": row["id"],
+                    "patient_name": patient["name"],
+                    "patient_phone": patient["phone"],
+                    "patient_relation": row["patient_relation"],
+                    "status": "PENDING",
+                }
             same_guardian = row["guardian_user_id"] == guardian["id"] or (
                 digits and phone_digits(row["phone"]) == digits
             )
@@ -141,7 +211,12 @@ def update_link_status(guardian_id: str, update: GuardianStatusUpdate):
     try:
         _load_link(conn, guardian_id)
         conn.execute(
-            "UPDATE guardians SET status = 'ACCEPTED' WHERE id = ?", (guardian_id,)
+            """
+            UPDATE guardians SET status = 'ACCEPTED',
+                consent_verified_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+            """,
+            (guardian_id,),
         )
         conn.commit()
         return dict(_load_link(conn, guardian_id))

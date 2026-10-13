@@ -1,7 +1,10 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
+import '../../../../core/widgets/senior_feedback.dart';
 import '../../../../core/widgets/senior_button.dart';
 import '../../domain/medication_models.dart';
 
@@ -132,7 +135,7 @@ class _RecordProof extends StatelessWidget {
 Future<void> showDuplicateDoseSheet({
   required BuildContext context,
   required DoseEntry dose,
-  required VoidCallback onUndo,
+  required FutureOr<void> Function() onUndo,
 }) {
   final takenAt = dose.takenAt ?? DateTime.now();
   return _showGuardSheet<void>(
@@ -174,9 +177,19 @@ Future<void> showDuplicateDoseSheet({
           kind: SeniorButtonKind.secondary,
           minHeight: 62,
           fontSize: 19,
-          onPressed: () {
-            Navigator.of(context).pop();
-            onUndo();
+          onPressed: () async {
+            try {
+              await onUndo();
+              if (context.mounted) Navigator.of(context).pop();
+            } catch (_) {
+              if (context.mounted) {
+                showSeniorSnackbar(
+                  context,
+                  '취소하지 못했어요. 다시 시도해 주세요.',
+                  error: true,
+                );
+              }
+            }
           },
         ),
       ],

@@ -42,8 +42,34 @@ class GuardianHomeScreen extends ConsumerStatefulWidget {
   ConsumerState<GuardianHomeScreen> createState() => _GuardianHomeScreenState();
 }
 
-class _GuardianHomeScreenState extends ConsumerState<GuardianHomeScreen> {
+class _GuardianHomeScreenState extends ConsumerState<GuardianHomeScreen>
+    with WidgetsBindingObserver {
   int _index = 0;
+  Timer? _overviewRefreshTimer;
+  bool _appResumed = true;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _overviewRefreshTimer = Timer.periodic(const Duration(seconds: 30), (_) {
+      if (!mounted || !_appResumed || _index != 0) return;
+      if (ModalRoute.of(context)?.isCurrent != true) return;
+      ref.invalidate(careOverviewProvider);
+    });
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    _appResumed = state == AppLifecycleState.resumed;
+  }
+
+  @override
+  void dispose() {
+    _overviewRefreshTimer?.cancel();
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
 
   /// 부탁 팝업을 이번에 켠 동안 한 번만 본다.
   bool _askedAboutHelp = false;
