@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:permission_handler/permission_handler.dart';
 
 import '../../../core/network/api_client.dart';
+import '../../../core/network/client_request_id.dart';
 import '../../../core/session/mvp_session.dart';
 import '../data/biosignal_dataset_collector.dart';
 import '../data/polar_service.dart';
@@ -390,6 +391,7 @@ class HeartSensor extends ChangeNotifier {
   Future<void> _sendAverageBpm(double average) async {
     final session = _session;
     final measurementContext = _measurementContext;
+    final clientRequestId = ClientRequestId.create();
     _saveStatus = HeartSaveStatus.saving;
     notifyListeners();
     final userId = MvpSession.userId.trim();
@@ -407,6 +409,7 @@ class HeartSensor extends ChangeNotifier {
           'device_id': _deviceId ?? PolarService.defaultDeviceId,
           'source': 'POLAR_30S_AVERAGE',
           'measurement_context': measurementContext.value,
+          'client_request_id': clientRequestId,
         },
       );
       if (_disposed || session != _session) return;

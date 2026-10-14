@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:convert';
 import 'package:alkong_yakong/core/constants/app_colors.dart';
 import 'package:alkong_yakong/core/theme/app_theme.dart';
 import 'package:alkong_yakong/features/auth/presentation/screens/login_screen.dart';
@@ -27,7 +28,6 @@ import 'package:flutter_tabler_icons/flutter_tabler_icons.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:alkong_yakong/core/widgets/senior_card.dart';
-import 'package:alkong_yakong/features/dashboard/presentation/screens/home_screen.dart';
 import 'package:alkong_yakong/features/easy_flow/domain/easy_flow.dart';
 import 'package:alkong_yakong/features/easy_flow/presentation/easy_flow_shell.dart';
 import 'package:alkong_yakong/core/widgets/senior_bottom_nav.dart';
@@ -931,8 +931,20 @@ class _SeniorTestMedicationController extends MedicationController {
     : super(
         apiClient: ApiClient(
           client: MockClient(
-            (_) async => http.Response(
-              '{}',
+            (request) async => http.Response(
+              jsonEncode({
+                'results': [
+                  for (final id
+                      in (jsonDecode(request.body) as Map)['schedule_ids']
+                          as List)
+                    {
+                      'schedule_id': id,
+                      'status': request.url.path.endsWith('/cancel')
+                          ? 'CANCELLED'
+                          : 'TAKEN',
+                    },
+                ],
+              }),
               200,
               headers: {'content-type': 'application/json'},
             ),

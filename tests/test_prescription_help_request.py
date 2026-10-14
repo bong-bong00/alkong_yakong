@@ -62,8 +62,9 @@ def test_help_request_reaches_every_linked_guardian(monkeypatch):
     conn = _conn()
     conn.execute(
         """
-        INSERT INTO guardians (id, user_id, guardian_name, relationship, status)
-        VALUES ('g1', 'u1', '김지안', '딸', 'ACCEPTED')
+        INSERT INTO guardians (id, user_id, guardian_name, relationship, status,
+                               guardian_user_id, consent_verified_at)
+        VALUES ('g1', 'u1', '김지안', '딸', 'ACCEPTED', 'guardian-account', CURRENT_TIMESTAMP)
         """
     )
     conn.execute(

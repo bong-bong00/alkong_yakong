@@ -270,22 +270,57 @@ class MedicationController extends Notifier<TodayMedication> {
     if (userId.isEmpty) {
       throw const ApiException('복약 완료를 저장할 사용자 정보가 없습니다.');
     }
-    var posted = false;
-    for (final med in dose.medicines) {
-      final scheduleId = med.scheduleId;
-      if (scheduleId == null || scheduleId <= 0) continue;
-      await _api.post(
-        '/api/v1/medication-logs',
-        body: {'user_id': userId, 'schedule_id': scheduleId},
-      );
-      posted = true;
-    }
-    if (!posted) {
+    final scheduleIds = _scheduleIds(dose);
+    if (scheduleIds.isEmpty) {
       throw const ApiException('복약 일정 정보를 확인할 수 없습니다.');
+    }
+    final response = await _api.post(
+      '/api/v1/medication-logs/batch',
+      body: {'user_id': userId, 'schedule_ids': scheduleIds},
+    );
+    _verifyBatch(response, scheduleIds, 'TAKEN');
+  }
+
+  List<int> _scheduleIds(DoseEntry dose) {
+    if (dose.medicines.isEmpty ||
+        dose.medicines.any(
+          (med) => med.scheduleId == null || med.scheduleId! <= 0,
+        )) {
+      throw const ApiException('모든 약의 복약 일정 정보를 확인하지 못했어요.');
+    }
+    final ids = {for (final med in dose.medicines) med.scheduleId!}.toList();
+    if (ids.length != dose.medicines.length) {
+      throw const ApiException('복약 일정이 중복되어 저장하지 않았어요.');
+    }
+    return ids;
+  }
+
+  void _verifyBatch(dynamic response, List<int> ids, String status) {
+    if (response is! Map || response['results'] is! List) {
+      throw const ApiException('복약 저장 결과를 확인하지 못했어요.');
+    }
+    final rows = response['results'] as List;
+    final returnedIds = {
+      for (final row in rows)
+        if (row is Map && row['status'] == status) row['schedule_id'] as int?,
+    };
+    if (rows.length != ids.length || !ids.every(returnedIds.contains)) {
+      throw const ApiException('복약 저장 결과가 일정과 일치하지 않아요.');
     }
   }
 
-  void undo(DoseSlot slot) {
+  Future<void> undo(DoseSlot slot) async {
+    final dose = state.doseOf(slot);
+    final userId = MvpSession.userId.trim();
+    final scheduleIds = _scheduleIds(dose);
+    if (userId.isEmpty || scheduleIds.isEmpty) {
+      throw const ApiException('취소할 복약 일정을 확인할 수 없어요.');
+    }
+    final response = await _api.post(
+      '/api/v1/medication-logs/batch/cancel',
+      body: {'user_id': userId, 'schedule_ids': scheduleIds},
+    );
+    _verifyBatch(response, scheduleIds, 'CANCELLED');
     if (slot == DoseSlot.lunch &&
         appliesPresentationMedication(MvpSession.userId, _now())) {
       _presentationLunchTaken = false;

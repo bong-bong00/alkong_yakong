@@ -4,9 +4,9 @@ import 'package:flutter/foundation.dart';
 import '../network/api_client.dart';
 import '../network/api_config.dart';
 import 'mvp_session.dart';
+import 'session_credentials.dart';
 
-/// 로그인 유지용 간단 세션.
-/// 앱을 껐다 켜도 로그인 상태가 유지되도록 SharedPreferences에 저장한다.
+/// Preferences hold display metadata only; protected credentials prove login.
 class AuthSession {
   static bool isLoggedIn = false;
   static String role = 'patient'; // patient | guardian
@@ -14,15 +14,35 @@ class AuthSession {
 
   static Future<void> load() async {
     _prefs = await SharedPreferences.getInstance();
-    isLoggedIn = _prefs?.getBool('isLoggedIn') ?? false;
-    role = _prefs?.getString('role') ?? 'patient';
-    final savedUserId = _prefs?.getString('userId');
-    if (savedUserId != null && savedUserId.isNotEmpty) {
-      MvpSession.userId = savedUserId;
-    }
+    SessionCredentials.onCleared = _invalidate;
+    final savedFlag = _prefs?.getBool('isLoggedIn') ?? false;
+    final valid = await SessionCredentials.load();
+    isLoggedIn = savedFlag && valid;
+    role = isLoggedIn ? SessionCredentials.role! : 'patient';
+    MvpSession.userId = isLoggedIn ? SessionCredentials.userId! : '';
+    if (!isLoggedIn) await SessionCredentials.clear();
+  }
+
+  static Future<void> _invalidate() async {
+    isLoggedIn = false;
+    role = 'patient';
+    MvpSession.userId = '';
+    MvpSession.userName = '';
+    MvpSession.isPregnant = null;
+    MvpSession.medicineCode = '';
+    MvpSession.latestOcrItems = <Map<String, dynamic>>[];
+    MvpSession.latestOcrRegisteredAt = null;
+    MvpSession.latestPrescriptionId = null;
+    MvpSession.latestScheduleDates = <String>{};
+    _prefs ??= await SharedPreferences.getInstance();
+    await _prefs?.setBool('isLoggedIn', false);
+    await _prefs?.remove('userId');
+    await _prefs?.remove('role');
+    SessionCredentials.changes.value++;
   }
 
   static Future<void> setLoggedIn(String r) async {
+    SessionCredentials.onCleared = _invalidate;
     // 보기용 약(코다론정)을 로그인할 때마다 심지 않는다. 처방전을 넣은
     // 적 없는 분의 "내 약"에 모르는 약이 들어가 있으면, 그 약을 드셔야
     // 하는 줄 아신다. 심는 길은 아래에 남겨 두되 스스로 돌지 않는다.
@@ -34,6 +54,7 @@ class AuthSession {
     if (MvpSession.userId.isNotEmpty) {
       await _prefs?.setString('userId', MvpSession.userId);
     }
+    SessionCredentials.changes.value++;
   }
 
   /// 보기용 약 한 가지(코다론정)를 서버에 심는다.
@@ -99,12 +120,7 @@ class AuthSession {
     // 나가셨으면 다음에 켤 때 로그인 화면이 떠야 한다. 개발 빌드가
     // 체험 계정으로 다시 들어가 버리면 나간 것이 아니다.
     await _prefs?.setBool(_devAutoLoginBlockedKey, true);
-    isLoggedIn = false;
-    role = 'patient';
-    await _prefs?.setBool('isLoggedIn', false);
-    await _prefs?.remove('userId');
-    await _prefs?.remove('role');
-    MvpSession.userId = '';
-    MvpSession.isPregnant = null;
+    await SessionCredentials.clear();
+    await _invalidate();
   }
 }

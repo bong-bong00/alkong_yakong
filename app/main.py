@@ -1,7 +1,7 @@
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import (
@@ -13,7 +13,9 @@ from app.core.config import (
     DEMO_SEED_ENABLED,
 )
 from app.database import DB_PATH
+from app.core.auth import auth_enforced, require_authorized_request, validate_auth_configuration
 from app.routes import (
+    auth,
     biosignal,
     biosignal_test,
     dashboard,
@@ -34,7 +36,8 @@ from app.services.dur_sync_service import start_background_dur_sync
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    initialize_database()
+    validate_auth_configuration()
+    initialize_database(preserve_records=auth_enforced())
     initialize_easy_category_map_db()
     if DEMO_SEED_ENABLED:
         ensure_mvp_demo_medicines()
@@ -58,6 +61,7 @@ app.add_middleware(
 )
 
 for router in (
+    auth.router,
     users.router,
     guardians.router,
     prescription.router,
@@ -69,7 +73,7 @@ for router in (
     notifications.router,
     dashboard.router,
 ):
-    app.include_router(router)
+    app.include_router(router, dependencies=[Depends(require_authorized_request)])
 
 
 @app.get("/")

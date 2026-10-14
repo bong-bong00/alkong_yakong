@@ -110,6 +110,7 @@ def request_prescription_help(user_id: str) -> dict:
             SELECT id, guardian_name, relationship
             FROM guardians
             WHERE user_id = ? AND UPPER(status) = 'ACCEPTED'
+              AND guardian_user_id IS NOT NULL AND consent_verified_at IS NOT NULL
             ORDER BY created_at
             """,
             (user_id,),
@@ -166,7 +167,7 @@ def request_prescription_help(user_id: str) -> dict:
         conn.close()
 
 
-def get_user_notifications(user_id: str) -> list[dict]:
+def get_user_notifications(user_id: str, *, viewer_id: str | None = None) -> list[dict]:
     conn = get_connection()
     try:
         if not conn.execute(
@@ -174,15 +175,23 @@ def get_user_notifications(user_id: str) -> list[dict]:
             (user_id,),
         ).fetchone():
             raise HTTPException(status_code=404, detail="사용자가 없습니다.")
+        viewer = viewer_id or user_id
         rows = conn.execute(
             """
             SELECT n.*, g.guardian_name, g.relationship
             FROM notifications n
             LEFT JOIN guardians g ON g.id = n.guardian_id
-            WHERE n.user_id = ?
+            WHERE (n.user_id = ? AND (
+                     ? = ? OR n.guardian_id IS NULL OR (
+                       g.guardian_user_id = ? AND g.status = 'ACCEPTED'
+                       AND g.consent_verified_at IS NOT NULL
+                     )
+                   ))
+               OR (? = ? AND g.guardian_user_id = ? AND g.status = 'ACCEPTED'
+                   AND g.consent_verified_at IS NOT NULL)
             ORDER BY n.created_at DESC, n.id DESC
             """,
-            (user_id,),
+            (user_id, viewer, user_id, viewer, viewer, user_id, viewer),
         ).fetchall()
         return [dict(row) for row in rows]
     finally:

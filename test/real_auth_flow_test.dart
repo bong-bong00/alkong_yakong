@@ -17,16 +17,20 @@ import 'package:go_router/go_router.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'support/authenticated_session.dart';
 
 void main() {
   setUp(() async {
     SharedPreferences.setMockInitialValues({});
+    FlutterSecureStorage.setMockInitialValues({});
     await AuthSession.load();
     AuthSession.isLoggedIn = false;
     AuthSession.role = 'patient';
     MvpSession.userId = '';
     MvpSession.isPregnant = null;
   });
+  tearDown(() async => AuthSession.logout());
 
   testWidgets('unauthenticated users cannot navigate to protected screens', (
     tester,
@@ -65,6 +69,7 @@ void main() {
             });
             return http.Response(
               jsonEncode({
+                ...loginResponse('server-guardian-uuid', role: 'guardian'),
                 'id': 'server-guardian-uuid',
                 'name': '검증용 사용자',
                 'role': 'guardian',
@@ -109,6 +114,7 @@ void main() {
   test(
     'app restart restores only a matching server UUID and server role',
     () async {
+      await authenticatedSession('saved-user-uuid', role: 'guardian');
       SharedPreferences.setMockInitialValues({
         'isLoggedIn': true,
         'userId': 'saved-user-uuid',
@@ -147,6 +153,7 @@ void main() {
   );
 
   test('서버가 급히 만든 "사용자" 껍데기로는 들어가지 않는다', () async {
+    await authenticatedSession('saved-user-uuid');
     SharedPreferences.setMockInitialValues({
       'isLoggedIn': true,
       'userId': 'saved-user-uuid',
@@ -178,6 +185,7 @@ void main() {
   test(
     'app restart rejects a mismatched or unavailable server identity',
     () async {
+      await authenticatedSession('saved-user-uuid', role: 'guardian');
       SharedPreferences.setMockInitialValues({
         'isLoggedIn': true,
         'userId': 'saved-user-uuid',
@@ -238,6 +246,7 @@ void main() {
     final container = ProviderScope.containerOf(
       tester.element(find.byType(Consumer)),
     );
+    await tester.runAsync(() => authenticatedSession('server-patient-uuid'));
     await startSession(
       actionRef,
       const UserProfile(
@@ -252,6 +261,9 @@ void main() {
     expect(MvpSession.isPregnant, isTrue);
     expect(container.read(userRoleProvider), UserRole.patient);
 
+    await tester.runAsync(
+      () => authenticatedSession('server-guardian-uuid', role: 'guardian'),
+    );
     await startSession(
       actionRef,
       const UserProfile(
@@ -267,7 +279,7 @@ void main() {
     final prefs = await SharedPreferences.getInstance();
     expect(prefs.getString('userId'), 'server-guardian-uuid');
 
-    await endSession(actionRef);
+    await tester.runAsync(() => endSession(actionRef));
     expect(AuthSession.isLoggedIn, isFalse);
     expect(MvpSession.userId, isEmpty);
     expect(prefs.getString('userId'), isNull);

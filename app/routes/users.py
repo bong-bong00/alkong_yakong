@@ -10,6 +10,7 @@ from fastapi import APIRouter, Header, HTTPException, Query, Response
 
 import app.database as database
 from app.database import get_connection
+from app.core.auth import auth_enforced, issue_token
 from app.models.schemas import UserCreate, UserLogin, UserUpdate
 from app.models.response_schemas import UserCreateResponse, UserResponse
 from app.services.account_lookup import find_account_by_phone, phone_digits
@@ -141,6 +142,10 @@ def create_user(user: UserCreate):
     if not user.name.strip():
         raise HTTPException(status_code=400, detail="이름을 입력해주세요.")
     password = user.password or ""
+    if auth_enforced() and not password:
+        raise HTTPException(status_code=400, detail="비밀번호를 입력해주세요.")
+    if auth_enforced() and user.role.lower() not in {"patient", "guardian"}:
+        raise HTTPException(status_code=400, detail="가입 역할이 올바르지 않아요.")
     if password and len(password) < _MIN_PASSWORD_LENGTH:
         raise HTTPException(status_code=400, detail="비밀번호는 6자 이상이어야 해요.")
     _validate_history_lists(user.model_dump())
@@ -169,7 +174,11 @@ def create_user(user: UserCreate):
             tuple(values.values()),
         )
         conn.commit()
-        return _user_payload(_load_user(conn, values["id"]))
+        result = _user_payload(_load_user(conn, values["id"]))
+        if auth_enforced():
+            token, lifetime = issue_token(values["id"], role=user.role)
+            result.update(access_token=token, token_type="bearer", expires_in=lifetime)
+        return result
     finally:
         conn.close()
 
@@ -215,7 +224,11 @@ def login(credentials: UserLogin):
             raise HTTPException(
                 status_code=401, detail="휴대폰 번호나 비밀번호가 맞지 않아요."
             )
-        return _user_payload(row)
+        result = _user_payload(row)
+        if auth_enforced():
+            token, lifetime = issue_token(row["id"], role=row["role"])
+            result.update(access_token=token, token_type="bearer", expires_in=lifetime)
+        return result
     finally:
         conn.close()
 

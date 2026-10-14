@@ -10,28 +10,61 @@ def save_heart_rate(request: HeartRateCreate) -> dict:
     conn = get_connection()
     try:
         cursor = conn.cursor()
+        cursor.execute("BEGIN IMMEDIATE")
         if not cursor.execute(
             "SELECT 1 FROM users WHERE id = ?", (request.user_id,)
         ).fetchone():
             raise HTTPException(status_code=404, detail="사용자가 없습니다.")
 
-        measured_at = request.measured_at or datetime.now().isoformat(timespec="seconds")
-        cursor.execute(
-            """
-            INSERT INTO heart_rate_logs (
-                user_id, bpm, measured_at, device_id, source, measurement_context
-            ) VALUES (?, ?, ?, ?, ?, ?)
-            """,
-            (
-                request.user_id,
-                request.bpm,
-                measured_at,
-                request.device_id,
-                request.source,
-                request.measurement_context,
-            ),
-        )
-        log_id = cursor.lastrowid
+        request_id = (request.client_request_id or "").strip() or None
+        existing = None
+        if request_id:
+            existing = cursor.execute(
+                """
+                SELECT id, bpm, measured_at, device_id, source, measurement_context
+                FROM heart_rate_logs
+                WHERE user_id = ? AND client_request_id = ?
+                """,
+                (request.user_id, request_id),
+            ).fetchone()
+        if existing:
+            same_measurement = (
+                existing["bpm"] == request.bpm
+                and existing["device_id"] == request.device_id
+                and existing["source"] == request.source
+                and existing["measurement_context"] == request.measurement_context
+                and (
+                    request.measured_at is None
+                    or existing["measured_at"] == request.measured_at
+                )
+            )
+            if not same_measurement:
+                raise HTTPException(
+                    status_code=409,
+                    detail="같은 측정 요청 ID에 다른 심박 정보가 들어왔어요.",
+                )
+            log_id = existing["id"]
+            measured_at = existing["measured_at"]
+        else:
+            measured_at = request.measured_at or datetime.now().isoformat(timespec="seconds")
+            cursor.execute(
+                """
+                INSERT INTO heart_rate_logs (
+                    user_id, bpm, measured_at, device_id, source,
+                    measurement_context, client_request_id
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    request.user_id,
+                    request.bpm,
+                    measured_at,
+                    request.device_id,
+                    request.source,
+                    request.measurement_context,
+                    request_id,
+                ),
+            )
+            log_id = cursor.lastrowid
         baseline = cursor.execute(
             "SELECT * FROM baseline_heart_rate WHERE user_id = ?",
             (request.user_id,),
@@ -197,9 +230,11 @@ def get_heart_summary(
         takes: list[datetime] = []
         for row in cursor.execute(
             """
-            SELECT taken_at FROM medication_logs
-            WHERE user_id = ? AND taken_at >= ? AND status = 'TAKEN'
-            ORDER BY taken_at
+            SELECT ml.taken_at FROM medication_logs ml
+            JOIN medication_schedules ms ON ms.id = ml.schedule_id
+            WHERE ml.user_id = ? AND ml.taken_at >= ?
+              AND ml.status = 'TAKEN' AND ms.status = 'TAKEN'
+            ORDER BY ml.taken_at
             """,
             (user_id, since),
         ).fetchall():

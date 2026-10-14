@@ -6,7 +6,6 @@ import 'package:alkong_yakong/features/dashboard/presentation/screens/patient_ho
 import 'package:alkong_yakong/features/medication/domain/medication_models.dart';
 import 'package:alkong_yakong/features/biosignal/application/heart_device.dart';
 import 'package:alkong_yakong/features/biosignal/data/heart_repository.dart';
-import 'package:alkong_yakong/features/biosignal/domain/heart_data.dart';
 import 'package:alkong_yakong/features/biosignal/presentation/screens/heart_screen.dart';
 import 'package:alkong_yakong/features/biosignal/presentation/screens/measure_screen.dart';
 import 'package:alkong_yakong/features/biosignal/presentation/screens/polar_screen.dart';

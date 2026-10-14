@@ -39,7 +39,7 @@ def _overview(client, guardian_id):
     return response.json()
 
 
-def test_patient_invite_links_guardian_who_signs_up_later(client):
+def test_phone_only_invite_requires_patient_reacceptance(client):
     patient = _signup(client, "김복자", "010-1111-2222", "patient")
     invited = client.post(
         "/api/v1/guardians",
@@ -51,11 +51,29 @@ def test_patient_invite_links_guardian_who_signs_up_later(client):
         },
     )
     assert invited.status_code == 200
-    assert invited.json()["status"] == "ACCEPTED"
+    assert invited.json()["status"] == "PENDING"
 
     guardian = _signup(client, "김지안", "01033334444", "guardian")
     overview = _overview(client, guardian["id"])
     assert overview["pending"] == []
+    assert overview["patients"] == []
+
+    requested = client.post(
+        "/api/v1/guardians/link-requests",
+        json={
+            "guardian_user_id": guardian["id"],
+            "patient_phone": "01011112222",
+            "patient_relation": "어머니",
+        },
+    )
+    assert requested.status_code == 200
+    assert requested.json()["id"] == invited.json()["id"]
+    assert _overview(client, guardian["id"])["patients"] == []
+    assert client.patch(
+        f"/api/v1/guardians/{requested.json()['id']}",
+        json={"status": "ACCEPTED"},
+    ).status_code == 200
+    overview = _overview(client, guardian["id"])
     [summary] = overview["patients"]
     assert summary["name"] == "김복자"
     assert summary["patient_id"] == patient["id"]

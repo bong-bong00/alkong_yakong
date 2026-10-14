@@ -252,10 +252,18 @@ class _EasyDoseFlowState extends ConsumerState<EasyDoseFlow> {
     return latest?.slot;
   }
 
-  void _undoRecord() {
+  Future<void> _undoRecord() async {
     final slot = _undoableSlot;
     if (slot == null) return;
-    ref.read(medicationProvider.notifier).undo(slot);
+    try {
+      await ref.read(medicationProvider.notifier).undo(slot);
+    } catch (_) {
+      if (mounted) {
+        setState(() => _recordError = '취소하지 못했어요. 인터넷 연결을 확인해 주세요.');
+      }
+      return;
+    }
+    if (!mounted) return;
     setState(() {
       _recordedSlot = null;
       _after = null;

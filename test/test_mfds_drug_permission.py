@@ -1,3 +1,7 @@
+import os
+
+import pytest
+
 import app.services.mfds_drug_permission.db as permission_db
 
 from app.services.mfds_drug_permission.db import (
@@ -102,11 +106,19 @@ def test_xml_strips_html_tags():
     assert "&lt;" not in text
 
 
+@pytest.mark.skipif(
+    os.getenv("RUN_MFDS_DATASET_TESTS") != "1",
+    reason="Full official MFDS dataset not enabled",
+)
 def test_permission_db_has_full_list():
     stats = count_stats()
     assert stats["total"] >= 40000
 
 
+@pytest.mark.skipif(
+    os.getenv("RUN_MFDS_DATASET_TESTS") != "1",
+    reason="Full official MFDS dataset not enabled",
+)
 def test_permission_db_finds_primalan():
     names = search_permission_names("프리마란", limit=5)
     assert any("프리마란" in name for name in names)
