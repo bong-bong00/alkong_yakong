@@ -177,6 +177,11 @@ class MedicationLogCreate(BaseModel):
     schedule_id: int = Field(gt=0)
 
 
+class MedicationBatchRequest(BaseModel):
+    user_id: str
+    schedule_ids: List[int] = Field(min_length=1, max_length=30)
+
+
 class MedicationReminderRequest(BaseModel):
     user_id: str
     target_date: Optional[str] = None
@@ -192,6 +197,7 @@ class HeartRateCreate(BaseModel):
     user_id: str
     client_request_id: Optional[str] = Field(default=None, max_length=100)
     bpm: int = Field(gt=0)
+    client_request_id: Optional[str] = Field(default=None, min_length=1, max_length=100)
     measured_at: Optional[str] = None
     device_id: Optional[str] = None
     source: str = "POLAR"

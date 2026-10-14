@@ -10,12 +10,12 @@ from fastapi import APIRouter, Header, HTTPException, Query, Response
 
 import app.database as database
 from app.database import get_connection
+from app.core.auth import auth_enforced, issue_token
 from app.models.schemas import UserCreate, UserLogin, UserUpdate
 from app.models.response_schemas import UserCreateResponse, UserResponse
 from app.services.account_lookup import find_account_by_phone, phone_digits
 from app.services.medication_history_service import get_medication_history
 from app.services.user_medicines_service import get_user_medicine, get_user_medicines
-from app.core.auth import issue_token, enforced, _secret
 
 
 router = APIRouter(prefix="/api/v1/users", tags=["Users"])
@@ -139,15 +139,13 @@ def _validate_history_lists(values: dict) -> None:
 
 @router.post("", response_model=UserCreateResponse)
 def create_user(user: UserCreate):
-    if enforced():
-        _secret()
-        if not user.password or len(user.password) < _MIN_PASSWORD_LENGTH or not phone_digits(user.phone):
-            raise HTTPException(400, "휴대폰 번호와 6자 이상의 비밀번호가 필요해요.")
-    if user.role.upper() not in {"PATIENT", "GUARDIAN"}:
-        raise HTTPException(422, "사용자 역할이 올바르지 않아요.")
     if not user.name.strip():
         raise HTTPException(status_code=400, detail="이름을 입력해주세요.")
     password = user.password or ""
+    if auth_enforced() and not password:
+        raise HTTPException(status_code=400, detail="비밀번호를 입력해주세요.")
+    if auth_enforced() and user.role.lower() not in {"patient", "guardian"}:
+        raise HTTPException(status_code=400, detail="가입 역할이 올바르지 않아요.")
     if password and len(password) < _MIN_PASSWORD_LENGTH:
         raise HTTPException(status_code=400, detail="비밀번호는 6자 이상이어야 해요.")
     _validate_history_lists(user.model_dump())
@@ -177,8 +175,9 @@ def create_user(user: UserCreate):
         )
         conn.commit()
         result = _user_payload(_load_user(conn, values["id"]))
-        if user.password:
-            result["access_token"] = issue_token(result["id"], result["role"])
+        if auth_enforced():
+            token, lifetime = issue_token(values["id"], role=user.role)
+            result.update(access_token=token, token_type="bearer", expires_in=lifetime)
         return result
     finally:
         conn.close()
@@ -226,7 +225,9 @@ def login(credentials: UserLogin):
                 status_code=401, detail="휴대폰 번호나 비밀번호가 맞지 않아요."
             )
         result = _user_payload(row)
-        result["access_token"] = issue_token(result["id"], result["role"])
+        if auth_enforced():
+            token, lifetime = issue_token(row["id"], role=row["role"])
+            result.update(access_token=token, token_type="bearer", expires_in=lifetime)
         return result
     finally:
         conn.close()
@@ -354,21 +355,22 @@ def delete_user(user_id: str):
     conn = get_connection()
     try:
         _load_user(conn, user_id)
-        from app.core.config import MEDICATION_FEATURE_BASE_URL, APP_ENV
-        if os.getenv("SERVICE_ROLE", "main") == "main":
-            if MEDICATION_FEATURE_BASE_URL:
+        try:
+            from app.core.auth import service_role, service_headers
+            from app.core.config import MEDICATION_FEATURE_BASE_URL
+            if service_role() == "main" and auth_enforced():
+                if not MEDICATION_FEATURE_BASE_URL:
+                    raise HTTPException(503, "약 기록 서버 연결 설정이 필요해요.")
                 import requests
                 from urllib.parse import quote
-                from app.core.auth import service_headers
                 try:
-                    response = requests.delete(MEDICATION_FEATURE_BASE_URL + "/api/v1/internal/users/" + quote(user_id, safe=""),
-                                               headers=service_headers(user_id), timeout=15)
-                    response.raise_for_status()
+                    remote = requests.delete(
+                        MEDICATION_FEATURE_BASE_URL + "/api/v1/internal/users/" + quote(user_id, safe=""),
+                        headers=service_headers(user_id, "account_purge"), timeout=15,
+                    )
+                    remote.raise_for_status()
                 except requests.RequestException:
-                    raise HTTPException(503, "약 기록 서버의 탈퇴 처리를 확인하지 못했어요. 계정은 유지됩니다. 다시 시도해 주세요.")
-            elif APP_ENV == "production":
-                raise HTTPException(503, "약 기록 서버 연결 설정이 필요해요.")
-        try:
+                    raise HTTPException(503, "약 기록 서버의 탈퇴 처리를 확인하지 못했어요. 계정은 유지됩니다. 다시 시도해 주세요.") from None
             # 이 사람이 보호자로서 보낸 대기 요청은 지우고, 수락된 연결은
             # 계정 연결만 끊는다. 어르신 쪽 연락처 기록은 어르신 것이다.
             conn.execute(

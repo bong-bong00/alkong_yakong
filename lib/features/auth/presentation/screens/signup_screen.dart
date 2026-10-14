@@ -7,7 +7,7 @@ import '../../domain/exclusive_choice.dart';
 import 'login_screen.dart' show PhoneNumberFormatter;
 import '../../../../core/network/api_client.dart';
 import '../../../../core/providers/user_role.dart';
-import '../../../../core/session/auth_session.dart';
+import '../../../profile/data/user_repository.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../core/widgets/senior_button.dart';
 import '../../../../core/widgets/senior_feedback.dart';
@@ -326,19 +326,10 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
     try {
       final body = _signupBody();
 
-      final response = await _apiClient.post('/api/v1/users', body: body);
+      final user = await UserRepository(apiClient: _apiClient).signUp(body);
       debugPrint('[SIGNUP_DIAG] team_create_ms=${timer.elapsedMilliseconds}');
       timer.reset();
-      final userId = response is Map<String, dynamic>
-          ? response['id']?.toString()
-          : null;
-      if (userId == null || userId.isEmpty) {
-        throw const ApiException('회원가입 응답에 사용자 ID가 없습니다.');
-      }
-
-      await AuthSession.persistUserId(userId);
-      // 가입한 역할대로 로그인 상태를 만든다. 보호자로 가입하면 보호자 화면이 열린다.
-      await AuthSession.setLoggedIn(_role);
+      await startSession(ref, user);
       debugPrint('[SIGNUP_DIAG] save_session_ms=${timer.elapsedMilliseconds}');
       if (mounted) {
         ref.read(userRoleProvider.notifier).state = _role == 'guardian'

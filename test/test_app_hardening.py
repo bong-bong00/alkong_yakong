@@ -22,7 +22,7 @@ def db(tmp_path, monkeypatch):
         conn.execute(definition)
     for uid, role in [('p', 'PATIENT'), ('other', 'PATIENT'), ('g', 'GUARDIAN'), ('pending', 'GUARDIAN')]:
         conn.execute('INSERT INTO users(id,name,role,phone) VALUES(?,?,?,?)', (uid, uid, role, uid))
-    conn.execute("INSERT INTO guardians(id,user_id,guardian_name,guardian_user_id,status) VALUES('L','p','g','g','ACCEPTED')")
+    conn.execute("INSERT INTO guardians(id,user_id,guardian_name,guardian_user_id,status,consent_verified_at) VALUES('L','p','g','g','ACCEPTED',CURRENT_TIMESTAMP)")
     conn.execute("INSERT INTO guardians(id,user_id,guardian_name,guardian_user_id,status) VALUES('W','p','pending','pending','PENDING')")
     conn.execute("INSERT INTO medicines(medicine_code,product_name,ingredient) VALUES('M','시험약','시험성분')")
     conn.execute("INSERT INTO user_medicines(id,user_id,medicine_code) VALUES(1,'p','M')")
@@ -41,12 +41,12 @@ def db(tmp_path, monkeypatch):
 def client():
     app = FastAPI()
     for router in [users.router, guardians.router, medication_logs.router, internal.router]:
-        app.include_router(router, dependencies=[Depends(auth.authorize_request)])
+        app.include_router(router, dependencies=[Depends(auth.require_authorized_request)])
     return TestClient(app)
 
 
 def bearer(uid, role='PATIENT'):
-    return {'Authorization': 'Bearer ' + auth.issue_token(uid, role)}
+    return {'Authorization': 'Bearer ' + auth.issue_token(uid, role=role)[0]}
 
 
 def test_private_profile_requires_valid_owner_or_accepted_guardian(db):
@@ -69,7 +69,7 @@ def test_guardian_cannot_accept_own_pending_link_or_record_patient_completion(db
 
 
 def test_tampering_expiry_and_missing_secret_fail_closed(db, monkeypatch):
-    token = auth.issue_token('p', 'PATIENT')
+    token = auth.issue_token('p', role='PATIENT')[0]
     with pytest.raises(HTTPException): auth.verify_token(token[:-4] + 'xxxx')
     monkeypatch.setattr(auth.time, 'time', lambda: 99999999999)
     with pytest.raises(HTTPException): auth.verify_token(token)
@@ -131,12 +131,10 @@ def test_heart_retry_does_not_duplicate_records_or_notices(db):
 def test_medication_service_reads_main_authority_and_mirrors_only_health_fields(db, monkeypatch):
     monkeypatch.setenv('SERVICE_ROLE', 'medication')
     monkeypatch.setenv('AUTH_AUTHORITY_BASE_URL', 'https://main.example')
-    allowed = Mock(status_code=200)
-    allowed.json.return_value = {'allowed': True}
     profile = Mock(status_code=200)
-    profile.json.return_value = {'id': 'p', 'name': '환자', 'birth_date': '1950-05-05',
+    profile.json.return_value = {'id': 'p', 'name': '환자', 'role': 'PATIENT', 'birth_date': '1950-05-05',
                                  'is_pregnant': True, 'phone': 'NOT_MIRRORED', 'password_hash': 'NOT_MIRRORED'}
-    calls = Mock(side_effect=[allowed, profile])
+    calls = Mock(return_value=profile)
     monkeypatch.setattr(auth.requests, 'get', calls)
     response = client().get('/api/v1/users/p', headers=bearer('p'))
     assert response.status_code == 200
@@ -144,15 +142,33 @@ def test_medication_service_reads_main_authority_and_mirrors_only_health_fields(
     conn = sqlite3.connect(db)
     assert conn.execute('SELECT phone,password_hash FROM users WHERE id=?', ('p',)).fetchone() == ('p', None)
     conn.close()
-    assert calls.call_count == 2
+    assert calls.call_count == 1
 
 
-def test_internal_purge_rejects_user_tokens_and_is_idempotent_for_trusted_service(db):
+def test_internal_purge_rejects_user_tokens_and_is_idempotent_for_trusted_service(db, monkeypatch):
+    monkeypatch.setenv('SERVICE_ROLE', 'medication')
     api = client()
     assert api.delete('/api/v1/internal/users/p', headers=bearer('p')).status_code == 403
-    headers = auth.service_headers('p')
+    headers = auth.service_headers('p', 'account_purge')
     assert api.delete('/api/v1/internal/users/p', headers=headers).status_code == 204
     assert api.delete('/api/v1/internal/users/p', headers=headers).status_code == 204
+
+
+def test_main_account_is_preserved_when_medication_purge_fails(db, monkeypatch):
+    import requests
+    import app.core.config as config
+    monkeypatch.setattr(config, 'MEDICATION_FEATURE_BASE_URL', 'https://med.example')
+    monkeypatch.setattr(requests, 'delete', Mock(side_effect=requests.Timeout()))
+    assert client().delete('/api/v1/users/p', headers=bearer('p')).status_code == 503
+    with sqlite3.connect(db) as conn:
+        assert conn.execute("SELECT 1 FROM users WHERE id='p'").fetchone()
+
+
+def test_synthetic_heart_data_does_not_create_guardian_notice(db):
+    result = biosignal_service.save_heart_rate(HeartRateCreate(user_id='p', bpm=125, source='DEMO'))
+    assert result['abnormal_event'] is None
+    with sqlite3.connect(db) as conn:
+        assert conn.execute('SELECT COUNT(*) FROM notifications').fetchone()[0] == 0
 
 
 def test_latest_heart_uses_absolute_time_when_utc_and_kst_records_mix(db):

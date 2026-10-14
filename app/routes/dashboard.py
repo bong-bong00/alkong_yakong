@@ -11,6 +11,18 @@ from app.services.today_medication_service import get_today_medicines
 router = APIRouter(prefix="/api/v1", tags=["Dashboard"])
 
 
+@router.get("/users/{user_id}/medication-overview")
+def user_medication_overview(user_id: str, start: str, end: str, date: str):
+    from app.services.medication_history_service import get_medication_history
+    from app.services.medication_service import get_taken_activities
+
+    return {
+        "today": get_today_medicines(user_id, date),
+        "history": get_medication_history(user_id, start, end),
+        "activities": get_taken_activities(user_id, date),
+    }
+
+
 @router.get("/users/{user_id}/dashboard", response_model=DashboardResponse)
 def user_dashboard(
     user_id: str,

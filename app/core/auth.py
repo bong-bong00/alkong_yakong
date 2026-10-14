@@ -1,227 +1,395 @@
-"""Signed, expiring sessions and server-side patient/guardian access checks.
+"""Short-lived, purpose-bound credentials shared by the two Render services.
 
-Both services must share ALKONGYAKONG_AUTH_SECRET. The medication service must
-set SERVICE_ROLE=medication and AUTH_AUTHORITY_BASE_URL to the main service.
-Production fails closed when credentials/configuration are missing.
+Only the account service issues patient tokens. The medication service verifies
+their signature locally and asks the account service about guardian consent.
 """
+
+from __future__ import annotations
+
+import asyncio
 import base64
 import hashlib
 import hmac
 import json
 import os
 import time
-from contextvars import ContextVar
+from typing import Any
 from urllib.parse import quote
 
 import requests
-from fastapi import HTTPException, Request, Depends
-from fastapi.security import HTTPBearer
+from fastapi import Depends, HTTPException, Request
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
-from app.core.config import APP_ENV
 from app.database import get_connection
 
-_token = ContextVar("access_token", default="")
+_AUDIENCE = "alkong-yakong"
+_ACCESS_TTL_SECONDS = 7 * 24 * 60 * 60
+_SERVICE_TTL_SECONDS = 60
 _bearer_scheme = HTTPBearer(auto_error=False)
+_READABLE_BY_GUARDIAN = {
+    "medicines", "today-medicines", "medication-history",
+    "medication-calendar", "medication-overview", "dashboard", "prescriptions",
+    "dur", "biosignal", "notifications",
+}
 
 
-def enforced():
-    return os.getenv("AUTH_ENFORCED", str(APP_ENV == "production" or bool(os.getenv("RENDER")))).lower() == "true"
+def auth_enforced() -> bool:
+    return os.getenv("AUTH_ENFORCED", "false").strip().lower() == "true"
 
 
-def _secret():
-    value = os.getenv("ALKONGYAKONG_AUTH_SECRET", "")
-    if len(value) < 32:
-        if enforced():
-            raise HTTPException(503, "서버 로그인 설정을 확인해야 합니다.")
-        return "development-only-never-use-in-production"
-    return value
+def service_headers(user_id: str, scope: str = "patient_read") -> dict[str, str]:
+    """Use the same purpose-bound two-part credential on both servers."""
+    if not auth_enforced():
+        return {}
+    token, _ = issue_token("main", role="service", kind="service",
+                           target=user_id, scope=scope)
+    return {"Authorization": f"Bearer {token}"}
 
 
-def _b64(value):
-    return base64.urlsafe_b64encode(value).rstrip(b"=").decode()
+def service_role() -> str:
+    return os.getenv("SERVICE_ROLE", "").strip().lower()
 
 
-def issue_token(user_id, role, *, service=False):
+def validate_auth_configuration() -> None:
+    """Never start a Render instance that silently accepts unsigned requests."""
+    if not os.getenv("RENDER") and not auth_enforced():
+        return
+    if not auth_enforced():
+        raise RuntimeError("AUTH_ENFORCED must be true on Render")
+    if service_role() not in {"main", "medication"}:
+        raise RuntimeError("SERVICE_ROLE must be main or medication")
+    if len(os.getenv("ALKONGYAKONG_AUTH_SECRET", "")) < 32:
+        raise RuntimeError("ALKONGYAKONG_AUTH_SECRET must be at least 32 characters")
+    db_path = os.getenv("ALKONGYAKONG_DB_PATH", "")
+    if not db_path or not os.path.isabs(db_path):
+        raise RuntimeError("ALKONGYAKONG_DB_PATH must be an absolute persistent path")
+    required_url = (
+        "AUTH_AUTHORITY_BASE_URL" if service_role() == "medication"
+        else "MEDICATION_FEATURE_BASE_URL"
+    )
+    if not os.getenv(required_url, "").strip().startswith("https://"):
+        raise RuntimeError(f"{required_url} must be an HTTPS URL")
+
+
+def _b64(value: bytes) -> str:
+    return base64.urlsafe_b64encode(value).rstrip(b"=").decode("ascii")
+
+
+def _unb64(value: str) -> bytes:
+    return base64.urlsafe_b64decode(value + "=" * (-len(value) % 4))
+
+
+def issue_token(
+    subject: str, *, role: str, kind: str = "access", target: str | None = None,
+    scope: str | None = None,
+) -> tuple[str, int]:
+    secret = os.getenv("ALKONGYAKONG_AUTH_SECRET", "")
+    if len(secret) < 32:
+        raise RuntimeError("Authentication secret is not configured")
     now = int(time.time())
-    payload = {"sub": user_id, "role": role.upper(), "iat": now,
-               "exp": now + (60 if service else 7 * 24 * 3600),
-               "iss": "alkongyakong", "aud": "alkongyakong-api", "service": service}
-    signing = _b64(b'{"alg":"HS256","typ":"JWT"}') + "." + _b64(json.dumps(payload).encode())
-    return signing + "." + _b64(hmac.new(_secret().encode(), signing.encode(), hashlib.sha256).digest())
+    lifetime = _ACCESS_TTL_SECONDS if kind == "access" else _SERVICE_TTL_SECONDS
+    payload = {
+        "aud": _AUDIENCE, "sub": subject, "role": role.lower(),
+        "kind": kind, "iat": now, "exp": now + lifetime,
+    }
+    if target:
+        payload["target"] = target
+    if scope:
+        payload["scope"] = scope
+    encoded = _b64(json.dumps(payload, separators=(",", ":"), sort_keys=True).encode())
+    signature = _b64(hmac.new(secret.encode(), encoded.encode(), hashlib.sha256).digest())
+    return f"{encoded}.{signature}", lifetime
 
 
-def verify_token(token):
+def verify_token(raw: str) -> dict[str, Any]:
+    secret = os.getenv("ALKONGYAKONG_AUTH_SECRET", "")
+    if len(secret) < 32:
+        raise HTTPException(status_code=503, detail="인증 설정이 준비되지 않았어요.")
     try:
-        header, payload, signature = token.split(".")
-        signing = header + "." + payload
-        expected = _b64(hmac.new(_secret().encode(), signing.encode(), hashlib.sha256).digest())
+        if len(raw) > 4096:
+            raise ValueError("length")
+        encoded, signature = raw.split(".")
+        expected = _b64(hmac.new(secret.encode(), encoded.encode(), hashlib.sha256).digest())
         if not hmac.compare_digest(signature, expected):
-            raise ValueError()
-        decode = lambda s: json.loads(base64.urlsafe_b64decode(s + "=" * (-len(s) % 4)))
-        if decode(header) != {"alg": "HS256", "typ": "JWT"}:
-            raise ValueError()
-        claims = decode(payload)
-        if (claims.get("iss") != "alkongyakong" or claims.get("aud") != "alkongyakong-api"
-                or not isinstance(claims.get("exp"), int) or claims["exp"] <= time.time()
-                or claims.get("role") not in {"PATIENT", "GUARDIAN", "SERVICE"}
-                or not isinstance(claims.get("sub"), str) or not claims["sub"]):
-            raise ValueError()
-        return claims
-    except HTTPException:
-        raise
-    except Exception:
-        raise HTTPException(401, "로그인이 만료되었어요. 다시 로그인해 주세요.")
+            raise ValueError("signature")
+        payload = json.loads(_unb64(encoded))
+        if (
+            not isinstance(payload, dict)
+            or payload.get("aud") != _AUDIENCE
+            or not isinstance(payload.get("sub"), str)
+            or not payload["sub"]
+            or payload.get("role") not in {"patient", "guardian", "service"}
+            or payload.get("kind") not in {"access", "service"}
+            or (payload["kind"] == "service") != (payload["role"] == "service")
+            or not isinstance(payload.get("exp"), int)
+            or not isinstance(payload.get("iat"), int)
+            or payload["iat"] > int(time.time()) + 30
+            or payload["exp"] <= int(time.time())
+            or payload["exp"] <= payload["iat"]
+            or payload["exp"] - payload["iat"] > (
+                _ACCESS_TTL_SECONDS if payload["kind"] == "access" else _SERVICE_TTL_SECONDS
+            )
+        ):
+            raise ValueError("claims")
+        return payload
+    except (ValueError, TypeError, KeyError, UnicodeDecodeError, json.JSONDecodeError):
+        raise HTTPException(status_code=401, detail="로그인이 만료되었거나 올바르지 않아요.") from None
 
 
-def service_headers(user_id):
-    return {"Authorization": "Bearer " + issue_token(user_id, "SERVICE", service=True)}
+def load_authority_identity(user_id: str) -> dict[str, Any]:
+    """Read current identity; deleted accounts do not retain access until expiry."""
+    if service_role() == "main":
+        conn = get_connection()
+        try:
+            row = conn.execute(
+                """SELECT id, name, role, birth_date, gender, is_pregnant,
+                          pregnancy_status FROM users WHERE id = ?""", (user_id,),
+            ).fetchone()
+            if row is None:
+                raise HTTPException(status_code=401, detail="다시 로그인해 주세요.")
+            return dict(row)
+        finally:
+            conn.close()
+    authority = os.getenv("AUTH_AUTHORITY_BASE_URL", "").rstrip("/")
+    if not authority.startswith("https://"):
+        raise HTTPException(status_code=503, detail="사용자 권한을 확인할 수 없어요.")
+    token, _ = issue_token("medication", role="service", kind="service",
+                           target=user_id, scope="identity_read")
+    try:
+        response = requests.get(
+            f"{authority}/api/v1/auth/identity/{quote(user_id, safe='')}",
+            headers={"Authorization": f"Bearer {token}"}, timeout=5,
+        )
+        if response.status_code in {401, 404}:
+            raise HTTPException(status_code=401, detail="다시 로그인해 주세요.")
+        response.raise_for_status()
+        identity = response.json()
+        if not isinstance(identity, dict) or identity.get("id") != user_id:
+            raise ValueError("identity")
+        return identity
+    except (requests.RequestException, ValueError):
+        raise HTTPException(status_code=503, detail="사용자 권한을 확인할 수 없어요.") from None
 
 
-def current_actor():
-    token = _token.get()
-    return verify_token(token) if token else None
-
-
-def _bearer(request):
-    value = request.headers.get("authorization", "")
-    if not value.startswith("Bearer "):
-        raise HTTPException(401, "로그인이 필요해요.")
-    return value[7:]
-
-
-def can_access(claims, target, *, write=False):
+def provision_medication_identity(identity: dict[str, Any]) -> None:
+    """Explicit authenticated synchronization, never a URL-only read side effect."""
+    if service_role() != "medication":
+        return
     conn = get_connection()
     try:
-        actor = conn.execute("SELECT id, role, phone FROM users WHERE id=?", (claims["sub"],)).fetchone()
-        if not actor or str(actor["role"]).upper() != claims["role"]:
-            return False
-        if target == claims["sub"]:
-            return True
-        if claims["role"] != "GUARDIAN":
-            return False
-        linked = conn.execute(
-            "SELECT 1 FROM guardians WHERE user_id=? AND guardian_user_id=? AND UPPER(status)='ACCEPTED'",
-            (target, claims["sub"]),
-        ).fetchone() is not None
-        if linked:
-            return True
-        if enforced():
-            return False  # A claimed phone number is not proof of ownership.
-        from app.services.account_lookup import phone_digits
-        phone = phone_digits(actor["phone"])
-        return bool(phone) and any(phone_digits(row["phone"]) == phone for row in conn.execute(
-            "SELECT phone FROM guardians WHERE user_id=? AND guardian_user_id IS NULL AND UPPER(status)='ACCEPTED'",
-            (target,),
-        ))
+        conn.execute(
+            """INSERT INTO users (id, name, role, birth_date, gender,
+                                  is_pregnant, pregnancy_status)
+               VALUES (?, ?, ?, ?, ?, ?, ?)
+               ON CONFLICT(id) DO UPDATE SET
+                 name=excluded.name, role=excluded.role,
+                 birth_date=COALESCE(excluded.birth_date, users.birth_date),
+                 gender=COALESCE(excluded.gender, users.gender),
+                 is_pregnant=excluded.is_pregnant,
+                 pregnancy_status=excluded.pregnancy_status""",
+            (identity["id"], identity["name"], identity["role"],
+             identity.get("birth_date"), identity.get("gender"),
+             int(bool(identity.get("is_pregnant"))), identity.get("pregnancy_status")),
+        )
+        conn.commit()
     finally:
         conn.close()
 
 
-async def authorize_request(request: Request, credentials=Depends(_bearer_scheme)):
-    path = request.url.path
-    if path == "/api/v1/users" and request.method == "GET":
-        # This endpoint retains its separate mandatory administrator key.
-        yield
-        return
-    if enforced() and (path.startswith("/api/v1/dur/sync") or path.startswith("/api/v1/biosignal-test")):
-        from app.routes.users import _require_admin
-        _require_admin(request.headers.get("x-admin-key"))
-        yield
-        return
-    if not enforced() or path in {"/api/v1/users", "/api/v1/users/login"} and request.method == "POST":
-        yield
-        return
-    # Public official drug information has no personal data.
-    if request.method == "GET" and (path == "/api/v1/drugs/search" or path == "/api/v1/medicines/lookup"
-            or path.startswith("/api/v1/drug-explain/") and path != "/api/v1/drug-explain/cache-context"):
-        yield
-        return
-    token = _bearer(request)
-    claims = verify_token(token)
-    context = _token.set(token)
+def _linked_guardian_locally(guardian_id: str, patient_id: str) -> bool:
+    conn = get_connection()
     try:
-        params = request.path_params
-        raw = await request.body() if request.method in {"POST", "PATCH", "PUT"} else b""
-        try:
-            body = json.loads(raw) if raw else {}
-        except ValueError:
-            raise HTTPException(400, "요청 본문이 올바른 JSON이 아닙니다.")
-        if not isinstance(body, dict):
-            raise HTTPException(422, "요청 본문은 JSON 객체여야 합니다.")
-        target = params.get("user_id") or params.get("guardian_user_id") or body.get("user_id") or body.get("guardian_user_id") or request.query_params.get("user_id")
-        is_service = claims.get("service") is True and claims["role"] == "SERVICE"
-        if is_service:
-            consultation = path == "/api/v1/dur/analyze" and body.get("analysis_purpose") == "consultation"
-            if target != claims["sub"] or (request.method != "GET" and not consultation and path not in {
-                f"/api/v1/internal/users/{target}",
-            }):
-                raise HTTPException(403, "허용되지 않은 서버 요청입니다.")
-            if os.getenv("SERVICE_ROLE", "main") == "medication" and consultation:
-                authority = os.getenv("AUTH_AUTHORITY_BASE_URL", "").rstrip("/")
-                if not authority:
-                    raise HTTPException(503, "서버 권한 확인 설정이 필요합니다.")
-                try:
-                    response = requests.get(authority + "/api/v1/users/" + quote(target, safe=""), headers=service_headers(target), timeout=10)
-                    response.raise_for_status()
-                    profile = response.json()
-                    if profile.get("id") != target:
-                        raise ValueError("Identity mismatch")
-                    from app.services.medication_user_service import sync_medication_health
-                    sync_medication_health(target, profile)
-                except (requests.RequestException, ValueError, AttributeError):
-                    raise HTTPException(503, "환자의 건강정보를 확인하지 못했어요.")
-            yield
+        return conn.execute(
+            """SELECT 1 FROM guardians WHERE guardian_user_id = ? AND user_id = ?
+               AND status = 'ACCEPTED' AND consent_verified_at IS NOT NULL""",
+            (guardian_id, patient_id),
+        ).fetchone() is not None
+    finally:
+        conn.close()
+
+
+def _linked_guardian_remotely(guardian_id: str, patient_id: str) -> bool:
+    authority = os.getenv("AUTH_AUTHORITY_BASE_URL", "").rstrip("/")
+    if not authority.startswith("https://"):
+        raise HTTPException(status_code=503, detail="보호자 권한을 확인할 수 없어요.")
+    token, _ = issue_token(
+        guardian_id, role="service", kind="service", target=patient_id,
+        scope="guardian_link_check",
+    )
+    try:
+        response = requests.get(
+            f"{authority}/api/v1/guardians/internal/authorization",
+            params={"guardian_id": guardian_id, "patient_id": patient_id},
+            headers={"Authorization": f"Bearer {token}"}, timeout=5,
+        )
+        response.raise_for_status()
+        return response.json().get("allowed") is True
+    except (requests.RequestException, ValueError, AttributeError):
+        raise HTTPException(status_code=503, detail="보호자 권한을 확인할 수 없어요.") from None
+
+
+async def _guardian_can_read(guardian_id: str, patient_id: str) -> bool:
+    if service_role() == "main":
+        return await asyncio.to_thread(_linked_guardian_locally, guardian_id, patient_id)
+    return await asyncio.to_thread(_linked_guardian_remotely, guardian_id, patient_id)
+
+
+async def require_authorized_request(
+    request: Request,
+    credentials: HTTPAuthorizationCredentials | None = Depends(_bearer_scheme),
+) -> None:
+    if not auth_enforced():
+        return
+    path = request.url.path
+    method = request.method.upper()
+    if path in {"/api/v1/users", "/api/v1/users/login"} and method == "POST":
+        if service_role() != "main":
+            raise HTTPException(status_code=404, detail="Not Found")
+        return
+    if path.startswith("/api/v1/biosignal-test/") or path.startswith("/api/v1/dur/sync"):
+        key = os.getenv("ALKONGYAKONG_ADMIN_KEY", "")
+        if key and hmac.compare_digest(request.headers.get("x-admin-key", ""), key):
             return
-        if (path.startswith("/api/v1/guardians/accounts/") or path == "/api/v1/guardians/link-requests") and claims["role"] != "GUARDIAN":
-            raise HTTPException(403, "보호자 계정에서만 할 수 있어요.")
-        # Own profile changes, completion logs and sensor writes cannot be performed by a guardian.
-        own_only = (path.startswith("/api/v1/medication-logs") or path == "/api/v1/biosignal/heart-rate"
-                    or path.startswith("/api/v1/guardians/users/")
-                    or request.method in {"PATCH", "DELETE"} and path == f"/api/v1/users/{target}")
-        if own_only and target != claims["sub"]:
-            raise HTTPException(403, "본인 계정에서만 할 수 있어요.")
-        if params.get("guardian_id"):
+        raise HTTPException(status_code=404, detail="Not Found")
+    header = request.headers.get("authorization", "")
+    if not header.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="로그인이 필요해요.")
+    claims = verify_token(header[7:].strip())
+    segments = [part for part in path.split("/") if part]
+    body: dict[str, Any] = {}
+    if method in {"POST", "PUT", "PATCH"}:
+        try:
+            parsed = await request.json()
+            body = parsed if isinstance(parsed, dict) else {}
+        except (ValueError, UnicodeDecodeError):
+            pass
+
+    if claims["kind"] == "service":
+        scope = claims.get("scope")
+        target = claims.get("target")
+        if not isinstance(target, str) or not target:
+            raise HTTPException(status_code=403, detail="대상 사용자가 없는 서버 요청이에요.")
+        if (
+            scope == "account_purge" and service_role() == "medication"
+            and method == "DELETE" and claims["sub"] == "main"
+            and path == f"/api/v1/internal/users/{target}"
+        ) or (
+            scope == "medicine_read"
+            and method == "GET"
+            and len(segments) == 5
+            and segments[:3] == ["api", "v1", "users"]
+            and segments[4] == "medicines"
+            and segments[3] == target
+        ) or (
+            scope == "dur_consultation"
+            and method == "POST"
+            and path == "/api/v1/dur/analyze"
+            and body.get("analysis_purpose") == "consultation"
+            and body.get("user_id") == target
+        ) or (
+            scope == "patient_read"
+            and method == "GET"
+            and len(segments) >= 5
+            and segments[:3] == ["api", "v1", "users"]
+            and segments[3] == target
+            and segments[4] in _READABLE_BY_GUARDIAN
+        ) or (
+            scope == "identity_read" and service_role() == "main"
+            and method == "GET" and path == f"/api/v1/auth/identity/{target}"
+        ) or (
+            scope == "guardian_link_check"
+            and service_role() == "main"
+            and method == "GET"
+            and path == "/api/v1/guardians/internal/authorization"
+            and request.query_params.get("guardian_id") == claims["sub"]
+            and request.query_params.get("patient_id") == target
+        ):
+            request.state.auth_identity = {"id": target, "service": True}
+            if service_role() == "medication" and scope in {
+                "medicine_read", "patient_read", "dur_consultation"
+            }:
+                identity = await asyncio.to_thread(load_authority_identity, target)
+                await asyncio.to_thread(provision_medication_identity, identity)
+            return
+        raise HTTPException(status_code=403, detail="허용되지 않은 서버 요청이에요.")
+
+    if path.startswith("/api/v1/internal/"):
+        raise HTTPException(status_code=403, detail="서버 전용 요청입니다.")
+    subject = claims["sub"]
+    identity = await asyncio.to_thread(load_authority_identity, subject)
+    if str(identity.get("role", "")).lower() != claims["role"]:
+        raise HTTPException(status_code=401, detail="다시 로그인해 주세요.")
+    request.state.auth_identity = identity
+    if path.startswith("/api/v1/guardians/accounts/") or path == "/api/v1/guardians/link-requests":
+        if claims["role"] != "guardian":
+            raise HTTPException(status_code=403, detail="보호자 계정으로 확인해 주세요.")
+    target = None
+    if len(segments) >= 4 and segments[:3] == ["api", "v1", "users"]:
+        target = segments[3]
+    if isinstance(body.get("user_id"), str):
+        body_target = body["user_id"]
+        if target and body_target != target:
+            raise HTTPException(status_code=403, detail="요청한 사용자가 일치하지 않아요.")
+        target = body_target
+    if request.query_params.get("user_id"):
+        query_target = request.query_params["user_id"]
+        if target and target != query_target:
+            raise HTTPException(status_code=403, detail="요청한 사용자가 일치하지 않아요.")
+        target = query_target
+    if path.startswith("/api/v1/guardians/"):
+        if len(segments) >= 5 and segments[3] == "accounts":
+            target = segments[4]
+        elif len(segments) >= 5 and segments[3] == "users":
+            target = segments[4]
+        elif path == "/api/v1/guardians/link-requests":
+            target = body.get("guardian_user_id")
+        elif len(segments) == 4 and method in {"PATCH", "DELETE"}:
             conn = get_connection()
             try:
-                link = conn.execute("SELECT user_id, guardian_user_id FROM guardians WHERE id=?", (params["guardian_id"],)).fetchone()
+                row = conn.execute(
+                    "SELECT user_id, guardian_user_id, status FROM guardians WHERE id = ?",
+                    (segments[3],),
+                ).fetchone()
             finally:
                 conn.close()
-            if not link or claims["sub"] not in {link["user_id"], link["guardian_user_id"]}:
-                raise HTTPException(403, "이 연결을 변경할 권한이 없어요.")
-            if request.method == "PATCH" and claims["sub"] != link["user_id"]:
-                raise HTTPException(403, "환자만 연결을 수락할 수 있어요.")
-            yield
-            return
-        if path.startswith("/api/v1/dur/sync") or path.startswith("/api/v1/biosignal-test"):
-            raise HTTPException(403, "운영자 전용 기능입니다.")
-        if target is None:
-            raise HTTPException(403, "요청 대상을 확인하지 못했어요.")
-        if os.getenv("SERVICE_ROLE", "main") == "medication":
-            authority = os.getenv("AUTH_AUTHORITY_BASE_URL", "").rstrip("/")
-            if not authority:
-                raise HTTPException(503, "서버 권한 확인 설정이 필요합니다.")
-            try:
-                response = requests.get(authority + "/api/v1/auth/access", params={"user_id": target},
-                                        headers={"Authorization": "Bearer " + token}, timeout=10)
-                if response.status_code >= 500:
-                    raise HTTPException(503, "지금은 접근 권한을 확인하지 못했어요.")
-                if response.status_code == 401:
-                    raise HTTPException(401, "다시 로그인해 주세요.")
-                if response.status_code != 200 or response.json().get("allowed") is not True:
-                    raise HTTPException(403, "연결된 환자의 기록만 볼 수 있어요.")
-                profile_response = requests.get(authority + "/api/v1/users/" + quote(target, safe=""),
-                                                headers=service_headers(target), timeout=10)
-                if profile_response.status_code != 200:
-                    raise HTTPException(503, "환자의 건강정보를 확인하지 못했어요.")
-                profile = profile_response.json()
-                if not isinstance(profile, dict) or profile.get("id") != target:
-                    raise HTTPException(503, "환자의 건강정보를 확인하지 못했어요.")
-                from app.services.medication_user_service import sync_medication_health
-                sync_medication_health(target, profile)
-            except (requests.RequestException, ValueError):
-                raise HTTPException(503, "지금은 접근 권한을 확인하지 못했어요.")
-        elif not can_access(claims, target):
-            raise HTTPException(403, "본인 또는 연결된 환자의 기록만 볼 수 있어요.")
-        yield
-    finally:
-        _token.reset(context)
+            if row is None:
+                raise HTTPException(status_code=404, detail="연결을 찾지 못했어요.")
+            if method == "PATCH":
+                target = row["user_id"]
+            elif subject in {row["user_id"], row["guardian_user_id"]}:
+                return
+            else:
+                raise HTTPException(status_code=404, detail="연결을 찾지 못했어요.")
+    if path == "/api/v1/guardians/internal/authorization":
+        raise HTTPException(status_code=403, detail="허용되지 않은 요청이에요.")
+    if path.startswith("/api/v1/auth/"):
+        raise HTTPException(status_code=403, detail="허용되지 않은 요청이에요.")
+    if target == subject:
+        await asyncio.to_thread(provision_medication_identity, identity)
+        return
+    if path.startswith("/api/v1/guardians/users/"):
+        raise HTTPException(status_code=403, detail="본인의 보호자 연결만 확인할 수 있어요.")
+    if (
+        target
+        and (
+            (method == "GET" and len(segments) >= 4
+             and segments[:3] == ["api", "v1", "users"]
+             and (len(segments) == 4 or segments[4] in _READABLE_BY_GUARDIAN))
+            or (method == "POST" and path in {
+                "/api/v1/prescriptions/ocr", "/api/v1/prescriptions/confirm"
+            })
+            or (method == "POST" and len(segments) == 7
+                and segments[:3] == ["api", "v1", "users"]
+                and segments[4] == "prescriptions" and segments[6] == "schedule-days")
+        )
+        and await _guardian_can_read(subject, target)
+    ):
+        patient = await asyncio.to_thread(load_authority_identity, target)
+        await asyncio.to_thread(provision_medication_identity, patient)
+        return
+    if target is None and method == "GET" and (
+        path in {"/api/v1/drugs/search", "/api/v1/medicines/lookup", "/api/v1/users"}
+        or (len(segments) == 4 and segments[:3] == ["api", "v1", "drug-explain"])
+    ):
+        return
+    raise HTTPException(status_code=403, detail="다른 사용자의 정보에 접근할 수 없어요.")

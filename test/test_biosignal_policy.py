@@ -21,12 +21,13 @@ class BiosignalPolicyTest(unittest.TestCase):
             conn.execute(
                 "INSERT INTO users (id, name, role) VALUES ('U1', '테스트', 'PATIENT')"
             )
+            conn.execute("INSERT INTO users(id,name,role) VALUES('guardian','보호자','GUARDIAN')")
             conn.execute(
                 """
                 INSERT INTO guardians (
                     id, user_id, guardian_name, relationship,
-                    phone, notification_enabled
-                ) VALUES ('G1', 'U1', '보호자', '가족', '01000000000', 1)
+                    phone, notification_enabled, guardian_user_id, consent_verified_at
+                ) VALUES ('G1', 'U1', '보호자', '가족', '01000000000', 1, 'guardian', CURRENT_TIMESTAMP)
                 """
             )
             conn.commit()

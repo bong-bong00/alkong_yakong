@@ -11,6 +11,7 @@ from datetime import date, timedelta
 from fastapi import HTTPException
 
 from app.database import get_connection, purge_ocr_placeholder_rows
+from app.core.auth import auth_enforced
 from app.models.schemas import (
     OCRMedicineItem,
     PrescriptionConfirmItem,
@@ -875,7 +876,8 @@ def create_prescription_from_ocr(request: PrescriptionOCRRequest) -> dict:
     conn = get_connection()
     try:
         cursor = conn.cursor()
-        purge_ocr_placeholder_rows(conn)
+        if not auth_enforced():
+            purge_ocr_placeholder_rows(conn)
         items, raw_text, ocr_trace, structured = _extract_items(request)
         user = cursor.execute(
             "SELECT id FROM users WHERE id = ?", (request.user_id,)
@@ -1170,10 +1172,9 @@ def _reactivate_duplicate_prescription(cursor, *, user_id: str, prescription_id:
             """,
             (user_id, medicine_code, user_medicine_id),
         )
-        cursor.execute(
-            "DELETE FROM medication_schedules WHERE user_id = ? AND user_medicine_id = ?",
-            (user_id, user_medicine_id),
-        )
+        # Re-registration must not erase historical schedules: medication_logs
+        # references would otherwise be detached by ON DELETE SET NULL.
+        # Existing rows for this medicine are reused by INSERT OR IGNORE below.
         cursor.execute(
             """
             UPDATE user_medicines
@@ -1267,6 +1268,7 @@ def _registration_result(
     user_id: str,
     items: list[dict],
     duplicate: bool = False,
+    registration_revision: str | int = 1,
 ) -> dict:
     dur_result = _analyze_registered_medicines_locally(user_id)
     if not isinstance(dur_result, dict):
@@ -1300,6 +1302,7 @@ def _registration_result(
         "user_id": user_id,
         "registered": True,
         "duplicate": duplicate,
+        "registration_revision": registration_revision,
         "items": items,
         "medicine_codes": list(
             dict.fromkeys(
@@ -1331,7 +1334,9 @@ def confirm_prescription(request: PrescriptionConfirmRequest) -> dict:
     conn = get_connection()
     try:
         cursor = conn.cursor()
-        purge_ocr_placeholder_rows(conn)
+        if not auth_enforced():
+            purge_ocr_placeholder_rows(conn)
+        cursor.execute("BEGIN IMMEDIATE")
         user = cursor.execute(
             "SELECT id FROM users WHERE id = ?", (request.user_id,)
         ).fetchone()
@@ -1388,7 +1393,7 @@ def confirm_prescription(request: PrescriptionConfirmRequest) -> dict:
         ).hexdigest()
         duplicate = cursor.execute(
             """
-            SELECT id FROM prescriptions
+            SELECT id, registration_revision FROM prescriptions
             WHERE user_id = ? AND registration_fingerprint = ?
             LIMIT 1
             """,
@@ -1400,13 +1405,15 @@ def confirm_prescription(request: PrescriptionConfirmRequest) -> dict:
                 user_id=request.user_id,
                 prescription_id=duplicate["id"],
             )
-            cursor.execute("UPDATE prescriptions SET registration_revision=? WHERE id=?", (str(uuid.uuid4()), duplicate["id"]))
+            revision = str(uuid.uuid4())
+            cursor.execute("UPDATE prescriptions SET registration_revision=? WHERE id=?", (revision, duplicate["id"]))
             conn.commit()
             return _registration_result(
                 prescription_id=duplicate["id"],
                 user_id=request.user_id,
                 items=restored_items,
                 duplicate=True,
+                registration_revision=revision,
             )
 
         prescription_id = str(uuid.uuid4())
@@ -1490,8 +1497,17 @@ def confirm_prescription(request: PrescriptionConfirmRequest) -> dict:
             if previous_ids:
                 placeholders = ",".join("?" for _ in previous_ids)
                 cursor.execute(
-                    f"DELETE FROM medication_schedules WHERE user_medicine_id IN ({placeholders})",
-                    previous_ids,
+                    f"""
+                    DELETE FROM medication_schedules
+                    WHERE user_medicine_id IN ({placeholders})
+                      AND scheduled_date >= ?
+                      AND status = 'PENDING'
+                      AND NOT EXISTS (
+                          SELECT 1 FROM medication_logs ml
+                          WHERE ml.schedule_id = medication_schedules.id
+                      )
+                    """,
+                    (*previous_ids, registration_date),
                 )
                 cursor.execute(
                     f"UPDATE user_medicines SET is_active = 0, status = 'PAST' WHERE id IN ({placeholders})",
@@ -1565,12 +1581,14 @@ def confirm_prescription(request: PrescriptionConfirmRequest) -> dict:
                 }
             )
 
-        cursor.execute("UPDATE prescriptions SET registration_revision=? WHERE id=?", (str(uuid.uuid4()), prescription_id))
+        revision = str(uuid.uuid4())
+        cursor.execute("UPDATE prescriptions SET registration_revision=? WHERE id=?", (revision, prescription_id))
         conn.commit()
         return _registration_result(
             prescription_id=prescription_id,
             user_id=request.user_id,
             items=created_items,
+            registration_revision=revision,
         )
     except HTTPException:
         conn.rollback()

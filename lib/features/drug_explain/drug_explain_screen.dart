@@ -272,7 +272,7 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
 
   /// 내 건강을 함께 보고 답해 달라는 질문. 어느 쪽이든 끝에 붙인다.
   static const Map<String, String> _healthPrompt = {
-    'label': '내 건강에 맞춰서',
+    'label': '내 건강에서 주의할 점은요?',
     'prompt': '등록한 질환, 과거력, 알레르기, 흡연과 음주 정보를 참고해 제 건강 상태에서 주의할 점을 알려주세요.',
     'display': '내 건강 상태에서 주의할 점은?',
     'intent': 'health_precautions',

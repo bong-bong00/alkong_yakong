@@ -111,12 +111,13 @@ def request_prescription_help(user_id: str) -> dict:
             SELECT id, guardian_name, relationship
             FROM guardians
             WHERE user_id = ? AND UPPER(status) = 'ACCEPTED'
+              AND guardian_user_id IS NOT NULL AND consent_verified_at IS NOT NULL
             ORDER BY created_at
             """,
             (user_id,),
         ).fetchall()
-        from app.core.auth import enforced
-        if enforced():
+        from app.core.auth import auth_enforced
+        if auth_enforced():
             registered = {row["id"] for row in cursor.execute("SELECT id FROM guardians WHERE user_id=? AND guardian_user_id IS NOT NULL AND UPPER(status)='ACCEPTED'", (user_id,))}
             guardians = [row for row in guardians if row["id"] in registered]
         if not guardians:
@@ -171,7 +172,7 @@ def request_prescription_help(user_id: str) -> dict:
         conn.close()
 
 
-def get_user_notifications(user_id: str) -> list[dict]:
+def get_user_notifications(user_id: str, *, viewer_id: str | None = None) -> list[dict]:
     conn = get_connection()
     try:
         if not conn.execute(
@@ -179,28 +180,25 @@ def get_user_notifications(user_id: str) -> list[dict]:
             (user_id,),
         ).fetchone():
             raise HTTPException(status_code=404, detail="사용자가 없습니다.")
+        viewer = viewer_id or user_id
         rows = conn.execute(
             """
             SELECT n.*, g.guardian_name, g.relationship
             FROM notifications n
             LEFT JOIN guardians g ON g.id = n.guardian_id
-            WHERE n.user_id = ?
+            WHERE (n.user_id = ? AND (
+                     ? = ? OR n.guardian_id IS NULL OR (
+                       g.guardian_user_id = ? AND g.status = 'ACCEPTED'
+                       AND g.consent_verified_at IS NOT NULL
+                     )
+                   ))
+               OR (? = ? AND g.guardian_user_id = ? AND g.status = 'ACCEPTED'
+                   AND g.consent_verified_at IS NOT NULL)
             ORDER BY n.created_at DESC, n.id DESC
             """,
-            (user_id,),
+            (user_id, viewer, user_id, viewer, viewer, user_id, viewer),
         ).fetchall()
         stored = [dict(row) for row in rows]
-        from app.core.auth import current_actor
-        actor = current_actor()
-        if actor and actor["role"] == "GUARDIAN":
-            from app.services.account_lookup import phone_digits
-            owner = conn.execute("SELECT phone FROM users WHERE id=?", (actor["sub"],)).fetchone()
-            phone = phone_digits(owner["phone"]) if owner else ""
-            allowed = {
-                row["id"] for row in conn.execute("SELECT id,guardian_user_id,phone FROM guardians WHERE user_id=? AND UPPER(status)='ACCEPTED'", (user_id,))
-                if row["guardian_user_id"] == actor["sub"] or (row["guardian_user_id"] is None and phone and phone_digits(row["phone"]) == phone)
-            }
-            stored = [row for row in stored if row["guardian_id"] is None or row["guardian_id"] in allowed]
         from datetime import datetime, timezone
         for row in stored:
             for field in ("created_at", "sent_at"):

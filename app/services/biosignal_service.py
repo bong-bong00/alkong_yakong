@@ -16,47 +16,78 @@ def save_heart_rate(request: HeartRateCreate) -> dict:
         ).fetchone():
             raise HTTPException(status_code=404, detail="사용자가 없습니다.")
 
-        measured_at = request.measured_at or datetime.now(timezone.utc).isoformat(timespec="seconds")
-        if request.client_request_id:
-            existing = cursor.execute("SELECT * FROM heart_rate_logs WHERE user_id=? AND client_request_id=?", (request.user_id, request.client_request_id)).fetchone()
-            if existing:
-                if existing["bpm"] != request.bpm or existing["measurement_context"] != request.measurement_context:
-                    raise HTTPException(409, "같은 측정 요청의 내용이 달라요.")
-                event = cursor.execute("SELECT id,event_type,severity FROM abnormal_events WHERE heart_rate_log_id=?", (existing["id"],)).fetchone()
-                at = _time_with_zone(existing["measured_at"])
-                return {"heart_rate_log_id": existing["id"], "bpm": existing["bpm"], "measured_at": at.isoformat() if at else existing["measured_at"],
-                        "measurement_context": existing["measurement_context"], "baseline": None, "abnormal_event": dict(event) if event else None}
-        cursor.execute(
-            """
-            INSERT INTO heart_rate_logs (
-                user_id, bpm, measured_at, device_id, source, measurement_context, client_request_id
-            ) VALUES (?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                request.user_id,
-                request.bpm,
-                measured_at,
-                request.device_id,
-                request.source,
-                request.measurement_context,
-                request.client_request_id,
-            ),
-        )
-        log_id = cursor.lastrowid
-        event = None
-        if (request.bpm < 60 or request.bpm > 100) and request.source.startswith("POLAR"):
+        request_id = (request.client_request_id or "").strip() or None
+        existing = None
+        if request_id:
+            existing = cursor.execute(
+                """
+                SELECT id, bpm, measured_at, device_id, source, measurement_context
+                FROM heart_rate_logs
+                WHERE user_id = ? AND client_request_id = ?
+                """,
+                (request.user_id, request_id),
+            ).fetchone()
+        if existing:
+            same_measurement = (
+                existing["bpm"] == request.bpm
+                and existing["device_id"] == request.device_id
+                and existing["source"] == request.source
+                and existing["measurement_context"] == request.measurement_context
+                and (
+                    request.measured_at is None
+                    or existing["measured_at"] == request.measured_at
+                )
+            )
+            if not same_measurement:
+                raise HTTPException(
+                    status_code=409,
+                    detail="같은 측정 요청 ID에 다른 심박 정보가 들어왔어요.",
+                )
+            log_id = existing["id"]
+            measured_at = existing["measured_at"]
+        else:
+            measured_at = request.measured_at or datetime.now(timezone.utc).isoformat(timespec="seconds")
+            cursor.execute(
+                """
+                INSERT INTO heart_rate_logs (
+                    user_id, bpm, measured_at, device_id, source,
+                    measurement_context, client_request_id
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    request.user_id,
+                    request.bpm,
+                    measured_at,
+                    request.device_id,
+                    request.source,
+                    request.measurement_context,
+                    request_id,
+                ),
+            )
+            log_id = cursor.lastrowid
+        event = cursor.execute(
+            "SELECT id,event_type,severity FROM abnormal_events WHERE heart_rate_log_id=?",
+            (log_id,),
+        ).fetchone()
+        event = dict(event) if event else None
+        if not existing and (request.bpm < 60 or request.bpm > 100) and request.source.startswith("POLAR"):
             kind = "LOW_HEART_RATE" if request.bpm < 60 else "HIGH_HEART_RATE"
-            cursor.execute("""INSERT INTO abnormal_events(user_id,heart_rate_log_id,event_type,bpm,severity,occurred_at)
-                           VALUES(?,?,?,?,'NOTICE',?)""", (request.user_id, log_id, kind, request.bpm, measured_at))
+            cursor.execute(
+                "INSERT INTO abnormal_events(user_id,heart_rate_log_id,event_type,bpm,severity,occurred_at) VALUES(?,?,?,?,'NOTICE',?)",
+                (request.user_id, log_id, kind, request.bpm, measured_at),
+            )
             event_id = cursor.lastrowid
             event = {"id": event_id, "event_type": kind, "severity": "NOTICE"}
-            for guardian in cursor.execute("SELECT id FROM guardians WHERE user_id=? AND UPPER(status)='ACCEPTED' AND notification_enabled=1", (request.user_id,)).fetchall():
-                cursor.execute("""INSERT INTO notifications(user_id,guardian_id,abnormal_event_id,notification_type,title,message,status)
-                               VALUES(?,?,?,'HEART_RANGE_NOTICE',?,?,'STORED')""", (
-                    request.user_id, guardian["id"], event_id,
-                    "심박수 기록을 확인해 주세요",
-                    f"{request.bpm}회/분으로 측정되었어요. 60~100회/분 기준 범위를 벗어난 기록입니다. 측정 상황을 확인하고 필요하면 의료진과 상담해 주세요.",
-                ))
+            for guardian in cursor.execute(
+                "SELECT id FROM guardians WHERE user_id=? AND UPPER(status)='ACCEPTED' AND notification_enabled=1 AND guardian_user_id IS NOT NULL AND consent_verified_at IS NOT NULL",
+                (request.user_id,),
+            ).fetchall():
+                cursor.execute(
+                    "INSERT INTO notifications(user_id,guardian_id,abnormal_event_id,notification_type,title,message,status) VALUES(?,?,?,'HEART_RANGE_NOTICE',?,?,'STORED')",
+                    (request.user_id, guardian["id"], event_id,
+                     "심박수 기록을 확인해 주세요",
+                     f"{request.bpm}회/분으로 측정되었어요. 60~100회/분 기준 범위를 벗어난 기록입니다. 측정 상황을 확인하고 필요하면 의료진과 상담해 주세요."),
+                )
         baseline = cursor.execute(
             "SELECT * FROM baseline_heart_rate WHERE user_id = ?",
             (request.user_id,),
@@ -222,9 +253,11 @@ def get_heart_summary(
         takes: list[datetime] = []
         for row in cursor.execute(
             """
-            SELECT taken_at FROM medication_logs
-            WHERE user_id = ? AND taken_at >= ? AND status = 'TAKEN'
-            ORDER BY taken_at
+            SELECT ml.taken_at FROM medication_logs ml
+            JOIN medication_schedules ms ON ms.id = ml.schedule_id
+            WHERE ml.user_id = ? AND ml.taken_at >= ?
+              AND ml.status = 'TAKEN' AND ms.status = 'TAKEN'
+            ORDER BY ml.taken_at
             """,
             (user_id, since),
         ).fetchall():

@@ -17,6 +17,7 @@ import 'package:go_router/go_router.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 const _user = UserProfile(
   id: 'u1',
@@ -38,7 +39,10 @@ class _FixedUser extends CurrentUserController {
 }
 
 void main() {
-  setUp(() => SharedPreferences.setMockInitialValues({}));
+  setUp(() {
+    SharedPreferences.setMockInitialValues({});
+    FlutterSecureStorage.setMockInitialValues({});
+  });
 
   Widget wrap(Widget child, {List<Override> overrides = const []}) {
     return ProviderScope(

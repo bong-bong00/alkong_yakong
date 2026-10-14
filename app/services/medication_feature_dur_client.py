@@ -12,7 +12,9 @@ from typing import Any
 from urllib.parse import quote
 
 import requests
-from app.core.auth import service_headers
+from fastapi import HTTPException
+
+from app.core.auth import auth_enforced, issue_token
 
 from app.core.config import (
     MEDICATION_FEATURE_BASE_URL,
@@ -22,6 +24,40 @@ from app.core.config import (
 
 _COMBINATION_TYPES = {"병용금기", "중복성분", "효능군중복"}
 logger = logging.getLogger(__name__)
+
+
+def _service_headers(user_id: str, scope: str) -> dict[str, str]:
+    if not auth_enforced():
+        return {}
+    token, _ = issue_token(
+        "main", role="service", kind="service", target=user_id, scope=scope
+    )
+    return {"Authorization": f"Bearer {token}"}
+
+
+def load_remote_patient_overview(*, user_id: str, day: str, start: str) -> dict[str, Any]:
+    """Guardian summaries read the medication DB, never a stale account-DB copy."""
+    if not MEDICATION_FEATURE_BASE_URL:
+        raise HTTPException(status_code=503, detail="약 데이터 서버 설정이 필요해요.")
+    try:
+        response = requests.get(
+            f"{MEDICATION_FEATURE_BASE_URL}/api/v1/users/{quote(user_id, safe='')}/medication-overview",
+            params={"date": day, "start": start, "end": day},
+            headers=_service_headers(user_id, "patient_read"),
+            timeout=MEDICATION_FEATURE_TIMEOUT_SECONDS,
+        )
+        response.raise_for_status()
+        payload = response.json()
+        if (not isinstance(payload, dict)
+            or not isinstance(payload.get("today"), dict)
+            or not isinstance(payload["today"].get("doses"), list)
+            or not isinstance(payload.get("history"), dict)
+            or not isinstance(payload["history"].get("days"), list)
+            or not isinstance(payload.get("activities"), list)):
+            raise ValueError("overview")
+        return payload
+    except (requests.RequestException, ValueError):
+        raise HTTPException(status_code=503, detail="복약 기록을 불러오지 못했어요. 다시 시도해 주세요.") from None
 
 
 def _compact_name(value: Any) -> str:
@@ -36,11 +72,12 @@ def load_remote_current_medicines(*, user_id: str) -> dict[str, Any]:
         return _unavailable("missing_user_id")
     if not MEDICATION_FEATURE_BASE_URL:
         return _unavailable("medication_service_not_configured")
+    headers = _service_headers(uid, "medicine_read")
     try:
         response = requests.get(
             f"{MEDICATION_FEATURE_BASE_URL}/api/v1/users/{quote(uid, safe='')}/medicines",
-            headers=service_headers(uid),
             timeout=MEDICATION_FEATURE_TIMEOUT_SECONDS,
+            headers=headers,
         )
         response.raise_for_status()
         payload = response.json()
@@ -178,7 +215,6 @@ def load_remote_combination_context(
         requested_codes = list(names_by_code)
         dur_response = requests.post(
             f"{MEDICATION_FEATURE_BASE_URL}/api/v1/dur/analyze",
-            headers=service_headers(uid),
             json={
                 "user_id": uid,
                 "medicine_codes": requested_codes,
@@ -186,6 +222,7 @@ def load_remote_combination_context(
                 "analysis_purpose": "consultation",
             },
             timeout=MEDICATION_FEATURE_TIMEOUT_SECONDS,
+            headers=_service_headers(uid, "dur_consultation"),
         )
         dur_response.raise_for_status()
         payload = dur_response.json()

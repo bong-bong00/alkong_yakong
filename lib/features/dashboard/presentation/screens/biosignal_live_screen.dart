@@ -5,6 +5,7 @@ import 'package:permission_handler/permission_handler.dart';
 
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/network/api_client.dart';
+import '../../../../core/network/client_request_id.dart';
 import '../../../../core/session/mvp_session.dart';
 import '../../../biosignal/data/biosignal_dataset_collector.dart';
 import '../../../biosignal/data/polar_service.dart';
@@ -360,6 +361,7 @@ class _BiosignalLiveScreenState extends State<BiosignalLiveScreen>
   }
 
   Future<void> _sendAverageBpm(double average) async {
+    final clientRequestId = ClientRequestId.create();
     final userId = MvpSession.userId.trim();
     if (userId.isEmpty) {
       debugPrint('Skipping average BPM upload: user ID is empty.');
@@ -374,6 +376,7 @@ class _BiosignalLiveScreenState extends State<BiosignalLiveScreen>
           'bpm': average.round(),
           'device_id': _activeDeviceId ?? _targetDeviceId,
           'source': 'POLAR_30S_AVERAGE',
+          'client_request_id': clientRequestId,
         },
       );
       debugPrint('[POLAR_UI] avg upload success');

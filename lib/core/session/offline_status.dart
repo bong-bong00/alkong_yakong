@@ -1,20 +1,16 @@
-import 'package:flutter/foundation.dart';
+import 'session_credentials.dart';
 
 abstract final class OfflineStatus {
-  static final active = ValueNotifier<bool>(false);
-  static final _paths = <String>{};
+  static final active = SessionCredentials.offline;
   static void cached(String path) {
-    _paths.add(path);
-    active.value = true;
+    SessionCredentials.markUnavailable('', path);
   }
 
   static void fresh(String path) {
-    _paths.remove(path);
-    active.value = _paths.isNotEmpty;
+    SessionCredentials.markAvailable('', path);
   }
 
   static void clear() {
-    _paths.clear();
     active.value = false;
   }
 }

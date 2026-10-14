@@ -17,8 +17,12 @@ void main() {
     setUp(() {
       MvpSession.userId = 'test-user';
       final client = MockClient(
-        (_) async => http.Response(
-          '{"doses":[]}',
+        (request) async => http.Response(
+          request.url.path.endsWith('/batch/cancel')
+              ? '{"results":[{"schedule_id":1,"status":"CANCELLED"}]}'
+              : request.url.path.endsWith('/batch')
+              ? '{"results":[{"schedule_id":1,"status":"TAKEN"}]}'
+              : '{"doses":[]}',
           200,
           headers: {'content-type': 'application/json'},
         ),
@@ -78,6 +82,39 @@ void main() {
       );
     });
 
+    test('한 약의 일정 ID가 빠지면 일부만 저장하지 않는다', () async {
+      var saveRequests = 0;
+      final guardedClient = MockClient((request) async {
+        if (request.url.path.endsWith('/batch')) saveRequests++;
+        return http.Response(
+          '{"results":[]}',
+          200,
+          headers: {'content-type': 'application/json'},
+        );
+      });
+      final guardedContainer = ProviderContainer(
+        overrides: [
+          medicationProvider.overrideWith(
+            () => _IncompleteMedicationController(guardedClient),
+          ),
+        ],
+      );
+      addTearDown(guardedContainer.dispose);
+      final guardedController = guardedContainer.read(
+        medicationProvider.notifier,
+      );
+      final now = DoseSlot.dinner.todayAt(DateTime.now());
+      await expectLater(
+        guardedController.take(DoseSlot.dinner, now: now),
+        throwsA(isA<ApiException>()),
+      );
+      expect(saveRequests, 0);
+      expect(
+        guardedContainer.read(medicationProvider).doseOf(DoseSlot.dinner).taken,
+        isFalse,
+      );
+    });
+
     test('서버 중복 응답도 완료 저장 성공으로 처리한다', () async {
       final duplicateClient = MockClient((request) async {
         if (request.url.path.endsWith('/today-medicines')) {
@@ -88,7 +125,7 @@ void main() {
           );
         }
         return http.Response(
-          '{"duplicate":true,"status":"TAKEN"}',
+          '{"results":[{"schedule_id":1,"duplicate":true,"status":"TAKEN"}]}',
           200,
           headers: {'content-type': 'application/json'},
         );
@@ -262,4 +299,24 @@ class _TestMedicationController extends MedicationController {
       heartRateNormal: true,
     );
   }
+}
+
+class _IncompleteMedicationController extends MedicationController {
+  _IncompleteMedicationController(http.Client client)
+    : super(apiClient: ApiClient(client: client));
+
+  @override
+  TodayMedication build() => const TodayMedication(
+    doses: [
+      DoseEntry(
+        slot: DoseSlot.dinner,
+        medicines: [
+          Medicine(ingredient: '첫 번째 약', amount: '1알', scheduleId: 1),
+          Medicine(ingredient: '두 번째 약', amount: '1알'),
+        ],
+      ),
+    ],
+    guardianRelation: '가족',
+    guardianName: '테스트',
+  );
 }

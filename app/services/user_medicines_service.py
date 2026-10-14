@@ -231,7 +231,8 @@ def _active_medicine_rows(conn, user_id: str) -> list[dict[str, Any]]:
                (SELECT MAX(ml.taken_at)
                   FROM medication_logs ml
                   JOIN medication_schedules ms ON ms.id = ml.schedule_id
-                 WHERE ms.user_medicine_id = um.id) AS last_taken_at,
+                 WHERE ms.user_medicine_id = um.id
+                   AND ms.status = 'TAKEN' AND ml.status = 'TAKEN') AS last_taken_at,
                m.medicine_code, m.product_name, m.ingredient, m.easy_category,
                m.efficacy, m.precautions, m.short_explanation, m.manufacturer,
                m.explanation_review_status, m.ingredient_strength,
@@ -360,7 +361,8 @@ def get_user_medicine(user_id: str, medicine_code: str) -> dict[str, Any]:
                    (SELECT MAX(ml.taken_at)
                       FROM medication_logs ml
                       JOIN medication_schedules ms ON ms.id = ml.schedule_id
-                     WHERE ms.user_medicine_id = um.id) AS last_taken_at,
+                     WHERE ms.user_medicine_id = um.id
+                       AND ms.status = 'TAKEN' AND ml.status = 'TAKEN') AS last_taken_at,
                    m.medicine_code, m.product_name, m.ingredient, m.easy_category,
                    m.efficacy, m.precautions, m.short_explanation, m.manufacturer,
                    m.explanation_review_status, m.ingredient_strength,

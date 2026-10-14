@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'support/authenticated_session.dart';
 import 'package:alkong_yakong/core/network/api_client.dart';
 import 'package:alkong_yakong/core/session/mvp_session.dart';
 import 'package:alkong_yakong/core/session/session_credentials.dart';
@@ -15,20 +16,17 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
-String token(String id, {bool expired = false}) =>
-    'test.${base64Url.encode(utf8.encode(jsonEncode({'sub': id, 'exp': DateTime.now().millisecondsSinceEpoch ~/ 1000 + (expired ? -10 : 600)})))}.test';
-
 void main() {
-  setUp(() {
+  setUp(() async {
     FlutterSecureStorage.setMockInitialValues({});
     SharedPreferences.setMockInitialValues({});
-    SessionCredentials.accessToken = token('patient');
+    await SessionCredentials.install(loginResponse('patient'));
     MvpSession.userId = 'patient';
     OfflineStatus.clear();
   });
 
   test(
-    'cached own profile works offline but never after 401 or expiry',
+    'cached own profile works offline but never after 401 clears credentials',
     () async {
       var status = 200;
       final api = ApiClient(
@@ -54,7 +52,6 @@ void main() {
       status = 401;
       await expectLater(repo.fetch('patient'), throwsA(isA<ApiException>()));
       status = 503;
-      SessionCredentials.accessToken = token('patient', expired: true);
       await expectLater(repo.fetch('patient'), throwsA(isA<ApiException>()));
     },
   );

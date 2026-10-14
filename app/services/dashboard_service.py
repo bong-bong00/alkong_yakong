@@ -18,17 +18,7 @@ def get_dashboard(user_id: str, target_date: str | None = None) -> dict:
         schedules = conn.execute(
             """
             SELECT ms.id, ms.scheduled_date, ms.scheduled_time, ms.time_slot,
-                   COALESCE(
-                       (
-                           SELECT ml.status
-                           FROM medication_logs ml
-                           WHERE ml.schedule_id = ms.id
-                           ORDER BY ml.taken_at DESC, ml.id DESC
-                           LIMIT 1
-                       ),
-                       ms.status,
-                       'PENDING'
-                   ) AS status,
+                   COALESCE(ms.status, 'PENDING') AS status,
                    um.id AS user_medicine_id, um.medicine_code,
                    m.product_name, m.ingredient
             FROM medication_schedules ms

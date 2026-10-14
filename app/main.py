@@ -1,9 +1,7 @@
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI, Depends, Request
-from app.core.auth import authorize_request, verify_token, can_access, _bearer
-from app.routes import internal
+from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import (
@@ -15,13 +13,16 @@ from app.core.config import (
     DEMO_SEED_ENABLED,
 )
 from app.database import DB_PATH
+from app.core.auth import auth_enforced, require_authorized_request, validate_auth_configuration
 from app.routes import (
+    auth,
     biosignal,
     biosignal_test,
     dashboard,
     drug_explain,
     dur_analysis,
     guardians,
+    internal,
     medication_logs,
     notifications,
     prescription,
@@ -36,7 +37,8 @@ from app.services.dur_sync_service import start_background_dur_sync
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    initialize_database()
+    validate_auth_configuration()
+    initialize_database(preserve_records=auth_enforced())
     from app.services.mfds_drug_permission.db import initialize_permission_db
     initialize_permission_db()
     initialize_easy_category_map_db()
@@ -62,6 +64,7 @@ app.add_middleware(
 )
 
 for router in (
+    auth.router,
     users.router,
     internal.router,
     guardians.router,
@@ -74,13 +77,7 @@ for router in (
     notifications.router,
     dashboard.router,
 ):
-    app.include_router(router, dependencies=[Depends(authorize_request)])
-
-
-@app.get("/api/v1/auth/access")
-def account_access(request: Request, user_id: str):
-    claims = verify_token(_bearer(request))
-    return {"allowed": can_access(claims, user_id)}
+    app.include_router(router, dependencies=[Depends(require_authorized_request)])
 
 
 @app.get("/")

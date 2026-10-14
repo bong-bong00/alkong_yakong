@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../../core/polar_pharmacist_ui/constants/app_colors.dart';
 import '../../../../core/network/api_client.dart';
+import '../../../../core/network/client_request_id.dart';
 import '../../../../core/session/mvp_session.dart';
 
 class BiosignalScreen extends StatefulWidget {
@@ -21,6 +22,8 @@ class _BiosignalScreenState extends State<BiosignalScreen> {
   String? _errorMessage;
   Map<String, dynamic>? _sendResult;
   List<dynamic> _events = const [];
+  String? _pendingRequestId;
+  String? _pendingMeasurement;
 
   @override
   void initState() {
@@ -59,6 +62,12 @@ class _BiosignalScreenState extends State<BiosignalScreen> {
       return;
     }
 
+    final measurement = '$userId:$bpm';
+    if (_pendingMeasurement != measurement) {
+      _pendingMeasurement = measurement;
+      _pendingRequestId = ClientRequestId.create();
+    }
+    final clientRequestId = _pendingRequestId!;
     setState(() {
       _isSending = true;
       _errorMessage = null;
@@ -72,12 +81,15 @@ class _BiosignalScreenState extends State<BiosignalScreen> {
           'bpm': bpm,
           'device_id': 'FLUTTER-MOCK',
           'source': 'MANUAL_MOCK',
+          'client_request_id': clientRequestId,
         },
       );
       if (!mounted) return;
       setState(() {
         _sendResult = Map<String, dynamic>.from(response as Map);
       });
+      _pendingMeasurement = null;
+      _pendingRequestId = null;
       await _loadEvents(showLoading: false);
     } on ApiException catch (error) {
       if (!mounted) return;

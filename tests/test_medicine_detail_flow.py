@@ -28,6 +28,9 @@ def test_reviewed_official_and_ocr_medicines_share_quality_pipeline():
                   '처방에 따라 복용', '호흡이 불편하면 의료진과 상담')
         """
     )
+    # Establish the official snapshot before attaching a reviewed card. A card
+    # without a matching profile snapshot is intentionally marked OUTDATED.
+    ensure_medicine_detail(conn, "EXISTING-1")
     conn.execute(
         """
         INSERT INTO ai_explanation_cards (

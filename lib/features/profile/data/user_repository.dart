@@ -1,7 +1,6 @@
 import '../../../core/network/api_client.dart';
-import '../domain/user_profile.dart';
 import '../../../core/session/session_credentials.dart';
-import '../../../core/session/offline_status.dart';
+import '../domain/user_profile.dart';
 
 /// 가입 · 로그인 · 내 정보 읽기/고치기 · 탈퇴.
 class UserRepository {
@@ -13,26 +12,21 @@ class UserRepository {
       '/api/v1/users/${Uri.encodeComponent(userId)}';
 
   Future<UserProfile> fetch(String userId) async {
-    try {
-      final profile = await _remember(await _api.get(_path(userId)));
-      OfflineStatus.fresh('profile:$userId');
-      return profile;
-    } on ApiException catch (error) {
-      if (error.statusCode != null && error.statusCode! < 500) rethrow;
-      final cached = await SessionCredentials.offlineProfile(userId);
-      if (cached == null) rethrow;
-      OfflineStatus.cached('profile:$userId');
-      return _profile(cached);
-    }
+    final response = await _api.get(_path(userId));
+    final user = _profile(response);
+    await SessionCredentials.updateProfile(
+      Map<String, dynamic>.from(response as Map),
+    );
+    return user;
   }
 
   Future<UserProfile> signUp(Map<String, dynamic> body) async =>
-      _remember(await _api.post('/api/v1/users', body: body));
+      _authenticatedProfile(await _api.post('/api/v1/users', body: body));
 
   Future<UserProfile> login({
     required String phone,
     required String password,
-  }) async => _remember(
+  }) async => _authenticatedProfile(
     await _api.post(
       '/api/v1/users/login',
       body: {'phone': phone, 'password': password},
@@ -42,18 +36,28 @@ class UserRepository {
   Future<UserProfile> update(
     String userId,
     Map<String, dynamic> changes,
-  ) async => _remember(await _api.patch(_path(userId), body: changes));
-
-  static Future<UserProfile> _remember(dynamic response) async {
-    final profile = _profile(response);
-    final data = Map<String, dynamic>.from(response as Map);
-    final token = data['access_token']?.toString();
-    if (token?.isNotEmpty == true) await SessionCredentials.saveToken(token!);
-    await SessionCredentials.saveProfile(data);
-    return profile;
+  ) async {
+    final response = await _api.patch(_path(userId), body: changes);
+    final user = _profile(response);
+    await SessionCredentials.updateProfile(
+      Map<String, dynamic>.from(response as Map),
+    );
+    return user;
   }
 
   Future<void> delete(String userId) => _api.delete(_path(userId));
+
+  static Future<UserProfile> _authenticatedProfile(dynamic response) async {
+    final user = _profile(response);
+    try {
+      await SessionCredentials.install(
+        Map<String, dynamic>.from(response as Map),
+      );
+    } catch (_) {
+      throw const ApiException('로그인 정보를 안전하게 저장하지 못했어요. 다시 로그인해 주세요.');
+    }
+    return user;
+  }
 
   static UserProfile _profile(dynamic response) {
     if (response is Map) {

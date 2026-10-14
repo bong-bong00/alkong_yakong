@@ -9,13 +9,11 @@ from typing import Any
 from fastapi import HTTPException
 
 from app.database import get_connection
-from app.services.account_lookup import phone_digits
+from app.core.auth import auth_enforced, service_role
+from app.core.kst import today_kst
 from app.services.heart_reading import latest_heart_reading
 from app.services.medication_history_service import get_medication_history
 from app.services.today_medication_service import _slot_from_time, get_today_medicines
-from app.services.medication_gateway import medication_get
-from app.core.kst import today_kst
-from app.core.config import MEDICATION_FEATURE_BASE_URL
 
 _KST = timezone(timedelta(hours=9))
 _SLOT_LABELS = {"morning": "아침", "lunch": "점심", "dinner": "저녁"}
@@ -23,44 +21,21 @@ _MAX_ACTIVITIES = 6
 
 
 def linked_rows(conn: sqlite3.Connection, guardian) -> list:
-    """보호자 계정에 걸린 연결.
+    """Return only links explicitly bound to this guardian account.
 
-    어르신이 가입 전의 번호로 초대해 둔 연락처도 번호가 같으면 여기서 이어 붙인다.
+    A matching phone number alone is not evidence of patient consent.
     """
-    digits = phone_digits(guardian["phone"])
-    rows = conn.execute(
+    return conn.execute(
         """
         SELECT g.*, u.name AS patient_name, u.phone AS patient_phone,
                u.birth_date AS patient_birth_date
         FROM guardians g
         JOIN users u ON u.id = g.user_id
-        WHERE g.user_id != ?
+        WHERE g.user_id != ? AND g.guardian_user_id = ?
         ORDER BY g.created_at, g.id
         """,
-        (guardian["id"],),
+        (guardian["id"], guardian["id"]),
     ).fetchall()
-    result = []
-    for row in rows:
-        if row["guardian_user_id"] == guardian["id"]:
-            result.append(row)
-        elif (
-            row["guardian_user_id"] is None
-            and digits
-            and phone_digits(row["phone"]) == digits
-        ):
-            from app.core.auth import enforced
-            if enforced():
-                conn.execute("UPDATE guardians SET guardian_user_id=?, status='PENDING', requested_by='GUARDIAN' WHERE id=?", (guardian["id"], row["id"]))
-                result.append(conn.execute("""SELECT g.*,u.name AS patient_name,u.phone AS patient_phone,u.birth_date AS patient_birth_date
-                                           FROM guardians g JOIN users u ON u.id=g.user_id WHERE g.id=?""", (row["id"],)).fetchone())
-                continue
-            conn.execute(
-                "UPDATE guardians SET guardian_user_id = ? WHERE id = ?",
-                (guardian["id"], row["id"]),
-            )
-            result.append(row)
-    conn.commit()
-    return result
 
 
 def get_care_overview(guardian_user_id: str) -> dict[str, Any]:
@@ -78,7 +53,10 @@ def get_care_overview(guardian_user_id: str) -> dict[str, Any]:
     patients: list[dict[str, Any]] = []
     pending: list[dict[str, Any]] = []
     for row in rows:
-        if str(row["status"] or "ACCEPTED").upper() == "PENDING":
+        if (
+            str(row["status"] or "").upper() != "ACCEPTED"
+            or not row["consent_verified_at"]
+        ):
             pending.append(
                 {
                     "id": row["id"],
@@ -95,29 +73,37 @@ def get_care_overview(guardian_user_id: str) -> dict[str, Any]:
 def _patient_summary(row) -> dict[str, Any]:
     patient_id = row["user_id"]
     today = today_kst()
-    doses = medication_get(patient_id, "/today-medicines", local=lambda: get_today_medicines(patient_id)).get("doses") or []
+    remote = None
+    if auth_enforced() and service_role() == "main":
+        from app.services.medication_feature_dur_client import load_remote_patient_overview
+        remote = load_remote_patient_overview(
+            user_id=patient_id, day=today.isoformat(),
+            start=(today - timedelta(days=6)).isoformat(),
+        )
+    doses = (remote["today"] if remote else get_today_medicines(patient_id)).get("doses") or []
     slots = [
         {"label": _SLOT_LABELS.get(dose["slot"], dose["slot"]), "taken": bool(dose.get("taken")), "taken_at": dose.get("taken_at")}
         for dose in doses
     ]
     next_slot = next((slot["label"] for slot in slots if not slot["taken"]), None)
 
-    start, end = (today - timedelta(days=6)).isoformat(), today.isoformat()
-    week = medication_get(patient_id, "/medication-history", params={"start": start, "end": end},
-                          local=lambda: get_medication_history(patient_id, start, end))["days"]
+    week = (remote["history"] if remote else get_medication_history(
+        patient_id, (today - timedelta(days=6)).isoformat(), today.isoformat()
+    ))["days"]
     week_total = sum(day["total"] for day in week)
     week_taken = sum(day["taken"] for day in week)
 
     conn = get_connection()
     try:
         heart = latest_heart_reading(conn, patient_id)
-        activities = _activities(conn, patient_id, today.isoformat())
+        activities = _activities(conn, patient_id, today.isoformat(), include_medication=remote is None)
     finally:
         conn.close()
-    if MEDICATION_FEATURE_BASE_URL:
-        activities = [
-            {"text": f"{_SLOT_LABELS.get(dose['slot'], dose['slot'])} 약 완료 기록", "time": _clock(dose['taken_at'], stored_in_utc=True)}
-            for dose in doses if dose.get("taken") and dose.get("taken_at")
+    if remote:
+        activities += [
+            {"text": f"{_SLOT_LABELS[item['slot']]} 약 드셨어요",
+             "time": _clock(item.get("taken_at"), stored_in_utc=True)}
+            for item in remote["activities"] if item.get("slot") in _SLOT_LABELS
         ]
         activities.sort(key=lambda item: item["time"], reverse=True)
         activities = activities[:_MAX_ACTIVITIES]
@@ -161,7 +147,7 @@ def _clock(value: str | None, *, stored_in_utc: bool) -> str:
     return moment.strftime("%H:%M")
 
 
-def _activities(conn: sqlite3.Connection, patient_id: str, day: str) -> list[dict[str, str]]:
+def _activities(conn: sqlite3.Connection, patient_id: str, day: str, *, include_medication: bool = True) -> list[dict[str, str]]:
     """오늘 있었던 일. 어르신이 직접 누른 복약과 잰 심박수만 적는다."""
     taken_by_slot: dict[str, str] = {}
     for row in conn.execute(
@@ -169,9 +155,10 @@ def _activities(conn: sqlite3.Connection, patient_id: str, day: str) -> list[dic
         SELECT ms.time_slot, ms.scheduled_time, ml.taken_at
         FROM medication_logs ml
         JOIN medication_schedules ms ON ms.id = ml.schedule_id
-        WHERE ml.user_id = ? AND ms.scheduled_date = ? AND ml.status = 'TAKEN'
+        WHERE ml.user_id = ? AND ms.scheduled_date = ?
+          AND ml.status = 'TAKEN' AND ms.status = 'TAKEN'
         """,
-        (patient_id, day),
+        (patient_id, day if include_medication else ""),
     ):
         slot = _slot_from_time(row["time_slot"], row["scheduled_time"])
         taken_by_slot[slot] = max(taken_by_slot.get(slot, ""), str(row["taken_at"] or ""))
