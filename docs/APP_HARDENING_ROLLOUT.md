@@ -24,6 +24,10 @@
 
 ## 두 서버의 필수 설정
 
+영구 디스크를 사용하지 않는 Neon 이전은 [NEON_MIGRATION.md](NEON_MIGRATION.md)를 따른다.
+PostgreSQL 모드에서는 SQLite 경로 대신 `NEON_DATABASE_URL`이 필요하다.
+기본 모드는 SQLite로 유지하며 운영 백업/Neon 검증 전에는 모드를 바꾸지 않는다.
+
 - 두 Render 서버에 같은 `ALKONGYAKONG_AUTH_SECRET`을 설정한다. 임의 생성한
   32자 이상의 비밀값을 Render 환경변수에만 저장하며 코드·문서·채팅에 넣지 않는다.
 - 메인: `SERVICE_ROLE=main`, `MEDICATION_FEATURE_BASE_URL=https://alkong-yakong-j0jn.onrender.com`

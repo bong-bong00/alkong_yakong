@@ -60,9 +60,15 @@ def validate_auth_configuration() -> None:
         raise RuntimeError("SERVICE_ROLE must be main or medication")
     if len(os.getenv("ALKONGYAKONG_AUTH_SECRET", "")) < 32:
         raise RuntimeError("ALKONGYAKONG_AUTH_SECRET must be at least 32 characters")
-    db_path = os.getenv("ALKONGYAKONG_DB_PATH", "")
-    if not db_path or not os.path.isabs(db_path):
-        raise RuntimeError("ALKONGYAKONG_DB_PATH must be an absolute persistent path")
+    from app.database import database_backend
+    if database_backend() == "postgresql":
+        from app.postgres import validate_url, schema_for_role
+        validate_url(os.getenv("NEON_DATABASE_URL", ""))
+        schema_for_role()
+    else:
+        db_path = os.getenv("ALKONGYAKONG_DB_PATH", "")
+        if not db_path or not os.path.isabs(db_path):
+            raise RuntimeError("ALKONGYAKONG_DB_PATH must be an absolute persistent path")
     required_url = (
         "AUTH_AUTHORITY_BASE_URL" if service_role() == "medication"
         else "MEDICATION_FEATURE_BASE_URL"

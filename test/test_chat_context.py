@@ -1518,6 +1518,44 @@ class ChatContextTest(unittest.TestCase):
         )
         self.assertIn(warning, reply)
 
+    def test_selected_medicines_similar_roles_requests_efficacy_duplicates(self):
+        selected = [
+            {"medicine_code": "100", "product_name": "첫번째약정"},
+            {"medicine_code": "200", "product_name": "두번째약정"},
+        ]
+        fake_client = MagicMock()
+        fake_client.__enter__.return_value = fake_client
+        fake_client.__exit__.return_value = False
+        with (
+            patch.object(gemini_service, "GEMINI_API_KEY", "configured"),
+            patch("google.genai.Client", return_value=fake_client),
+            patch(
+                "app.services.external_api_service.fetch_e_drug_info",
+                side_effect=lambda *, medicine_code: {
+                    "medicine_code": medicine_code,
+                    "product_name": "첫번째약정" if medicine_code == "100" else "두번째약정",
+                    "ingredient": "공식성분" + medicine_code,
+                },
+            ),
+            patch(
+                "app.services.medication_feature_dur_client.load_remote_combination_context",
+                return_value={
+                    "status": "incomplete", "items": [], "has_risk": None,
+                    "reason": "test_incomplete", "zero_result_types": [],
+                },
+            ) as remote_dur,
+        ):
+            reply = gemini_service.generate_chat_response(
+                "선택한 약에 같은 성분이나 비슷한 역할이 있나요?",
+                user_id="U1", selected_medicines=selected, intent="duplicate",
+            )
+        self.assertEqual(
+            remote_dur.call_args.kwargs["requested_types"],
+            {"중복성분", "효능군중복"},
+        )
+        self.assertFalse(remote_dur.call_args.kwargs["include_current_medicines"])
+        self.assertNotIn("겹치는 성분이 없", reply)
+
     def test_selected_medicines_with_missing_identity_stays_incomplete(self):
         with (
             patch.object(gemini_service, "GEMINI_API_KEY", "configured"),

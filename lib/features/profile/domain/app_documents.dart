@@ -16,6 +16,15 @@ const String kAppVersion = '1.0.0';
 /// 문의하는 길. 앱 안에서 찾아갈 수 있는 자리로 적는다.
 const String kContactChannel = '내 정보 → 도움말';
 
+// 운영자가 확정한 값만 빌드 설정으로 제공한다. 임의의 연락처/시행일을 만들지 않는다.
+const String kPrivacyOperator = String.fromEnvironment('PRIVACY_OPERATOR');
+const String kPrivacyContact = String.fromEnvironment('PRIVACY_CONTACT');
+const String kPrivacyEffectiveDate = String.fromEnvironment(
+  'PRIVACY_EFFECTIVE_DATE',
+);
+// 실제 두 서버 DB 전환 이후 빌드에서만 켠다. 프로젝트 생성/접속만으로 켜지 않는다.
+const bool kNeonDatabaseActive = bool.fromEnvironment('NEON_DATABASE_ACTIVE');
+
 // ════════════════════════════════════════════════════════════════
 //  도움이 필요할 때
 // ════════════════════════════════════════════════════════════════
@@ -370,8 +379,12 @@ const AppDocument kPrivacyPolicy = AppDocument(
   title: '개인정보처리방침',
   summary:
       '알콩약콩이 어떤 정보를 왜 받고, 얼마나 두고, '
-      '누구에게 맡기는지 적은 문서예요.',
-  meta: [],
+      '누구에게 맡기는지 적은 문서예요. 운영자 정보·동의 절차·보관 기간은 '
+      '실제 사용자 대상 운영 전에 확정·검토해야 합니다.',
+  meta: [
+    if (kPrivacyOperator != '') '운영자: $kPrivacyOperator',
+    if (kPrivacyEffectiveDate != '') '시행일: $kPrivacyEffectiveDate',
+  ],
   sections: [
     DocSection(
       title: '1. 처리 목적과 원칙',
@@ -394,9 +407,10 @@ const AppDocument kPrivacyPolicy = AppDocument(
         '· 이용 기록: 복약 일정, "먹었어요"를 누른 기록과 시각, 함께먹기 주의 결과',
         '· 심박 정보: 폴라 센서로 측정한 30초 평균 심박수와 측정 시각',
         '· 보호자 연락처: 이용자가 적은 보호자의 이름, 관계, 휴대폰 번호',
-        '· AI 약사 상담: 질문하신 내용',
-        '· 전화기 안에만 저장: 로그인 상태(이용자 번호와 구분), 알림 시간 등 앱 설정',
-        '비밀번호는 원래 글자를 알 수 없게 바꿔(암호화) 저장합니다. '
+        '· AI 약사 상담: 질문과 답변, 선택한 약, 상담 시 참고하는 관련 건강정보와 최근 대화',
+        '· 전화기에 저장: 로그인 인증정보와 사용자 정보의 오프라인 사본, '
+            '이미 조회한 약 정보, 이전 상담 대화와 저장 답변, 알림 시간 등 앱 설정',
+        '비밀번호는 단방향 해시로 바꾸어 저장합니다. '
             '처방전 사진은 글자를 읽는 데에만 쓰고, 사진 원본은 서버에 저장하지 않습니다.',
       ],
     ),
@@ -427,10 +441,9 @@ const AppDocument kPrivacyPolicy = AppDocument(
       paragraphs: [
         '· 건강 상태, 병력, 알레르기, 임신·수유 상태, 복용하는 약, 심박수는 '
             '「개인정보 보호법」 제23조의 민감정보에 해당합니다.',
-        '· 운영자는 가입할 때 "민감정보(건강정보) 수집·이용 동의"를 '
-            '다른 동의와 따로 받은 경우에만 이 정보를 처리합니다.',
-        '· 이 동의는 필수입니다. 이 정보가 없으면 함께먹기 주의 같은 핵심 기능을 '
-            '제공할 수 없기 때문입니다. 동의하지 않으면 가입할 수 없습니다.',
+        '· 건강정보 처리에 필요한 별도 민감정보 동의와 동의 기록 보관 절차는 '
+            '실제 사용자 대상 운영 전에 확정·검증해야 합니다. '
+            '일반 개인정보 동의만으로 별도 동의가 완료되었다고 간주하지 않습니다.',
         '· 민감정보는 위 목적 밖으로 쓰지 않으며, 광고나 판매에 쓰지 않습니다.',
       ],
     ),
@@ -439,11 +452,13 @@ const AppDocument kPrivacyPolicy = AppDocument(
       paragraphs: [
         '· 개인정보는 회원 탈퇴 때까지 보유하고 이용합니다.',
         '· 탈퇴하면 계정과 함께 등록한 약, 복약 기록, 심박 기록, 보호자 연락처를 '
-            '지체 없이 지웁니다. 전자 파일은 되살릴 수 없는 방법으로 지웁니다.',
+            '삭제합니다. 서버 기록 삭제와 별도로 보관 중인 백업의 삭제 절차도 관리해야 합니다.',
         '· 관계 법령에 따라 따로 보관해야 하는 정보가 있으면 그 기간 동안만 '
             '분리해 보관합니다.',
-        '· 서버 백업에 남은 정보는 백업이 새로 쌓이면서 함께 지워집니다.',
-        '· 전화기 안에 저장된 로그인 정보는 로그아웃하거나 앱을 지우면 사라집니다.',
+        '· 서버 백업의 보관 기간과 삭제 절차는 운영 전에 확정하여 안내해야 합니다. '
+            '새 백업을 만들었다는 이유만으로 예전 백업이 자동 삭제되는 것은 아닙니다.',
+        '· 로그아웃하면 로그인 인증정보가 지워집니다. 이전 상담과 저장 답변은 '
+            '로그아웃만으로 모두 삭제되는 것은 아니며, 앱의 삭제 기능이나 기기 앱 데이터 삭제로 관리할 수 있습니다.',
       ],
     ),
     DocSection(
@@ -462,8 +477,15 @@ const AppDocument kPrivacyPolicy = AppDocument(
         '서비스를 제공하려고 다음 회사에 일부 처리를 맡깁니다.',
         '· 네이버클라우드 (NAVER CLOVA OCR): 처방전 사진의 글자 읽기 — 처방전 사진',
         '· Google (Gemini API): AI 약사 상담 답변 만들기 — 질문 내용, '
-            '질문과 관련된 약의 공식 정보와 함께먹기 주의 결과',
-        '· Render: 서버와 데이터베이스 운영(호스팅) — 서비스에 저장되는 정보 전체',
+            '질문과 관련된 약의 공식 정보와 함께먹기 주의 결과, '
+            '관련 질환·과거력·알레르기·흡연·음주 정보와 최근 대화',
+        '· Render: 서버 호스팅 — 서버에서 처리하는 회원·건강·약·복약·심박 정보',
+        if (kNeonDatabaseActive)
+          '· Neon: PostgreSQL 데이터베이스 보관 — 회원·건강·약·복약·심박·보호자 연결 정보. '
+              'DB 보관 지역: 미국 Oregon(AWS US West 2)',
+        if (!kNeonDatabaseActive)
+          '· 현재 운영 DB는 Render의 SQLite입니다. Neon DB 이전을 준비하고 있으며, '
+              '실제 전환 시 보관 업체와 지역 안내를 갱신합니다.',
         '약 정보는 식약처 공공데이터포털(e약은요, 의약품 허가정보, DUR 정보)에서 '
             '약 이름과 코드로 조회하며, 이때 이용자를 알아볼 수 있는 정보는 보내지 않습니다.',
         '맡긴 곳이 정보를 두는 기간은 위탁 계약과 각 회사의 정책을 따릅니다.',
@@ -472,11 +494,16 @@ const AppDocument kPrivacyPolicy = AppDocument(
     DocSection(
       title: '9. 국외 이전',
       paragraphs: [
-        'Google과 Render는 이용자의 정보를 국외에서 처리할 수 있습니다.',
-        '· 이전받는 곳: Google, Render',
+        kNeonDatabaseActive
+            ? 'Google, Render와 Neon은 이용자의 정보를 국외에서 처리할 수 있습니다.'
+            : 'Google과 Render는 이용자의 정보를 국외에서 처리할 수 있습니다.',
+        kNeonDatabaseActive
+            ? '· 이전받는 곳: Google, Render, Neon'
+            : '· 이전받는 곳: Google, Render',
+        if (kNeonDatabaseActive) '· Neon DB 보관 국가·지역: 미국 Oregon',
         '· 이전 시기와 방법: 서비스를 쓰실 때 인터넷으로 전송',
         '· 이전 항목과 목적: 위 8번과 같습니다',
-        '· 보유 기간: 회원 탈퇴 또는 위탁 계약이 끝날 때까지',
+        '· 업체별 보유 기간과 이전의 법적 근거·동의 절차는 운영 전에 확인하여 구체적으로 안내해야 합니다.',
         '국외 이전을 원하지 않으시면 AI 약사 상담을 쓰지 않거나 탈퇴하실 수 있습니다. '
             '다만 서버 호스팅은 서비스 제공에 꼭 필요하여, 거부하시면 서비스를 쓸 수 없습니다.',
       ],
@@ -508,13 +535,19 @@ const AppDocument kPrivacyPolicy = AppDocument(
         '· 비밀번호를 알아볼 수 없게 바꿔 저장',
         '· 개인정보를 다룰 수 있는 사람을 최소한으로 제한',
         '· 인터넷으로 주고받는 정보의 암호화 전송',
-        '· 접근 기록 보관과 점검',
+        '· 비밀값·처방전 원문·건강정보를 오류 로그에 남기지 않도록 관리',
       ],
     ),
     DocSection(
       title: '13. 개인정보 보호책임자와 도움받을 곳',
       paragraphs: [
-        '· 연락처: $kContactChannel',
+        kPrivacyOperator != ''
+            ? '· 운영자: $kPrivacyOperator'
+            : '· 운영자·개인정보 보호책임자: 운영 전 확정 필요',
+        kPrivacyContact != ''
+            ? '· 연락처: $kPrivacyContact'
+            : '· 실제 문의 연락처: 운영 전 확정 필요',
+        '· 앱 이용 안내: $kContactChannel',
         '개인정보 침해에 대한 상담이나 신고는 다음 기관에도 할 수 있습니다.',
         '· 개인정보분쟁조정위원회: 1833-6972 (www.kopico.go.kr)',
         '· 개인정보침해신고센터: 국번 없이 118 (privacy.kisa.or.kr)',

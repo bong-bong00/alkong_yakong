@@ -11,7 +11,6 @@ import '../../../../core/widgets/senior_card.dart' show PillPhoto, kCardShadow;
 import '../../../../core/widgets/senior_header.dart';
 import '../../../../core/widgets/slot_box.dart';
 import '../../application/user_medicines_controller.dart';
-import '../../domain/demo_side_effects.dart';
 import '../../domain/display_policy.dart';
 import '../../domain/ingredient_explanation_display.dart';
 import '../../domain/explanation_highlight.dart';
@@ -625,21 +624,20 @@ class _CautionTab extends StatelessWidget {
         .where((name) => name.isNotEmpty)
         .toList();
 
-    // [임시 · 시연 보기용] 서버가 주는 부작용이 없으면 시연용 문장을 쓴다.
-    // 서버 문장에는 짚을 낱말이 따로 없으니 칠하지 않는다.
-    final sideEffects = medicine.possibleSideEffects.isNotEmpty
-        ? [
-            for (final text in medicine.possibleSideEffects)
-              DemoSideEffect(text),
-          ]
-        : demoSideEffects[medicine.medicineCode.trim()] ??
-              const <DemoSideEffect>[];
+    // 확인된 서버 정보만 표시한다. 정보 부족을 시연용 증상으로 채우지 않는다.
+    final sideEffects = medicine.possibleSideEffects
+        .map((text) => text.trim())
+        .where((text) => text.isNotEmpty)
+        .toList(growable: false);
 
     if (!_hasConflict &&
         cautions.isEmpty &&
         medicine.askDoctorWhen.isEmpty &&
         sideEffects.isEmpty) {
-      return Text('이 약에 따로 적힌 주의사항이 없어요.', style: AppText.body(size: 19));
+      return Text(
+        '현재 확인된 주의사항 정보가 없어요. 의사나 약사에게 확인해 주세요.',
+        style: AppText.body(size: 19),
+      );
     }
     final hasAbove = _hasConflict || cautions.isNotEmpty;
 
@@ -676,7 +674,7 @@ class _CautionTab extends StatelessWidget {
           const SizedBox(height: 12),
           _Marked(text: caution, marks: _marks),
         ],
-        // [임시 · 시연 보기용] 나타날 수 있는 증상.
+        // 서버에서 확인한 나타날 수 있는 증상.
         if (sideEffects.isNotEmpty) ...[
           if (hasAbove) ...[
             const SizedBox(height: 18),
@@ -690,9 +688,7 @@ class _CautionTab extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text('·  ', style: AppText.body(size: 19)),
-                // 문장 전체를 칠하지 않는다. 문장마다 골라 둔 낱말만 칠한다
-                // — 주의 탭이라 모두 빨강이다.
-                Expanded(child: _KeyWords(effect)),
+                Expanded(child: Text(effect, style: AppText.body(size: 19))),
               ],
             ),
           ],
@@ -704,49 +700,6 @@ class _CautionTab extends StatelessWidget {
         ],
       ],
     );
-  }
-}
-
-/// [임시 · 시연 보기용] 증상 한 문장. 골라 둔 낱말만 빨강으로 짚는다.
-///
-/// 주의 탭이라 강조는 모두 빨강이다. 파랑은 약 소개 탭의 몫이다.
-class _KeyWords extends StatelessWidget {
-  final DemoSideEffect effect;
-
-  const _KeyWords(this.effect);
-
-  @override
-  Widget build(BuildContext context) {
-    final base = AppText.body(size: 19);
-    final strong = base.copyWith(
-      color: AppColors.danger,
-      fontWeight: FontWeight.w700,
-    );
-    final styles = {for (final word in effect.marks) word: strong};
-
-    final spans = <TextSpan>[];
-    var rest = effect.text;
-    while (rest.isNotEmpty) {
-      // 가장 앞에서 걸리는 낱말을 찾는다. 같은 자리면 긴 쪽을 짚는다.
-      var at = -1;
-      var hit = '';
-      for (final word in styles.keys) {
-        final found = rest.indexOf(word);
-        if (found < 0) continue;
-        if (at < 0 || found < at || (found == at && word.length > hit.length)) {
-          at = found;
-          hit = word;
-        }
-      }
-      if (at < 0) {
-        spans.add(TextSpan(text: rest, style: base));
-        break;
-      }
-      if (at > 0) spans.add(TextSpan(text: rest.substring(0, at), style: base));
-      spans.add(TextSpan(text: hit, style: styles[hit]));
-      rest = rest.substring(at + hit.length);
-    }
-    return Text.rich(TextSpan(children: spans), style: base);
   }
 }
 

@@ -879,6 +879,19 @@ def seed_reviewed_detail_explanations(cursor: sqlite3.Cursor) -> None:
 
 
 def initialize_database(*, preserve_records: bool = False) -> None:
+    from app.database import database_backend, get_connection
+    if database_backend() == "postgresql":
+        from app.postgres import prepare_schema
+        with get_connection() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            prepare_schema(connection)
+            connection.execute("""UPDATE guardians SET consent_verified_at = CURRENT_TIMESTAMP
+                WHERE guardian_user_id IS NOT NULL AND consent_verified_at IS NULL
+                  AND status='ACCEPTED' AND requested_by='GUARDIAN'""")
+            connection.execute("""UPDATE guardians SET status='PENDING'
+                WHERE guardian_user_id IS NOT NULL AND consent_verified_at IS NULL
+                  AND status='ACCEPTED'""")
+        return
     conn = sqlite3.connect(DB_PATH)
     conn.execute("PRAGMA foreign_keys = ON")
     conn.execute("BEGIN IMMEDIATE")

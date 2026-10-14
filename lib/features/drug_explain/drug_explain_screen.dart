@@ -784,8 +784,7 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
                 (medicine) => medicine.itemName,
               ),
             }.toList(growable: false);
-      // TODO: 실제 AI 챗봇 API 엔드포인트로 변경 필요
-      // 현재는 기존 약물 설명 API 구조를 임시로 챗봇 응답처럼 활용하도록 구성
+      // 선택 범위와 최근 대화를 실제 AI 약사 상담 API에 전달한다.
       final body = <String, dynamic>{
         'user_id': MvpSession.userId,
         'message': requestText,

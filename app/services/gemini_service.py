@@ -1157,12 +1157,21 @@ def generate_chat_response(
     )
     if not reply:
         return INCOMPLETE_CHAT_REPLY
+    from app.services.pharmacist.conversation import evidence_medicines
+    # Verified label information is not an individual prescription. Keep this
+    # distinction even when the model or final summarizer omits the instruction.
+    dosage_notice = (
+        "다음은 공식 설명서의 일반 용법 안내예요. 실제 복용은 처방·약사 안내를 따라 주세요.\n"
+        if intent == "dosage" and evidence_medicines()
+        else ""
+    )
+    if dosage_notice and not reply.startswith(dosage_notice):
+        reply = dosage_notice + reply
     if len(reply) <= CHAT_REPLY_MAX_CHARS:
         return reply
     medicines = [*(selected_medicines or []), *(temporary_medicines or [])]
     if selected_medicine:
         medicines.append(selected_medicine)
-    from app.services.pharmacist.conversation import evidence_medicines
     medicines.extend(evidence_medicines())
     names = tuple(dict.fromkeys(
         str(m.get("product_name") or m.get("name") or m.get("itemName") or "").strip()
@@ -1172,7 +1181,10 @@ def generate_chat_response(
     try:
         from google import genai
         with genai.Client(api_key=GEMINI_API_KEY) as client:
-            return _summarize_chat_reply(client, reply, medicine_names=names)
+            summarized = _summarize_chat_reply(client, reply, medicine_names=names)
+            if dosage_notice and not summarized.startswith(dosage_notice):
+                summarized = dosage_notice + summarized
+            return summarized
     except Exception:
         logger.warning("Gemini summary client unavailable retained source_length=%d", len(reply))
         return reply
@@ -1629,7 +1641,14 @@ def _generate_chat_response(
                         )
                     ),
                     "requested_types": (
-                        {"중복성분"}
+                        (
+                            {"중복성분", "효능군중복"}
+                            if any(
+                                word in message
+                                for word in ("비슷", "유사", "효능", "효과", "역할")
+                            )
+                            else {"중복성분"}
+                        )
                         if (
                             all_medicines_question or selected_medicines_question
                         )

@@ -7,7 +7,17 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 DB_PATH = os.getenv("ALKONGYAKONG_DB_PATH", str(PROJECT_ROOT / "alkongyakong.db"))
 
 
+def database_backend() -> str:
+    backend = os.getenv("ALKONGYAKONG_DATABASE_BACKEND", "sqlite").strip().lower()
+    if backend not in {"sqlite", "postgresql"}:
+        raise ValueError("ALKONGYAKONG_DATABASE_BACKEND must be sqlite or postgresql")
+    return backend
+
+
 def get_connection() -> sqlite3.Connection:
+    if database_backend() == "postgresql":
+        from app.postgres import Connection, schema_for_role
+        return Connection(os.getenv("NEON_DATABASE_URL", ""), schema_for_role())
     # Background medicine refreshes may briefly hold the SQLite writer lock.
     # Allow ordinary requests to wait for a short write instead of failing at
     # SQLite's five-second default timeout.
