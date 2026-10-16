@@ -450,17 +450,21 @@ class _GuardianStatusScreenState extends ConsumerState<GuardianStatusScreen>
                             icon: TablerIcons.heart,
                             iconColor: AppColors.point,
                             label: '최근 심박수',
-                            value: '$heartRate bpm',
+                            value: '${heartRate}bpm',
+                            status: heartRate < 60
+                                ? '느림'
+                                : heartRate > 100
+                                ? '빠름'
+                                : '정상',
+                            statusColor: heartRate < 60 || heartRate > 100
+                                ? AppColors.danger
+                                : AppColors.textSecondary,
                             singleLine: true,
                           ),
                           Padding(
                             padding: const EdgeInsets.only(bottom: 12),
                             child: Text(
-                              '${heartRate < 60
-                                  ? '느림'
-                                  : heartRate > 100
-                                  ? '빠름'
-                                  : '정상'} · ${patient.heartRateTimeLabel}',
+                              patient.heartRateTimeLabel,
                               style: AppText.caption(size: 16),
                             ),
                           ),
@@ -492,7 +496,11 @@ class _GuardianStatusScreenState extends ConsumerState<GuardianStatusScreen>
                       ),
                       child: Row(
                         children: [
-                          const Icon(TablerIcons.heart, color: AppColors.point),
+                          const Icon(
+                            TablerIcons.heart,
+                            size: 28,
+                            color: AppColors.point,
+                          ),
                           const SizedBox(width: 12),
                           Expanded(
                             child: Text(
@@ -583,6 +591,8 @@ class _StatusRow extends StatelessWidget {
   final String value;
   final bool danger;
   final bool singleLine;
+  final String? status;
+  final Color? statusColor;
 
   const _StatusRow({
     required this.icon,
@@ -591,6 +601,8 @@ class _StatusRow extends StatelessWidget {
     required this.value,
     this.danger = false,
     this.singleLine = false,
+    this.status,
+    this.statusColor,
   });
 
   @override
@@ -601,29 +613,23 @@ class _StatusRow extends StatelessWidget {
         children: [
           ExcludeSemantics(child: Icon(icon, size: 28, color: iconColor)),
           const SizedBox(width: 14),
-          Expanded(
-            child: singleLine
-                ? FittedBox(
-                    fit: BoxFit.scaleDown,
-                    alignment: Alignment.centerLeft,
-                    child: Text(
-                      label,
-                      style: AppText.cardTitle(
-                        size: 21,
-                        color: danger
-                            ? AppColors.danger
-                            : AppColors.textPrimary,
-                      ),
-                    ),
-                  )
-                : Text(
-                    label,
-                    style: AppText.cardTitle(
-                      size: 21,
-                      color: danger ? AppColors.danger : AppColors.textPrimary,
-                    ),
-                  ),
-          ),
+          if (singleLine)
+            Text(
+              label,
+              maxLines: 1,
+              softWrap: false,
+              style: AppText.cardTitle(size: 21),
+            )
+          else
+            Expanded(
+              child: Text(
+                label,
+                style: AppText.cardTitle(
+                  size: 21,
+                  color: danger ? AppColors.danger : AppColors.textPrimary,
+                ),
+              ),
+            ),
           const SizedBox(width: 10),
           Flexible(
             fit: singleLine ? FlexFit.tight : FlexFit.loose,
@@ -631,10 +637,21 @@ class _StatusRow extends StatelessWidget {
                 ? FittedBox(
                     fit: BoxFit.scaleDown,
                     alignment: Alignment.centerRight,
-                    child: Text(
-                      value,
+                    child: Text.rich(
+                      TextSpan(
+                        children: [
+                          TextSpan(text: value),
+                          if (status != null)
+                            TextSpan(
+                              text: '($status)',
+                              style: TextStyle(color: statusColor),
+                            ),
+                        ],
+                      ),
+                      maxLines: 1,
+                      softWrap: false,
                       style: AppText.cardTitle(
-                        size: 20,
+                        size: 16,
                         color: danger
                             ? AppColors.danger
                             : AppColors.textSecondary,

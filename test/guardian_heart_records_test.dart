@@ -91,23 +91,44 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      expect(find.text('114 bpm'), findsOneWidget);
+      expect(find.text('114bpm(빠름)'), findsOneWidget);
       expect(
         tester.widget<Text>(find.text('최근 심박수')).style!.color,
         AppColors.textPrimary,
       );
       expect(
-        tester.widget<Text>(find.text('114 bpm')).style!.color,
+        tester.widget<Text>(find.text('114bpm(빠름)')).style!.color,
         AppColors.textSecondary,
       );
       expect(find.byIcon(TablerIcons.heart_filled), findsNothing);
       final hearts = tester.widgetList<Icon>(find.byIcon(TablerIcons.heart));
       expect(hearts.length, 2);
       expect(hearts.every((icon) => icon.color == AppColors.point), isTrue);
+      expect(hearts.every((icon) => icon.size == 28), isTrue);
       expect(
-        tester.getCenter(find.text('114 bpm')).dy,
+        tester.getCenter(find.text('114bpm(빠름)')).dy,
         closeTo(tester.getCenter(find.text('최근 심박수')).dy, 1),
       );
+      final heartValue = tester.widget<Text>(find.text('114bpm(빠름)'));
+      expect(heartValue.style!.fontSize, 16);
+      expect(heartValue.maxLines, 1);
+      expect(heartValue.softWrap, isFalse);
+      expect(
+        ((heartValue.textSpan! as TextSpan).children!.last as TextSpan)
+            .style!
+            .color,
+        AppColors.danger,
+      );
+      tester.view.physicalSize = const Size(320, 1600);
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+      final valueBox = tester.getRect(find.text('114bpm(빠름)'));
+      final labelBox = tester.getRect(find.text('최근 심박수'));
+      expect(valueBox.left, greaterThanOrEqualTo(labelBox.right));
+      expect(valueBox.right, lessThanOrEqualTo(320));
+      expect(valueBox.center.dy, closeTo(labelBox.center.dy, 1));
+      tester.view.physicalSize = const Size(390, 1600);
+      await tester.pumpAndSettle();
       await tester.tap(find.byKey(const Key('guardian-open-heart-records')));
       await tester.pumpAndSettle();
       expect(find.byType(HeartScreen), findsOneWidget);
