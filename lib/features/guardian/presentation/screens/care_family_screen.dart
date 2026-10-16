@@ -186,11 +186,11 @@ class _AlertBell extends StatelessWidget {
               ),
               if (count > 0)
                 Positioned(
-                  right: -6,
-                  top: -6,
+                  right: -2,
+                  top: -2,
                   child: Container(
-                    width: 30,
-                    height: 30,
+                    width: 24,
+                    height: 24,
                     alignment: Alignment.center,
                     decoration: const BoxDecoration(
                       color: AppColors.danger,
@@ -198,7 +198,7 @@ class _AlertBell extends StatelessWidget {
                     ),
                     child: Text(
                       '$count',
-                      style: AppText.cardTitle(size: 16, color: Colors.white),
+                      style: AppText.cardTitle(size: 13, color: Colors.white),
                     ),
                   ),
                 ),

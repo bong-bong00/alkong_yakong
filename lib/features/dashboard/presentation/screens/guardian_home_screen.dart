@@ -935,28 +935,16 @@ class _AlertCard extends StatelessWidget {
   bool get _isDanger =>
       alert.type == 'miss' || alert.type == 'alert' || alert.type == 'refill';
 
-  Color get _barColor {
-    if (_isDanger) return AppColors.danger;
-    // 지난 것은 회색으로 뒤로 물린다. 지우지는 않는다.
-    if (alert.type == 'past') return AppColors.surface;
-    return AppColors.point;
+  Color get _statusColor {
+    if (acknowledged || alert.type == 'past') return AppColors.textTertiary;
+    return _isDanger ? AppColors.danger : AppColors.point;
   }
 
   @override
   Widget build(BuildContext context) {
-    // 색 카드가 한 장 뒤에 깔린 모양. 지난 것은 뒤 카드도 흰색이라
-    // 겹친 자리가 보이지 않는다 — 지우지는 않고 뒤로 물린다.
-    return AccentCard(
-      accent: _barColor,
-      // 링크가 붙는 카드는 아래를 더 좁힌다. SeniorTextButton 이 터치
-      // 영역 48px을 위해 제 아래에 12를 갖고 있어, 카드 여백과 겹쳐
-      // 글자 밑이 유독 벌어진다. 터치 영역은 그대로 두고 카드만 줄인다.
-      padding: EdgeInsets.fromLTRB(
-        22,
-        16,
-        22,
-        alert.type == 'prescription' ? 4 : 16,
-      ),
+    return SeniorCard(
+      padding: const EdgeInsets.all(20),
+      radius: 20,
       child: _content(context),
     );
   }
@@ -986,13 +974,22 @@ class _AlertCard extends StatelessWidget {
       children: [
         Row(
           children: [
+            Container(
+              width: 8,
+              height: 8,
+              decoration: BoxDecoration(
+                color: _statusColor,
+                shape: BoxShape.circle,
+              ),
+            ),
+            const SizedBox(width: 10),
             Expanded(
               child: Text(
                 _who,
                 style: AppText.cardTitle(
                   size: 18,
-                  color: _barColor,
-                  weight: FontWeight.w800,
+                  color: AppColors.textPrimary,
+                  weight: FontWeight.w600,
                 ),
                 // 첫 줄 위에 남는 행간을 끈다. 마지막 줄 아래도 껐으므로
                 // 글자와 카드 사이가 위아래 같은 폭으로 떨어진다.
@@ -1003,14 +1000,14 @@ class _AlertCard extends StatelessWidget {
             ),
             Text(
               alert.time,
-              style: AppText.label(size: 17, color: AppColors.textTertiary),
+              style: AppText.label(size: 14, color: AppColors.textTertiary),
             ),
           ],
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: 12),
         Text(
           _what,
-          style: AppText.label(size: 20.5, color: AppColors.textPrimary),
+          style: AppText.label(size: 20, color: AppColors.textBody),
           // 행간(1.5)의 아래쪽 몫이 마지막 줄 밑에 남아, 같은 여백인데도
           // 아래가 더 벌어져 보인다. 마지막 줄의 아래 행간만 끈다.
           textHeightBehavior: const TextHeightBehavior(
@@ -1053,6 +1050,7 @@ class _AlertCard extends StatelessWidget {
               Expanded(
                 child: SeniorButton(
                   label: '전화 드리기',
+                  kind: SeniorButtonKind.secondary,
                   minHeight: 56,
                   fontSize: 19,
                   onPressed: () => _callPatient(context, patient),
