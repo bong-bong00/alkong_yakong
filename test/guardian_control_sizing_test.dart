@@ -1,6 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:alkong_yakong/core/constants/app_colors.dart';
+import 'package:alkong_yakong/core/widgets/senior_header.dart';
+import 'package:alkong_yakong/core/polar_pharmacist_ui/widgets/senior_header.dart'
+    as polar;
 import 'package:alkong_yakong/core/network/api_client.dart';
 import 'package:alkong_yakong/core/session/mvp_session.dart';
 import 'package:alkong_yakong/core/theme/app_theme.dart';
@@ -33,6 +37,23 @@ class PasswordUsers extends UserRepository {
 }
 
 void main() {
+  for (final name in ['김이박', ' 김이박 ', '김', 'Alice', '👩‍⚕️약사', '']) {
+    testWidgets('avatar uses first visible character: $name', (tester) async {
+      final expected = name.trim().isEmpty ? '님' : name.trim().characters.first;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Row(
+            children: [
+              InitialAvatar(name: name),
+              polar.InitialAvatar(name: name),
+            ],
+          ),
+        ),
+      );
+      expect(find.text(expected), findsNWidgets(2));
+      expect(tester.takeException(), isNull);
+    });
+  }
   for (final entry in {
     59: '느림',
     60: '정상',
@@ -82,6 +103,12 @@ void main() {
         expect(text.style!.fontSize, 15.5);
         expect(text.maxLines, 1);
         expect(text.softWrap, isFalse);
+        final spans = (text.textSpan! as TextSpan).children!;
+        expect((spans.first as TextSpan).style, isNull);
+        expect(
+          (spans.last as TextSpan).style!.color,
+          entry.key < 60 || entry.key > 100 ? AppColors.danger : null,
+        );
         final fit = find.ancestor(
           of: heartText,
           matching: find.byType(FittedBox),

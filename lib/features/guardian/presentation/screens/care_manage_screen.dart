@@ -150,7 +150,7 @@ class CareManageScreen extends ConsumerWidget {
                                 onPressed: () =>
                                     _unlink(context, ref, patients[i]),
                                 style: TextButton.styleFrom(
-                                  foregroundColor: AppColors.textSecondary,
+                                  foregroundColor: AppColors.danger,
                                   textStyle: const TextStyle(
                                     fontSize: 14,
                                     fontWeight: FontWeight.normal,

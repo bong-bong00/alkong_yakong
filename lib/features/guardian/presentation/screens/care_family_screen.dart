@@ -315,12 +315,27 @@ class _PatientCard extends StatelessWidget {
                       FittedBox(
                         fit: BoxFit.scaleDown,
                         alignment: Alignment.centerLeft,
-                        child: Text(
-                          '최근 심박수 ${patient.heartRate}bpm(${patient.heartRate! < 60
-                              ? '느림'
-                              : patient.heartRate! > 100
-                              ? '빠름'
-                              : '정상'})',
+                        child: Text.rich(
+                          TextSpan(
+                            children: [
+                              TextSpan(text: '최근 심박수 ${patient.heartRate}bpm'),
+                              TextSpan(
+                                text:
+                                    '(${patient.heartRate! < 60
+                                        ? '느림'
+                                        : patient.heartRate! > 100
+                                        ? '빠름'
+                                        : '정상'})',
+                                style: TextStyle(
+                                  color:
+                                      patient.heartRate! < 60 ||
+                                          patient.heartRate! > 100
+                                      ? AppColors.danger
+                                      : null,
+                                ),
+                              ),
+                            ],
+                          ),
                           style: AppText.caption(size: 15.5),
                           maxLines: 1,
                           softWrap: false,

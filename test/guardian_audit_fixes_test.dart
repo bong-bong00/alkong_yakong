@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
+import 'package:alkong_yakong/core/constants/app_colors.dart';
 import 'package:alkong_yakong/core/session/mvp_session.dart';
 import 'package:alkong_yakong/core/theme/app_theme.dart';
 import 'package:alkong_yakong/features/dashboard/presentation/screens/patient_data.dart';
@@ -98,6 +99,10 @@ void main() {
           ),
         );
         expect(unlinkButton.style!.textStyle!.resolve({})!.fontSize, 14);
+        expect(
+          unlinkButton.style!.foregroundColor!.resolve({}),
+          AppColors.danger,
+        );
         await tester.tap(find.text('연결 해제'));
         await tester.pumpAndSettle();
         await tester.binding.handlePopRoute();
