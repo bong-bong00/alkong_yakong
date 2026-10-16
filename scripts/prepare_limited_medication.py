@@ -61,6 +61,7 @@ def prepare(export, main_backup, output):
             # date must not silently hide an API-confirmed current medicine.
             row['start_date'] = None
             row['end_date'] = None
+            row['schedule_recovery_pending'] = 1
             if medicine.get('registered_at'):
                 row['created_at'] = medicine['registered_at']
             if row.get('prescription_item_id') not in selected_items:

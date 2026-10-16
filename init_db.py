@@ -188,6 +188,7 @@ TABLE_DEFINITIONS = {
             is_active INTEGER NOT NULL DEFAULT 1,
             status TEXT NOT NULL DEFAULT 'ACTIVE',
             last_prescribed_at TEXT,
+            schedule_recovery_pending INTEGER NOT NULL DEFAULT 0,
             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
             FOREIGN KEY (medicine_code) REFERENCES medicines(medicine_code),
@@ -551,6 +552,7 @@ ADDITIVE_COLUMNS = {
         "administration_route": "TEXT",
     },
     "user_medicines": {
+        "schedule_recovery_pending": "INTEGER NOT NULL DEFAULT 0",
         "dose_amount": "REAL",
         "dose_unit": "TEXT",
         "status": "TEXT NOT NULL DEFAULT 'ACTIVE'",

@@ -278,6 +278,7 @@ def _ensure_today_schedules(conn, user_id: str, day: str) -> None:
                um.start_date, um.end_date, um.prescription_item_id
         FROM user_medicines um
         WHERE um.user_id = ? AND COALESCE(um.is_active, 1) = 1
+          AND COALESCE(um.schedule_recovery_pending, 0) = 0
         """,
         (user_id,),
     ).fetchall()

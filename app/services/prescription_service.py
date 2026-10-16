@@ -1179,7 +1179,7 @@ def _reactivate_duplicate_prescription(cursor, *, user_id: str, prescription_id:
             """
             UPDATE user_medicines
             SET is_active = 1, status = 'ACTIVE', start_date = ?, end_date = ?,
-                last_prescribed_at = ?
+                last_prescribed_at = ?, schedule_recovery_pending = 0
             WHERE id = ?
             """,
             (today, end_date, today, user_medicine_id),
