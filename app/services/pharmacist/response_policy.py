@@ -39,6 +39,47 @@ def complete_units(text):
     return [u for u in units if u]
 
 
+_DIRECTIVE_HEADING = re.compile(
+    r'다음(?:과\s*같은)?\s*(?:환자|경우)(?:에는|에게는|에게|에|는)?\s*'
+    r'(?:(?:투여|사용|복용)하지\s*말\s*것|신중히\s*(?:투여|사용|복용)할\s*것)[.!?]?'
+)
+_PLAIN_HEADING = re.compile(
+    r'(?:사용상의\s*주의사항|주의사항|용법\s*용량|효능\s*효과|일반적\s*주의|'
+    r'경고|이상반응|상호작용|임부\s*및\s*수유부에\s*대한\s*투여|'
+    r'소아에\s*대한\s*투여|고령자에\s*대한\s*투여|임상검사치에\s*대한\s*영향|'
+    r'과량투여\s*시의?\s*처치|적용상의?\s*주의|보관\s*및\s*취급상의\s*주의사항|기타)[\d.)\s]*'
+)
+
+
+def label_units(text):
+    """Keep numbered conditions with their governing warning, not its heading alone.
+
+    Do not split decimals, fractions or enumerations inside qualifications.
+    A bare child such as '임부' is meaningful only with its original directive.
+    """
+    text = re.sub(r'\s+', ' ', str(text or '')).strip()
+    depth, levels = 0, []
+    for ch in text:
+        levels.append(depth)
+        if ch in '(（[': depth += 1
+        elif ch in ')）]': depth = max(0, depth - 1)
+    markers = [m for m in re.finditer(r'(?<!\S)(?:\d+[.)]|[①-⑳])(?=\s|[가-힣])', text)
+               if levels[m.start()] == 0]
+    starts = [0, *(m.start() for m in markers), len(text)]
+    directive, units = None, []
+    for begin, end in zip(starts, starts[1:]):
+        segment = re.sub(r'^(?:\d+[.)]|[①-⑳])\s*', '', text[begin:end].strip())
+        for unit in complete_units(segment):
+            if _DIRECTIVE_HEADING.fullmatch(unit):
+                directive = unit.rstrip('.!?')
+            elif (_PLAIN_HEADING.fullmatch(unit) or re.fullmatch(r'[\d.)\s]*', unit)
+                  or re.fullmatch(r'[가-힣·\s]{2,35}\s+\d+[.)]?', unit)):
+                directive = None
+            else:
+                units.append((directive + ': ' if directive else '') + unit)
+    return units
+
+
 def official_excerpt_reply(contexts, intents, *, food=False):
     """A bounded, explicitly partial quotation when generation is unavailable.
 
@@ -53,7 +94,7 @@ def official_excerpt_reply(contexts, intents, *, food=False):
     for context in contexts:
         name = str(context.get('product_name') or '').split('(')[0].strip()
         if not name: continue
-        units = [u for field in fields for u in complete_units(context.get(field))
+        units = [u for field in fields for u in label_units(context.get(field))
                  if not re.fullmatch(r'(?:사용상의\s*주의사항|주의사항|용법\s*용량|효능\s*효과)?\s*[\d.)\s]*', u)
                  and not re.fullmatch(r'[\d.)\s]*(?:다음(?:과\s*같은)?\s*(?:환자|경우)(?:에는|에게는|에게|에|는)?\s*(?:(?:투여|사용|복용)하지\s*말\s*것|신중히\s*(?:투여|사용|복용)할\s*것)|일반적\s*주의|경고|이상반응)[.!?]?', u)
                  and len(re.sub(r'[\d\W_]', '', u)) >= 4]

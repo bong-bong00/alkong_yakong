@@ -10,7 +10,7 @@ from app.routes.drug_explain import router
 from app.services import gemini_service as gemini
 from app.services import external_api_service as official, medication_feature_dur_client as gateway
 from app.services.pharmacist.conversation import conversation_context
-from app.services.pharmacist.response_policy import official_excerpt_reply
+from app.services.pharmacist.response_policy import official_excerpt_reply, label_units
 
 MEDS = [dict(medicine_code='197800210', product_name='아디팜정'),
         dict(medicine_code='197800308', product_name='프리마란정')]
@@ -74,6 +74,21 @@ def test_headings_never_count_as_a_meaningful_warning():
     assert '세부 조건' in empty and '공식 안내 일부' not in empty
     qualified = official_excerpt_reply([dict(product_name='검증정', cautions='다음 환자는 과민반응이 있는 경우 사용하지 말 것.')], {'precautions'})
     assert '과민반응' in qualified
+
+
+def test_numbered_headings_are_not_quoted_as_a_warning():
+    for heading in ('이상반응 5.', '이상반응 4.', '3. 이상반응 5.', '상호작용 6.'):
+        reply = official_excerpt_reply([dict(product_name='검증정', cautions=heading)], {'precautions'})
+        assert '공식 안내 일부' not in reply
+    units = label_units('1. 다음 환자에는 투여하지 말 것. 1) 과민반응 환자 2) 임부 2. 이상반응 5.')
+    assert units == ['다음 환자에는 투여하지 말 것: 과민반응 환자', '다음 환자에는 투여하지 말 것: 임부']
+
+
+def test_label_extraction_preserves_nested_conditions_and_fractions():
+    text = '1. 다음 환자에는 신중히 투여할 것. 1) 신장애 환자(중등증의 경우 용량의 1/2, 중증은 1/4; 2) 조건을 함께 확인)'
+    units = label_units(text)
+    assert len(units) == 1 and '신중히 투여할 것' in units[0]
+    assert '1/2' in units[0] and '1/4' in units[0] and '2) 조건' in units[0]
 
 
 def test_general_single_combination_requests_the_second_medicine(providers):

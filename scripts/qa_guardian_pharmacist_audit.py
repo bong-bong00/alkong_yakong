@@ -129,7 +129,7 @@ def run(output):
             quality(label + '_dur_completed', '식약처 DUR 정보' in indexed[label].get('sources', [])
                     and '확인하지 못' not in text(label))
         quality('no_unprovided_age_claim', not any(re.search(r'선생님(?:처럼|은|께서는).{0,20}고령자', text(c['label'])) for c in cases))
-        quality('no_bare_warning_heading', not re.search(r'“(?:[\d. ]*)다음 환자에는 투여하지 말 것[.。]?\s*”', text('selected_3_precautions')))
+        quality('no_bare_warning_heading', not re.search(r'“(?:[\d. ]*)(?:다음 환자에는 투여하지 말 것|이상반응|상호작용)[\d.。\s]*”', text('selected_3_precautions')))
         quality('single_combination_requests_partner', '다른 약' in text('selected_1_combination'))
         quality('unselected_old_food_requests_selection', '선택' in text('unselected_old_food_prompt') and '식약처 공식정보를 확인할 수 없어' not in text('unselected_old_food_prompt'))
         quality('summary_does_not_expand', len(text('followup_summary')) < len(text('selected_3_precautions'))
