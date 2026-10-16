@@ -179,18 +179,26 @@ class _StatusCard extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 18),
-          Text(
-            connected ? '폴라 센서가 연결됐어요' : '폴라 센서가 연결되지 않았어요',
-            textAlign: TextAlign.center,
-            style: AppText.emphasis(size: 25),
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Text(
+              connected ? '폴라 센서가 연결됐어요' : '센서가 연결되지 않았어요',
+              maxLines: 1,
+              softWrap: false,
+              textAlign: TextAlign.center,
+              style: AppText.emphasis(size: 25),
+            ),
           ),
           const SizedBox(height: 8),
-          Text(
-            connected
-                ? '센서를 착용하고 계시면 약 드신 뒤 심박수를 측정합니다'
-                : '센서를 착용하고 아래 버튼을 눌러주세요',
-            textAlign: TextAlign.center,
-            style: AppText.body(size: 18.5, color: AppColors.textSecondary),
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Text(
+              connected ? '착용 후 약 드신 뒤 심박수를 측정해요' : '센서 착용 후 연결 버튼을 누르세요',
+              maxLines: 1,
+              softWrap: false,
+              textAlign: TextAlign.center,
+              style: AppText.body(size: 18.5, color: AppColors.textSecondary),
+            ),
           ),
         ],
       ),

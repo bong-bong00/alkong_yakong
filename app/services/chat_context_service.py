@@ -57,8 +57,8 @@ EXPLICIT_QUESTION_INTENTS = frozenset(
 )
 
 UNRELATED_QUESTION_REPLY = (
-    "저는 약에 관한 질문을 도와드려요. "
-    "복용법이나 주의사항을 물어봐 주세요."
+    "AI 약사는 약에 관한 질문을 도와드려요. "
+    "약의 효능·복용법·주의사항을 물어봐 주세요."
 )
 AMBIGUOUS_QUESTION_REPLY = (
     "약에 관한 질문인지 한 번만 더 알려주세요. "
@@ -106,6 +106,15 @@ def classify_question_scope(message: str, *, has_medicine_context: bool = False)
         term in normalized for term in medicine_terms
     )
     if not has_medicine_topic:
+        # A standalone term-definition question is not a request about the
+        # selected medicine, even when an old medicine context is present.
+        disease_terms = (
+            "간경화", "간경변", "당뇨", "고혈압", "저혈압", "고지혈증",
+            "천식", "위궤양", "뇌졸중", "간염", "신부전", "치매", "질환", "질병",
+        )
+        if (any(term in normalized for term in disease_terms)
+                and re.search(r"뭐야|뭔가요|무엇인가요|무슨병|어떤병|정의|뜻|(?:이란|란)[?？]*$", normalized)):
+            return "unrelated"
         unrelated_terms = (
             "날씨",
             "기온",

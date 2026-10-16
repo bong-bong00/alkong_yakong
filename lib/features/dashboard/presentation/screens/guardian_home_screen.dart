@@ -614,11 +614,18 @@ class _StatusRow extends StatelessWidget {
           ExcludeSemantics(child: Icon(icon, size: 28, color: iconColor)),
           const SizedBox(width: 14),
           if (singleLine)
-            Text(
-              label,
-              maxLines: 1,
-              softWrap: false,
-              style: AppText.cardTitle(size: 21),
+            Expanded(
+              flex: 6,
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  softWrap: false,
+                  style: AppText.cardTitle(size: 21),
+                ),
+              ),
             )
           else
             Expanded(
@@ -632,6 +639,7 @@ class _StatusRow extends StatelessWidget {
             ),
           const SizedBox(width: 10),
           Flexible(
+            flex: singleLine ? 5 : 1,
             fit: FlexFit.tight,
             child: singleLine
                 ? FittedBox(

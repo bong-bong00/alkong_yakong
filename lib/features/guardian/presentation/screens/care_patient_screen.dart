@@ -340,12 +340,22 @@ class _FactRow extends StatelessWidget {
           return Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              SizedBox(
-                width: alwaysInline ? constraints.maxWidth * .3 : 100,
-                child: title,
-              ),
+              SizedBox(width: alwaysInline ? 72 : 100, child: title),
               const SizedBox(width: 12),
-              Expanded(child: content),
+              Expanded(
+                child: alwaysInline
+                    ? FittedBox(
+                        fit: BoxFit.scaleDown,
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          text.isEmpty ? missingLabel : text,
+                          maxLines: 1,
+                          softWrap: false,
+                          style: AppText.cardTitle(size: 18),
+                        ),
+                      )
+                    : content,
+              ),
             ],
           );
         },

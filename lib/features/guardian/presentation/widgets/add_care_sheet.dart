@@ -92,6 +92,10 @@ class _AddCareSheetState extends State<_AddCareSheet> {
   Widget build(BuildContext context) {
     return SeniorSheet(
       title: widget.asPatient ? '보호자 추가하기' : '돌보는 분 추가하기',
+      leading: Align(
+        alignment: Alignment.centerLeft,
+        child: BackButton(onPressed: () => Navigator.of(context).pop()),
+      ),
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [

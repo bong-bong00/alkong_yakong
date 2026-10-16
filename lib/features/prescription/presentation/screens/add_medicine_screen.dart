@@ -203,7 +203,9 @@ class _AddMedicineScreenState extends State<AddMedicineScreen>
                             ),
                             TextSpan(
                               text: '넣을까요?',
-                              style: AppText.screenTitle(size: 26),
+                              style: AppText.screenTitle(
+                                size: 26,
+                              ).copyWith(fontWeight: FontWeight.w500),
                             ),
                           ],
                         ),

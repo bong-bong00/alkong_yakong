@@ -846,7 +846,17 @@ void _sensorTests() {
   testWidgets('센서를 넘겨받지 않으면 연결됐다고 하지 않는다 (25)', (tester) async {
     await tester.pumpWidget(wrap(const PolarScreen()));
     await tester.pump();
-    expect(find.text('폴라 센서가 연결되지 않았어요'), findsOneWidget);
+    expect(find.text('센서가 연결되지 않았어요'), findsOneWidget);
+    for (final label in ['센서가 연결되지 않았어요', '센서 착용 후 연결 버튼을 누르세요']) {
+      final text = tester.widget<Text>(find.text(label));
+      expect(text.maxLines, 1);
+      expect(text.softWrap, isFalse);
+      final fit = find.ancestor(
+        of: find.text(label),
+        matching: find.byType(FittedBox),
+      );
+      expect(tester.widget<FittedBox>(fit).fit, BoxFit.scaleDown);
+    }
     expect(find.textContaining('%'), findsNothing);
   });
 
@@ -1616,7 +1626,7 @@ void _medicinesByTimeTests() {
     // 크기는 화면마다 다를 수 있으므로 같은 위젯을 쓰는지만 본다.
     expect(source.contains('PillPhoto(size:'), isTrue);
     // 지금 안 드시는 약은 줄 하나로 접어 둔다.
-    expect(source.contains('이전에 사용한 약'), isTrue);
+    expect(source.contains('이전에 사용한 약'), isFalse);
   });
 }
 

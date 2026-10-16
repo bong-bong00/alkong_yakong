@@ -295,18 +295,8 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
   /// 약 이름 없이 "아침 약"처럼 물어도 된다.
   static const List<Map<String, String>> _generalSuggestions = [
     {
-      'label': '아침 약이랑 우유 같이 먹어도 돼요?',
-      'prompt': '제가 아침에 먹는 약이랑 우유를 같이 먹어도 되는지 알려주세요.',
-      'intent': 'combination',
-    },
-    {
-      'label': '혈압약이랑 관절약 같이 먹어도 돼요?',
-      'prompt': '제가 먹는 혈압약이랑 관절약을 같이 먹어도 되는지 알려주세요.',
-      'intent': 'combination',
-    },
-    {
-      'label': '졸리지 않는 감기약이 있어요?',
-      'prompt': '제가 먹는 약과 같이 먹어도 되는, 졸리지 않는 감기약이 있는지 알려주세요.',
+      'label': '내 약에 대해 알려주세요',
+      'prompt': '제가 현재 먹는 약 전체를 쉬운 말로 알려주세요.',
       'intent': 'overview',
     },
   ];
@@ -503,7 +493,7 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
       return '궁금한 약이나 복용 관련 내용을 물어보세요.';
     }
     if (widget.patientId != null) {
-      return '${widget.patientName ?? '연결된 환자'} 님의 약과 건강정보에 관해 물어보세요.';
+      return '${widget.patientName ?? '연결된 환자'} 님의 약에 대해 궁금한 점을 물어보세요.';
     }
     // 인사에는 고른 약 이름을 다 적는다 — 무엇을 놓고 말하는지 한 번은
     // 정확히 보여 드린다. 위 칸은 좁아서 "외 1개"로 줄인다.
@@ -513,7 +503,7 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
     }
     final given = _givenName(userName);
     final hello = given.isEmpty ? '안녕하세요.' : '$given 님, 안녕하세요.';
-    return '$hello 드시는 모든 약들에 대해 알고 있어요. 약이든 건강이든 편하게 물어보세요.';
+    return '$hello 약에 대해 궁금한 점을 물어보세요.';
   }
 
   /// "김복자" → "복자". 성은 떼고 부른다 — 성만으로는 누구인지 모른다.
@@ -799,6 +789,7 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
       message: suggestion['prompt']!.replaceAll('{medicine}', official),
       displayMessage: suggestion['label'],
       intent: suggestion['intent'],
+      registeredOnly: widget.consultationSelector == null && medicine == null,
     );
   }
 
@@ -819,6 +810,7 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
     String? displayMessage,
     String? intent,
     bool forceRefresh = false,
+    bool registeredOnly = false,
   }) async {
     if (_isLoading) return;
     forceRefresh = forceRefresh || widget.registeredMedicinesOnly;
@@ -929,7 +921,9 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
       // 고른 약이 없으면 알콩이가 내 약 전부를 본다. 이름으로 찾아 둔 약도
       // 그 안에 든다.
       final temporaryMedicines = _temporaryMedicinesByCode.values;
-      if (_asksAboutAllMedicines && temporaryMedicines.isNotEmpty) {
+      if (!registeredOnly &&
+          _asksAboutAllMedicines &&
+          temporaryMedicines.isNotEmpty) {
         body['temporary_medicines'] = temporaryMedicines
             .map(
               (medicine) => {
@@ -941,7 +935,7 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
       }
       final requestKey = PharmacistAnswerCache.canonical({
         ...body,
-        'answer_policy_version': 8,
+        'answer_policy_version': 9,
         if (intent == 'health_precautions') 'health_reply_version': 2,
         'scope': _asksAboutAllMedicines ? 'all' : 'selection',
         'recent_history':
@@ -1320,7 +1314,7 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
               ),
             ),
             // 무엇을 물어야 할지 떠오르지 않을 때. 누르면 그대로 물어본다.
-            if (!widget.generalConsultation || _selectedMedicines.isNotEmpty)
+            if (_selectedMedicines.isNotEmpty || widget.registeredMedicinesOnly)
               _AskBar(
                 asks:
                     (widget.generalConsultation

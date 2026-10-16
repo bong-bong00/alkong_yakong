@@ -66,13 +66,41 @@ class _GuardianPharmacistScreenState
           child: Column(
             children: [
               const Text('환자 연결을 확인하지 못했어요. 연결 상태와 인터넷을 확인해 주세요.'),
-              TextButton(
-                onPressed: () => ref.invalidate(careOverviewProvider),
-                child: const Text('다시 확인'),
+              const SizedBox(height: 16),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton(
+                  onPressed: () => ref.invalidate(careOverviewProvider),
+                  style: OutlinedButton.styleFrom(
+                    textStyle: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w500,
+                    ),
+                    minimumSize: const Size(48, 48),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  child: const Text('다시 확인'),
+                ),
               ),
-              TextButton(
-                onPressed: () => setState(() => _patientId = null),
-                child: const Text('일반 약 상담으로 이동'),
+              const SizedBox(height: 10),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton(
+                  onPressed: () => setState(() => _patientId = null),
+                  style: OutlinedButton.styleFrom(
+                    textStyle: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w500,
+                    ),
+                    minimumSize: const Size(48, 48),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  child: const Text('일반 약 상담하기'),
+                ),
               ),
             ],
           ),

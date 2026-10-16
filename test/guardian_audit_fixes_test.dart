@@ -224,6 +224,13 @@ void main() {
         tester.getTopLeft(find.text('담배 · 술')).dy,
         tester.getTopLeft(find.text('담배 안 피움 · 술 안 마셔요')).dy,
       );
+      final habit = tester.widget<Text>(find.text('담배 안 피움 · 술 안 마셔요'));
+      expect(habit.maxLines, 1);
+      expect(habit.softWrap, isFalse);
+      expect(
+        tester.getRect(find.text('담배 안 피움 · 술 안 마셔요')).right,
+        lessThanOrEqualTo(320),
+      );
       expect(tester.takeException(), isNull);
     });
   }

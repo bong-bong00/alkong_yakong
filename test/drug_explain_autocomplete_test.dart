@@ -510,7 +510,7 @@ void main() {
     await tester.pumpAndSettle();
 
     // 고르기 전에는 약 이름 없이 묻는 질문을 보여 준다.
-    expect(find.text('아침 약이랑 우유 같이 먹어도 돼요?'), findsOneWidget);
+    expect(find.text('내 약에 대해 알려주세요'), findsOneWidget);
     expect(find.text('꼭 식사 후에 복용해야 하나요?'), findsNothing);
 
     await pickSubject(tester, '게보린정');
@@ -518,7 +518,7 @@ void main() {
     expect(find.text('꼭 식사 후에 복용해야 하나요?'), findsOneWidget);
     expect(find.text('속이 울렁거리는데 괜찮나요?'), findsOneWidget);
     expect(find.text('같이 먹으면 안 되는 음식은요?'), findsOneWidget);
-    expect(find.text('아침 약이랑 우유 같이 먹어도 돼요?'), findsNothing);
+    expect(find.text('내 약에 대해 알려주세요'), findsNothing);
 
     await tester.tap(find.text('속이 울렁거리는데 괜찮나요?'));
     await tester.pumpAndSettle();
@@ -770,7 +770,7 @@ void main() {
     expect(find.bySemanticsLabel('고른 약 빼기'), findsNothing);
   });
 
-  testWidgets('답변 대기 중 쉬운 문구를 표시하고 첫 안내가 내 약 전부를 말한다', (tester) async {
+  testWidgets('답변 대기 중 쉬운 문구를 표시하고 첫 안내는 약 상담 범위를 말한다', (tester) async {
     usePhoneScreen(tester);
     final response = Completer<http.Response>();
     final client = MockClient((request) async {
@@ -790,7 +790,8 @@ void main() {
     // 첫 인사가 내 약 전부를 알고 있다고 먼저 말한다. 말풍선 위에
     // 이름은 적지 않는다 — 화면 제목이 이미 누구와 말하는지 말한다.
     expect(find.text('알콩이'), findsNothing);
-    expect(find.textContaining('드시는 모든 약들에 대해 알고 있어요'), findsOneWidget);
+    expect(find.textContaining('약에 대해 궁금한 점을 물어보세요'), findsOneWidget);
+    expect(find.textContaining('약이든 건강이든'), findsNothing);
     expect(find.textContaining('선생님'), findsNothing);
 
     await pickSubject(tester, '게보린정');
@@ -835,7 +836,7 @@ void main() {
       appWith(teamClient, medicationClient: medicationClient),
     );
     await tester.pumpAndSettle();
-    await tester.tap(find.text('아침 약이랑 우유 같이 먹어도 돼요?'));
+    await tester.tap(find.text('내 약에 대해 알려주세요'));
     await tester.pumpAndSettle();
 
     final answer = tester.widget<Text>(
@@ -994,16 +995,13 @@ void main() {
       {'medicine_code': '', 'product_name': '기존약A'},
     ]);
 
-    // 약을 빼면 이름으로 찾아 둔 약까지 모두 알콩이에게 넘긴다.
+    // 내 약 안내에는 검색만 하고 선택을 해제한 약을 포함하지 않는다.
     await clearSubject(tester);
     await selectSearchResult('검색D', '검색약D');
     await clearSubject(tester);
-    await tapSuggestion('아침 약이랑 우유 같이 먹어도 돼요?');
+    await tapSuggestion('내 약에 대해 알려주세요');
     expect(chatBodies.last.containsKey('selected_medicine'), isFalse);
-    expect(chatBodies.last['temporary_medicines'], [
-      {'medicine_code': '3', 'product_name': '검색약C'},
-      {'medicine_code': '4', 'product_name': '검색약D'},
-    ]);
+    expect(chatBodies.last.containsKey('temporary_medicines'), isFalse);
   });
 
   testWidgets('처음에는 약을 고르지 않은 채 일반 질문을 보여 준다', (tester) async {
@@ -1025,9 +1023,10 @@ void main() {
 
     expect(find.text('약 고르기'), findsOneWidget);
     expect(find.text('이렇게 물어보세요'), findsOneWidget);
-    expect(find.text('아침 약이랑 우유 같이 먹어도 돼요?'), findsOneWidget);
-    expect(find.text('혈압약이랑 관절약 같이 먹어도 돼요?'), findsOneWidget);
-    expect(find.text('졸리지 않는 감기약이 있어요?'), findsOneWidget);
+    expect(find.text('내 약에 대해 알려주세요'), findsOneWidget);
+    expect(find.text('혈압약이랑 관절약 같이 먹어도 돼요?'), findsNothing);
+    expect(find.text('졸리지 않는 감기약이 있어요?'), findsNothing);
+    expect(find.byType(SingleChildScrollView), findsNothing);
     expect(find.text('꼭 식사 후에 복용해야 하나요?'), findsNothing);
     // 보여 주기만 할 뿐, 아무것도 먼저 묻지 않는다.
     expect(chatCalls, 0);
@@ -1063,17 +1062,9 @@ void main() {
     await tester.pumpAndSettle();
 
     const expected = <String, (String, String)>{
-      '아침 약이랑 우유 같이 먹어도 돼요?': (
-        'combination',
-        '제가 아침에 먹는 약이랑 우유를 같이 먹어도 되는지 알려주세요.',
-      ),
-      '혈압약이랑 관절약 같이 먹어도 돼요?': (
-        'combination',
-        '제가 먹는 혈압약이랑 관절약을 같이 먹어도 되는지 알려주세요.',
-      ),
-      '졸리지 않는 감기약이 있어요?': (
+      '내 약에 대해 알려주세요': (
         'overview',
-        '제가 먹는 약과 같이 먹어도 되는, 졸리지 않는 감기약이 있는지 알려주세요.',
+        '제가 현재 먹는 약 전체를 쉬운 말로 알려주세요.',
       ),
     };
     for (final entry in expected.entries) {
@@ -1107,9 +1098,9 @@ void main() {
     await tester.pumpAndSettle();
     await pickSubject(tester, 'OCR등록약정');
     expect(find.text('꼭 식사 후에 복용해야 하나요?'), findsOneWidget);
-    expect(find.text('아침 약이랑 우유 같이 먹어도 돼요?'), findsNothing);
+    expect(find.text('내 약에 대해 알려주세요'), findsNothing);
     await clearSubject(tester);
-    expect(find.text('아침 약이랑 우유 같이 먹어도 돼요?'), findsOneWidget);
+    expect(find.text('내 약에 대해 알려주세요'), findsOneWidget);
     expect(find.text('꼭 식사 후에 복용해야 하나요?'), findsNothing);
   });
 
@@ -1150,12 +1141,12 @@ void main() {
       await tester.pumpAndSettle();
 
       await tester.scrollUntilVisible(
-        find.text('아침 약이랑 우유 같이 먹어도 돼요?'),
+        find.text('내 약에 대해 알려주세요'),
         200,
         scrollable: find.byType(Scrollable).first,
       );
       await tester.pumpAndSettle();
-      await tester.tap(find.text('아침 약이랑 우유 같이 먹어도 돼요?'));
+      await tester.tap(find.text('내 약에 대해 알려주세요'));
       await tester.pumpAndSettle();
 
       final listFinder = find.byType(ListView).first;
@@ -1205,9 +1196,9 @@ void main() {
 
     await tester.pumpWidget(appWith(client));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('아침 약이랑 우유 같이 먹어도 돼요?'));
+    await tester.tap(find.text('내 약에 대해 알려주세요'));
     await tester.pumpAndSettle();
-    expect(bodies.last['intent'], 'combination');
+    expect(bodies.last['intent'], 'overview');
 
     await pickSubject(tester, '게보린정');
     await tester.tap(find.text('꼭 식사 후에 복용해야 하나요?'));
