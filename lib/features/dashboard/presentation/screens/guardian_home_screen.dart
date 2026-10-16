@@ -777,6 +777,13 @@ class _GuardianAlertsTabState extends ConsumerState<GuardianAlertsTab> {
       children: [
         if (_loaded != null)
           TextButton(
+            style: TextButton.styleFrom(
+              foregroundColor: AppColors.textTertiary,
+              textStyle: AppText.body(
+                size: 15,
+              ).copyWith(fontWeight: FontWeight.w400),
+              minimumSize: const Size(48, 48),
+            ),
             onPressed: () =>
                 setState(() => _showAcknowledged = !_showAcknowledged),
             child: Text(_showAcknowledged ? '미확인 알림 보기' : '확인한 알림 보기'),

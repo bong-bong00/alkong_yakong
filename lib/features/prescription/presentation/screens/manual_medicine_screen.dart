@@ -291,7 +291,7 @@ class _ManualMedicineScreenState extends ConsumerState<ManualMedicineScreen> {
               children: [
                 if (widget.onBehalfOf != null) ...[
                   Text(
-                    '${widget.onBehalfOf} 님의 약으로 등록해요',
+                    '${widget.onBehalfOf} 님의 약을 등록해요',
                     style: AppText.cardTitle(size: 21),
                   ),
                   const SizedBox(height: 12),

@@ -184,31 +184,33 @@ class _AddMedicineScreenState extends State<AddMedicineScreen>
                 children: [
                   if (widget.onBehalfOf != null) ...[
                     Text(
-                      '${widget.onBehalfOf} 님의 약으로 등록해요',
+                      '${widget.onBehalfOf} 님의 약을 등록해요',
                       style: AppText.cardTitle(size: 21),
                     ),
                     const SizedBox(height: 12),
                   ],
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(6, 6, 6, 0),
-                    child: Text.rich(
-                      TextSpan(
-                        children: [
-                          TextSpan(
-                            text: '어떻게 ',
-                            style: AppText.screenTitle(
-                              size: 26,
-                            ).copyWith(fontWeight: FontWeight.w500),
-                          ),
-                          TextSpan(
-                            text: '넣을까요?',
-                            style: AppText.screenTitle(size: 26),
-                          ),
-                        ],
+                  if (widget.onBehalfOf == null) ...[
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(6, 6, 6, 0),
+                      child: Text.rich(
+                        TextSpan(
+                          children: [
+                            TextSpan(
+                              text: '어떻게 ',
+                              style: AppText.screenTitle(
+                                size: 26,
+                              ).copyWith(fontWeight: FontWeight.w500),
+                            ),
+                            TextSpan(
+                              text: '넣을까요?',
+                              style: AppText.screenTitle(size: 26),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
-                  ),
-                  const SizedBox(height: 16),
+                    const SizedBox(height: 16),
+                  ],
                   // 가장 쉬운 길 하나만 파란 면으로 크게 둔다.
                   _PrimaryWay(
                     icon: TablerIcons.camera,

@@ -47,7 +47,8 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.byType(AddMedicineScreen), findsOneWidget);
       expect(find.text('처방전 대신 등록'), findsOneWidget);
-      expect(find.text('시연 사용자 님의 약으로 등록해요'), findsOneWidget);
+      expect(find.text('시연 사용자 님의 약을 등록해요'), findsOneWidget);
+      expect(find.textContaining('넣을까요?', findRichText: true), findsNothing);
       expect(find.text('카메라 촬영'), findsOneWidget);
       expect(find.text('앨범에서 고르기'), findsOneWidget);
       expect(find.text('직접 작성'), findsOneWidget);

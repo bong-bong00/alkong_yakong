@@ -97,6 +97,9 @@ void main() {
             );
             await tester.tap(picker);
             await tester.pumpAndSettle();
+            expect(find.text('검색한 약'), findsOneWidget);
+            expect(find.text('복용중인 약'), findsNothing);
+            expect(find.text('찾아서 더한 약'), findsNothing);
             expect(
               find.byWidgetPredicate(
                 (widget) =>
@@ -111,6 +114,64 @@ void main() {
       );
     }
   }
+
+  testWidgets(
+    'guardian searched medicines stay in one list after selection and reopening',
+    (tester) async {
+      final client = MockClient(
+        (request) async => jsonResponse({
+          'items': [
+            {'item_name': '테스트약', 'item_seq': 'test-code'},
+          ],
+        }),
+      );
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            careOverviewProvider.overrideWith(
+              (ref) async => const CareOverview(patients: []),
+            ),
+          ],
+          child: MaterialApp(
+            home: GuardianPharmacistScreen(
+              apiClient: ApiClient(client: client),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final picker = find.byKey(const ValueKey('guardian-medicine-picker'));
+      await tester.tap(picker);
+      await tester.pumpAndSettle();
+      final search = find.byWidgetPredicate(
+        (widget) =>
+            widget is TextField &&
+            widget.decoration?.hintText == '다른 약 검색 (예: 타이레놀)',
+      );
+      await tester.enterText(search, '테스트');
+      await tester.pump(const Duration(milliseconds: 600));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('테스트약'));
+      await tester.pumpAndSettle();
+      expect(find.text('검색한 약'), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('medicine-selection-테스트약')),
+        findsOneWidget,
+      );
+      expect(find.text('복용중인 약'), findsNothing);
+      expect(find.text('찾아서 더한 약'), findsNothing);
+      await tester.tap(find.text('확인'));
+      await tester.pumpAndSettle();
+      await tester.tap(picker);
+      await tester.pumpAndSettle();
+      expect(find.text('검색한 약'), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('medicine-selection-테스트약')),
+        findsOneWidget,
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
 
   testWidgets('guardian selector separates general and patient consultation', (
     tester,

@@ -680,6 +680,7 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
         searched: _searchedMedicines,
         shortName: _shortName,
         selected: _selectedMedicines,
+        searchListOnly: widget.consultationSelector != null,
       ),
     );
     if (!mounted || pick == null) return;
@@ -1505,6 +1506,7 @@ class _MedicinePick {
 /// 고를 수 있으면 그 말을 할 수 없다.
 class _MedicinePickSheet extends StatefulWidget {
   final ApiClient apiClient;
+  final bool searchListOnly;
 
   /// 등록된 복용중인 약.
   final List<String> medicines;
@@ -1523,6 +1525,7 @@ class _MedicinePickSheet extends StatefulWidget {
     required this.shortName,
     this.searched = const [],
     this.selected = const [],
+    this.searchListOnly = false,
   });
 
   @override
@@ -1701,22 +1704,34 @@ class _MedicinePickSheetState extends State<_MedicinePickSheet> {
           ],
           if (!searching) ...[
             const SizedBox(height: 18),
-            Text('복용중인 약', style: AppText.caption(size: 17.5)),
-            const SizedBox(height: 8),
-            if (widget.medicines.isEmpty)
-              Text(
-                '등록된 약이 없어요. 위에서 약 이름으로 찾아보세요.',
-                style: AppText.body(size: 18, color: AppColors.textBody),
-              )
-            else
-              _rows(widget.medicines),
-            // 찾아서 더한 약은 따로 세운다. 검색했다고 내가 먹는 약이
-            // 되는 것은 아니다.
-            if (_searchedNames.isNotEmpty) ...[
-              const SizedBox(height: 18),
-              Text('찾아서 더한 약', style: AppText.caption(size: 17.5)),
+            if (widget.searchListOnly) ...[
+              Text('검색한 약', style: AppText.caption(size: 17.5)),
               const SizedBox(height: 8),
-              _rows(_searchedNames),
+              if (_searchedNames.isEmpty)
+                Text(
+                  '위에서 약 이름으로 검색해 주세요.',
+                  style: AppText.body(size: 18, color: AppColors.textBody),
+                )
+              else
+                _rows(_searchedNames),
+            ] else ...[
+              Text('복용중인 약', style: AppText.caption(size: 17.5)),
+              const SizedBox(height: 8),
+              if (widget.medicines.isEmpty)
+                Text(
+                  '등록된 약이 없어요. 위에서 약 이름으로 찾아보세요.',
+                  style: AppText.body(size: 18, color: AppColors.textBody),
+                )
+              else
+                _rows(widget.medicines),
+              // 찾아서 더한 약은 따로 세운다. 검색했다고 내가 먹는 약이
+              // 되는 것은 아니다.
+              if (_searchedNames.isNotEmpty) ...[
+                const SizedBox(height: 18),
+                Text('찾아서 더한 약', style: AppText.caption(size: 17.5)),
+                const SizedBox(height: 8),
+                _rows(_searchedNames),
+              ],
             ],
           ],
         ],

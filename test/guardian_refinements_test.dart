@@ -115,6 +115,17 @@ void main() {
         await container.read(guardianUnreadCountProvider('guardian').future),
         1,
       );
+      final historyButton = tester.widget<TextButton>(
+        find.ancestor(
+          of: find.text('확인한 알림 보기'),
+          matching: find.byType(TextButton),
+        ),
+      );
+      expect(
+        historyButton.style!.foregroundColor!.resolve({}),
+        AppColors.textTertiary,
+      );
+      expect(historyButton.style!.textStyle!.resolve({})!.fontSize, 15);
       await tester.tap(find.text('확인한 알림 보기'));
       await tester.pumpAndSettle();
       expect(find.text('첫 알림'), findsOneWidget);
