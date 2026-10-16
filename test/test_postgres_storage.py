@@ -164,6 +164,16 @@ def test_new_connection_does_not_cache_committed_transaction_schema(monkeypatch)
     connection.close()
 
 
+@pytest.mark.parametrize('statement', ['SAVEPOINT detail', 'RELEASE SAVEPOINT detail', 'ROLLBACK TO SAVEPOINT detail'])
+def test_application_savepoints_are_not_nested_in_statement_wrapper(statement):
+    from app.postgres import Cursor
+    connection = Mock()
+    cursor = Cursor(connection)
+    cursor.execute(statement)
+    cursor.raw.execute.assert_called_once_with(statement, ())
+    connection.raw.execute.assert_not_called()
+
+
 def test_live_postgres_contract_in_disposable_schema():
     url = os.getenv('NEON_TEST_DATABASE_URL')
     if not url:

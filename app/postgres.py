@@ -114,6 +114,15 @@ class Cursor:
                 self.connection.raw.execute("SELECT pg_advisory_xact_lock(hashtext(%s))", (self.connection.schema,))
             return self
         translated = translate_sql(statement)
+        # A wrapper savepoint around SAVEPOINT/RELEASE would destroy the
+        # application's nested savepoint when the wrapper is released.
+        if re.match(r"(?:SAVEPOINT|RELEASE(?:\s+SAVEPOINT)?|ROLLBACK\s+TO(?:\s+SAVEPOINT)?)\s+\w+$", translated, re.I):
+            self.connection.ensure_search_path()
+            try:
+                self.raw.execute(translated, tuple(parameters))
+                return self
+            except psycopg.Error as error:
+                raise sqlite3.OperationalError("PostgreSQL transaction control failed (" + str(error.sqlstate or "unknown") + ")") from None
         inserted = re.match(r"INSERT\s+INTO\s+(\w+)\b", translated, re.I)
         if inserted and "RETURNING" not in translated.upper():
             from init_db import TABLE_DEFINITIONS
