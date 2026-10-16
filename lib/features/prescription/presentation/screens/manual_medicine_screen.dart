@@ -24,8 +24,16 @@ import 'prescription_history_screen.dart';
 class ManualMedicineScreen extends ConsumerStatefulWidget {
   final VoidCallback? onBack;
   final ValueChanged<Map<String, dynamic>?>? onSaved;
+  final String? onBehalfOfUserId;
+  final String? onBehalfOf;
 
-  const ManualMedicineScreen({super.key, this.onBack, this.onSaved});
+  const ManualMedicineScreen({
+    super.key,
+    this.onBack,
+    this.onSaved,
+    this.onBehalfOfUserId,
+    this.onBehalfOf,
+  });
 
   @override
   ConsumerState<ManualMedicineScreen> createState() =>
@@ -172,9 +180,11 @@ class _ManualMedicineScreenState extends ConsumerState<ManualMedicineScreen> {
     final amount = _amount ?? '';
     ScaffoldMessenger.of(context).hideCurrentSnackBar();
     setState(() => _saving = true);
-    final userId = MvpSession.userId.trim().isEmpty
-        ? 'mvp-user'
-        : MvpSession.userId.trim();
+    final userId =
+        widget.onBehalfOfUserId ??
+        (MvpSession.userId.trim().isEmpty
+            ? 'mvp-user'
+            : MvpSession.userId.trim());
     Map<String, dynamic> mapped;
     try {
       final response = await _api.post(
@@ -207,6 +217,12 @@ class _ManualMedicineScreenState extends ConsumerState<ManualMedicineScreen> {
       return;
     }
 
+    if (widget.onBehalfOfUserId != null) {
+      if (mounted) {
+        widget.onSaved?.call(registrationDurResult(mapped['dur_result']));
+      }
+      return;
+    }
     MvpSession.rememberPrescriptionSchedules(
       prescriptionId: mapped['prescription_id']?.toString(),
       confirmResponse: mapped,
@@ -273,6 +289,13 @@ class _ManualMedicineScreenState extends ConsumerState<ManualMedicineScreen> {
             child: ListView(
               padding: const EdgeInsets.fromLTRB(20, 16, 20, 28),
               children: [
+                if (widget.onBehalfOf != null) ...[
+                  Text(
+                    '${widget.onBehalfOf} 님의 약으로 등록해요',
+                    style: AppText.cardTitle(size: 21),
+                  ),
+                  const SizedBox(height: 12),
+                ],
                 SeniorCard(
                   padding: const EdgeInsets.all(20),
                   child: Column(

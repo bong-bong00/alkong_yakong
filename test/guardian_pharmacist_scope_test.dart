@@ -73,6 +73,32 @@ void main() {
           );
           await tester.pumpAndSettle();
           expect(find.byType(DropdownButtonFormField<String>), findsOneWidget);
+          final picker = find.byKey(const ValueKey('guardian-medicine-picker'));
+          expect(picker, subject == null ? findsOneWidget : findsNothing);
+          expect(find.text('약 고르기'), findsNothing);
+          if (subject == null) {
+            final target = tester.getRect(
+              find.byType(DropdownButtonFormField<String>),
+            );
+            final medicine = tester.getRect(picker);
+            expect(medicine.left, target.left);
+            expect(medicine.right, target.right);
+            expect(medicine.top, greaterThan(target.bottom));
+            expect(
+              find.ancestor(of: picker, matching: find.byType(ListView)),
+              findsNothing,
+            );
+            await tester.tap(picker);
+            await tester.pumpAndSettle();
+            expect(
+              find.byWidgetPredicate(
+                (widget) =>
+                    widget is TextField &&
+                    widget.decoration?.hintText == '다른 약 검색 (예: 타이레놀)',
+              ),
+              findsOneWidget,
+            );
+          }
           expect(tester.takeException(), isNull);
         },
       );

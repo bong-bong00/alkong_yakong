@@ -20,6 +20,7 @@ enum AddMedicineMethod { camera, gallery, manual, family }
 class AddMedicineScreen extends StatefulWidget {
   final void Function(AddMedicineMethod method) onPick;
   final String guardianTitle;
+  final String? onBehalfOf;
 
   /// 부탁을 마친 뒤 오늘 화면으로 돌아가는 길.
   final VoidCallback? onGoHome;
@@ -44,6 +45,7 @@ class AddMedicineScreen extends StatefulWidget {
     super.key,
     required this.onPick,
     this.guardianTitle = '',
+    this.onBehalfOf,
     this.onGoHome,
     this.familyAsked = false,
     this.onAskFamily,
@@ -171,13 +173,22 @@ class _AddMedicineScreenState extends State<AddMedicineScreen>
       backgroundColor: AppColors.pageBg,
       body: Column(
         children: [
-          const SeniorBackHeader(title: '처방전 등록'),
+          SeniorBackHeader(
+            title: widget.onBehalfOf == null ? '처방전 등록' : '처방전 대신 등록',
+          ),
           Expanded(
             child: SingleChildScrollView(
               padding: const EdgeInsets.fromLTRB(16, 18, 16, 28),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
+                  if (widget.onBehalfOf != null) ...[
+                    Text(
+                      '${widget.onBehalfOf} 님의 약으로 등록해요',
+                      style: AppText.cardTitle(size: 21),
+                    ),
+                    const SizedBox(height: 12),
+                  ],
                   Padding(
                     padding: const EdgeInsets.fromLTRB(6, 6, 6, 0),
                     child: Text.rich(
@@ -218,7 +229,7 @@ class _AddMedicineScreenState extends State<AddMedicineScreen>
                     label: '직접 작성',
                     onTap: () => widget.onPick(AddMedicineMethod.manual),
                   ),
-                  if (!_asked) ...[
+                  if (widget.onBehalfOf == null && !_asked) ...[
                     const SizedBox(height: 12),
                     _SmallWay(
                       icon: TablerIcons.users,
@@ -226,7 +237,7 @@ class _AddMedicineScreenState extends State<AddMedicineScreen>
                       onTap: _asking ? null : _askFamily,
                     ),
                   ],
-                  if (_asked) ...[
+                  if (widget.onBehalfOf == null && _asked) ...[
                     const SizedBox(height: 12),
                     _AskedCard(
                       guardianTitle: resolveGuardianTitle(

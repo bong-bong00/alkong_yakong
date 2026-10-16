@@ -32,7 +32,7 @@ import '../../../biosignal/data/heart_repository.dart';
 import '../../../biosignal/presentation/screens/heart_screen.dart';
 import '../../../medicines/application/user_medicines_controller.dart';
 
-/// 보호자 쉘 — 돌보는 분 · AI 약사 · 정보에 바로 접근한다.
+/// 보호자 쉘 — 돌보는 분 · AI 약사 · 설정에 바로 접근한다.
 ///
 /// 알림은 목록 헤더의 종 단추로, 어르신 현황은 목록에서 눌러 들어간다.
 /// 보호자 전용 남색 액센트는 폐기했다. 환자와 같은 파란 규칙을 쓰고,
@@ -96,7 +96,7 @@ class _GuardianHomeScreenState extends ConsumerState<GuardianHomeScreen>
   static const List<SeniorNavItem> _tabs = [
     SeniorNavItem(icon: TablerIcons.users, label: '돌보는 분'),
     SeniorNavItem(icon: TablerIcons.message_circle, label: 'AI 약사'),
-    SeniorNavItem(icon: TablerIcons.user, label: '정보'),
+    SeniorNavItem(icon: TablerIcons.settings, label: '설정'),
   ];
 
   /// 어르신이 "처방전 찍어 주세요"라고 부탁한 것이 있으면 바로 묻는다.
@@ -126,7 +126,7 @@ class _GuardianHomeScreenState extends ConsumerState<GuardianHomeScreen>
         context: context,
         title: '${patient.title} 님이\n처방전을 부탁하셨어요',
         message: '처방전을 찍어서 보내 드리면 그 자리에서 약이 들어가요.',
-        yesLabel: '대신 처방전 찍기',
+        yesLabel: '처방전 대신 등록',
         noLabel: '나중에 할게요',
       );
       if (!go || !mounted) return;
@@ -436,19 +436,18 @@ class _GuardianStatusScreenState extends ConsumerState<GuardianStatusScreen>
                             icon: TablerIcons.heart_filled,
                             iconColor: AppColors.point,
                             label: '최근 심박수',
-                            value:
-                                '$heartRate bpm'
-                                '${heartRate < 60
-                                    ? ' 느림'
-                                    : heartRate > 100
-                                    ? ' 빠름'
-                                    : ' 정상'}',
+                            value: '$heartRate bpm',
+                            singleLine: true,
                             danger: heartRate < 60 || heartRate > 100,
                           ),
                           Padding(
                             padding: const EdgeInsets.only(bottom: 12),
                             child: Text(
-                              patient.heartRateTimeLabel,
+                              '${heartRate < 60
+                                  ? '느림'
+                                  : heartRate > 100
+                                  ? '빠름'
+                                  : '정상'} · ${patient.heartRateTimeLabel}',
                               style: AppText.caption(size: 16),
                             ),
                           ),
@@ -566,6 +565,7 @@ class _StatusRow extends StatelessWidget {
   final String label;
   final String value;
   final bool danger;
+  final bool singleLine;
 
   const _StatusRow({
     required this.icon,
@@ -573,6 +573,7 @@ class _StatusRow extends StatelessWidget {
     required this.label,
     required this.value,
     this.danger = false,
+    this.singleLine = false,
   });
 
   @override
@@ -584,24 +585,55 @@ class _StatusRow extends StatelessWidget {
           ExcludeSemantics(child: Icon(icon, size: 28, color: iconColor)),
           const SizedBox(width: 14),
           Expanded(
-            child: Text(
-              label,
-              style: AppText.cardTitle(
-                size: 21,
-                color: danger ? AppColors.danger : AppColors.textPrimary,
-              ),
-            ),
+            child: singleLine
+                ? FittedBox(
+                    fit: BoxFit.scaleDown,
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      label,
+                      style: AppText.cardTitle(
+                        size: 21,
+                        color: danger
+                            ? AppColors.danger
+                            : AppColors.textPrimary,
+                      ),
+                    ),
+                  )
+                : Text(
+                    label,
+                    style: AppText.cardTitle(
+                      size: 21,
+                      color: danger ? AppColors.danger : AppColors.textPrimary,
+                    ),
+                  ),
           ),
           const SizedBox(width: 10),
           Flexible(
-            child: Text(
-              value,
-              textAlign: TextAlign.end,
-              style: AppText.cardTitle(
-                size: 20,
-                color: danger ? AppColors.danger : AppColors.textSecondary,
-              ),
-            ),
+            fit: singleLine ? FlexFit.tight : FlexFit.loose,
+            child: singleLine
+                ? FittedBox(
+                    fit: BoxFit.scaleDown,
+                    alignment: Alignment.centerRight,
+                    child: Text(
+                      value,
+                      style: AppText.cardTitle(
+                        size: 20,
+                        color: danger
+                            ? AppColors.danger
+                            : AppColors.textSecondary,
+                      ),
+                    ),
+                  )
+                : Text(
+                    value,
+                    textAlign: TextAlign.end,
+                    style: AppText.cardTitle(
+                      size: 20,
+                      color: danger
+                          ? AppColors.danger
+                          : AppColors.textSecondary,
+                    ),
+                  ),
           ),
         ],
       ),
@@ -956,7 +988,7 @@ class _AlertCard extends StatelessWidget {
         if (alert.type == 'help') ...[
           const SizedBox(height: 14),
           SeniorButton(
-            label: '대신 처방전 찍기',
+            label: '처방전 대신 등록',
             minHeight: 60,
             fontSize: 20,
             onPressed: () => openGuardianPrescription(context, patient),

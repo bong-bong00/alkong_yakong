@@ -73,7 +73,7 @@ class _MonthlyHeartScreenState extends State<MonthlyHeartScreen> {
                 if (widget.patientTitle != null) ...[
                   const SizedBox(height: 6),
                   Text(
-                    '${widget.patientTitle} · 기록 조회',
+                    '${widget.patientTitle} 님',
                     style: AppText.caption(size: 17),
                   ),
                 ],

@@ -9,7 +9,7 @@ import 'package:alkong_yakong/features/dashboard/presentation/screens/guardian_h
 import 'package:alkong_yakong/features/guardian/application/guardian_alert_inbox.dart';
 import 'package:alkong_yakong/features/guardian/application/guardians_provider.dart';
 import 'package:alkong_yakong/features/guardian/data/alert_repository.dart';
-import 'package:alkong_yakong/features/guardian/presentation/screens/guardian_settings_screen.dart';
+import 'package:alkong_yakong/features/guardian/presentation/screens/guardian_info_screen.dart';
 import 'package:alkong_yakong/features/guardian/presentation/screens/guardian_account_screen.dart';
 import 'package:alkong_yakong/features/profile/presentation/screens/account_screen.dart';
 
@@ -99,11 +99,25 @@ void main() {
   testWidgets('account actions are in settings with working back navigation', (
     tester,
   ) async {
+    MvpSession.userId = '';
     await tester.pumpWidget(
-      const ProviderScope(child: MaterialApp(home: GuardianSettingsScreen())),
+      ProviderScope(
+        overrides: [
+          careOverviewProvider.overrideWith(
+            (ref) async => const CareOverview(patients: []),
+          ),
+        ],
+        child: const MaterialApp(home: Scaffold(body: GuardianInfoScreen())),
+      ),
     );
     await tester.pumpAndSettle();
-    await tester.tap(find.text('계정 관리'));
+    expect(find.text('설정'), findsOneWidget);
+    expect(find.text('돌보는 분 관리'), findsOneWidget);
+    expect(find.text('알림 받는 방법'), findsOneWidget);
+    expect(find.text('도움말'), findsOneWidget);
+    expect(find.text('약관 · 개인정보'), findsOneWidget);
+    await tester.ensureVisible(find.text('로그아웃·탈퇴'));
+    await tester.tap(find.text('로그아웃·탈퇴'));
     await tester.pumpAndSettle();
     expect(
       tester.widget<AccountScreen>(find.byType(AccountScreen)).isGuardian,
@@ -112,6 +126,7 @@ void main() {
     await tester.tap(find.byType(SeniorBackButton));
     await tester.pumpAndSettle();
     expect(find.text('설정'), findsOneWidget);
+    await tester.pumpWidget(const SizedBox.shrink());
     await tester.pumpWidget(
       const ProviderScope(child: MaterialApp(home: GuardianAccountScreen())),
     );

@@ -268,6 +268,12 @@ class _HeartScreenState extends ConsumerState<HeartScreen> {
                     if (_viewingOther)
                       TextButton.icon(
                         key: const Key('guardian-heart-refresh'),
+                        style: TextButton.styleFrom(
+                          textStyle: AppText.body(size: 15),
+                          minimumSize: const Size(48, 48),
+                          padding: const EdgeInsets.symmetric(horizontal: 8),
+                          iconSize: 20,
+                        ),
                         label: const Text('새로고침'),
                         onPressed: _loading
                             ? null
@@ -279,7 +285,7 @@ class _HeartScreenState extends ConsumerState<HeartScreen> {
                 if (_viewingOther && widget.patientTitle != null) ...[
                   const SizedBox(height: 6),
                   Text(
-                    '${widget.patientTitle} · 기록 조회',
+                    '${widget.patientTitle} 님',
                     style: AppText.caption(size: 17),
                   ),
                 ],

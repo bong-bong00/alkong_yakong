@@ -108,7 +108,7 @@ class CareFamilyScreen extends ConsumerWidget {
                 if (patients.isNotEmpty) ...[
                   // 처방전을 대신 넣어 주는 길. 누르면 어느 분인지 고른다.
                   SeniorButton(
-                    label: '처방전 대신 찍기',
+                    label: '처방전 대신 등록',
                     icon: TablerIcons.camera,
                     kind: SeniorButtonKind.card,
                     minHeight: 64,

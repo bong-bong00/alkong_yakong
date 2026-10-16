@@ -32,6 +32,7 @@ import '../../../medicines/domain/display_policy.dart';
 import '../../data/prescription_help_repository.dart';
 import '../../data/family_prescription_repository.dart';
 import '../../../onboarding/presentation/screens/first_run_screen.dart';
+import '../../../dur_analysis/presentation/screens/dur_analysis_screen.dart';
 import 'add_medicine_screen.dart';
 import 'manual_medicine_screen.dart';
 import 'prescription_history_screen.dart';
@@ -79,7 +80,7 @@ class PrescriptionScreen extends ConsumerStatefulWidget {
   final VoidCallback? onOpenScheduleDays;
 
   /// 보호자가 대신 넣을 때 그 어르신 호칭 ("어머니 · 김복자").
-  /// 값이 있으면 위에 띠가 붙고, 마지막 단추가 "어르신께 보내기"가 된다.
+  /// 값이 있으면 환자 이름을 표시하고 해당 환자의 약으로 등록한다.
   final String? onBehalfOf;
 
   /// 대신 넣는 어르신의 id. 약은 이 사람 것으로 들어간다.
@@ -140,10 +141,9 @@ class _PrescriptionScreenState extends ConsumerState<PrescriptionScreen> {
     baseUrl: ApiConfig.localFeatureBaseUrl,
   );
 
-  late PrescriptionStep _step =
-      widget.onBehalfOf == null && !widget.startAtCapture
-      ? PrescriptionStep.pickMethod
-      : PrescriptionStep.capture;
+  late PrescriptionStep _step = widget.startAtCapture
+      ? PrescriptionStep.capture
+      : PrescriptionStep.pickMethod;
 
   File? _image;
   Map<String, dynamic>? _result;
@@ -441,11 +441,13 @@ class _PrescriptionScreenState extends ConsumerState<PrescriptionScreen> {
           'prescription_id_present=${prescriptionId?.isNotEmpty == true} '
           'schedule_count=${response['schedule_count'] ?? 'unknown'}',
         );
-        MvpSession.rememberPrescriptionSchedules(
-          prescriptionId: prescriptionId,
-          confirmResponse: response,
-          ocrItems: editedItems,
-        );
+        if (widget.onBehalfOfUserId == null) {
+          MvpSession.rememberPrescriptionSchedules(
+            prescriptionId: prescriptionId,
+            confirmResponse: response,
+            ocrItems: editedItems,
+          );
+        }
         if (response['dur_result'] is Map) {
           durResult = Map<String, dynamic>.from(response['dur_result'] as Map);
         }
@@ -461,6 +463,11 @@ class _PrescriptionScreenState extends ConsumerState<PrescriptionScreen> {
       );
       if (!mounted) return;
       showSeniorSnackbar(context, '약 등록에 실패했어요. 잠시 후 다시 시도해 주세요.', error: true);
+      return;
+    }
+
+    if (widget.onBehalfOfUserId != null) {
+      await _completeOnBehalf(durResult);
       return;
     }
 
@@ -530,9 +537,31 @@ class _PrescriptionScreenState extends ConsumerState<PrescriptionScreen> {
     openScheduleDays();
   }
 
-  /// 가족에게 처방전을 찍어 달라고 부탁한다.
-  ///
-  /// 보호자 전화기에 알림으로 남고, 거기서 "대신 처방전 찍기"로 바로
+  /// 환자 등록 결과를 보여준 뒤 보호자 목록으로 돌아간다.
+  Future<void> _completeOnBehalf(Map<String, dynamic>? result) async {
+    if (!mounted) return;
+    final dur = registrationDurResult(result);
+    if (_hasPairConflict(dur)) {
+      await Navigator.of(context).push<void>(
+        MaterialPageRoute(
+          builder: (warningContext) => DurAnalysisScreen(
+            initialResult: dur,
+            onOpenScheduleDays: () => Navigator.of(warningContext).pop(),
+          ),
+        ),
+      );
+    } else if (!registrationDurComplete(dur)) {
+      await showSeniorNoticeDialog(
+        context: context,
+        title: '약은 등록됐어요',
+        message: '함께 복용할 때의 주의사항을 모두 확인하지 못했어요. 의사나 약사에게 확인해 주세요.',
+      );
+    }
+    if (mounted) widget.onCompleted?.call(dur);
+  }
+
+  /// 가족에게 처방전 등록을 부탁한다.
+  /// 보호자 전화기에 알림으로 남고, 거기서 "처방전 대신 등록"으로 바로
   /// 이어진다. 연결된 가족이 없으면 그렇다고 말하고 아무것도 보내지 않는다.
   Future<bool> _askFamilyForPrescription() async {
     final userId = MvpSession.userId.trim();
@@ -638,6 +667,7 @@ class _PrescriptionScreenState extends ConsumerState<PrescriptionScreen> {
     switch (_step) {
       case PrescriptionStep.pickMethod:
         return AddMedicineScreen(
+          onBehalfOf: widget.onBehalfOf,
           guardianTitle: resolveGuardianTitle(context, widget.guardianTitle),
           onGoHome: widget.onGoHome ?? () => Navigator.of(context).maybePop(),
           onAskFamily: _askFamilyForPrescription,
@@ -662,8 +692,14 @@ class _PrescriptionScreenState extends ConsumerState<PrescriptionScreen> {
         );
       case PrescriptionStep.manual:
         return ManualMedicineScreen(
+          onBehalfOfUserId: widget.onBehalfOfUserId,
+          onBehalfOf: widget.onBehalfOf,
           onBack: () => setState(() => _step = PrescriptionStep.pickMethod),
           onSaved: (durResult) {
+            if (widget.onBehalfOfUserId != null) {
+              unawaited(_completeOnBehalf(durResult));
+              return;
+            }
             if (_hasPairConflict(durResult)) {
               context.push(
                 '/dur-analysis',
@@ -2244,7 +2280,7 @@ class _FailedScreen extends StatelessWidget {
               onAction: onRetry,
               stillWorksTitle: '지금 드시는 약은 그대로예요',
               stillWorksBody: '이미 등록된 약과 알림은 아무 영향이 없어요.',
-              helperText: tooManyTries ? '어려우시면\n가족이 대신 찍어드릴 수 있어요' : null,
+              helperText: tooManyTries ? '어려우시면\n가족이 대신 등록해드릴 수 있어요' : null,
               onCallHelper: tooManyTries ? onAskFamily : null,
             ),
           ),

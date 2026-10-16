@@ -1097,12 +1097,38 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
         border: Border(bottom: BorderSide(color: AppColors.border, width: 1)),
       ),
       padding: const EdgeInsets.fromLTRB(20, 2, 20, 14),
-      child: _SubjectCard(
-        key: const ValueKey('ai-subject-card'),
-        medicineName: _subjectLabel,
-        onTap: _isLoading ? null : _pickMedicines,
-        onClear: _isLoading ? null : _clearMedicine,
-      ),
+      child: widget.consultationSelector != null
+          ? InkWell(
+              key: const ValueKey('guardian-medicine-picker'),
+              onTap: _isLoading ? null : _pickMedicines,
+              child: InputDecorator(
+                decoration: InputDecoration(
+                  labelText: '약 검색·선택',
+                  border: const OutlineInputBorder(),
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 16,
+                  ),
+                  suffixIcon: _subjectLabel == null
+                      ? const Icon(Icons.search)
+                      : TextButton(
+                          onPressed: _isLoading ? null : _clearMedicine,
+                          child: const Text('지우기'),
+                        ),
+                ),
+                child: Text(
+                  _subjectLabel ?? '약을 검색해 선택하세요',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            )
+          : _SubjectCard(
+              key: const ValueKey('ai-subject-card'),
+              medicineName: _subjectLabel,
+              onTap: _isLoading ? null : _pickMedicines,
+              onClear: _isLoading ? null : _clearMedicine,
+            ),
     );
 
     return Scaffold(
@@ -1147,9 +1173,7 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
             ),
             if (widget.consultationSelector != null)
               widget.consultationSelector!,
-            if (widget.consultationSelector == null &&
-                !widget.registeredMedicinesOnly)
-              subjectCard,
+            if (!widget.registeredMedicinesOnly) subjectCard,
             Expanded(
               child: ListView(
                 controller: _scrollController,
@@ -1157,10 +1181,6 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
                 keyboardDismissBehavior:
                     ScrollViewKeyboardDismissBehavior.onDrag,
                 children: [
-                  if (widget.consultationSelector != null) ...[
-                    if (!widget.registeredMedicinesOnly) subjectCard,
-                    const SizedBox(height: 12),
-                  ],
                   for (final message in _messages) ...[
                     if (message['cacheNotice'] != null)
                       Text(

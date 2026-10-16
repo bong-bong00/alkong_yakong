@@ -80,6 +80,7 @@ void main() {
               linkId: 'linked',
               patientId: 'patient-id',
               name: '김복자',
+              heartRate: 114,
             ),
             position: 1,
             total: 1,
@@ -88,10 +89,24 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
+      expect(find.text('114 bpm'), findsOneWidget);
+      expect(
+        tester.getCenter(find.text('114 bpm')).dy,
+        closeTo(tester.getCenter(find.text('최근 심박수')).dy, 1),
+      );
       await tester.tap(find.byKey(const Key('guardian-open-heart-records')));
       await tester.pumpAndSettle();
       expect(find.byType(HeartScreen), findsOneWidget);
-      expect(find.text('김복자 · 기록 조회'), findsOneWidget);
+      expect(find.text('김복자 님'), findsOneWidget);
+      expect(find.textContaining('기록 조회'), findsNothing);
+      final refresh = tester.widget<TextButton>(
+        find.byKey(const Key('guardian-heart-refresh')),
+      );
+      expect(refresh.style!.textStyle!.resolve({})!.fontSize, 15);
+      expect(
+        tester.getSize(find.byKey(const Key('guardian-heart-refresh'))).height,
+        greaterThanOrEqualTo(48),
+      );
       expect(find.text('측정 목적'), findsNothing);
       expect(find.text('연결 확인 후 측정'), findsNothing);
       expect(find.byType(HeartDailyBars), findsOneWidget);
@@ -120,7 +135,7 @@ void main() {
       await tester.tap(find.text('한 달'));
       await tester.pumpAndSettle();
       expect(find.byType(MonthlyHeartScreen), findsOneWidget);
-      expect(find.text('김복자 · 기록 조회'), findsOneWidget);
+      expect(find.text('김복자 님'), findsOneWidget);
       expect(
         tester
             .widget<HeartReadingsCard>(find.byType(HeartReadingsCard))
@@ -217,11 +232,11 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      expect(find.text('어머니 · 김복자 · 기록 조회'), findsOneWidget);
+      expect(find.text('어머니 · 김복자 님'), findsOneWidget);
       expect(tester.takeException(), isNull);
       await tester.tap(find.text('한 달'));
       await tester.pumpAndSettle();
-      expect(find.text('어머니 · 김복자 · 기록 조회'), findsOneWidget);
+      expect(find.text('어머니 · 김복자 님'), findsOneWidget);
       expect(tester.takeException(), isNull);
     });
   }

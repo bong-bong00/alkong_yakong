@@ -91,6 +91,10 @@ class _GuardianPharmacistScreenState
               decoration: const InputDecoration(
                 labelText: '상담 대상',
                 border: OutlineInputBorder(),
+                contentPadding: EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 16,
+                ),
               ),
               items: [
                 const DropdownMenuItem(value: '', child: Text('일반 약 상담')),

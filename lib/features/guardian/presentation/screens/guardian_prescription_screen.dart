@@ -13,7 +13,7 @@ import '../../../medicines/application/user_medicines_controller.dart';
 import '../../../medication/application/medication_controller.dart';
 import '../../../dashboard/application/medication_history_provider.dart';
 
-/// 그 어르신 대신 처방전을 찍는 화면을 연다 (프로토타입 80).
+/// 선택한 환자의 처방전 등록 방법 선택 화면을 연다.
 Future<void> openGuardianPrescription(
   BuildContext context,
   CarePatient patient,
@@ -64,7 +64,7 @@ class GuardianPickPatientScreen extends ConsumerWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text('보호자 화면 · 대신 찍기', style: AppText.label(size: 17)),
+                      Text('처방전 대신 등록', style: AppText.label(size: 17)),
                       Text(
                         '어느 분 처방전인가요?',
                         style: AppText.screenTitle(size: 26),

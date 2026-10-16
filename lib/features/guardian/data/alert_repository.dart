@@ -43,7 +43,7 @@ class AlertRepository {
       title: json['title']?.toString() ?? _titleOf(type),
       desc: json['message']?.toString() ?? '',
       time: _time(json['sent_at'] ?? json['created_at']),
-      // 부탁은 눌러서 바로 대신 찍는 자리로 간다.
+      // 부탁을 누르면 선택한 환자의 처방전 등록 화면으로 간다.
       tappable: kind == 'help',
       id: int.tryParse(json['id']?.toString() ?? ''),
     );

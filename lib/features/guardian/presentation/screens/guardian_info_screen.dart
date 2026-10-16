@@ -7,13 +7,15 @@ import '../../../../core/theme/app_typography.dart';
 import '../../../../core/widgets/senior_card.dart';
 import '../../../../core/widgets/senior_header.dart';
 import '../../../profile/application/current_user_controller.dart';
+import '../../../profile/presentation/screens/account_screen.dart';
+import '../../../profile/presentation/screens/help_screen.dart';
+import '../../../profile/presentation/screens/policy_screen.dart';
 import '../../application/guardians_provider.dart';
 import 'guardian_account_screen.dart';
 import 'guardian_alert_prefs_screen.dart';
 import 'care_manage_screen.dart';
-import 'guardian_settings_screen.dart';
 
-/// 보호자 · 정보 탭 (프로토타입 93).
+/// 보호자 · 설정 탭. 기존 정보 탭 구성을 유지한다.
 ///
 /// 어르신 화면의 "내 정보"와 다르다. 보호자는 약을 먹지 않으니
 /// 내 약 목록·복약 알림·폴라 센서가 없다.
@@ -29,7 +31,7 @@ class GuardianInfoScreen extends ConsumerWidget {
 
     return Column(
       children: [
-        const SeniorTitleHeader(title: '정보'),
+        const SeniorTitleHeader(title: '설정'),
         Expanded(
           child: SingleChildScrollView(
             padding: const EdgeInsets.fromLTRB(20, 16, 20, 28),
@@ -111,16 +113,41 @@ class GuardianInfoScreen extends ConsumerWidget {
                       ),
                       const SeniorDivider(),
                       SeniorListRow(
-                        label: '설정',
-                        icon: TablerIcons.settings,
+                        label: '도움말',
+                        icon: TablerIcons.help_circle,
                         trailing: const SeniorChevron(),
                         onTap: () => Navigator.of(context).push(
                           MaterialPageRoute<void>(
-                            builder: (_) => const GuardianSettingsScreen(),
+                            builder: (_) => const HelpScreen(),
+                          ),
+                        ),
+                      ),
+                      const SeniorDivider(),
+                      SeniorListRow(
+                        label: '약관 · 개인정보',
+                        icon: TablerIcons.file_text,
+                        trailing: const SeniorChevron(),
+                        onTap: () => Navigator.of(context).push(
+                          MaterialPageRoute<void>(
+                            builder: (_) => const PolicyScreen.terms(),
                           ),
                         ),
                       ),
                     ],
+                  ),
+                ),
+                const SizedBox(height: 20),
+                SeniorCard(
+                  borderColor: AppColors.dangerBorder,
+                  child: SeniorListRow(
+                    label: '로그아웃·탈퇴',
+                    icon: TablerIcons.logout,
+                    trailing: const SeniorChevron(),
+                    onTap: () => Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) => const AccountScreen(isGuardian: true),
+                      ),
+                    ),
                   ),
                 ),
               ],
