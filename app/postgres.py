@@ -171,7 +171,7 @@ class Connection:
             self.raw = psycopg.connect(url, cursor_factory=psycopg.ClientCursor, connect_timeout=10, **settings)
             self._transaction_schema = None
             self.set_schema(schema)
-            self.raw.commit()
+            self.commit()
         except psycopg.Error:
             if hasattr(self, 'raw'):
                 self.raw.close()

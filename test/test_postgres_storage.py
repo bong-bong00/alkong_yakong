@@ -151,6 +151,19 @@ def test_connection_uses_tls_and_never_logs_credentials(monkeypatch):
     assert raw.commit.called and raw.close.called
 
 
+def test_new_connection_does_not_cache_committed_transaction_schema(monkeypatch):
+    import psycopg
+    raw = Mock()
+    monkeypatch.setattr(psycopg, 'connect', Mock(return_value=raw))
+    connection = Connection('postgresql://user:private@example.invalid/db', 'alkong_main')
+    assert connection._transaction_schema is None
+    raw.reset_mock()
+    connection.execute('BEGIN IMMEDIATE')
+    assert connection._transaction_schema == 'alkong_main'
+    assert any('SET LOCAL search_path' in str(call) for call in raw.execute.call_args_list)
+    connection.close()
+
+
 def test_live_postgres_contract_in_disposable_schema():
     url = os.getenv('NEON_TEST_DATABASE_URL')
     if not url:
