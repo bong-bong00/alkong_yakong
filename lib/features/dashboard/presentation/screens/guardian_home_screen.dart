@@ -387,13 +387,6 @@ class _GuardianStatusScreenState extends ConsumerState<GuardianStatusScreen>
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  if (overview.hasError) ...[
-                    Text(
-                      '현재 상태를 갱신하지 못했어요. 이전 조회 내용을 표시합니다.',
-                      style: AppText.body(size: 18, color: AppColors.danger),
-                    ),
-                    const SizedBox(height: 12),
-                  ],
                   if (patient.needsAttention) ...[
                     _AttentionCard(
                       text:
