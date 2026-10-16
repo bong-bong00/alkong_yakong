@@ -5,6 +5,8 @@ import '../../../../core/constants/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../core/widgets/senior_card.dart';
 import '../../../../core/widgets/senior_header.dart';
+import '../../../../core/widgets/senior_feedback.dart';
+import '../../../../core/session/mvp_session.dart';
 import '../../application/guardian_alert_preferences.dart';
 
 /// 보호자 · 알림 받는 방법 (프로토타입 95).
@@ -12,7 +14,8 @@ import '../../application/guardian_alert_preferences.dart';
 /// 어떻게 받을지 · 언제 알릴지 · 밤 시간을 켜고 끈다.
 /// 고른 값은 이 전화기에 저장한다.
 class GuardianAlertPrefsScreen extends StatefulWidget {
-  const GuardianAlertPrefsScreen({super.key});
+  final Future<bool> Function(String key, bool value)? savePreference;
+  const GuardianAlertPrefsScreen({super.key, this.savePreference});
 
   @override
   State<GuardianAlertPrefsScreen> createState() =>
@@ -23,27 +26,51 @@ class _GuardianAlertPrefsScreenState extends State<GuardianAlertPrefsScreen> {
   static const _keys = GuardianAlertPreferences.defaults;
 
   final Map<String, bool> _values = Map.of(_keys);
+  bool _loading = true;
+  bool _saving = false;
+  late final String _ownerId;
 
   @override
   void initState() {
     super.initState();
+    _ownerId = MvpSession.userId;
     _load();
   }
 
   Future<void> _load() async {
-    final saved = await GuardianAlertPreferences.read();
-    if (!mounted) return;
+    final saved = await GuardianAlertPreferences.read(ownerId: _ownerId);
+    if (!mounted || MvpSession.userId != _ownerId) return;
     setState(() {
       for (final entry in _keys.entries) {
         _values[entry.key] = saved[entry.key] ?? entry.value;
       }
+      _loading = false;
     });
   }
 
   Future<void> _set(String key, bool value) async {
-    setState(() => _values[key] = value);
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(GuardianAlertPreferences.key(key), value);
+    if (_loading || _saving || MvpSession.userId != _ownerId) return;
+    final previous = _values[key]!;
+    setState(() {
+      _values[key] = value;
+      _saving = true;
+    });
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final saved = widget.savePreference == null
+          ? await prefs.setBool('${key}_$_ownerId', value)
+          : await widget.savePreference!('${key}_$_ownerId', value);
+      if (!saved) {
+        throw StateError('Save failed');
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() => _values[key] = previous);
+        showSeniorSnackbar(context, '설정을 저장하지 못했어요. 다시 시도해 주세요.', error: true);
+      }
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
   }
 
   @override
@@ -62,7 +89,7 @@ class _GuardianAlertPrefsScreenState extends State<GuardianAlertPrefsScreen> {
                   _group('어떻게 받을까요', const {'guardian_alert_in_app': '앱 안 알림'}),
                   const SizedBox(height: 22),
                   _group('언제 알릴까요', const {
-                    'guardian_alert_missed': '약을 안 드셨을 때',
+                    'guardian_alert_missed': '복용 완료 기록이 없을 때',
                     'guardian_alert_heart': '심박수가 느리거나 빠를 때',
                     'guardian_alert_new_medicine': '새 약이 등록됐을 때',
                   }),
@@ -96,7 +123,9 @@ class _GuardianAlertPrefsScreenState extends State<GuardianAlertPrefsScreen> {
                 _SwitchRow(
                   label: rows[keys[i]]!,
                   value: _values[keys[i]] ?? false,
-                  onChanged: (value) => _set(keys[i], value),
+                  onChanged: _loading || _saving
+                      ? null
+                      : (value) => _set(keys[i], value),
                 ),
               ],
             ],
@@ -110,7 +139,7 @@ class _GuardianAlertPrefsScreenState extends State<GuardianAlertPrefsScreen> {
 class _SwitchRow extends StatelessWidget {
   final String label;
   final bool value;
-  final ValueChanged<bool> onChanged;
+  final ValueChanged<bool>? onChanged;
 
   const _SwitchRow({
     required this.label,
@@ -125,19 +154,22 @@ class _SwitchRow extends StatelessWidget {
       child: Row(
         children: [
           Expanded(child: Text(label, style: AppText.cardTitle(size: 21))),
-          Switch(
-            value: value,
-            onChanged: onChanged,
-            activeThumbColor: Colors.white,
-            activeTrackColor: AppColors.point,
-            inactiveThumbColor: Colors.white,
-            inactiveTrackColor: AppColors.strongLine,
-            trackOutlineColor: WidgetStateProperty.all(Colors.transparent),
-            // 머티리얼 기본값은 꺼짐일 때 안쪽 동그라미를 줄인다. 켜고 끌 때
-            // 크기까지 바뀌면 손가락이 짚을 자리가 흔들린다. 보이지 않는
-            // 아이콘을 넣어 두 상태의 동그라미를 같은 크기로 묶는다.
-            thumbIcon: WidgetStateProperty.all(
-              const Icon(Icons.circle, size: 0, color: Colors.transparent),
+          Semantics(
+            label: label,
+            child: Switch(
+              value: value,
+              onChanged: onChanged,
+              activeThumbColor: Colors.white,
+              activeTrackColor: AppColors.point,
+              inactiveThumbColor: Colors.white,
+              inactiveTrackColor: AppColors.strongLine,
+              trackOutlineColor: WidgetStateProperty.all(Colors.transparent),
+              // 머티리얼 기본값은 꺼짐일 때 안쪽 동그라미를 줄인다. 켜고 끌 때
+              // 크기까지 바뀌면 손가락이 짚을 자리가 흔들린다. 보이지 않는
+              // 아이콘을 넣어 두 상태의 동그라미를 같은 크기로 묶는다.
+              thumbIcon: WidgetStateProperty.all(
+                const Icon(Icons.circle, size: 0, color: Colors.transparent),
+              ),
             ),
           ),
         ],

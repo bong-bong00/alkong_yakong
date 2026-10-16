@@ -21,6 +21,38 @@ import 'care_patient_screen.dart';
 class CareManageScreen extends ConsumerWidget {
   const CareManageScreen({super.key});
 
+  Future<void> _unlink(
+    BuildContext context,
+    WidgetRef ref,
+    CarePatient patient,
+  ) async {
+    final keep = await showSeniorYesNoDialog(
+      context: context,
+      title: '환자 연결을 해제할까요?',
+      message: '${patient.name} 님의 복약·심박 기록을 더 이상 조회할 수 없어요. 환자의 기록은 삭제하지 않아요.',
+      yesLabel: '아니요, 유지할게요',
+      noLabel: '네, 해제할게요',
+      dismissValue: true,
+    );
+    if (keep || !context.mounted) return;
+    try {
+      await GuardianRepository().remove(patient.linkId);
+      ref.invalidate(careOverviewProvider);
+      ref.invalidate(carePatientProfileProvider(patient.patientId));
+      if (context.mounted) {
+        showSeniorSnackbar(context, '${patient.name} 님과의 연결을 해제했어요');
+      }
+    } catch (error) {
+      if (context.mounted) {
+        showSeniorSnackbar(
+          context,
+          error is ApiException ? error.message : '연결을 해제하지 못했어요. 다시 시도해 주세요.',
+          error: true,
+        );
+      }
+    }
+  }
+
   Future<void> _add(BuildContext context, WidgetRef ref) async {
     final draft = await showAddCareSheet(context);
     if (draft == null || !context.mounted) return;
@@ -57,6 +89,31 @@ class CareManageScreen extends ConsumerWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
+                  if (overview.hasError) ...[
+                    SeniorCard(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Text(
+                            data == null
+                                ? '돌보는 분 목록을 불러오지 못했어요'
+                                : '목록을 갱신하지 못했어요. 이전 내용을 표시해요.',
+                            style: AppText.body(size: 18),
+                          ),
+                          const SizedBox(height: 8),
+                          SeniorButton(
+                            label: '다시 불러오기',
+                            kind: SeniorButtonKind.secondary,
+                            minHeight: 52,
+                            fontSize: 18,
+                            onPressed: () =>
+                                ref.invalidate(careOverviewProvider),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                  ],
                   SeniorCard(
                     padding: const EdgeInsets.symmetric(
                       horizontal: 22,
@@ -87,11 +144,23 @@ class CareManageScreen extends ConsumerWidget {
                                 ),
                               ),
                             ),
+                            Align(
+                              alignment: Alignment.centerRight,
+                              child: TextButton(
+                                onPressed: () =>
+                                    _unlink(context, ref, patients[i]),
+                                style: TextButton.styleFrom(
+                                  foregroundColor: AppColors.danger,
+                                  minimumSize: const Size(48, 48),
+                                ),
+                                child: const Text('연결 해제'),
+                              ),
+                            ),
                           ],
                         ],
                       ),
                     )
-                  else
+                  else if (!overview.hasError)
                     SeniorCard(
                       padding: const EdgeInsets.symmetric(
                         horizontal: 22,

@@ -119,6 +119,7 @@ class AccountScreen extends ConsumerWidget {
           : '지금까지의 복약 기록이 모두 지워져요. 한 번 지우면 되돌릴 수 없어요.',
       yesLabel: '아니요, 그냥 둘게요',
       noLabel: '네, 탈퇴할게요',
+      dismissValue: true,
     );
     // 위쪽(주 버튼)이 "그냥 둘게요"다. 위험한 쪽을 크게 두지 않는다.
     if (go || !context.mounted) return;

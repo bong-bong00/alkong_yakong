@@ -6,6 +6,7 @@ import '../../../../core/network/api_client.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../core/widgets/senior_card.dart';
 import '../../../../core/widgets/senior_header.dart';
+import '../../../../core/widgets/senior_button.dart';
 import '../../../dashboard/presentation/screens/patient_data.dart';
 import '../../../medicines/application/user_medicines_controller.dart';
 import '../../../medicines/domain/user_medicine_models.dart';
@@ -44,13 +45,16 @@ class CarePatientScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final profile = ref
-        .watch(carePatientProfileProvider(patient.patientId))
-        .valueOrNull;
+    final profileState = ref.watch(
+      carePatientProfileProvider(patient.patientId),
+    );
+    final profile = profileState.valueOrNull;
     final allergies = profile?.allergies ?? const <String>[];
     final medicines = ref.watch(patientMedicinesProvider(patient.patientId));
     final diseases = profile?.diseases ?? const <String>[];
-    final missingProfileLabel = profile == null ? '정보를 확인하지 못했어요' : '미입력';
+    final missingProfileLabel = profile == null
+        ? (profileState.isLoading ? '불러오는 중이에요' : '정보를 확인하지 못했어요')
+        : '미입력';
 
     String? sizeLine() {
       final height = profile?.heightCm;
@@ -89,6 +93,30 @@ class CarePatientScreen extends ConsumerWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
+                  if (profileState.hasError) ...[
+                    SeniorCard(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Text(
+                            '건강정보를 불러오지 못했어요',
+                            style: AppText.cardTitle(size: 20),
+                          ),
+                          const SizedBox(height: 8),
+                          SeniorButton(
+                            label: '다시 불러오기',
+                            kind: SeniorButtonKind.secondary,
+                            fontSize: 18,
+                            minHeight: 52,
+                            onPressed: () => ref.invalidate(
+                              carePatientProfileProvider(patient.patientId),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                  ],
                   if (allergies.isNotEmpty) ...[
                     _WarnCard(text: '${allergies.join(' · ')} 알레르기가 있어요'),
                     const SizedBox(height: 12),
@@ -101,7 +129,10 @@ class CarePatientScreen extends ConsumerWidget {
                       vertical: 4,
                     ),
                     child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
+                        const SizedBox(height: 12),
+                        Text('기본 정보', style: AppText.cardTitle(size: 21)),
                         _FactRow(
                           label: '연세',
                           value: patient.age == null ? null : '${patient.age}세',
@@ -151,7 +182,12 @@ class CarePatientScreen extends ConsumerWidget {
                         Text('지금 앓고 있는 병', style: AppText.label(size: 18)),
                         const SizedBox(height: 12),
                         if (diseases.isEmpty)
-                          Text('아직 받은 내용이 없어요', style: AppText.body(size: 18))
+                          Text(
+                            profile == null
+                                ? missingProfileLabel
+                                : '등록된 질환이 없어요',
+                            style: AppText.body(size: 18),
+                          )
                         else
                           Wrap(
                             spacing: 10,
@@ -187,24 +223,33 @@ class CarePatientScreen extends ConsumerWidget {
                       vertical: 4,
                     ),
                     child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        const SeniorDivider(),
+                        const SizedBox(height: 12),
+                        Text('병력 · 생활습관', style: AppText.cardTitle(size: 21)),
                         _FactRow(
                           label: '과거에 앓았던 병',
+                          missingLabel: missingProfileLabel,
                           value: illnessHistoryLabel(
                             profile?.pastIllnesses ?? const [],
                             profile?.pastHistory,
                           ),
                         ),
+                        const SeniorDivider(),
                         _FactRow(
                           label: '가족 병력',
+                          missingLabel: missingProfileLabel,
                           value: illnessHistoryLabel(
                             profile?.familyIllnesses ?? const [],
                             profile?.familyHistory,
                           ),
                         ),
                         const SeniorDivider(),
-                        _FactRow(label: '담배 · 술', value: habitLine()),
+                        _FactRow(
+                          label: '담배 · 술',
+                          value: habitLine(),
+                          missingLabel: missingProfileLabel,
+                        ),
                       ],
                     ),
                   ),
@@ -239,7 +284,7 @@ class _WarnCard extends StatelessWidget {
           Text(text, style: AppText.emphasis(size: 23)),
           const SizedBox(height: 6),
           Text(
-            '새 처방전을 대신 넣을 때 이 약이 들어 있으면 화면이 먼저 알려드려요.',
+            '등록된 알레르기 정보예요. 약을 등록하거나 복용하기 전에 의사나 약사에게 알려 주세요.',
             style: AppText.body(size: 18),
           ),
         ],
@@ -248,7 +293,7 @@ class _WarnCard extends StatelessWidget {
   }
 }
 
-/// 왼쪽에 항목, 오른쪽에 값. 모르는 값은 "아직 받지 못했어요".
+/// 짧은 항목은 같은 열에 정렬하고, 좁은 화면/큰 글자/긴 내용은 위아래로 배치한다.
 class _FactRow extends StatelessWidget {
   final String label;
   final String? value;
@@ -261,29 +306,39 @@ class _FactRow extends StatelessWidget {
     final text = (value ?? '').trim();
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(label, style: AppText.label(size: 19)),
-          const SizedBox(height: 6),
-          if (label == '연락처' && text.isNotEmpty)
-            FittedBox(
-              fit: BoxFit.scaleDown,
-              alignment: Alignment.centerLeft,
-              child: Text(
-                text,
-                softWrap: false,
-                style: AppText.cardTitle(size: 20),
-              ),
-            )
-          else
-            Text(
-              text.isEmpty ? missingLabel : text,
-              style: text.isEmpty
-                  ? AppText.body(size: 18, color: AppColors.textTertiary)
-                  : AppText.cardTitle(size: 20),
-            ),
-        ],
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final title = Text(
+            label,
+            style: AppText.label(size: 18, color: AppColors.textSecondary),
+          );
+          final content = Text(
+            text.isEmpty ? missingLabel : text,
+            style: text.isEmpty
+                ? AppText.body(size: 18, color: AppColors.textTertiary)
+                : AppText.cardTitle(size: 20),
+          );
+          final stacked =
+              constraints.maxWidth < 260 ||
+              MediaQuery.textScalerOf(context).scale(18) > 24 ||
+              text.runes.length > 16 ||
+              label.runes.length > 7 ||
+              text.isEmpty;
+          if (stacked) {
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [title, const SizedBox(height: 6), content],
+            );
+          }
+          return Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              SizedBox(width: 100, child: title),
+              const SizedBox(width: 12),
+              Expanded(child: content),
+            ],
+          );
+        },
       ),
     );
   }

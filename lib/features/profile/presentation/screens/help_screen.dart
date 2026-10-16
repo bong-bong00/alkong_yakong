@@ -13,16 +13,19 @@ import '../../domain/app_documents.dart';
 class HelpScreen extends StatefulWidget {
   /// 모든 꼭지를 펼친 채로 연다. 글자 배율 검사에서 펼친 내용까지 그려 보려고 둔다.
   final bool openAll;
+  final bool isGuardian;
 
-  const HelpScreen({super.key, this.openAll = false});
+  const HelpScreen({super.key, this.openAll = false, this.isGuardian = false});
 
   @override
   State<HelpScreen> createState() => _HelpScreenState();
 }
 
 class _HelpScreenState extends State<HelpScreen> {
+  List<HelpTopic> get _topics =>
+      widget.isGuardian ? kGuardianHelpTopics : kHelpTopics;
   late final Set<int> _open = widget.openAll
-      ? {for (int i = 0; i < kHelpTopics.length; i++) i}
+      ? {for (int i = 0; i < _topics.length; i++) i}
       : <int>{};
 
   void _toggle(int index) {
@@ -46,9 +49,9 @@ class _HelpScreenState extends State<HelpScreen> {
                 const SizedBox(height: 4),
                 Text('누르면 하는 방법이 펼쳐져요.', style: AppText.body(size: 18)),
                 const SizedBox(height: 14),
-                for (int i = 0; i < kHelpTopics.length; i++) ...[
+                for (int i = 0; i < _topics.length; i++) ...[
                   _TopicCard(
-                    topic: kHelpTopics[i],
+                    topic: _topics[i],
                     open: _open.contains(i),
                     onTap: () => _toggle(i),
                   ),
@@ -65,7 +68,12 @@ class _HelpScreenState extends State<HelpScreen> {
                     children: [
                       Text('그래도 어려우시면', style: AppText.cardTitle()),
                       const SizedBox(height: 6),
-                      Text(kHelpStillStuck, style: AppText.body()),
+                      Text(
+                        widget.isGuardian
+                            ? '설정에서 돌보는 분의 연결 상태와 인터넷 연결을 확인해 주세요. 약에 관한 판단이 필요하면 의사나 약사에게 문의해 주세요.'
+                            : kHelpStillStuck,
+                        style: AppText.body(),
+                      ),
                       const SizedBox(height: 14),
                       _NoteBox(text: kHelpMedicalNote, warning: true),
                     ],

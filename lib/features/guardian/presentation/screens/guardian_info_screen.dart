@@ -11,6 +11,7 @@ import '../../../profile/presentation/screens/account_screen.dart';
 import '../../../profile/presentation/screens/help_screen.dart';
 import '../../../profile/presentation/screens/policy_screen.dart';
 import '../../application/guardians_provider.dart';
+import '../../application/guardian_alert_inbox.dart';
 import 'guardian_account_screen.dart';
 import 'guardian_alert_prefs_screen.dart';
 import 'care_manage_screen.dart';
@@ -105,11 +106,18 @@ class GuardianInfoScreen extends ConsumerWidget {
                         label: '알림 받는 방법',
                         icon: TablerIcons.bell,
                         trailing: const SeniorChevron(),
-                        onTap: () => Navigator.of(context).push(
-                          MaterialPageRoute<void>(
-                            builder: (_) => const GuardianAlertPrefsScreen(),
-                          ),
-                        ),
+                        onTap: () async {
+                          await Navigator.of(context).push(
+                            MaterialPageRoute<void>(
+                              builder: (_) => const GuardianAlertPrefsScreen(),
+                            ),
+                          );
+                          if (context.mounted) {
+                            ref
+                                .read(guardianAlertRevisionProvider.notifier)
+                                .state++;
+                          }
+                        },
                       ),
                       const SeniorDivider(),
                       SeniorListRow(
@@ -118,7 +126,7 @@ class GuardianInfoScreen extends ConsumerWidget {
                         trailing: const SeniorChevron(),
                         onTap: () => Navigator.of(context).push(
                           MaterialPageRoute<void>(
-                            builder: (_) => const HelpScreen(),
+                            builder: (_) => const HelpScreen(isGuardian: true),
                           ),
                         ),
                       ),

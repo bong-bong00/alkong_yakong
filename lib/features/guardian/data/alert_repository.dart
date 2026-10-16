@@ -68,7 +68,7 @@ class AlertRepository {
   static String _titleOf(String type) => switch (_kindOf(type)) {
     'help' => '처방전을 찍어 주세요',
     'alert' => '심박수 기록을 확인해 주세요',
-    'miss' => '약을 안 드셨어요',
+    'miss' => '복용 완료 기록을 확인해 주세요',
     'refill' => '약이 떨어졌어요',
     'prescription' => '새 처방전',
     'shared' => '어르신이 보냈어요',

@@ -15,6 +15,8 @@ Future<bool> showSeniorYesNoDialog({
   String? message,
   String yesLabel = '예',
   String noLabel = '아니요',
+  // 안전한 선택이 true인 역방향 확인창은 닫기도 취소(true)로 처리한다.
+  bool dismissValue = false,
 }) async {
   final confirmed = await SeniorSheet.show<bool>(
     context: context,
@@ -40,7 +42,7 @@ Future<bool> showSeniorYesNoDialog({
       ],
     ),
   );
-  return confirmed ?? false;
+  return confirmed ?? dismissValue;
 }
 
 /// 끝났다고 알리고 닫기만 하는 창.

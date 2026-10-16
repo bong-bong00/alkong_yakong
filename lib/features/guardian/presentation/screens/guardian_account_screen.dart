@@ -41,13 +41,6 @@ class GuardianAccountScreen extends ConsumerWidget {
                       trailing: const SeniorChevron(),
                       onTap: edit,
                     ),
-                    const SeniorDivider(),
-                    SeniorListRow(
-                      label: '비밀번호',
-                      value: '••••••',
-                      trailing: const SeniorChevron(),
-                      onTap: edit,
-                    ),
                   ],
                 ),
               ),

@@ -91,6 +91,14 @@ class CareFamilyScreen extends ConsumerWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
+                if (overview.hasError && data != null) ...[
+                  _InfoCard(
+                    text: '목록을 갱신하지 못했어요. 이전 조회 내용을 표시하고 있어요.',
+                    actionLabel: '다시 불러오기',
+                    onAction: () => ref.invalidate(careOverviewProvider),
+                  ),
+                  const SizedBox(height: 12),
+                ],
                 if (data == null && overview.isLoading)
                   const _InfoCard(text: '불러오는 중이에요')
                 else if (data == null)
@@ -102,7 +110,7 @@ class CareFamilyScreen extends ConsumerWidget {
                 else if (patients.isEmpty && pending.isEmpty)
                   const _InfoCard(
                     text:
-                        '아직 연결된 어르신이 없어요. 정보 → 돌보는 분 관리에서 '
+                        '아직 연결된 어르신이 없어요. 설정 → 돌보는 분 관리에서 '
                         '어르신 전화번호로 연결을 요청해 주세요.',
                   ),
                 if (patients.isNotEmpty) ...[
@@ -241,7 +249,14 @@ class _PatientCard extends StatelessWidget {
 
   String get _status {
     if (patient.totalCount == 0) return '오늘 드실 약이 등록돼 있지 않아요';
-    if (patient.needsAttention) return '${patient.nextDoseLabel} 복용 완료 기록이 없어요';
+    if (patient.needsAttention) {
+      return '${patient.overdueDoseLabel ?? patient.nextDoseLabel} 복용 완료 기록이 없어요';
+    }
+    if (patient.nextDoseLabel != null) {
+      return patient.doseStatus == 'time_unknown'
+          ? '복용 예정 시각을 확인해 주세요'
+          : '${patient.nextDoseLabel} 복용 예정이에요';
+    }
     return '오늘 ${_spokenCount(patient.totalCount)} 다 드셨어요';
   }
 

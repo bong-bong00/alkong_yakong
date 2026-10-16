@@ -12,11 +12,13 @@ class GuardianPharmacistScreen extends ConsumerStatefulWidget {
   final String? initialPatientId;
   final ApiClient? apiClient;
   final ApiClient? medicationApiClient;
+  final VoidCallback? onBack;
   const GuardianPharmacistScreen({
     super.key,
     this.initialPatientId,
     this.apiClient,
     this.medicationApiClient,
+    this.onBack,
   });
 
   @override
@@ -43,12 +45,22 @@ class _GuardianPharmacistScreenState
     if (_patientId != null && patient == null) {
       if (overview.isLoading) {
         return Scaffold(
-          appBar: AppBar(title: const Text('AI 약사 상담')),
+          appBar: AppBar(
+            title: const Text('AI 약사 상담'),
+            leading: widget.onBack == null
+                ? null
+                : BackButton(onPressed: widget.onBack),
+          ),
           body: const Center(child: CircularProgressIndicator()),
         );
       }
       return Scaffold(
-        appBar: AppBar(title: const Text('AI 약사 상담')),
+        appBar: AppBar(
+          title: const Text('AI 약사 상담'),
+          leading: widget.onBack == null
+              ? null
+              : BackButton(onPressed: widget.onBack),
+        ),
         body: Padding(
           padding: const EdgeInsets.all(24),
           child: Column(
@@ -73,6 +85,7 @@ class _GuardianPharmacistScreenState
       patientId: patient?.patientId,
       patientName: patient?.name,
       registeredMedicinesOnly: patient != null,
+      onBack: widget.onBack,
       apiClient: widget.apiClient,
       medicationApiClient: widget.medicationApiClient,
       consultationSelector: Container(

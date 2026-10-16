@@ -89,6 +89,9 @@ class _GuardianHomeScreenState extends ConsumerState<GuardianHomeScreen>
   }
 
   int _index = 0;
+  int _pharmacistReturnIndex = 0;
+
+  void _leavePharmacist() => setState(() => _index = _pharmacistReturnIndex);
 
   /// 부탁 팝업을 이번에 켠 동안 한 번만 본다.
   bool _askedAboutHelp = false;
@@ -178,23 +181,32 @@ class _GuardianHomeScreenState extends ConsumerState<GuardianHomeScreen>
       }
     });
 
-    return Scaffold(
-      backgroundColor: AppColors.pageBg,
-      body: IndexedStack(
-        index: _index,
-        children: [
-          CareFamilyScreen(
-            onOpenPatient: _openPatient,
-            onOpenAlerts: _openAlerts,
-          ),
-          const GuardianPharmacistScreen(),
-          const GuardianInfoScreen(),
-        ],
-      ),
-      bottomNavigationBar: SeniorBottomNav(
-        items: _tabs,
-        currentIndex: _index,
-        onTap: (i) => setState(() => _index = i),
+    return PopScope(
+      canPop: _index != 1,
+      onPopInvokedWithResult: (didPop, result) {
+        if (!didPop && _index == 1) _leavePharmacist();
+      },
+      child: Scaffold(
+        backgroundColor: AppColors.pageBg,
+        body: IndexedStack(
+          index: _index,
+          children: [
+            CareFamilyScreen(
+              onOpenPatient: _openPatient,
+              onOpenAlerts: _openAlerts,
+            ),
+            GuardianPharmacistScreen(onBack: _leavePharmacist),
+            const GuardianInfoScreen(),
+          ],
+        ),
+        bottomNavigationBar: SeniorBottomNav(
+          items: _tabs,
+          currentIndex: _index,
+          onTap: (i) => setState(() {
+            if (i == 1 && _index != 1) _pharmacistReturnIndex = _index;
+            _index = i;
+          }),
+        ),
       ),
     );
   }
@@ -384,7 +396,8 @@ class _GuardianStatusScreenState extends ConsumerState<GuardianStatusScreen>
                   ],
                   if (patient.needsAttention) ...[
                     _AttentionCard(
-                      text: '${patient.nextDoseLabel} 복용 완료 기록이 아직 없어요',
+                      text:
+                          '${patient.overdueDoseLabel ?? patient.nextDoseLabel} 복용 완료 기록이 아직 없어요',
                       onCall: () => _callPatient(context, patient),
                     ),
                     const SizedBox(height: 14),
@@ -422,12 +435,20 @@ class _GuardianStatusScreenState extends ConsumerState<GuardianStatusScreen>
                                 : TablerIcons.circle,
                             iconColor: slots[i].taken
                                 ? AppColors.textPrimary
-                                : AppColors.danger,
+                                : slots[i].recordStatus == 'overdue'
+                                ? AppColors.danger
+                                : AppColors.textTertiary,
                             label: '${slots[i].label} 약',
                             value:
                                 _takenAt(slots[i]) ??
-                                (slots[i].taken ? '드셨어요' : '아직'),
-                            danger: !slots[i].taken,
+                                (slots[i].taken
+                                    ? '완료'
+                                    : slots[i].recordStatus == 'overdue'
+                                    ? '기록 없음'
+                                    : slots[i].recordStatus == 'scheduled'
+                                    ? '예정'
+                                    : '시간 확인'),
+                            danger: slots[i].recordStatus == 'overdue',
                           ),
                         ],
                         if (heartRate != null) ...[

@@ -30,6 +30,7 @@ class DrugExplainScreen extends StatefulWidget {
   final bool generalConsultation;
   final bool registeredMedicinesOnly;
   final Widget? consultationSelector;
+  final VoidCallback? onBack;
 
   const DrugExplainScreen({
     super.key,
@@ -41,6 +42,7 @@ class DrugExplainScreen extends StatefulWidget {
     this.generalConsultation = false,
     this.registeredMedicinesOnly = false,
     this.consultationSelector,
+    this.onBack,
   });
 
   @override
@@ -308,6 +310,56 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
       'intent': 'overview',
     },
   ];
+
+  static const _guardianGeneralSuggestions = [
+    {
+      'label': '약 보관할 때 주의할 점은요?',
+      'prompt': '약을 보관할 때 일반적으로 확인할 주의사항을 알려주세요.',
+      'intent': 'precautions',
+    },
+    {
+      'label': '약 설명서에서 무엇을 확인하나요?',
+      'prompt': '약 설명서에서 확인해야 하는 항목을 쉽게 알려주세요.',
+      'intent': 'overview',
+    },
+    {
+      'label': '선택한 약과 주의할 음식은요?',
+      'prompt': '선택한 약과 함께 먹을 때 주의해야 할 음식이 있나요?',
+      'intent': 'combination',
+    },
+  ];
+  static const _guardianPatientSuggestions = [
+    {
+      'label': '등록된 약의 사용 목적은요?',
+      'prompt': '환자에게 등록된 각 약의 사용 목적을 알려주세요.',
+      'intent': 'efficacy',
+    },
+    {
+      'label': '등록된 약의 복용법은요?',
+      'prompt': '환자에게 등록된 각 약의 복용법을 알려주세요.',
+      'intent': 'dosage',
+    },
+    {
+      'label': '등록된 약의 주의사항은요?',
+      'prompt': '환자에게 등록된 각 약의 주의사항을 알려주세요.',
+      'intent': 'precautions',
+    },
+  ];
+
+  Map<String, String> _scopedAsk(Map<String, String> ask) {
+    if (widget.patientId == null) return ask;
+    String scoped(String text) => text
+        .replaceAll('내 약', '등록된 약')
+        .replaceAll('내 건강 상태에서', '건강정보에서')
+        .replaceAll('내 건강', '건강정보')
+        .replaceAll('등록한 질환', '환자에게 등록된 질환')
+        .replaceAll('제가 현재 먹는 약', '환자에게 등록된 약')
+        .replaceAll('제 건강 상태', '환자의 건강 상태');
+    return {
+      for (final entry in ask.entries)
+        entry.key: entry.key == 'intent' ? entry.value : scoped(entry.value),
+    };
+  }
 
   /// 내 건강을 함께 보고 답해 달라는 질문. 어느 쪽이든 끝에 붙인다.
   static const Map<String, String> _healthPrompt = {
@@ -1088,7 +1140,11 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
         .skip(_conversationStart)
         .any((message) => message['isMe'] == true);
     final suggestions = medicine == null
-        ? _generalSuggestions
+        ? (widget.consultationSelector != null
+              ? (widget.generalConsultation
+                    ? _guardianGeneralSuggestions
+                    : _guardianPatientSuggestions)
+              : _generalSuggestions)
         : _medicineSuggestions;
     final greeting = _greeting(MvpSession.userName);
     final subjectCard = Container(
@@ -1143,7 +1199,7 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
               borderColor: AppColors.surface,
               child: Row(
                 children: [
-                  const SeniorBackButton(),
+                  SeniorBackButton(onTap: widget.onBack),
                   const SizedBox(width: 14),
                   Expanded(
                     child: Column(
@@ -1256,18 +1312,22 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
             // 무엇을 물어야 할지 떠오르지 않을 때. 누르면 그대로 물어본다.
             if (!widget.generalConsultation || _selectedMedicines.isNotEmpty)
               _AskBar(
-                asks: widget.generalConsultation
-                    ? (_selectedMedicines.isEmpty
-                          ? const <Map<String, String>>[]
-                          : _pickedMedicineAsks
-                                .where(
-                                  (ask) =>
-                                      ask['intent'] != 'health_precautions',
-                                )
-                                .toList())
-                    : _selectedMedicines.isEmpty
-                    ? _allMedicineAsks
-                    : _pickedMedicineAsks,
+                asks:
+                    (widget.generalConsultation
+                            ? (_selectedMedicines.isEmpty
+                                  ? const <Map<String, String>>[]
+                                  : _pickedMedicineAsks
+                                        .where(
+                                          (ask) =>
+                                              ask['intent'] !=
+                                              'health_precautions',
+                                        )
+                                        .toList())
+                            : _selectedMedicines.isEmpty
+                            ? _allMedicineAsks
+                            : _pickedMedicineAsks)
+                        .map(_scopedAsk)
+                        .toList(),
                 onAsk: _isLoading ? null : _askPreset,
               ),
             Padding(
