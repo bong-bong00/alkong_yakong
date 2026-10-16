@@ -8,6 +8,10 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:alkong_yakong/features/guardian/presentation/screens/guardian_pharmacist_screen.dart';
+import 'package:alkong_yakong/features/guardian/application/guardians_provider.dart';
+import 'package:alkong_yakong/features/dashboard/presentation/screens/patient_data.dart';
 
 void main() {
   http.Response jsonResponse(Object value, [int status = 200]) => http.Response(
@@ -21,6 +25,130 @@ void main() {
     MvpSession.latestOcrItems = [
       {'official_product_name': '보호자본인약정', 'medicine_code': '111111111'},
     ];
+  });
+
+  for (final scale in [1.0, 2.0]) {
+    for (final subject in [null, 'patient-a']) {
+      testWidgets(
+        'guardian $subject selector fits small phone at scale $scale',
+        (tester) async {
+          tester.view.physicalSize = const Size(360, 640);
+          tester.view.devicePixelRatio = 1;
+          addTearDown(tester.view.reset);
+          final client = MockClient(
+            (request) async => request.url.path.endsWith('/cache-context')
+                ? jsonResponse({'verified': true, 'fingerprint': 'v1'})
+                : jsonResponse({'medicines': []}),
+          );
+          await tester.pumpWidget(
+            ProviderScope(
+              overrides: [
+                careOverviewProvider.overrideWith(
+                  (ref) async => const CareOverview(
+                    patients: [
+                      CarePatient(
+                        linkId: 'link',
+                        patientId: 'patient-a',
+                        name: '긴 이름의 시연 사용자',
+                        relation: '아버지',
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+              child: MaterialApp(
+                builder: (context, child) => MediaQuery(
+                  data: MediaQuery.of(
+                    context,
+                  ).copyWith(textScaler: TextScaler.linear(scale)),
+                  child: child!,
+                ),
+                home: GuardianPharmacistScreen(
+                  initialPatientId: subject,
+                  apiClient: ApiClient(client: client),
+                  medicationApiClient: ApiClient(client: client),
+                ),
+              ),
+            ),
+          );
+          await tester.pumpAndSettle();
+          expect(find.byType(DropdownButtonFormField<String>), findsOneWidget);
+          expect(tester.takeException(), isNull);
+        },
+      );
+    }
+  }
+
+  testWidgets('guardian selector separates general and patient consultation', (
+    tester,
+  ) async {
+    final requests = <Map>[];
+    final reads = <String>[];
+    final client = MockClient((request) async {
+      if (request.method == 'POST') {
+        final body = jsonDecode(request.body) as Map;
+        requests.add(body);
+        return jsonResponse({
+          'reply': '${body['consultation_mode'] ?? body['user_id']} 답변이에요.',
+          'sources': [],
+        });
+      }
+      reads.add(request.url.toString());
+      return request.url.path.endsWith('/cache-context')
+          ? jsonResponse({'verified': true, 'fingerprint': 'patient-v1'})
+          : jsonResponse({'medicines': []});
+    });
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          careOverviewProvider.overrideWith(
+            (ref) async => const CareOverview(
+              patients: [
+                CarePatient(
+                  linkId: 'link',
+                  patientId: 'patient-a',
+                  name: '김환자',
+                  relation: '아버지',
+                ),
+              ],
+            ),
+          ),
+        ],
+        child: MaterialApp(
+          home: GuardianPharmacistScreen(
+            apiClient: ApiClient(client: client),
+            medicationApiClient: ApiClient(client: client),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(reads, isEmpty);
+    expect(find.textContaining('보호자본인약정'), findsNothing);
+    await tester.enterText(find.byType(TextField).last, '약 보관법은요?');
+    await tester.testTextInput.receiveAction(TextInputAction.send);
+    await tester.pumpAndSettle();
+    expect(requests.last['consultation_mode'], 'general');
+    await tester.tap(find.byType(DropdownButtonFormField<String>));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('김환자 님 약 상담').last);
+    await tester.pumpAndSettle();
+    expect(find.textContaining('general 답변', findRichText: true), findsNothing);
+    await tester.enterText(find.byType(TextField).last, '주의할 점은요?');
+    await tester.testTextInput.receiveAction(TextInputAction.send);
+    await tester.pumpAndSettle();
+    expect(requests.last['user_id'], 'patient-a');
+    expect(requests.last.containsKey('consultation_mode'), isFalse);
+    expect(MvpSession.userId, 'guardian');
+    expect(
+      await PharmacistConversationStore().load('guardian::general'),
+      hasLength(1),
+    );
+    expect(
+      await PharmacistConversationStore().load('guardian::patient::patient-a'),
+      hasLength(1),
+    );
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets(

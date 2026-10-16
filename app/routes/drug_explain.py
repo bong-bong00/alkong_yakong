@@ -38,9 +38,10 @@ def chat_with_pharmacist(request: DrugExplainChatRequest):
                 medicine.model_dump() for medicine in request.temporary_medicines
             ],
             intent=intent,
+            **({"general_consultation": True} if request.consultation_mode == "general" else {}),
         )
     highlights = []
-    if intent == "health_precautions":
+    if intent == "health_precautions" and request.consultation_mode != "general":
         from app.services.pharmacist.health_precautions import health_highlight_terms
         highlights = health_highlight_terms(request.user_id, reply)
     return {"reply": reply, "health_highlight_terms": highlights,

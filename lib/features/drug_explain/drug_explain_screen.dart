@@ -27,6 +27,8 @@ class DrugExplainScreen extends StatefulWidget {
   final String? initialMedicine;
   final String? patientId;
   final String? patientName;
+  final bool generalConsultation;
+  final Widget? consultationSelector;
 
   const DrugExplainScreen({
     super.key,
@@ -35,6 +37,8 @@ class DrugExplainScreen extends StatefulWidget {
     this.initialMedicine,
     this.patientId,
     this.patientName,
+    this.generalConsultation = false,
+    this.consultationSelector,
   });
 
   @override
@@ -86,6 +90,7 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
     _healthFingerprint = null;
     _contextVerifiedAt = null;
     _guardianAccessVerified = false;
+    if (widget.generalConsultation) return;
     try {
       final result = await _apiClient.get(
         '/api/v1/drug-explain/cache-context?user_id=${Uri.encodeComponent(_subjectUserId)}',
@@ -134,7 +139,7 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
     if (!messages.any((message) => message['isMe'] == true)) return;
     _conversationId ??= DateTime.now().microsecondsSinceEpoch.toString();
     final title = _selectedMedicines.isEmpty
-        ? '내 약 전체'
+        ? (widget.generalConsultation ? '일반 약 상담' : '내 약 전체')
         : _selectedMedicines.map(_shortName).join(', ');
     await _conversationStore.save(_conversationUserId, {
       'id': _conversationId,
@@ -399,7 +404,9 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
     super.initState();
     _signedInUserId = MvpSession.userId;
     _subjectUserId = widget.patientId ?? _signedInUserId;
-    _conversationUserId = widget.patientId == null
+    _conversationUserId = widget.generalConsultation
+        ? '$_signedInUserId::general'
+        : widget.patientId == null
         ? _signedInUserId
         : '$_signedInUserId::patient::${widget.patientId}';
     WidgetsBinding.instance.addObserver(this);
@@ -433,6 +440,9 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
 
   /// 머리말 인사. 약을 고르면 그 약 이야기로 좁혀 말한다.
   String _greeting(String userName) {
+    if (widget.generalConsultation) {
+      return '약을 검색해서 선택하거나 궁금한 점을 물어보세요. 일반 약 상담에서는 개인 건강정보와 등록 약을 자동으로 사용하지 않아요.';
+    }
     if (widget.patientId != null) {
       return '${widget.patientName ?? '연결된 환자'} 님의 약과 건강정보에 관해 물어보세요.';
     }
@@ -455,6 +465,7 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
   }
 
   Future<void> _loadMedicines() async {
+    if (widget.generalConsultation) return;
     _medicineFingerprint = null;
     final names = <String>[];
     final officialMedicines = <String, _DrugSearchCandidate>{};
@@ -828,6 +839,7 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
       // 선택 범위와 최근 대화를 실제 AI 약사 상담 API에 전달한다.
       final body = <String, dynamic>{
         'user_id': _subjectUserId,
+        if (widget.generalConsultation) 'consultation_mode': 'general',
         'message': requestText,
         'recent_history': recentHistory,
       };
@@ -1069,6 +1081,20 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
         ? _generalSuggestions
         : _medicineSuggestions;
     final greeting = _greeting(MvpSession.userName);
+    final subjectCard = Container(
+      width: double.infinity,
+      decoration: const BoxDecoration(
+        color: AppColors.surface,
+        border: Border(bottom: BorderSide(color: AppColors.border, width: 1)),
+      ),
+      padding: const EdgeInsets.fromLTRB(20, 2, 20, 14),
+      child: _SubjectCard(
+        key: const ValueKey('ai-subject-card'),
+        medicineName: _subjectLabel,
+        onTap: _isLoading ? null : _pickMedicines,
+        onClear: _isLoading ? null : _clearMedicine,
+      ),
+    );
 
     return Scaffold(
       backgroundColor: AppColors.bg,
@@ -1095,7 +1121,8 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
                             style: AppText.screenTitle(size: 28),
                           ),
                         ),
-                        if (widget.patientId != null)
+                        if (widget.patientId != null &&
+                            widget.consultationSelector == null)
                           Text(
                             '${widget.patientName ?? '연결된 환자'} 님 대신 상담',
                             key: const ValueKey('guardian-chat-subject'),
@@ -1109,22 +1136,9 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
                 ],
               ),
             ),
-            Container(
-              width: double.infinity,
-              decoration: const BoxDecoration(
-                color: AppColors.surface,
-                border: Border(
-                  bottom: BorderSide(color: AppColors.border, width: 1),
-                ),
-              ),
-              padding: const EdgeInsets.fromLTRB(20, 2, 20, 14),
-              child: _SubjectCard(
-                key: const ValueKey('ai-subject-card'),
-                medicineName: _subjectLabel,
-                onTap: _isLoading ? null : _pickMedicines,
-                onClear: _isLoading ? null : _clearMedicine,
-              ),
-            ),
+            if (widget.consultationSelector != null)
+              widget.consultationSelector!,
+            if (widget.consultationSelector == null) subjectCard,
             Expanded(
               child: ListView(
                 controller: _scrollController,
@@ -1132,6 +1146,10 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
                 keyboardDismissBehavior:
                     ScrollViewKeyboardDismissBehavior.onDrag,
                 children: [
+                  if (widget.consultationSelector != null) ...[
+                    subjectCard,
+                    const SizedBox(height: 12),
+                  ],
                   for (final message in _messages) ...[
                     if (message['cacheNotice'] != null)
                       Text(
@@ -1204,12 +1222,22 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
               ),
             ),
             // 무엇을 물어야 할지 떠오르지 않을 때. 누르면 그대로 물어본다.
-            _AskBar(
-              asks: _selectedMedicines.isEmpty
-                  ? _allMedicineAsks
-                  : _pickedMedicineAsks,
-              onAsk: _isLoading ? null : _askPreset,
-            ),
+            if (!widget.generalConsultation || _selectedMedicines.isNotEmpty)
+              _AskBar(
+                asks: widget.generalConsultation
+                    ? (_selectedMedicines.isEmpty
+                          ? const <Map<String, String>>[]
+                          : _pickedMedicineAsks
+                                .where(
+                                  (ask) =>
+                                      ask['intent'] != 'health_precautions',
+                                )
+                                .toList())
+                    : _selectedMedicines.isEmpty
+                    ? _allMedicineAsks
+                    : _pickedMedicineAsks,
+                onAsk: _isLoading ? null : _askPreset,
+              ),
             Padding(
               padding: const EdgeInsets.fromLTRB(20, 10, 20, 14),
               child: Row(

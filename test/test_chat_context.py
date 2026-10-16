@@ -443,6 +443,7 @@ class ChatContextTest(unittest.TestCase):
             set(DrugExplainChatRequest.model_fields),
             {
                 "user_id",
+                "consultation_mode",
                 "message",
                 "selected_medicine",
                 "selected_medicines",

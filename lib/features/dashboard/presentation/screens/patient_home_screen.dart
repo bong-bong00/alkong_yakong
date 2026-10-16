@@ -260,11 +260,12 @@ class _PatientHomeScreenState extends ConsumerState<PatientHomeScreen> {
 
     final accept = await showSeniorYesNoDialog(
       context: context,
-      title: '${invite.label} 님이\n함께 보기를 청했어요',
+      title: '${invite.name} 님이\n정보 공유를 요청했어요',
       message:
-          '수락하면 약 드신 것과 심박수를 함께 봅니다. '
-          '나중에 내 정보 → 가족에서 끊을 수 있어요.',
-      yesLabel: '네, 함께 볼게요',
+          '수락하면 이 보호자가 내 약·복약 기록·심박수·건강정보를 볼 수 있어요.\n\n'
+          '내 처방전을 대신 등록하고, 내 정보를 참고해 AI 약사에게 질문할 수도 있어요.\n\n'
+          '공유는 내 정보 → 가족에서 언제든 해제할 수 있어요.',
+      yesLabel: '네, 공유할게요',
       noLabel: '아니요',
     );
     if (!mounted) return;

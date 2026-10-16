@@ -7,7 +7,7 @@ import '../../../../core/theme/app_typography.dart';
 import '../../../../core/widgets/senior_card.dart';
 import '../../../../core/widgets/senior_header.dart';
 import '../../../../core/widgets/senior_button.dart';
-import '../../../drug_explain/drug_explain_screen.dart';
+import 'guardian_pharmacist_screen.dart';
 import '../../../dashboard/presentation/screens/patient_data.dart';
 import '../../../medicines/application/user_medicines_controller.dart';
 import '../../../medicines/domain/user_medicine_models.dart';
@@ -87,7 +87,7 @@ class CarePatientScreen extends ConsumerWidget {
       backgroundColor: AppColors.pageBg,
       body: Column(
         children: [
-          SeniorBackHeader(title: patient.title, alignStart: true),
+          SeniorBackHeader(title: '${patient.title} 님', alignStart: true),
           Expanded(
             child: SingleChildScrollView(
               padding: const EdgeInsets.fromLTRB(20, 16, 20, 28),
@@ -108,9 +108,8 @@ class CarePatientScreen extends ConsumerWidget {
                         ? null
                         : () => Navigator.of(context).push(
                             MaterialPageRoute<void>(
-                              builder: (_) => DrugExplainScreen(
-                                patientId: patient.patientId,
-                                patientName: patient.title,
+                              builder: (_) => GuardianPharmacistScreen(
+                                initialPatientId: patient.patientId,
                               ),
                             ),
                           ),

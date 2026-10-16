@@ -1161,12 +1161,14 @@ def generate_chat_response(
     selected_medicines: list[dict[str, Any]] | None = None,
     temporary_medicines: list[dict[str, Any]] | None = None,
     intent: str | None = None,
+    general_consultation: bool = False,
 ) -> str:
     """Apply the same final length policy to generated and deterministic replies."""
     reply = _generate_chat_response(
         message, user_id=user_id, selected_medicine=selected_medicine,
         selected_medicines=selected_medicines, temporary_medicines=temporary_medicines,
         intent=intent,
+        **({"general_consultation": True} if general_consultation else {}),
     )
     if not reply:
         return INCOMPLETE_CHAT_REPLY
@@ -1221,6 +1223,7 @@ def _generate_chat_response(
     selected_medicines: list[dict[str, Any]] | None = None,
     temporary_medicines: list[dict[str, Any]] | None = None,
     intent: str | None = None,
+    general_consultation: bool = False,
 ) -> str:
     from app.services.pharmacist.conversation import dialogue_prompt, record_evidence
     from app.services.chat_context_service import (
@@ -1253,6 +1256,9 @@ def _generate_chat_response(
     if intent is None and question_scope == "ambiguous":
         return AMBIGUOUS_QUESTION_REPLY
 
+    if general_consultation and intent in {"health_precautions", "age", "pregnancy"}:
+        return "일반 약 상담에서는 개인 건강정보를 사용하지 않아요. 건강정보를 반영하려면 상담 대상에서 연결된 환자를 선택해 주세요."
+
     # Personal-health guidance remains isolated, after the topic guard.
     if intent == "health_precautions":
         from app.services.pharmacist.health_precautions import generate_health_reply
@@ -1270,6 +1276,8 @@ def _generate_chat_response(
         general_medication_question = question_scope == "general_medication"
 
     intents = resolve_question_intents(message, intent)
+    if general_consultation and intents & {"age", "pregnancy", "health_precautions"}:
+        return "일반 약 상담에서는 개인 건강정보를 사용하지 않아요. 건강정보를 반영하려면 상담 대상에서 연결된 환자를 선택해 주세요."
     from app.services.pharmacist.response_policy import food_only_question
     food_scope = food_only_question(message)
     if food_scope:
@@ -1290,6 +1298,10 @@ def _generate_chat_response(
     selected_medicines_question = (
         selected_medicine is None and len(selected_medicines or []) >= 2
     )
+    if general_consultation and all_medicines_question:
+        return "일반 약 상담에서는 등록 약을 자동으로 불러오지 않아요. 궁금한 약을 검색해서 선택해 주세요."
+    if general_consultation and "duplicate" in intents and not selected_medicines_question:
+        return "비교할 약을 두 개 이상 검색해서 선택해 주세요. 일반 약 상담에서는 다른 사람의 등록 약을 비교 대상으로 사용하지 않아요."
     unavailable_reply = (
         "현재 확인된 식약처 정보만으로는 답변하기 어려워요. "
         "현재 복용약으로 다시 확인하고, 복용 중인 약 전체를 의사 또는 약사에게 알려 주세요."
@@ -1694,7 +1706,7 @@ def _generate_chat_response(
                         else {"병용금기", "중복성분", "효능군중복"}
                     ),
                 }
-                if explicit_question_scope:
+                if explicit_question_scope or general_consultation:
                     dur_request["include_current_medicines"] = False
                 dur_result = load_remote_combination_context(
                     **dur_request,
@@ -1727,7 +1739,8 @@ def _generate_chat_response(
                 )
                 dur_result["items"] = enrich_dur_matches(dur_result["items"])
             else:
-                dur_result = load_latest_dur_context(user_id, intents)
+                dur_result = ({"status": "not_required", "items": []}
+                              if general_consultation else load_latest_dur_context(user_id, intents))
 
             if safety_question and (
                 dur_result.get("status") in {"stale", "missing"}

@@ -205,7 +205,7 @@ void main() {
     expect(find.byType(SavedScreen), findsNothing);
   });
 
-  testWidgets('monthly keeps the daily chart even with nothing measured', (
+  testWidgets('monthly shows compact empty notice without a blank chart', (
     tester,
   ) async {
     final data = monthlyData(const []);
@@ -214,11 +214,10 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    // 잰 것이 없어도 자리는 그대로다. 칸이 통째로 사라지면 기록이 없는
-    // 것인지 화면이 잘못된 것인지 알 수 없다.
+    // 안내는 유지하되 빈 축과 범례를 보여 주지 않는다.
     expect(find.text('날마다 복약 전·후'), findsOneWidget);
     expect(find.text('9월에는 아직 잰 기록이 없어요'), findsOneWidget);
-    expect(find.byKey(const Key('daily-heart-bars')), findsOneWidget);
+    expect(find.byKey(const Key('daily-heart-bars')), findsNothing);
     // 단정하는 말은 어디에도 없다.
     expect(find.textContaining('비슷했어요'), findsNothing);
     expect(find.textContaining('높았어요'), findsNothing);

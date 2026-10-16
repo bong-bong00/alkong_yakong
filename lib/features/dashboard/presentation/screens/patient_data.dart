@@ -25,6 +25,7 @@ class CarePatient {
   /// 가장 최근에 잰 심박수. 잰 적이 없으면 null.
   final int? heartRate;
   final bool? heartRateNormal;
+  final DateTime? heartRateAt;
 
   /// 최근 7일 복약률. 기록이 없으면 null.
   final int? weekRate;
@@ -43,6 +44,7 @@ class CarePatient {
     this.slots = const [],
     this.heartRate,
     this.heartRateNormal,
+    this.heartRateAt,
     this.weekRate,
     this.activities = const [],
   });
@@ -78,6 +80,9 @@ class CarePatient {
       ],
       heartRate: number(json['heart_rate']),
       heartRateNormal: json['heart_rate_normal'] as bool?,
+      heartRateAt: DateTime.tryParse(
+        text(json['heart_rate_at']) ?? '',
+      )?.toLocal(),
       weekRate: number(json['week_rate']),
       activities: [
         if (activities is List)
@@ -91,8 +96,15 @@ class CarePatient {
     );
   }
 
-  /// "어머니 · 김복자". 호칭을 모르면 이름만.
-  String get title => relation.isEmpty ? name : '$relation · $name';
+  /// 이름을 기본 식별자로 쓴다. 관계는 별도 보조 정보다.
+  String get title => name.trim().isEmpty ? '이름 미등록' : name.trim();
+
+  String get heartRateTimeLabel {
+    final at = heartRateAt;
+    if (at == null) return '측정 시각을 확인할 수 없어요';
+    return '${at.year}.${at.month.toString().padLeft(2, '0')}.${at.day.toString().padLeft(2, '0')} '
+        '${at.hour.toString().padLeft(2, '0')}:${at.minute.toString().padLeft(2, '0')} 측정';
+  }
 
   /// 오늘 아직 기록이 오지 않은 약이 있는지.
   bool get needsAttention => nextDoseLabel != null;

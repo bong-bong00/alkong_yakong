@@ -905,7 +905,7 @@ class _CaptureScreen extends StatelessWidget {
   }
 }
 
-/// "어머니 · 김복자 대신 등록". 누구 약을 넣고 있는지 화면 위에 붙여 둔다.
+/// 환자 이름과 "처방전 대신 등록"을 분리해 누구의 약인지 표시한다.
 class _OnBehalfBanner extends StatelessWidget {
   final String title;
 
@@ -928,9 +928,19 @@ class _OnBehalfBanner extends StatelessWidget {
           ),
           const SizedBox(width: 10),
           Flexible(
-            child: Text(
-              '$title 대신 등록',
-              style: AppText.button(size: 21, color: Colors.white),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '$title 님',
+                  style: AppText.button(size: 21, color: Colors.white),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  '처방전 대신 등록',
+                  style: AppText.button(size: 18, color: Colors.white),
+                ),
+              ],
             ),
           ),
         ],
@@ -1872,12 +1882,20 @@ class _ConfirmScreenState extends State<_ConfirmScreen> {
               child: Column(
                 children: [
                   if (_editedItems.isNotEmpty) ...[
+                    if (widget.onBehalfOf != null) ...[
+                      Text(
+                        '${widget.onBehalfOf} 님의 약과 복용 일정으로 등록돼요.',
+                        textAlign: TextAlign.center,
+                        style: AppText.caption(size: 16),
+                      ),
+                      const SizedBox(height: 8),
+                    ],
                     SeniorButton(
                       label: _registering
                           ? '보내고 있어요'
                           : (widget.onBehalfOf == null
                                 ? '이대로 등록하기'
-                                : '어르신께 보내기'),
+                                : '${widget.onBehalfOf} 님 약 등록하기'),
                       minHeight: 70,
                       onPressed: _registering ? null : _tryRegister,
                     ),

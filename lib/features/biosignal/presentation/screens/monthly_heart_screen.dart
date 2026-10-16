@@ -278,9 +278,8 @@ class _Cell extends StatelessWidget {
 
 /// 날마다 복약 전·후 심박수.
 ///
-/// 한 달 치를 가로로 늘어놓고, 잰 날에만 막대를 세운다. **잰 것이 하나도
-/// 없어도 이 칸은 그린다** — 자리가 통째로 사라지면 기록이 없는 것인지
-/// 화면이 잘못된 것인지 알 수 없다.
+/// 잰 날에만 막대를 세운다. 해당 기간의 복약 전·후 기록이 없으면
+/// 빈 축과 범례 대신 간단한 안내를 표시한다.
 class HeartDailyBars extends StatelessWidget {
   final int month;
   final List<HeartReading> readings;
@@ -354,29 +353,33 @@ class HeartDailyBars extends StatelessWidget {
                 : '단위: 회/분 · 잰 날 ${byDay.length}일',
             style: AppText.caption(size: 16),
           ),
-          const SizedBox(height: 10),
-          const _BarLegend(),
-          const SizedBox(height: 16),
-          SingleChildScrollView(
-            key: const Key('daily-heart-bars'),
-            scrollDirection: Axis.horizontal,
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                for (final date in dates)
-                  _DayPair(
-                    day: date.day,
-                    before: byDay[date]?.before.isEmpty ?? true
-                        ? null
-                        : _average(byDay[date]!.before),
-                    after: byDay[date]?.after.isEmpty ?? true
-                        ? null
-                        : _average(byDay[date]!.after),
-                    highest: highest,
-                  ),
-              ],
+          if (allValues.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            const _BarLegend(),
+            const SizedBox(height: 8),
+            Text('좌우로 밀어 날짜별 기록을 확인해요', style: AppText.caption(size: 15)),
+            const SizedBox(height: 8),
+            SingleChildScrollView(
+              key: const Key('daily-heart-bars'),
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  for (final date in dates)
+                    _DayPair(
+                      day: date.day,
+                      before: byDay[date]?.before.isEmpty ?? true
+                          ? null
+                          : _average(byDay[date]!.before),
+                      after: byDay[date]?.after.isEmpty ?? true
+                          ? null
+                          : _average(byDay[date]!.after),
+                      highest: highest,
+                    ),
+                ],
+              ),
             ),
-          ),
+          ],
         ],
       ),
     );

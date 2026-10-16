@@ -41,6 +41,7 @@ void main() {
           ],
           'heart_rate': 78,
           'heart_rate_normal': true,
+          'heart_rate_at': '2026-10-16T03:34:00Z',
           'week_rate': null,
           'activities': [
             {'text': '아침 약 드셨어요', 'time': '08:10'},
@@ -58,7 +59,11 @@ void main() {
     }).fetchCareOverview();
 
     final patient = overview.patients.single;
-    expect(patient.title, '어머니 · 김복자');
+    expect(patient.title, '김복자');
+    expect(patient.relation, '어머니');
+    expect(patient.heartRateAt, DateTime.parse('2026-10-16T03:34:00Z').toLocal());
+    expect(patient.heartRateTimeLabel, contains('측정'));
+    expect(patient.heartRateTimeLabel, isNot(contains('확인할 수 없어요')));
     expect(patient.needsAttention, isTrue);
     expect(patient.slots.first.taken, isTrue);
     expect(patient.weekRate, isNull);

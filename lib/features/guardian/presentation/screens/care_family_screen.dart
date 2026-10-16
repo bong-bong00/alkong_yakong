@@ -273,7 +273,7 @@ class _PatientCard extends StatelessWidget {
                       children: [
                         Flexible(
                           child: Text(
-                            patient.title,
+                            '${patient.title} 님',
                             style: AppText.cardTitle(size: 21),
                           ),
                         ),
@@ -298,6 +298,11 @@ class _PatientCard extends StatelessWidget {
                       '${patient.heartRate == null ? '' : ' · 심박수 ${patient.heartRate}'}',
                       style: AppText.caption(size: 17.5),
                     ),
+                    if (patient.heartRate != null)
+                      Text(
+                        patient.heartRateTimeLabel,
+                        style: AppText.caption(size: 15),
+                      ),
                   ],
                 ),
               ),

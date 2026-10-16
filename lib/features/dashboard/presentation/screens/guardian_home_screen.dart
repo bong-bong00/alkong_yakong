@@ -19,6 +19,7 @@ import '../../../guardian/presentation/screens/care_family_screen.dart';
 import '../../../guardian/presentation/screens/care_patient_screen.dart';
 import '../../../guardian/application/prescription_help_inbox.dart';
 import '../../../guardian/presentation/screens/guardian_info_screen.dart';
+import '../../../guardian/presentation/screens/guardian_pharmacist_screen.dart';
 import '../../../guardian/presentation/screens/guardian_prescription_screen.dart';
 import '../../../../core/session/mvp_session.dart';
 import '../../application/medication_history_provider.dart';
@@ -29,8 +30,9 @@ import 'month_calendar_screen.dart';
 import 'patient_data.dart';
 import '../../../biosignal/data/heart_repository.dart';
 import '../../../biosignal/presentation/screens/heart_screen.dart';
+import '../../../medicines/application/user_medicines_controller.dart';
 
-/// 보호자 쉘 — 탭은 프로토타입대로 **돌보는 분 · 정보** 둘이다.
+/// 보호자 쉘 — 돌보는 분 · AI 약사 · 정보에 바로 접근한다.
 ///
 /// 알림은 목록 헤더의 종 단추로, 어르신 현황은 목록에서 눌러 들어간다.
 /// 보호자 전용 남색 액센트는 폐기했다. 환자와 같은 파란 규칙을 쓰고,
@@ -93,6 +95,7 @@ class _GuardianHomeScreenState extends ConsumerState<GuardianHomeScreen>
 
   static const List<SeniorNavItem> _tabs = [
     SeniorNavItem(icon: TablerIcons.users, label: '돌보는 분'),
+    SeniorNavItem(icon: TablerIcons.message_circle, label: 'AI 약사'),
     SeniorNavItem(icon: TablerIcons.user, label: '정보'),
   ];
 
@@ -183,6 +186,7 @@ class _GuardianHomeScreenState extends ConsumerState<GuardianHomeScreen>
             onOpenPatient: _openPatient,
             onOpenAlerts: _openAlerts,
           ),
+          const GuardianPharmacistScreen(),
           const GuardianInfoScreen(),
         ],
       ),
@@ -268,6 +272,7 @@ class _GuardianStatusScreenState extends ConsumerState<GuardianStatusScreen>
   void _refresh() {
     ref.invalidate(careOverviewProvider);
     ref.invalidate(patientTodayProvider(widget.patient.patientId));
+    ref.invalidate(patientMedicinesProvider(widget.patient.patientId));
     ref.invalidate(patientHistoryProvider(widget.patient.patientId));
   }
 
@@ -328,11 +333,11 @@ class _GuardianStatusScreenState extends ConsumerState<GuardianStatusScreen>
         : widget.patient;
     final slots = patient.slots;
     final heartRate = patient.heartRate;
+    final medicineList = ref.watch(patientMedicinesProvider(patient.patientId));
+    final todayState = ref.watch(patientTodayProvider(patient.patientId));
     // 복약 달력은 어르신 화면과 같은 것을 쓴다. 보호자가 보는 그림과
     // 어르신이 보는 그림이 다르면 통화로 맞춰 볼 수가 없다.
-    final today =
-        ref.watch(patientTodayProvider(patient.patientId)).valueOrNull ??
-        TodayMedication.empty;
+    final today = todayState.valueOrNull ?? TodayMedication.empty;
     final history =
         ref.watch(patientHistoryProvider(patient.patientId)).valueOrNull ??
         const <DateTime, DayAdherence>{};
@@ -349,7 +354,7 @@ class _GuardianStatusScreenState extends ConsumerState<GuardianStatusScreen>
                 const SizedBox(width: 14),
                 Expanded(
                   child: Text(
-                    patient.title,
+                    '${patient.title} 님',
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: AppText.screenTitle(size: 26),
@@ -390,6 +395,24 @@ class _GuardianStatusScreenState extends ConsumerState<GuardianStatusScreen>
                     ),
                     child: Column(
                       children: [
+                        if (slots.isEmpty)
+                          Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 12),
+                            child: Text(
+                              todayState.hasError ||
+                                      today.fetchStatus ==
+                                          MedicationFetchStatus.failed ||
+                                      medicineList.hasError
+                                  ? '복용 정보를 불러오지 못했어요. 다시 확인해 주세요.'
+                                  : todayState.isLoading ||
+                                        medicineList.isLoading
+                                  ? '복용 정보를 확인하고 있어요…'
+                                  : medicineList.valueOrNull?.isEmpty == true
+                                  ? '등록된 약이 없어요. 처방전을 등록해 주세요.'
+                                  : '오늘 예정된 복용 일정이 없어요.',
+                              style: AppText.body(size: 18),
+                            ),
+                          ),
                         for (int i = 0; i < slots.length; i++) ...[
                           if (i > 0) const SeniorDivider(),
                           _StatusRow(
@@ -411,15 +434,22 @@ class _GuardianStatusScreenState extends ConsumerState<GuardianStatusScreen>
                           _StatusRow(
                             icon: TablerIcons.heart_filled,
                             iconColor: AppColors.point,
-                            label: '심박수',
+                            label: '최근 심박수',
                             value:
-                                '$heartRate'
+                                '$heartRate bpm'
                                 '${heartRate < 60
                                     ? ' 느림'
                                     : heartRate > 100
                                     ? ' 빠름'
                                     : ' 정상'}',
                             danger: heartRate < 60 || heartRate > 100,
+                          ),
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 12),
+                            child: Text(
+                              patient.heartRateTimeLabel,
+                              style: AppText.caption(size: 16),
+                            ),
                           ),
                         ],
                       ],

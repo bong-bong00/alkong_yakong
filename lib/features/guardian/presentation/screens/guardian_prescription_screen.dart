@@ -31,7 +31,7 @@ Future<void> openGuardianPrescription(
           container.invalidate(patientHistoryProvider(patient.patientId));
           Navigator.of(context).maybePop();
           if (!context.mounted) return;
-          showSeniorSnackbar(context, '${patient.title} 님께 약을 넣어드렸어요');
+          showSeniorSnackbar(context, '${patient.name} 님의 약과 복용 일정을 등록했어요');
         },
       ),
     ),
