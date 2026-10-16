@@ -454,12 +454,11 @@ class _GuardianStatusScreenState extends ConsumerState<GuardianStatusScreen>
                         if (heartRate != null) ...[
                           if (slots.isNotEmpty) const SeniorDivider(),
                           _StatusRow(
-                            icon: TablerIcons.heart_filled,
+                            icon: TablerIcons.heart,
                             iconColor: AppColors.point,
                             label: '최근 심박수',
                             value: '$heartRate bpm',
                             singleLine: true,
-                            danger: heartRate < 60 || heartRate > 100,
                           ),
                           Padding(
                             padding: const EdgeInsets.only(bottom: 12),

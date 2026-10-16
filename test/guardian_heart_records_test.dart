@@ -1,4 +1,6 @@
 import 'dart:convert';
+import 'package:alkong_yakong/core/constants/app_colors.dart';
+import 'package:flutter_tabler_icons/flutter_tabler_icons.dart';
 
 import 'package:alkong_yakong/core/network/api_client.dart';
 import 'package:alkong_yakong/core/session/mvp_session.dart';
@@ -90,6 +92,18 @@ void main() {
       );
       await tester.pumpAndSettle();
       expect(find.text('114 bpm'), findsOneWidget);
+      expect(
+        tester.widget<Text>(find.text('최근 심박수')).style!.color,
+        AppColors.textPrimary,
+      );
+      expect(
+        tester.widget<Text>(find.text('114 bpm')).style!.color,
+        AppColors.textSecondary,
+      );
+      expect(find.byIcon(TablerIcons.heart_filled), findsNothing);
+      final hearts = tester.widgetList<Icon>(find.byIcon(TablerIcons.heart));
+      expect(hearts.length, 2);
+      expect(hearts.every((icon) => icon.color == AppColors.point), isTrue);
       expect(
         tester.getCenter(find.text('114 bpm')).dy,
         closeTo(tester.getCenter(find.text('최근 심박수')).dy, 1),
