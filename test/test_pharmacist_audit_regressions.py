@@ -77,11 +77,28 @@ def test_headings_never_count_as_a_meaningful_warning():
 
 
 def test_numbered_headings_are_not_quoted_as_a_warning():
-    for heading in ('이상반응 5.', '이상반응 4.', '3. 이상반응 5.', '상호작용 6.'):
+    for heading in ('이상반응 5.', '이상반응 4.', '3. 이상반응 5.', '상호작용 6.',
+                    '임산부 및 수유부에 대한 투여', '적용상의 주의(주사제에 한함)', '과민반응 환자'):
         reply = official_excerpt_reply([dict(product_name='검증정', cautions=heading)], {'precautions'})
         assert '공식 안내 일부' not in reply
     units = label_units('1. 다음 환자에는 투여하지 말 것. 1) 과민반응 환자 2) 임부 2. 이상반응 5.')
     assert units == ['다음 환자에는 투여하지 말 것: 과민반응 환자', '다음 환자에는 투여하지 말 것: 임부']
+    assert label_units('다음 환자에는 투여하지 말 것(경구: 정제). 1) 과민반응 환자') == [
+        '다음 환자에는 투여하지 말 것(경구: 정제): 과민반응 환자']
+    assert label_units('다음 환자에는 투여하지 말 것: 1) 과민반응 환자') == [
+        '다음 환자에는 투여하지 말 것: 과민반응 환자']
+
+
+def test_oral_product_does_not_quote_injection_only_instructions():
+    reply = official_excerpt_reply([dict(product_name='검증정', cautions=(
+        '적용상의 주의(주사제에 한함): 천천히 주사한다. 졸음이 나타날 수 있으므로 운전에 주의하세요.'))], {'precautions'})
+    assert '주사한다' not in reply and '운전' in reply
+    injection = official_excerpt_reply([dict(product_name='정우검증주사', cautions='적용상의 주의(주사제에 한함): 천천히 주사한다.')], {'precautions'})
+    assert '천천히 주사한다' in injection
+    separate = official_excerpt_reply([dict(product_name='검증정', cautions=(
+        '12. 적용상의 주의(주사제에 한함). 1) 천천히 주사한다. '
+        '13. 일반적 주의. 1) 졸음이 나타날 수 있으므로 운전에 주의하세요.'))], {'precautions'})
+    assert '주사한다' not in separate and '운전' in separate
 
 
 def test_label_extraction_preserves_nested_conditions_and_fractions():

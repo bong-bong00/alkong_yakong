@@ -45,10 +45,30 @@ _DIRECTIVE_HEADING = re.compile(
 )
 _PLAIN_HEADING = re.compile(
     r'(?:사용상의\s*주의사항|주의사항|용법\s*용량|효능\s*효과|일반적\s*주의|'
-    r'경고|이상반응|상호작용|임부\s*및\s*수유부에\s*대한\s*투여|'
+    r'경고|이상반응|상호작용|임(?:부|산부)\s*및\s*수유부에\s*대한\s*투여|'
     r'소아에\s*대한\s*투여|고령자에\s*대한\s*투여|임상검사치에\s*대한\s*영향|'
     r'과량투여\s*시의?\s*처치|적용상의?\s*주의|보관\s*및\s*취급상의\s*주의사항|기타)[\d.)\s]*'
 )
+
+
+def _without_qualifications(text):
+    # Used only to recognize headings/endings, never as delivered medical text.
+    previous = None
+    while previous != text:
+        previous, text = text, re.sub(r'\([^()]*\)|（[^（）]*）', '', text)
+    return text.strip()
+
+
+def _meaningful_warning(text):
+    core = _without_qualifications(text)
+    if re.fullmatch(r'(?:투여|사용|복용)하지\s*말\s*것[.!?]?', core):
+        return False
+    if _DIRECTIVE_HEADING.fullmatch(core.split(':', 1)[0].strip()):
+        return ':' in core and bool(core.split(':', 1)[1].strip())
+    # A title or a detached patient list is not advice. Keep complete statements;
+    # symptom lists are eligible only as actual lists, not a single section title.
+    return bool(re.search(r'(?:다|요|세요|십시오|할\s*것|말\s*것)[.!?]?$', core)
+                or (',' in core and not _PLAIN_HEADING.fullmatch(core)))
 
 
 def label_units(text):
@@ -66,17 +86,23 @@ def label_units(text):
     markers = [m for m in re.finditer(r'(?<!\S)(?:\d+[.)]|[①-⑳])(?=\s|[가-힣])', text)
                if levels[m.start()] == 0]
     starts = [0, *(m.start() for m in markers), len(text)]
-    directive, units = None, []
+    directive, section, units = None, None, []
     for begin, end in zip(starts, starts[1:]):
         segment = re.sub(r'^(?:\d+[.)]|[①-⑳])\s*', '', text[begin:end].strip())
         for unit in complete_units(segment):
-            if _DIRECTIVE_HEADING.fullmatch(unit):
-                directive = unit.rstrip('.!?')
-            elif (_PLAIN_HEADING.fullmatch(unit) or re.fullmatch(r'[\d.)\s]*', unit)
+            heading = _without_qualifications(unit).rstrip(':').strip()
+            if _DIRECTIVE_HEADING.fullmatch(heading):
+                directive = unit.rstrip('.!?:')
+                section = None
+            elif (_PLAIN_HEADING.fullmatch(heading)
                   or re.fullmatch(r'[가-힣·\s]{2,35}\s+\d+[.)]?', unit)):
                 directive = None
+                section = re.sub(r'\s+\d+[.)]?$', '', unit).rstrip('.!?:')
+            elif re.fullmatch(r'[\d.)\s]*', unit):
+                directive, section = None, None
             else:
-                units.append((directive + ': ' if directive else '') + unit)
+                prefix = directive or section
+                units.append((prefix + ': ' if prefix else '') + unit)
     return units
 
 
@@ -100,7 +126,11 @@ def official_excerpt_reply(contexts, intents, *, food=False):
                  and len(re.sub(r'[\d\W_]', '', u)) >= 4]
         if food:
             units = [u for u in units if food_question(u)]
-        share = max(50, 410 // max(1, len(contexts)) - len(name))
+        if food or not intents & {'overview', 'efficacy', 'dosage', 'usage'}:
+            units = [u for u in units if _meaningful_warning(u)]
+        if re.search(r'(?:정|캡슐|시럽)(?:\d+(?:\.\d+)?(?:밀리그램|mg|그램|g|밀리리터|mL))?$', name):
+            units = [u for u in units if not re.search(r'주사제.{0,8}(?:한함|해당)', u)]
+        share = max(80, 520 // max(1, len(contexts)) - len(name))
         unit = next((u for u in units if len(u) <= share and not broad_stop_instruction(u)), None)
         detail = ('공식 안내 일부: “' + unit + '”' if unit else
                   '질문과 관련된 공식 안내의 세부 조건을 이 답변에서 확인하지 못했어요.')
