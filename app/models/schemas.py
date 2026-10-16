@@ -3,6 +3,11 @@ from typing import List, Literal, Optional
 from pydantic import BaseModel, Field, field_validator
 
 
+class PasswordChangeRequest(BaseModel):
+    current_password: str = Field(min_length=1)
+    new_password: str = Field(min_length=6)
+
+
 class UserCreate(BaseModel):
     name: str
     birth_date: Optional[str] = None

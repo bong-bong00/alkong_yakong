@@ -47,6 +47,17 @@ class UserRepository {
 
   Future<void> delete(String userId) => _api.delete(_path(userId));
 
+  Future<void> changePassword(
+    String userId, {
+    required String currentPassword,
+    required String newPassword,
+  }) async {
+    await _api.post(
+      '${_path(userId)}/password',
+      body: {'current_password': currentPassword, 'new_password': newPassword},
+    );
+  }
+
   static Future<UserProfile> _authenticatedProfile(dynamic response) async {
     final user = _profile(response);
     try {

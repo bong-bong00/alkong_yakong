@@ -91,6 +91,13 @@ void main() {
           ),
         );
         await tester.pumpAndSettle();
+        final unlinkButton = tester.widget<TextButton>(
+          find.ancestor(
+            of: find.text('연결 해제'),
+            matching: find.byType(TextButton),
+          ),
+        );
+        expect(unlinkButton.style!.textStyle!.resolve({})!.fontSize, 14);
         await tester.tap(find.text('연결 해제'));
         await tester.pumpAndSettle();
         await tester.binding.handlePopRoute();
@@ -208,6 +215,10 @@ void main() {
       expect(find.textContaining('화면이 먼저 알려드려요'), findsNothing);
       await tester.ensureVisible(find.text('담배 · 술'));
       await tester.pumpAndSettle();
+      expect(
+        tester.getTopLeft(find.text('담배 · 술')).dy,
+        tester.getTopLeft(find.text('담배 안 피움 · 술 안 마셔요')).dy,
+      );
       expect(tester.takeException(), isNull);
     });
   }
@@ -227,7 +238,7 @@ void main() {
     expect(find.text('설정을 저장하지 못했어요. 다시 시도해 주세요.'), findsOneWidget);
   });
   testWidgets(
-    'guardian help uses guardian routes and account has no fake password action',
+    'guardian help uses guardian routes and account opens password editor',
     (tester) async {
       await tester.pumpWidget(
         const MaterialApp(home: HelpScreen(isGuardian: true, openAll: true)),
@@ -240,7 +251,10 @@ void main() {
         const ProviderScope(child: MaterialApp(home: GuardianAccountScreen())),
       );
       await tester.pumpAndSettle();
-      expect(find.text('비밀번호'), findsNothing);
+      expect(find.text('비밀번호 수정'), findsOneWidget);
+      await tester.tap(find.text('비밀번호 수정'));
+      await tester.pumpAndSettle();
+      expect(find.byType(TextFormField), findsNWidgets(3));
     },
   );
 }

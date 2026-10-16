@@ -1170,6 +1170,15 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
                       ? const Icon(Icons.search)
                       : TextButton(
                           onPressed: _isLoading ? null : _clearMedicine,
+                          style: TextButton.styleFrom(
+                            foregroundColor: AppColors.textSecondary,
+                            textStyle: const TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.normal,
+                            ),
+                            minimumSize: const Size(48, 48),
+                            padding: const EdgeInsets.symmetric(horizontal: 8),
+                          ),
                           child: const Text('지우기'),
                         ),
                 ),

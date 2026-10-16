@@ -313,7 +313,11 @@ class _PatientCard extends StatelessWidget {
                     ),
                     if (patient.heartRate != null)
                       Text(
-                        '최근 심박수 ${patient.heartRate} bpm',
+                        '최근 심박수 ${patient.heartRate} bpm (${patient.heartRate! < 60
+                            ? '느림'
+                            : patient.heartRate! > 100
+                            ? '빠름'
+                            : '정상'})',
                         style: AppText.caption(size: 17.5),
                       ),
                     if (patient.heartRate != null)
@@ -339,6 +343,7 @@ class _PatientCard extends StatelessWidget {
             ),
             child: Text(
               _status,
+              textAlign: TextAlign.center,
               style: AppText.label(
                 size: 18,
                 color: patient.needsAttention

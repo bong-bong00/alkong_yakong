@@ -10,8 +10,8 @@ from fastapi import APIRouter, Header, HTTPException, Query, Response
 
 import app.database as database
 from app.database import get_connection
-from app.core.auth import auth_enforced, issue_token
-from app.models.schemas import UserCreate, UserLogin, UserUpdate
+from app.core.auth import auth_enforced, issue_token, service_role
+from app.models.schemas import PasswordChangeRequest, UserCreate, UserLogin, UserUpdate
 from app.models.response_schemas import UserCreateResponse, UserResponse
 from app.services.account_lookup import find_account_by_phone, phone_digits
 from app.services.medication_history_service import get_medication_history
@@ -135,6 +135,29 @@ def _validate_history_lists(values: dict) -> None:
                 status_code=400,
                 detail='병명과 "없어요"를 함께 선택할 수 없어요.',
             )
+
+
+@router.post("/{user_id}/password", status_code=204)
+def change_password(user_id: str, body: PasswordChangeRequest):
+    if service_role() != "main":
+        raise HTTPException(status_code=404, detail="메인 서버에서 변경해 주세요.")
+    conn = get_connection()
+    try:
+        user = _load_user(conn, user_id)
+        stored = user["password_hash"]
+        if not _verify_password(body.current_password, stored):
+            raise HTTPException(status_code=400, detail="현재 비밀번호가 올바르지 않아요.")
+        changed = conn.execute(
+            "UPDATE users SET password_hash = ?, updated_at = CURRENT_TIMESTAMP "
+            "WHERE id = ? AND password_hash = ?",
+            (_hash_password(body.new_password), user_id, stored),
+        )
+        if changed.rowcount != 1:
+            raise HTTPException(status_code=409, detail="비밀번호가 변경되었어요. 다시 확인해 주세요.")
+        conn.commit()
+    finally:
+        conn.close()
+    return Response(status_code=204)
 
 
 @router.post("", response_model=UserCreateResponse)

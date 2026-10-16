@@ -247,6 +247,7 @@ class CarePatientScreen extends ConsumerWidget {
                         const SeniorDivider(),
                         _FactRow(
                           label: '담배 · 술',
+                          alwaysInline: true,
                           value: habitLine(),
                           missingLabel: missingProfileLabel,
                         ),
@@ -298,8 +299,14 @@ class _FactRow extends StatelessWidget {
   final String label;
   final String? value;
   final String missingLabel;
+  final bool alwaysInline;
 
-  const _FactRow({required this.label, this.value, this.missingLabel = '미입력'});
+  const _FactRow({
+    required this.label,
+    this.value,
+    this.missingLabel = '미입력',
+    this.alwaysInline = false,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -324,7 +331,7 @@ class _FactRow extends StatelessWidget {
               text.runes.length > 16 ||
               label.runes.length > 7 ||
               text.isEmpty;
-          if (stacked) {
+          if (stacked && !alwaysInline) {
             return Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [title, const SizedBox(height: 6), content],
@@ -333,7 +340,10 @@ class _FactRow extends StatelessWidget {
           return Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              SizedBox(width: 100, child: title),
+              SizedBox(
+                width: alwaysInline ? constraints.maxWidth * .3 : 100,
+                child: title,
+              ),
               const SizedBox(width: 12),
               Expanded(child: content),
             ],

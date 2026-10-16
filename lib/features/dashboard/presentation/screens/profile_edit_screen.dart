@@ -593,7 +593,7 @@ class _ProfileEditScreenState extends ConsumerState<ProfileEditScreen> {
           ],
           const SizedBox(height: 18),
           SeniorButton(
-            label: _saving ? '저장하는 중…' : '이대로 저장하기',
+                  label: _saving ? '저장하는 중…' : '저장하기',
             onPressed: _saving ? null : _save,
           ),
         ],

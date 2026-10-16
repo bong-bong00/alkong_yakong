@@ -5,6 +5,7 @@ import '../../../../core/widgets/senior_card.dart';
 import '../../../../core/widgets/senior_header.dart';
 import '../../../dashboard/presentation/screens/profile_edit_screen.dart';
 import '../../../profile/application/current_user_controller.dart';
+import '../../../profile/presentation/change_password_screen.dart';
 
 /// Profile editing only. Account actions belong in Settings.
 class GuardianAccountScreen extends ConsumerWidget {
@@ -40,6 +41,16 @@ class GuardianAccountScreen extends ConsumerWidget {
                       value: profile?.phone ?? '',
                       trailing: const SeniorChevron(),
                       onTap: edit,
+                    ),
+                    const SeniorDivider(),
+                    SeniorListRow(
+                      label: '비밀번호 수정',
+                      trailing: const SeniorChevron(),
+                      onTap: () => Navigator.of(context).push(
+                        MaterialPageRoute<void>(
+                          builder: (_) => const ChangePasswordScreen(),
+                        ),
+                      ),
                     ),
                   ],
                 ),

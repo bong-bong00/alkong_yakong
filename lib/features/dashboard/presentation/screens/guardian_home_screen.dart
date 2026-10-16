@@ -563,7 +563,11 @@ class _AttentionCard extends StatelessWidget {
             style: AppText.cardTitle(size: 18, color: AppColors.danger),
           ),
           const SizedBox(height: 6),
-          Text(text, style: AppText.emphasis(size: 23)),
+          Text(
+            text,
+            textAlign: TextAlign.center,
+            style: AppText.emphasis(size: 23),
+          ),
           const SizedBox(height: 14),
           SeniorButton(
             label: '전화 드리기',

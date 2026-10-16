@@ -84,6 +84,22 @@ def header(account):
     return {"Authorization": f"Bearer {account['access_token']}"}
 
 
+def test_password_change_requires_owner_and_current_password(client):
+    account = signup(client)
+    other = signup(client, "01033334444", "guardian")
+    url = f"/api/v1/users/{account['id']}/password"
+    body = {"current_password": "test123", "new_password": "new-test456"}
+    assert client.post(url, json=body).status_code == 401
+    assert client.post(url, headers=header(other), json=body).status_code == 403
+    assert client.post(url, headers=header(account), json={**body, "current_password": "wrong"}).status_code == 400
+    assert client.post(url, headers=header(account), json={**body, "new_password": "short"}).status_code == 422
+    response = client.post(url, headers=header(account), json=body)
+    assert response.status_code == 204 and not response.content
+    assert client.post('/api/v1/users/login', json={"phone": "01011112222", "password": "test123"}).status_code == 401
+    assert client.post('/api/v1/users/login', json={"phone": "01011112222", "password": "new-test456"}).status_code == 200
+    assert 'password_hash' not in client.get(f"/api/v1/users/{account['id']}", headers=header(account)).json()
+
+
 def test_login_issues_credential_and_rejects_unauthenticated_or_other_user(client):
     account = signup(client)
     other = signup(client, "01033334444")
