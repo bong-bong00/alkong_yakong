@@ -1103,7 +1103,7 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
               onTap: _isLoading ? null : _pickMedicines,
               child: InputDecorator(
                 decoration: InputDecoration(
-                  labelText: '약 검색·선택',
+                  labelText: '약 검색',
                   border: const OutlineInputBorder(),
                   contentPadding: const EdgeInsets.symmetric(
                     horizontal: 16,

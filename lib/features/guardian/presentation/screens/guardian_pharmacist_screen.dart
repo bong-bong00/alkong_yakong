@@ -3,7 +3,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/network/api_client.dart';
 import '../../../../core/constants/app_colors.dart';
-import '../../../../core/theme/app_typography.dart';
 import '../../../drug_explain/drug_explain_screen.dart';
 import '../../application/guardians_provider.dart';
 
@@ -111,15 +110,6 @@ class _GuardianPharmacistScreenState
               onChanged: (id) =>
                   setState(() => _patientId = id == '' ? null : id),
             ),
-            if (patient != null) ...[
-              const SizedBox(height: 6),
-              Text(
-                '${patient.name} 님의 등록 약 전체로 상담해요',
-                style: AppText.caption(size: 15),
-              ),
-            ],
-            if (overview.hasError && patient == null)
-              const Text('환자 목록을 불러오지 못했어요. 일반 약 상담은 이용할 수 있어요.'),
           ],
         ),
       ),

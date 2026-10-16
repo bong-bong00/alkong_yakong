@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:alkong_yakong/core/network/api_client.dart';
 import 'package:alkong_yakong/core/providers/user_role.dart';
 import 'package:alkong_yakong/core/session/auth_session.dart';
+import 'package:alkong_yakong/core/session/session_credentials.dart';
 import 'package:alkong_yakong/core/session/mvp_session.dart';
 import 'package:alkong_yakong/features/auth/presentation/screens/login_screen.dart';
 import 'package:alkong_yakong/features/prescription/presentation/screens/prescription_screen.dart';
@@ -31,6 +32,30 @@ void main() {
     MvpSession.isPregnant = null;
   });
   tearDown(() async => AuthSession.logout());
+
+  testWidgets(
+    'guardian hides global offline footer without clearing failure status',
+    (tester) async {
+      await tester.pumpWidget(const ProviderScope(child: AlkongYakongApp()));
+      await tester.pumpAndSettle();
+      final container = ProviderScope.containerOf(
+        tester.element(find.byType(AlkongYakongApp)),
+      );
+      SessionCredentials.offline.value = true;
+      await tester.pumpAndSettle();
+      expect(find.textContaining('오프라인 · 저장된 정보'), findsOneWidget);
+      container.read(userRoleProvider.notifier).state = UserRole.guardian;
+      await tester.pumpAndSettle();
+      expect(find.textContaining('오프라인 · 저장된 정보'), findsNothing);
+      expect(SessionCredentials.offline.value, isTrue);
+      container.read(userRoleProvider.notifier).state = UserRole.patient;
+      await tester.pumpAndSettle();
+      expect(find.textContaining('오프라인 · 저장된 정보'), findsOneWidget);
+      SessionCredentials.offline.value = false;
+      await tester.pumpAndSettle();
+      expect(find.textContaining('오프라인 · 저장된 정보'), findsNothing);
+    },
+  );
 
   testWidgets('unauthenticated users cannot navigate to protected screens', (
     tester,

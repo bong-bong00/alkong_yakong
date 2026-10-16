@@ -272,11 +272,12 @@ class _StartupGate extends StatelessWidget {
   );
 }
 
-class AlkongYakongApp extends StatelessWidget {
+class AlkongYakongApp extends ConsumerWidget {
   const AlkongYakongApp({super.key});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final isGuardian = ref.watch(userRoleProvider) == UserRole.guardian;
     return MaterialApp.router(
       title: '알콩약콩',
       debugShowCheckedModeBanner: false,
@@ -289,7 +290,7 @@ class AlkongYakongApp extends StatelessWidget {
         builder: (context, offline, _) => Column(
           children: [
             Expanded(child: child ?? const SizedBox()),
-            if (offline)
+            if (offline && !isGuardian)
               const Material(
                 child: SafeArea(
                   top: false,

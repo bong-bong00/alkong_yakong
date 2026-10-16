@@ -76,6 +76,13 @@ void main() {
           final picker = find.byKey(const ValueKey('guardian-medicine-picker'));
           expect(picker, subject == null ? findsOneWidget : findsNothing);
           expect(find.text('약 고르기'), findsNothing);
+          expect(find.text('약 검색·선택'), findsNothing);
+          expect(
+            find.text('약 검색'),
+            subject == null ? findsOneWidget : findsNothing,
+          );
+          expect(find.textContaining('등록 약 전체로 상담해요'), findsNothing);
+          expect(find.textContaining('일반 약 상담은 이용할 수 있어요'), findsNothing);
           if (subject == null) {
             final target = tester.getRect(
               find.byType(DropdownButtonFormField<String>),

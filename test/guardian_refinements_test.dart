@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:alkong_yakong/core/session/mvp_session.dart';
+import 'package:alkong_yakong/core/constants/app_colors.dart';
 import 'package:alkong_yakong/core/widgets/senior_header.dart';
 import 'package:alkong_yakong/features/dashboard/presentation/screens/patient_data.dart';
 import 'package:alkong_yakong/features/dashboard/presentation/screens/guardian_home_screen.dart';
@@ -10,6 +11,9 @@ import 'package:alkong_yakong/features/guardian/application/guardian_alert_inbox
 import 'package:alkong_yakong/features/guardian/application/guardians_provider.dart';
 import 'package:alkong_yakong/features/guardian/data/alert_repository.dart';
 import 'package:alkong_yakong/features/guardian/presentation/screens/guardian_info_screen.dart';
+import 'package:alkong_yakong/features/guardian/presentation/screens/care_patient_screen.dart';
+import 'package:alkong_yakong/features/medicines/application/user_medicines_controller.dart';
+import 'package:alkong_yakong/features/profile/domain/user_profile.dart';
 import 'package:alkong_yakong/features/guardian/presentation/screens/guardian_account_screen.dart';
 import 'package:alkong_yakong/features/profile/presentation/screens/account_screen.dart';
 
@@ -35,6 +39,31 @@ void main() {
     CarePatient(linkId: 'a', patientId: 'p1', name: '환자하나'),
     CarePatient(linkId: 'b', patientId: 'p2', name: '환자둘'),
   ];
+
+  testWidgets('managed patient profile has no redundant pharmacist entry', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          carePatientProfileProvider.overrideWith(
+            (ref, id) async => UserProfile(id: id, name: '환자하나'),
+          ),
+          patientMedicinesProvider.overrideWith((ref, id) async => []),
+        ],
+        child: const MaterialApp(
+          home: CarePatientScreen(
+            patient: CarePatient(linkId: 'a', patientId: 'p1', name: '환자하나'),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('환자하나 님'), findsOneWidget);
+    expect(find.textContaining('약사 상담'), findsNothing);
+    expect(find.text('연세'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
 
   test(
     'acknowledgement is isolated by guardian and patient and concurrent saves are retained',
@@ -117,6 +146,12 @@ void main() {
     expect(find.text('도움말'), findsOneWidget);
     expect(find.text('약관 · 개인정보'), findsOneWidget);
     await tester.ensureVisible(find.text('로그아웃·탈퇴'));
+    final accountMenu = find.byKey(const ValueKey('guardian-account-actions'));
+    expect(tester.getSize(accountMenu).height, inInclusiveRange(56, 72));
+    expect(
+      tester.widget<Text>(find.text('로그아웃·탈퇴')).style!.color,
+      AppColors.danger,
+    );
     await tester.tap(find.text('로그아웃·탈퇴'));
     await tester.pumpAndSettle();
     expect(

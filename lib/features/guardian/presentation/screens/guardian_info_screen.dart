@@ -138,11 +138,15 @@ class GuardianInfoScreen extends ConsumerWidget {
                 ),
                 const SizedBox(height: 20),
                 SeniorCard(
-                  borderColor: AppColors.dangerBorder,
+                  key: const ValueKey('guardian-account-actions'),
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  color: AppColors.dangerBg,
                   child: SeniorListRow(
                     label: '로그아웃·탈퇴',
+                    labelColor: AppColors.danger,
                     icon: TablerIcons.logout,
-                    trailing: const SeniorChevron(),
+                    iconColor: AppColors.danger,
+                    trailing: const SeniorChevron(color: AppColors.danger),
                     onTap: () => Navigator.of(context).push(
                       MaterialPageRoute<void>(
                         builder: (_) => const AccountScreen(isGuardian: true),
