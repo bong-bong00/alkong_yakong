@@ -138,7 +138,8 @@ void main() {
     await tester.testTextInput.receiveAction(TextInputAction.send);
     await tester.pumpAndSettle();
     expect(requests.last['user_id'], 'patient-a');
-    expect(requests.last.containsKey('consultation_mode'), isFalse);
+    expect(requests.last['consultation_mode'], 'patient_all');
+    expect(find.text('약 고르기'), findsNothing);
     expect(MvpSession.userId, 'guardian');
     expect(
       await PharmacistConversationStore().load('guardian::general'),

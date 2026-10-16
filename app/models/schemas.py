@@ -223,7 +223,7 @@ class PharmacistHistoryMessage(BaseModel):
 
 class DrugExplainChatRequest(BaseModel):
     user_id: str
-    consultation_mode: Literal["personal", "general"] = "personal"
+    consultation_mode: Literal["personal", "general", "patient_all"] = "personal"
     message: str
     recent_history: List[PharmacistHistoryMessage] = Field(default_factory=list, max_length=6)
     selected_medicine: Optional[SelectedMedicine] = None

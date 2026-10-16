@@ -21,9 +21,23 @@ def chat_with_pharmacist(request: DrugExplainChatRequest):
     history = [item.model_dump() for item in request.recent_history]
     selected = request.selected_medicine.model_dump() if request.selected_medicine else None
     selected_many = [item.model_dump() for item in request.selected_medicines]
+    if request.consultation_mode == "patient_all":
+        from app.services.medication_feature_dur_client import load_remote_current_medicines
+        current = load_remote_current_medicines(user_id=request.user_id)
+        medicines = current.get("items") or []
+        if current.get("status") != "current" or not medicines:
+            return {"reply": ("등록된 약이 없어요. 처방전을 등록한 뒤 질문해 주세요."
+                              if current.get("status") == "empty" else
+                              "환자의 등록 약 전체를 불러오지 못했어요. 잠시 후 다시 확인해 주세요."),
+                    "health_highlight_terms": [], "sources": [], "conversation_medicines": []}
+        selected = medicines[0] if len(medicines) == 1 else None
+        selected_many = medicines if len(medicines) > 1 else []
     message, intent, selected, selected_many, clarification = resolve_followup(
         request.message, request.intent, history, selected, selected_many,
     )
+    if request.consultation_mode == "patient_all":
+        selected = medicines[0] if len(medicines) == 1 else None
+        selected_many = medicines if len(medicines) > 1 else []
     # Older clients send the first selection alongside the full list. The
     # explicit multi-selection is authoritative, not its first item.
     if len(selected_many) >= 2:
@@ -36,7 +50,7 @@ def chat_with_pharmacist(request: DrugExplainChatRequest):
             selected_medicines=selected_many,
             temporary_medicines=[
                 medicine.model_dump() for medicine in request.temporary_medicines
-            ],
+            ] if request.consultation_mode != "patient_all" else [],
             intent=intent,
             **({"general_consultation": True} if request.consultation_mode == "general" else {}),
         )

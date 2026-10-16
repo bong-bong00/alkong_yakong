@@ -29,15 +29,11 @@ final carePatientProfileProvider = FutureProvider.family<UserProfile?, String>((
   patientId,
 ) async {
   if (patientId.trim().isEmpty) return null;
-  try {
-    final response = await ApiClient().get(
-      '/api/v1/users/${Uri.encodeComponent(patientId)}',
-    );
-    if (response is! Map) return null;
-    return UserProfile.fromJson(Map<String, dynamic>.from(response));
-  } catch (_) {
-    return null;
-  }
+  final response = await ApiClient().get(
+    '/api/v1/users/${Uri.encodeComponent(patientId)}',
+  );
+  if (response is! Map) throw const ApiException('건강정보를 불러오지 못했어요.');
+  return UserProfile.fromJson(Map<String, dynamic>.from(response));
 });
 
 /// 보호자 · 어르신 한 분 (프로토타입 91 · 92).
@@ -56,6 +52,7 @@ class CarePatientScreen extends ConsumerWidget {
     final allergies = profile?.allergies ?? const <String>[];
     final medicines = ref.watch(patientMedicinesProvider(patient.patientId));
     final diseases = profile?.diseases ?? const <String>[];
+    final missingProfileLabel = profile == null ? '정보를 확인하지 못했어요' : '미입력';
 
     String? sizeLine() {
       final height = profile?.heightCm;
@@ -127,10 +124,15 @@ class CarePatientScreen extends ConsumerWidget {
                           value: patient.age == null ? null : '${patient.age}세',
                         ),
                         const SeniorDivider(),
-                        _FactRow(label: '생년월일', value: birthLine()),
+                        _FactRow(
+                          label: '생년월일',
+                          value: birthLine(),
+                          missingLabel: missingProfileLabel,
+                        ),
                         const SeniorDivider(),
                         _FactRow(
                           label: '성별',
+                          missingLabel: missingProfileLabel,
                           value: switch (profile?.gender) {
                             'M' => '남자',
                             'F' => '여자',
@@ -138,9 +140,17 @@ class CarePatientScreen extends ConsumerWidget {
                           },
                         ),
                         const SeniorDivider(),
-                        _FactRow(label: '키 · 몸무게', value: sizeLine()),
+                        _FactRow(
+                          label: '키 · 몸무게',
+                          value: sizeLine(),
+                          missingLabel: missingProfileLabel,
+                        ),
                         const SeniorDivider(),
-                        _FactRow(label: '혈액형', value: profile?.bloodType),
+                        _FactRow(
+                          label: '혈액형',
+                          value: profile?.bloodType,
+                          missingLabel: missingProfileLabel,
+                        ),
                         const SeniorDivider(),
                         _FactRow(label: '연락처', value: patient.phone),
                       ],
@@ -259,27 +269,37 @@ class _WarnCard extends StatelessWidget {
 class _FactRow extends StatelessWidget {
   final String label;
   final String? value;
+  final String missingLabel;
 
-  const _FactRow({required this.label, this.value});
+  const _FactRow({required this.label, this.value, this.missingLabel = '미입력'});
 
   @override
   Widget build(BuildContext context) {
     final text = (value ?? '').trim();
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 16),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Expanded(child: Text(label, style: AppText.label(size: 19))),
-          const SizedBox(width: 14),
-          Flexible(
-            child: Text(
-              text.isEmpty ? '아직 받지 못했어요' : text,
-              textAlign: TextAlign.end,
+          Text(label, style: AppText.label(size: 19)),
+          const SizedBox(height: 6),
+          if (label == '연락처' && text.isNotEmpty)
+            FittedBox(
+              fit: BoxFit.scaleDown,
+              alignment: Alignment.centerLeft,
+              child: Text(
+                text,
+                softWrap: false,
+                style: AppText.cardTitle(size: 20),
+              ),
+            )
+          else
+            Text(
+              text.isEmpty ? missingLabel : text,
               style: text.isEmpty
                   ? AppText.body(size: 18, color: AppColors.textTertiary)
                   : AppText.cardTitle(size: 20),
             ),
-          ),
         ],
       ),
     );

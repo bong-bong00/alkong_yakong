@@ -129,12 +129,12 @@ class GuardianPickPatientScreen extends ConsumerWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          '고른 분에게만 들어갑니다',
+                          '선택한 환자의 약으로 등록돼요',
                           style: AppText.cardTitle(size: 21),
                         ),
                         const SizedBox(height: 6),
                         Text(
-                          '등록이 끝나면 그 어르신 앱에서 등록된 약을 확인할 수 있어요.',
+                          '등록이 끝나면 해당 환자의 앱에서도 약과 복용 일정을 확인할 수 있어요.',
                           style: AppText.body(size: 18),
                         ),
                       ],

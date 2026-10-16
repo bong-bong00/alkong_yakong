@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -14,6 +13,7 @@ import '../../../../core/widgets/senior_card.dart';
 import '../../../../core/widgets/senior_feedback.dart';
 import '../../../../core/widgets/senior_header.dart';
 import '../../../guardian/application/guardians_provider.dart';
+import '../../../guardian/application/guardian_alert_inbox.dart';
 import '../../../guardian/data/alert_repository.dart';
 import '../../../guardian/presentation/screens/care_family_screen.dart';
 import '../../../guardian/presentation/screens/care_patient_screen.dart';
@@ -161,6 +161,7 @@ class _GuardianHomeScreenState extends ConsumerState<GuardianHomeScreen>
       MaterialPageRoute<void>(
         builder: (_) => GuardianAlertsScreen(
           patient: patients.first,
+          patients: patients,
           repository: widget.alertsRepository,
         ),
       ),
@@ -612,21 +613,27 @@ class _StatusRow extends StatelessWidget {
 //  4k — 알림
 // ════════════════════════════════════════════════════════════════
 
-/// "확인했어요"는 알림을 읽음 처리할 뿐 **삭제하지 않는다**.
+/// "확인했어요"는 미확인 목록에서 제외한다. 복약 완료 기록과는 별개다.
 /// 어르신 쪽 재알림 사다리도 계속 진행된다.
-class GuardianAlertsTab extends StatefulWidget {
+class GuardianAlertsTab extends ConsumerStatefulWidget {
   final CarePatient patient;
+  final List<CarePatient>? patients;
 
   /// 알림을 읽어 올 곳. 없으면 이 탭이 하나 만들어 쓴다.
   final AlertRepository? repository;
 
-  const GuardianAlertsTab({super.key, required this.patient, this.repository});
+  const GuardianAlertsTab({
+    super.key,
+    required this.patient,
+    this.repository,
+    this.patients,
+  });
 
   @override
-  State<GuardianAlertsTab> createState() => _GuardianAlertsTabState();
+  ConsumerState<GuardianAlertsTab> createState() => _GuardianAlertsTabState();
 }
 
-class _GuardianAlertsTabState extends State<GuardianAlertsTab> {
+class _GuardianAlertsTabState extends ConsumerState<GuardianAlertsTab> {
   Timer? _poll;
   @override
   void dispose() {
@@ -635,17 +642,16 @@ class _GuardianAlertsTabState extends State<GuardianAlertsTab> {
   }
 
   final Set<int> _acknowledged = <int>{};
-  String get _ackKey =>
-      'guardian_ack_${MvpSession.userId}_${widget.patient.patientId}';
-  Future<void> _acknowledge(int? id) async {
+  final Map<AlertItem, CarePatient> _owners = {};
+  late final _inbox = GuardianAlertInbox(MvpSession.userId);
+  bool _showAcknowledged = false;
+  Future<void> _acknowledge(int? id, CarePatient patient) async {
     if (id == null) return;
-    final key = _ackKey;
-    setState(() => _acknowledged.add(id));
     try {
-      await (await SharedPreferences.getInstance()).setStringList(
-        key,
-        _acknowledged.map((id) => '$id').toList(),
-      );
+      await _inbox.acknowledge(patient.patientId, id);
+      if (!mounted) return;
+      setState(() => _acknowledged.add(id));
+      ref.read(guardianAlertRevisionProvider.notifier).state++;
     } catch (_) {
       if (mounted) {
         showSeniorSnackbar(
@@ -658,7 +664,7 @@ class _GuardianAlertsTabState extends State<GuardianAlertsTab> {
   }
 
   late final AlertRepository _repository =
-      widget.repository ?? AlertRepository();
+      widget.repository ?? ref.read(guardianAlertRepositoryProvider);
 
   List<AlertItem>? _loaded;
   bool _failed = false;
@@ -696,25 +702,53 @@ class _GuardianAlertsTabState extends State<GuardianAlertsTab> {
 
   Future<void> _load() async {
     setState(() => _failed = false);
-    try {
-      final saved =
-          (await SharedPreferences.getInstance()).getStringList(_ackKey) ?? [];
-      _acknowledged.addAll(saved.map(int.tryParse).whereType<int>());
-    } catch (_) {}
-    final loaded = await _repository.fetch(widget.patient.patientId);
+    final combined = <AlertItem>[];
+    final owners = <AlertItem, CarePatient>{};
+    var failed = false;
+    for (final patient in widget.patients ?? [widget.patient]) {
+      try {
+        _acknowledged.addAll(await _inbox.read(patient.patientId));
+      } catch (_) {
+        failed = true;
+      }
+      final items = await _repository.fetch(patient.patientId);
+      if (items == null) {
+        failed = true;
+        continue;
+      }
+      for (final alert in items.where(_worthTelling)) {
+        combined.add(alert);
+        owners[alert] = patient;
+      }
+    }
     if (!mounted) return;
     // 못 읽으면 못 읽었다고 말한다. 예시 알림으로 갈아끼우지 않는다.
     setState(() {
-      _loaded = loaded?.where(_worthTelling).toList();
-      _failed = loaded == null;
+      _owners
+        ..clear()
+        ..addAll(owners);
+      _loaded = failed ? null : combined;
+      _failed = failed;
     });
   }
 
   @override
   Widget build(BuildContext context) {
-    final alerts = _loaded;
+    final alerts = _loaded
+        ?.where(
+          (a) =>
+              _showAcknowledged ==
+              _acknowledged.contains(GuardianAlertInbox.identity(a)),
+        )
+        .toList();
     return Column(
       children: [
+        if (_loaded != null)
+          TextButton(
+            onPressed: () =>
+                setState(() => _showAcknowledged = !_showAcknowledged),
+            child: Text(_showAcknowledged ? '미확인 알림 보기' : '확인한 알림 보기'),
+          ),
         Expanded(
           child: alerts == null
               ? Padding(
@@ -760,19 +794,24 @@ class _GuardianAlertsTabState extends State<GuardianAlertsTab> {
                     itemBuilder: (context, index) {
                       if (alerts.isEmpty) {
                         return Text(
-                          '아직 온 알림이 없어요.',
+                          _showAcknowledged ? '확인한 알림이 없어요.' : '확인할 알림이 없어요.',
                           textAlign: TextAlign.center,
                           style: AppText.caption(size: 17),
                         );
                       }
-                      final notificationId =
-                          alerts[index].id ?? -(1000000000 + index);
+                      final notificationId = GuardianAlertInbox.identity(
+                        alerts[index],
+                      );
                       return _AlertCard(
                         alert: alerts[index],
-                        patient: widget.patient,
+                        patient: _owners[alerts[index]] ?? widget.patient,
                         acknowledged: _acknowledged.contains(notificationId),
-                        onAcknowledge: () =>
-                            unawaited(_acknowledge(notificationId)),
+                        onAcknowledge: () => unawaited(
+                          _acknowledge(
+                            notificationId,
+                            _owners[alerts[index]] ?? widget.patient,
+                          ),
+                        ),
                       );
                     },
                   ),
@@ -786,11 +825,13 @@ class _GuardianAlertsTabState extends State<GuardianAlertsTab> {
 /// 목록 헤더의 종 단추로 들어오는 알림 화면 (프로토타입 89).
 class GuardianAlertsScreen extends StatelessWidget {
   final CarePatient patient;
+  final List<CarePatient>? patients;
   final AlertRepository? repository;
 
   const GuardianAlertsScreen({
     super.key,
     required this.patient,
+    this.patients,
     this.repository,
   });
 
@@ -802,7 +843,11 @@ class GuardianAlertsScreen extends StatelessWidget {
         children: [
           const SeniorBackHeader(title: '알림', alignStart: true),
           Expanded(
-            child: GuardianAlertsTab(patient: patient, repository: repository),
+            child: GuardianAlertsTab(
+              patient: patient,
+              patients: patients,
+              repository: repository,
+            ),
           ),
         ],
       ),
@@ -937,7 +982,7 @@ class _AlertCard extends StatelessWidget {
         ],
         // 확인한 뒤에는 단추를 남기지 않는다. "확인함"이 눌리지 않는 채로
         // 남아 있으면 아직 할 일이 있는 것처럼 보인다.
-        if (_isDanger && !acknowledged) ...[
+        if (!acknowledged) ...[
           const SizedBox(height: 14),
           Row(
             children: [

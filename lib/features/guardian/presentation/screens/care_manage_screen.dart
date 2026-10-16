@@ -198,7 +198,10 @@ class _ManageRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final age = patient.age;
-    final line = [if (age != null) '$age세'].join(' · ');
+    final line = [
+      if (age != null) '$age세',
+      if (patient.relation.trim().isNotEmpty) patient.relation.trim(),
+    ].join(' · ');
 
     return GestureDetector(
       behavior: HitTestBehavior.opaque,

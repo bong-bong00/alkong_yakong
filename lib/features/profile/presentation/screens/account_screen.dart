@@ -19,7 +19,8 @@ import '../../application/session_actions.dart';
 /// 안전한 버튼(가족 초대, 약 목록)과 물리적으로 떨어져 있어야
 /// 잘못 누르는 일이 줄어든다.
 class AccountScreen extends ConsumerWidget {
-  const AccountScreen({super.key});
+  final bool isGuardian;
+  const AccountScreen({super.key, this.isGuardian = false});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -83,8 +84,10 @@ class AccountScreen extends ConsumerWidget {
                         ),
                         const SizedBox(height: 6),
                         Text(
-                          '탈퇴하시면 복약 기록과 등록한 약이 모두 지워지고 '
-                          '되돌릴 수 없어요. 가족에게도 더 이상 알림이 가지 않아요.',
+                          isGuardian
+                              ? '보호자 계정과 환자 연결이 삭제돼요. 연결된 환자의 계정과 기록은 삭제하지 않아요.'
+                              : '탈퇴하시면 복약 기록과 등록한 약이 모두 지워지고 '
+                                    '되돌릴 수 없어요. 가족에게도 더 이상 알림이 가지 않아요.',
                           style: AppText.body(),
                         ),
                         const SizedBox(height: 16),
@@ -111,7 +114,9 @@ class AccountScreen extends ConsumerWidget {
     final go = await showSeniorYesNoDialog(
       context: context,
       title: '정말 탈퇴하시겠어요?',
-      message: '지금까지의 복약 기록이 모두 지워져요. 한 번 지우면 되돌릴 수 없어요.',
+      message: isGuardian
+          ? '보호자 계정과 연결이 삭제돼요. 환자의 계정과 기록은 유지됩니다. 삭제한 계정은 되돌릴 수 없어요.'
+          : '지금까지의 복약 기록이 모두 지워져요. 한 번 지우면 되돌릴 수 없어요.',
       yesLabel: '아니요, 그냥 둘게요',
       noLabel: '네, 탈퇴할게요',
     );

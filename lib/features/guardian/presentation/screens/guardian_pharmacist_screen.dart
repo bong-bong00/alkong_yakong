@@ -43,7 +43,10 @@ class _GuardianPharmacistScreenState
     // A removed link must not silently become a general chat with old history.
     if (_patientId != null && patient == null) {
       if (overview.isLoading) {
-        return const Scaffold(body: Center(child: CircularProgressIndicator()));
+        return Scaffold(
+          appBar: AppBar(title: const Text('AI 약사 상담')),
+          body: const Center(child: CircularProgressIndicator()),
+        );
       }
       return Scaffold(
         appBar: AppBar(title: const Text('AI 약사 상담')),
@@ -70,6 +73,7 @@ class _GuardianPharmacistScreenState
       generalConsultation: patient == null,
       patientId: patient?.patientId,
       patientName: patient?.name,
+      registeredMedicinesOnly: patient != null,
       apiClient: widget.apiClient,
       medicationApiClient: widget.medicationApiClient,
       consultationSelector: Container(
@@ -103,13 +107,13 @@ class _GuardianPharmacistScreenState
               onChanged: (id) =>
                   setState(() => _patientId = id == '' ? null : id),
             ),
-            const SizedBox(height: 6),
-            Text(
-              patient == null
-                  ? '약을 검색해 질문해요 · 개인 건강정보 미사용'
-                  : '${patient.name} 님의 등록 약과 건강정보를 참고해요',
-              style: AppText.caption(size: 15),
-            ),
+            if (patient != null) ...[
+              const SizedBox(height: 6),
+              Text(
+                '${patient.name} 님의 등록 약 전체로 상담해요',
+                style: AppText.caption(size: 15),
+              ),
+            ],
             if (overview.hasError && patient == null)
               const Text('환자 목록을 불러오지 못했어요. 일반 약 상담은 이용할 수 있어요.'),
           ],

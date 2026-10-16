@@ -28,6 +28,7 @@ class DrugExplainScreen extends StatefulWidget {
   final String? patientId;
   final String? patientName;
   final bool generalConsultation;
+  final bool registeredMedicinesOnly;
   final Widget? consultationSelector;
 
   const DrugExplainScreen({
@@ -38,6 +39,7 @@ class DrugExplainScreen extends StatefulWidget {
     this.patientId,
     this.patientName,
     this.generalConsultation = false,
+    this.registeredMedicinesOnly = false,
     this.consultationSelector,
   });
 
@@ -238,6 +240,11 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
           }
         }
         _pendingGeneralQuestion = conversation['pendingQuestion'] as String?;
+        if (widget.registeredMedicinesOnly) {
+          _selectedMedicines.clear();
+          _temporaryMedicinesByCode.clear();
+          _searchedMedicines.clear();
+        }
         _chatController.clear();
       });
       _scrollToBottom();
@@ -441,7 +448,7 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
   /// 머리말 인사. 약을 고르면 그 약 이야기로 좁혀 말한다.
   String _greeting(String userName) {
     if (widget.generalConsultation) {
-      return '약을 검색해서 선택하거나 궁금한 점을 물어보세요. 일반 약 상담에서는 개인 건강정보와 등록 약을 자동으로 사용하지 않아요.';
+      return '궁금한 약이나 복용 관련 내용을 물어보세요.';
     }
     if (widget.patientId != null) {
       return '${widget.patientName ?? '연결된 환자'} 님의 약과 건강정보에 관해 물어보세요.';
@@ -761,6 +768,7 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
     bool forceRefresh = false,
   }) async {
     if (_isLoading) return;
+    forceRefresh = forceRefresh || widget.registeredMedicinesOnly;
     if (!await _canUsePatientContext()) return;
     if (_isLoading || !mounted) return;
 
@@ -840,6 +848,7 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
       final body = <String, dynamic>{
         'user_id': _subjectUserId,
         if (widget.generalConsultation) 'consultation_mode': 'general',
+        if (widget.registeredMedicinesOnly) 'consultation_mode': 'patient_all',
         'message': requestText,
         'recent_history': recentHistory,
       };
@@ -1138,7 +1147,9 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
             ),
             if (widget.consultationSelector != null)
               widget.consultationSelector!,
-            if (widget.consultationSelector == null) subjectCard,
+            if (widget.consultationSelector == null &&
+                !widget.registeredMedicinesOnly)
+              subjectCard,
             Expanded(
               child: ListView(
                 controller: _scrollController,
@@ -1147,7 +1158,7 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
                     ScrollViewKeyboardDismissBehavior.onDrag,
                 children: [
                   if (widget.consultationSelector != null) ...[
-                    subjectCard,
+                    if (!widget.registeredMedicinesOnly) subjectCard,
                     const SizedBox(height: 12),
                   ],
                   for (final message in _messages) ...[

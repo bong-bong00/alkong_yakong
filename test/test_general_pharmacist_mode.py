@@ -62,3 +62,30 @@ def test_general_single_combination_explicitly_excludes_current_medicines(monkey
             selected_medicine=medicine,intent='combination',general_consultation=True)
     assert remote.call_args.kwargs['include_current_medicines'] is False
     assert remote.call_args.kwargs['user_id'] == 'guardian'
+
+
+def test_patient_all_uses_fresh_registered_medicines_not_old_selections():
+    app=FastAPI(); app.include_router(router)
+    current=[{'medicine_code':'111111111','product_name':'현재약정'},
+             {'medicine_code':'222222222','product_name':'다른현재약정'}]
+    with patch('app.services.medication_feature_dur_client.load_remote_current_medicines',return_value={'status':'current','items':current}), \
+         patch.object(gemini,'generate_chat_response',return_value='현재 등록 약 안내') as generate:
+        r=TestClient(app).post('/api/v1/drug-explain/chat',json={
+            'user_id':'patient','message':'약 알려주세요','intent':'overview','consultation_mode':'patient_all',
+            'selected_medicine':{'medicine_code':'999999999','product_name':'과거검색약정'},
+            'temporary_medicines':[{'medicine_code':'999999999','product_name':'과거검색약정'}]})
+    assert r.status_code==200
+    assert generate.call_args.kwargs['selected_medicines']==current
+    assert generate.call_args.kwargs['selected_medicine'] is None
+    assert generate.call_args.kwargs['temporary_medicines']==[]
+
+
+def test_patient_all_empty_or_failed_list_never_calls_model():
+    app=FastAPI(); app.include_router(router)
+    for status,expected in [('empty','등록된 약이 없어요'),('missing','불러오지 못했어요')]:
+        with patch('app.services.medication_feature_dur_client.load_remote_current_medicines',return_value={'status':status,'items':[]}), \
+             patch.object(gemini,'generate_chat_response') as generate:
+            r=TestClient(app).post('/api/v1/drug-explain/chat',json={
+                'user_id':'patient','message':'약 알려주세요','consultation_mode':'patient_all'})
+        assert expected in r.json()['reply']
+        generate.assert_not_called()

@@ -7,12 +7,11 @@ import '../../../../core/theme/app_typography.dart';
 import '../../../../core/widgets/senior_card.dart';
 import '../../../../core/widgets/senior_header.dart';
 import '../../../profile/application/current_user_controller.dart';
-import '../../../profile/presentation/screens/help_screen.dart';
-import '../../../profile/presentation/screens/policy_screen.dart';
 import '../../application/guardians_provider.dart';
 import 'guardian_account_screen.dart';
 import 'guardian_alert_prefs_screen.dart';
 import 'care_manage_screen.dart';
+import 'guardian_settings_screen.dart';
 
 /// 보호자 · 정보 탭 (프로토타입 93).
 ///
@@ -112,23 +111,12 @@ class GuardianInfoScreen extends ConsumerWidget {
                       ),
                       const SeniorDivider(),
                       SeniorListRow(
-                        label: '도움말',
-                        icon: TablerIcons.help_circle,
+                        label: '설정',
+                        icon: TablerIcons.settings,
                         trailing: const SeniorChevron(),
                         onTap: () => Navigator.of(context).push(
                           MaterialPageRoute<void>(
-                            builder: (_) => const HelpScreen(),
-                          ),
-                        ),
-                      ),
-                      const SeniorDivider(),
-                      SeniorListRow(
-                        label: '약관 · 개인정보',
-                        icon: TablerIcons.file_text,
-                        trailing: const SeniorChevron(),
-                        onTap: () => Navigator.of(context).push(
-                          MaterialPageRoute<void>(
-                            builder: (_) => const PolicyScreen.terms(),
+                            builder: (_) => const GuardianSettingsScreen(),
                           ),
                         ),
                       ),

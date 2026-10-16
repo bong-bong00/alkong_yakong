@@ -13,6 +13,8 @@ import '../../../dashboard/presentation/screens/patient_data.dart';
 import '../../application/guardians_provider.dart';
 import '../../data/guardian_repository.dart';
 import 'guardian_prescription_screen.dart';
+import '../../application/guardian_alert_inbox.dart';
+import '../../../../core/session/mvp_session.dart';
 
 /// 36 · 보호자 · 돌보는 분 목록.
 ///
@@ -61,7 +63,9 @@ class CareFamilyScreen extends ConsumerWidget {
     final data = overview.valueOrNull;
     final patients = data?.patients ?? const <CarePatient>[];
     final pending = data?.pending ?? const <PendingInvite>[];
-    final needAttention = patients.where((p) => p.needsAttention).toList();
+    final unreadCount = ref
+        .watch(guardianUnreadCountProvider(MvpSession.userId))
+        .valueOrNull;
 
     return Column(
       children: [
@@ -72,7 +76,7 @@ class CareFamilyScreen extends ConsumerWidget {
           title: data == null ? '돌보는 분' : '돌보는 분 ${patients.length}명',
           trailing: onOpenAlerts == null
               ? null
-              : _AlertBell(count: needAttention.length, onTap: onOpenAlerts!),
+              : _AlertBell(count: unreadCount ?? 0, onTap: onOpenAlerts!),
         ),
         Expanded(
           // 당겨서 새로고침을 두지 않는다. 돌보는 분이 몇 분 안 되면 목록이
@@ -237,7 +241,7 @@ class _PatientCard extends StatelessWidget {
 
   String get _status {
     if (patient.totalCount == 0) return '오늘 드실 약이 등록돼 있지 않아요';
-    if (patient.needsAttention) return '${patient.nextDoseLabel} 약이 남아 있어요';
+    if (patient.needsAttention) return '${patient.nextDoseLabel} 복용 완료 기록이 없어요';
     return '오늘 ${_spokenCount(patient.totalCount)} 다 드셨어요';
   }
 
@@ -269,35 +273,34 @@ class _PatientCard extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Row(
-                      children: [
-                        Flexible(
-                          child: Text(
-                            '${patient.title} 님',
-                            style: AppText.cardTitle(size: 21),
-                          ),
-                        ),
-                        if (patient.needsAttention) ...[
-                          const SizedBox(width: 8),
-                          const SeniorBadge(
-                            label: '확인 필요',
-                            background: AppColors.dangerBg,
-                            foreground: AppColors.danger,
-                            radius: 10,
-                            fontSize: 15,
-                            padding: EdgeInsets.symmetric(
-                              horizontal: 10,
-                              vertical: 5,
-                            ),
-                          ),
-                        ],
-                      ],
-                    ),
                     Text(
-                      '오늘 복약 ${patient.takenCount} / ${patient.totalCount}'
-                      '${patient.heartRate == null ? '' : ' · 심박수 ${patient.heartRate}'}',
+                      '${patient.title} 님',
+                      style: AppText.cardTitle(size: 21),
+                    ),
+                    if (patient.needsAttention) ...[
+                      const SizedBox(height: 6),
+                      const SeniorBadge(
+                        label: '확인 필요',
+                        background: AppColors.dangerBg,
+                        foreground: AppColors.danger,
+                        radius: 10,
+                        fontSize: 15,
+                        padding: EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 5,
+                        ),
+                      ),
+                    ],
+                    const SizedBox(height: 6),
+                    Text(
+                      '오늘 복약 ${patient.takenCount} / ${patient.totalCount}',
                       style: AppText.caption(size: 17.5),
                     ),
+                    if (patient.heartRate != null)
+                      Text(
+                        '최근 심박수 ${patient.heartRate} bpm',
+                        style: AppText.caption(size: 17.5),
+                      ),
                     if (patient.heartRate != null)
                       Text(
                         patient.heartRateTimeLabel,
