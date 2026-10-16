@@ -131,11 +131,23 @@ def test_patient_audience_is_neutral_not_the_guardian_taking_medicines():
 def test_followup_summary_never_grows_if_compression_fails():
     previous = '검증정은 주의해서 사용하세요. 일부 조건은 확인하지 못했어요.'
     history = [dict(role='assistant', content=previous)]
-    with conversation_context(history, summary_requested=True), patch.object(gemini, '_generate_chat_response', return_value='새 답변. ' * 90), \
+    with conversation_context(history, summary_requested=True) as evidence, patch.object(gemini, '_generate_chat_response', return_value='새 답변. ' * 90), \
          patch('google.genai.Client'), patch.object(gemini, '_summarize_chat_reply', return_value='더 긴 답변. ' * 90) as summarize:
         reply = gemini.generate_chat_response('이 질문의 답변을 더 짧게 요약해 주세요.')
     assert '요약하지 못' in reply
     assert summarize.call_args.kwargs['max_chars'] < len(previous)
+    assert evidence['sources'] == [] and evidence['medicines'] == []
+
+
+def test_followup_compression_uses_previous_answer_budget_not_arbitrary_reduction():
+    source = '검증정은 신장 기능이 좋지 않은 경우 의사와 상담하세요. ' * 8
+    shortened = '검증정은 신장 기능이 좋지 않은 경우 의사와 상담하세요. ' * 6
+    assert len(shortened) > len(source) * .65
+    response = SimpleNamespace(text=shortened, candidates=[SimpleNamespace(finish_reason='STOP')])
+    with patch.object(gemini, '_generate_content_with_retry', return_value=response), \
+         patch.object(gemini, '_summary_preserves_meaning', return_value=True):
+        reply = gemini._summarize_chat_reply(MagicMock(), source, force=True, max_chars=len(source)-1)
+    assert reply == shortened.strip()
 
 
 def test_followup_returns_successfully_shortened_verified_reply():

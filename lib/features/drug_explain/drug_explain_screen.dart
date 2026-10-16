@@ -941,7 +941,7 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
       }
       final requestKey = PharmacistAnswerCache.canonical({
         ...body,
-        'answer_policy_version': 7,
+        'answer_policy_version': 8,
         if (intent == 'health_precautions') 'health_reply_version': 2,
         'scope': _asksAboutAllMedicines ? 'all' : 'selection',
         'recent_history':

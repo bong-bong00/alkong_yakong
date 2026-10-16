@@ -1091,7 +1091,9 @@ def _summarize_chat_reply(client, reply: str, *, medicine_names: tuple[str, ...]
         return reply
     limit = min(CHAT_REPLY_MAX_CHARS, max(180, int(len(reply) * .65))) if force else CHAT_REPLY_MAX_CHARS
     if max_chars is not None:
-        limit = min(limit, max_chars)
+        # A follow-up must be shorter than the previous answer, not necessarily
+        # another 35% shorter than a newly generated, already compact answer.
+        limit = min(CHAT_REPLY_MAX_CHARS, max_chars)
     from app.services.pharmacist.conversation import medicine_name_aliases, medicine_mention_position
     required_names = tuple(dict.fromkeys(
         alias for name in medicine_names
@@ -1225,10 +1227,15 @@ def generate_chat_response(
             if dosage_notice and not summarized.startswith(dosage_notice):
                 summarized = dosage_notice + summarized
             if summary_limit is not None and len(summarized) > summary_limit:
+                context.get("sources", []).clear()
+                context.get("medicines", []).clear()
                 return "안전 조건을 유지하면서 더 짧게 요약하지 못했어요. 위 답변의 약별 안내를 확인해 주세요."
             return summarized
     except Exception:
         logger.warning("Gemini summary client unavailable retained source_length=%d", len(reply))
+        if summary_limit is not None:
+            context.get("sources", []).clear()
+            context.get("medicines", []).clear()
         return ("안전 조건을 유지하면서 더 짧게 요약하지 못했어요. 위 답변의 약별 안내를 확인해 주세요."
                 if summary_limit is not None else reply)
 
