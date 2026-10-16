@@ -55,7 +55,7 @@ def official_excerpt_reply(contexts, intents, *, food=False):
         if not name: continue
         units = [u for field in fields for u in complete_units(context.get(field))
                  if not re.fullmatch(r'(?:사용상의\s*주의사항|주의사항|용법\s*용량|효능\s*효과)?\s*[\d.)\s]*', u)
-                 and not re.fullmatch(r'[\d.)\s]*(?:다음\s*(?:환자|경우)[^.!?]*?(?:투여|사용|복용)하지\s*말\s*것|다음\s*(?:환자|경우)[^.!?]*?신중히\s*(?:투여|사용|복용)할\s*것|일반적\s*주의|경고|이상반응)[.!?]?', u)
+                 and not re.fullmatch(r'[\d.)\s]*(?:다음(?:과\s*같은)?\s*(?:환자|경우)(?:에는|에게는|에게|에|는)?\s*(?:(?:투여|사용|복용)하지\s*말\s*것|신중히\s*(?:투여|사용|복용)할\s*것)|일반적\s*주의|경고|이상반응)[.!?]?', u)
                  and len(re.sub(r'[\d\W_]', '', u)) >= 4]
         if food:
             units = [u for u in units if food_question(u)]

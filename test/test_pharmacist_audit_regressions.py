@@ -72,6 +72,8 @@ def test_headings_never_count_as_a_meaningful_warning():
     assert '“다음 환자에는 투여하지 말 것.”' not in reply
     empty = official_excerpt_reply([dict(product_name='검증정', cautions='다음 환자에는 투여하지 말 것.')], {'precautions'})
     assert '세부 조건' in empty and '공식 안내 일부' not in empty
+    qualified = official_excerpt_reply([dict(product_name='검증정', cautions='다음 환자는 과민반응이 있는 경우 사용하지 말 것.')], {'precautions'})
+    assert '과민반응' in qualified
 
 
 def test_general_single_combination_requests_the_second_medicine(providers):
@@ -111,3 +113,8 @@ def test_followup_returns_successfully_shortened_verified_reply():
          patch('google.genai.Client'), patch.object(gemini, '_summarize_chat_reply', return_value='검증정은 주의하세요.'):
         reply = gemini.generate_chat_response('짧게 요약해 주세요.')
     assert reply == '검증정은 주의하세요.' and len(reply) < len(previous)
+
+
+def test_prior_answer_policy_is_invalidated():
+    from app.services.pharmacist.cache_context import REPLY_POLICY_VERSION
+    assert REPLY_POLICY_VERSION >= 5
