@@ -43,6 +43,9 @@ void main() {
     testWidgets(
       'patient card shows ${entry.key} bpm (${entry.value}) and centers dose notice',
       (tester) async {
+        tester.view.physicalSize = const Size(320, 568);
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.reset);
         await tester.pumpWidget(
           ProviderScope(
             overrides: [
@@ -71,8 +74,22 @@ void main() {
         );
         await tester.pumpAndSettle();
         expect(
-          find.text('최근 심박수 ${entry.key} bpm (${entry.value})'),
+          find.text('최근 심박수 ${entry.key}bpm(${entry.value})'),
           findsOneWidget,
+        );
+        final heartText = find.text('최근 심박수 ${entry.key}bpm(${entry.value})');
+        final text = tester.widget<Text>(heartText);
+        expect(text.style!.fontSize, 15.5);
+        expect(text.maxLines, 1);
+        expect(text.softWrap, isFalse);
+        final fit = find.ancestor(
+          of: heartText,
+          matching: find.byType(FittedBox),
+        );
+        expect(tester.widget<FittedBox>(fit).fit, BoxFit.scaleDown);
+        expect(
+          tester.getRect(heartText).right,
+          lessThanOrEqualTo(tester.getRect(fit).right + 0.1),
         );
         expect(
           tester.widget<Text>(find.text('아침 약 복용 완료 기록이 없어요')).textAlign,

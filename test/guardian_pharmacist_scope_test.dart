@@ -27,6 +27,68 @@ void main() {
     ];
   });
 
+  for (final label in [
+    '약 보관할 때 주의할 점은요?',
+    '약 설명서에서 무엇을 확인하나요?',
+    '약을 먹을 때 물로 먹어야 하나요?',
+  ]) {
+    testWidgets('unselected general suggestion sends correct scope: $label', (
+      tester,
+    ) async {
+      Map? sent;
+      final client = MockClient((request) async {
+        if (request.method == 'POST') {
+          sent = jsonDecode(request.body) as Map;
+          return jsonResponse({'reply': '일반 안전사용 안내예요.', 'sources': []});
+        }
+        return jsonResponse({'medicines': []});
+      });
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            careOverviewProvider.overrideWith(
+              (ref) async => const CareOverview(),
+            ),
+          ],
+          child: MaterialApp(
+            home: GuardianPharmacistScreen(
+              apiClient: ApiClient(client: client),
+              medicationApiClient: ApiClient(client: client),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.scrollUntilVisible(
+        find.byKey(ValueKey('suggestion-$label')),
+        180,
+        scrollable: find
+            .descendant(
+              of: find.byType(ListView).first,
+              matching: find.byType(Scrollable),
+            )
+            .first,
+      );
+      await tester.tap(find.byKey(ValueKey('suggestion-$label')));
+      await tester.pumpAndSettle();
+      expect(sent, isNotNull);
+      expect(sent!['consultation_mode'], 'general');
+      expect(sent!['user_id'], 'guardian');
+      expect(sent!.containsKey('selected_medicine'), isFalse);
+      expect(sent!.containsKey('selected_medicines'), isFalse);
+      expect(
+        sent!['message'],
+        contains(
+          label.startsWith('약 보관')
+              ? '보관'
+              : label.startsWith('약 설명서')
+              ? '설명서'
+              : '물로',
+        ),
+      );
+      expect(tester.takeException(), isNull);
+    });
+  }
   for (final scale in [1.0, 2.0]) {
     for (final subject in [null, 'patient-a']) {
       testWidgets(
@@ -218,6 +280,18 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(reads, isEmpty);
+    await tester.scrollUntilVisible(
+      find.text('약을 먹을 때 물로 먹어야 하나요?'),
+      180,
+      scrollable: find
+          .descendant(
+            of: find.byType(ListView).first,
+            matching: find.byType(Scrollable),
+          )
+          .first,
+    );
+    expect(find.text('선택한 약과 주의할 음식은요?'), findsNothing);
+    expect(find.text('약을 먹을 때 물로 먹어야 하나요?'), findsOneWidget);
     expect(find.textContaining('보호자본인약정'), findsNothing);
     await tester.enterText(find.byType(TextField).last, '약 보관법은요?');
     await tester.testTextInput.receiveAction(TextInputAction.send);

@@ -55,6 +55,7 @@ def official_excerpt_reply(contexts, intents, *, food=False):
         if not name: continue
         units = [u for field in fields for u in complete_units(context.get(field))
                  if not re.fullmatch(r'(?:사용상의\s*주의사항|주의사항|용법\s*용량|효능\s*효과)?\s*[\d.)\s]*', u)
+                 and not re.fullmatch(r'[\d.)\s]*(?:다음\s*(?:환자|경우)[^.!?]*?(?:투여|사용|복용)하지\s*말\s*것|다음\s*(?:환자|경우)[^.!?]*?신중히\s*(?:투여|사용|복용)할\s*것|일반적\s*주의|경고|이상반응)[.!?]?', u)
                  and len(re.sub(r'[\d\W_]', '', u)) >= 4]
         if food:
             units = [u for u in units if food_question(u)]
@@ -64,4 +65,5 @@ def official_excerpt_reply(contexts, intents, *, food=False):
                   '질문과 관련된 공식 안내의 세부 조건을 이 답변에서 확인하지 못했어요.')
         parts.append(name + ': ' + detail)
     if not parts: return None
-    return '\n'.join(parts) + '\n일부 내용만 안내했어요. 안전하다는 뜻은 아니며, 정확한 적용 조건은 의사나 약사에게 확인해 주세요.'
+    from app.services.pharmacist.plain_language import explain_health_terms
+    return explain_health_terms('\n'.join(parts) + '\n일부 내용만 안내했어요. 안전하다는 뜻은 아니며, 정확한 적용 조건은 의사나 약사에게 확인해 주세요.')

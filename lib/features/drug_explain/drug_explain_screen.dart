@@ -323,9 +323,9 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
       'intent': 'overview',
     },
     {
-      'label': '선택한 약과 주의할 음식은요?',
-      'prompt': '선택한 약과 함께 먹을 때 주의해야 할 음식이 있나요?',
-      'intent': 'combination',
+      'label': '약을 먹을 때 물로 먹어야 하나요?',
+      'prompt': '약을 먹을 때 물로 먹어야 하나요?',
+      'intent': 'overview',
     },
   ];
   static const _guardianPatientSuggestions = [

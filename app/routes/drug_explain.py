@@ -1,3 +1,5 @@
+import re
+
 from fastapi import APIRouter, HTTPException, Query
 
 from app.models.schemas import DrugExplainChatRequest
@@ -42,7 +44,8 @@ def chat_with_pharmacist(request: DrugExplainChatRequest):
     # explicit multi-selection is authoritative, not its first item.
     if len(selected_many) >= 2:
         selected = None
-    with conversation_context(history) as evidence:
+    with conversation_context(history, consultation_mode=request.consultation_mode,
+                              summary_requested=bool(re.search(r"요약|짧게|간단히", request.message))) as evidence:
         reply = clarification or generate_chat_response(
             message,
             user_id=request.user_id,

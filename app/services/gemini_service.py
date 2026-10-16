@@ -623,6 +623,8 @@ def _chat_response_quality(
     from app.services.pharmacist.response_policy import broad_stop_instruction
     if broad_stop_instruction(reply):
         quality_issues.append("unqualified_stop_instruction")
+    if re.search(r"(?:선생님|사용자)(?:처럼|께서는|께서|은|는|이|가)[^.!?\n]{0,20}(?:고령자|노인|임신\s*중|당뇨병?\s*환자|신장\s*질환자)(?:이|인|에|로)", reply):
+        quality_issues.append("unsupported_personal_attribute")
     if quality_issues:
         jargon_codes = sorted(
             {
@@ -1083,11 +1085,13 @@ def _summary_preserves_meaning(client, source: str, summary: str) -> bool:
     return isinstance(result, dict) and result.get("preserved") is True
 
 
-def _summarize_chat_reply(client, reply: str, *, medicine_names: tuple[str, ...] = (), force=False) -> str:
+def _summarize_chat_reply(client, reply: str, *, medicine_names: tuple[str, ...] = (), force=False, max_chars=None) -> str:
     """Condense an accepted answer, never truncate it or invent a safety conclusion."""
     if len(reply) <= CHAT_REPLY_MAX_CHARS and not force:
         return reply
     limit = min(CHAT_REPLY_MAX_CHARS, max(180, int(len(reply) * .65))) if force else CHAT_REPLY_MAX_CHARS
+    if max_chars is not None:
+        limit = min(limit, max_chars)
     from app.services.pharmacist.conversation import medicine_name_aliases, medicine_mention_position
     required_names = tuple(dict.fromkeys(
         alias for name in medicine_names
@@ -1136,7 +1140,7 @@ def _summarize_chat_reply(client, reply: str, *, medicine_names: tuple[str, ...]
             logger.warning("Gemini summary retry attempt=%d length=%d numeric_complete=%s issues=%s",
                            attempt + 1, len(summary), numeric_complete, ",".join(issues))
             if length_only_miss:
-                target_chars = max(200, target_chars - 80)
+                target_chars = max(min(200, limit), target_chars - 80)
                 feedback = (
                     f"앞 요약의 실제 길이는 {len(summary)}자로 최대 길이를 "
                     f"{len(summary) - limit}자 초과했습니다. "
@@ -1172,7 +1176,11 @@ def generate_chat_response(
     )
     if not reply:
         return INCOMPLETE_CHAT_REPLY
-    from app.services.pharmacist.conversation import evidence_medicines
+    from app.services.pharmacist.conversation import evidence_medicines, response_context
+    context = response_context()
+    if context.get("consultation_mode") == "patient_all":
+        reply = re.sub(r"선생님께서\s*드시는\s*약", "환자에게 등록된 약", reply)
+        reply = reply.replace("선생님의", "환자의")
     from app.services.chat_context_service import resolve_question_intents
     effective_intents = resolve_question_intents(message, intent)
     is_dosage = bool(effective_intents & {"dosage", "usage"})
@@ -1189,6 +1197,12 @@ def generate_chat_response(
     if dosage_notice and not reply.startswith(dosage_notice):
         reply = dosage_notice + reply
     wants_summary = bool(re.search(r"요약|짧게|간단히", message)) and len(reply) > 180
+    summary_limit = None
+    if context.get("summary_requested"):
+        previous = next((h["content"] for h in reversed(context["history"]) if h["role"] == "assistant"), None)
+        if previous:
+            summary_limit = max(1, len(previous) - 1)
+            wants_summary = True
     if len(reply) <= CHAT_REPLY_MAX_CHARS and not wants_summary:
         return reply
     medicines = [*(selected_medicines or []), *(temporary_medicines or [])]
@@ -1204,15 +1218,19 @@ def generate_chat_response(
         from google import genai
         with genai.Client(api_key=GEMINI_API_KEY) as client:
             summarized = (
-                _summarize_chat_reply(client, reply, medicine_names=names, force=True)
+                _summarize_chat_reply(client, reply, medicine_names=names, force=True,
+                                      **({"max_chars": summary_limit} if summary_limit is not None else {}))
                 if wants_summary else _summarize_chat_reply(client, reply, medicine_names=names)
             )
             if dosage_notice and not summarized.startswith(dosage_notice):
                 summarized = dosage_notice + summarized
+            if summary_limit is not None and len(summarized) > summary_limit:
+                return "안전 조건을 유지하면서 더 짧게 요약하지 못했어요. 위 답변의 약별 안내를 확인해 주세요."
             return summarized
     except Exception:
         logger.warning("Gemini summary client unavailable retained source_length=%d", len(reply))
-        return reply
+        return ("안전 조건을 유지하면서 더 짧게 요약하지 못했어요. 위 답변의 약별 안내를 확인해 주세요."
+                if summary_limit is not None else reply)
 
 
 def _generate_chat_response(
@@ -1248,6 +1266,12 @@ def _generate_chat_response(
         return "약의 양을 임의로 늘리거나 두 배로 복용하지 마세요. 현재 처방과 복용 방법을 의사나 약사에게 확인해 주세요."
 
     has_medicine_context = bool(selected_medicine or selected_medicines)
+    if not has_medicine_context:
+        from app.services.pharmacist.general_guidance import general_guidance, SOURCE
+        from app.services.pharmacist.conversation import record_source
+        if guidance := general_guidance(message):
+            record_source(SOURCE)
+            return guidance
     question_scope = classify_question_scope(
         message, has_medicine_context=has_medicine_context,
     )
@@ -1270,7 +1294,11 @@ def _generate_chat_response(
         )
 
     general_medication_question = False
-    if not has_medicine_context and intent is None:
+    compact_question = re.sub(r"\s+", "", message)
+    registered_query = any(m in compact_question for m in ("현재먹는약전체", "복용약전체", "약전체", "약마다"))
+    if not has_medicine_context and (intent is None or (general_consultation and not registered_query)):
+        if re.search(r"선택한약|이약|그약", compact_question):
+            return MEDICINE_SELECTION_REQUIRED_REPLY
         if question_scope == "needs_medicine":
             return MEDICINE_SELECTION_REQUIRED_REPLY
         general_medication_question = question_scope == "general_medication"
@@ -1289,6 +1317,7 @@ def _generate_chat_response(
     compact_message = "".join(str(message or "").split())
     all_medicines_question = (
         selected_medicine is None
+        and not selected_medicines
         and intent in {"overview", "combination", "duplicate", "precautions"}
         and any(
             marker in compact_message
@@ -1302,6 +1331,13 @@ def _generate_chat_response(
         return "일반 약 상담에서는 등록 약을 자동으로 불러오지 않아요. 궁금한 약을 검색해서 선택해 주세요."
     if general_consultation and "duplicate" in intents and not selected_medicines_question:
         return "비교할 약을 두 개 이상 검색해서 선택해 주세요. 일반 약 상담에서는 다른 사람의 등록 약을 비교 대상으로 사용하지 않아요."
+    if general_consultation and "combination" in intents and selected_medicine and not food_scope:
+        from app.services.pharmacist.conversation import medicine_name_aliases
+        remainder = message
+        for alias in medicine_name_aliases(selected_medicine.get("product_name")):
+            remainder = remainder.replace(alias, "")
+        if not re.search(r"[가-힣a-zA-Z0-9]{2,}(?:정|캡슐|시럽|주사|크림|연고|패치)", remainder):
+            return "함께 사용할 다른 약도 검색해서 선택하거나 제품명을 알려주세요. 약 하나만으로는 약끼리 함께 사용해도 되는지 비교할 수 없어요."
     unavailable_reply = (
         "현재 확인된 식약처 정보만으로는 답변하기 어려워요. "
         "현재 복용약으로 다시 확인하고, 복용 중인 약 전체를 의사 또는 약사에게 알려 주세요."
@@ -1309,7 +1345,8 @@ def _generate_chat_response(
         else "현재 식약처 공식정보를 확인할 수 없어 답변하기 어려워요. 잠시 후 다시 시도해 주세요."
     )
     if not GEMINI_API_KEY:
-        return unavailable_reply
+        return ("지금은 일반 약 안내를 불러오지 못했어요. 잠시 후 다시 시도해 주세요."
+                if general_medication_question else unavailable_reply)
 
     try:
         from google import genai
@@ -1947,7 +1984,7 @@ def _generate_chat_response(
                 record_evidence(
                     [item["식약처_공식정보"] for item in official_data_list
                      if item.get("match_type") == "exact" and (_has_requested_official_content(item["식약처_공식정보"], intents) or role_comparison)],
-                    dur=safety_question and dur_result.get("status") == "current" and bool(dur_result.get("items")),
+                    dur=safety_question and dur_result.get("status") == "current",
                 )
             if (
                 all_medicines_question

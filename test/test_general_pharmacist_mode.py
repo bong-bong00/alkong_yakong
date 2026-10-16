@@ -44,7 +44,7 @@ def test_general_single_duplicate_does_not_compare_against_own_medicines():
     assert '두 개 이상' in reply
 
 
-def test_general_single_combination_explicitly_excludes_current_medicines(monkeypatch):
+def test_general_single_combination_asks_for_partner_without_current_medicines(monkeypatch):
     from types import SimpleNamespace
     from unittest.mock import MagicMock
     from app.services.pharmacist.conversation import conversation_context
@@ -58,10 +58,10 @@ def test_general_single_combination_explicitly_excludes_current_medicines(monkey
     remote = Mock(return_value={'status':'incomplete','items':[]})
     monkeypatch.setattr(gateway,'load_remote_combination_context',remote)
     with conversation_context([]):
-        gemini.generate_chat_response('검증정과 같이 먹어도 돼요?',user_id='guardian',
+        reply = gemini.generate_chat_response('검증정과 같이 먹어도 돼요?',user_id='guardian',
             selected_medicine=medicine,intent='combination',general_consultation=True)
-    assert remote.call_args.kwargs['include_current_medicines'] is False
-    assert remote.call_args.kwargs['user_id'] == 'guardian'
+    assert '다른 약' in reply
+    remote.assert_not_called()
 
 
 def test_patient_all_uses_fresh_registered_medicines_not_old_selections():
