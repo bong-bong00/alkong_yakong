@@ -632,7 +632,7 @@ class _StatusRow extends StatelessWidget {
             ),
           const SizedBox(width: 10),
           Flexible(
-            fit: singleLine ? FlexFit.tight : FlexFit.loose,
+            fit: FlexFit.tight,
             child: singleLine
                 ? FittedBox(
                     fit: BoxFit.scaleDown,

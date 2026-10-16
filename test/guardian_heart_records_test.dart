@@ -83,6 +83,7 @@ void main() {
               patientId: 'patient-id',
               name: '김복자',
               heartRate: 114,
+              slots: [CareSlot('아침', false, recordStatus: 'scheduled')],
             ),
             position: 1,
             total: 1,
@@ -126,9 +127,17 @@ void main() {
       final labelBox = tester.getRect(find.text('최근 심박수'));
       expect(valueBox.left, greaterThanOrEqualTo(labelBox.right));
       expect(valueBox.right, lessThanOrEqualTo(320));
+      expect(
+        tester.getRect(find.text('예정')).right,
+        closeTo(valueBox.right, 1),
+      );
       expect(valueBox.center.dy, closeTo(labelBox.center.dy, 1));
       tester.view.physicalSize = const Size(390, 1600);
       await tester.pumpAndSettle();
+      expect(
+        tester.getRect(find.text('예정')).right,
+        closeTo(tester.getRect(find.text('114bpm(빠름)')).right, 1),
+      );
       await tester.tap(find.byKey(const Key('guardian-open-heart-records')));
       await tester.pumpAndSettle();
       expect(find.byType(HeartScreen), findsOneWidget);
