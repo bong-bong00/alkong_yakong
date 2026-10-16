@@ -159,6 +159,16 @@ def test_followup_returns_successfully_shortened_verified_reply():
     assert reply == '검증정은 주의하세요.' and len(reply) < len(previous)
 
 
+def test_already_shorter_fresh_answer_does_not_need_another_model_call():
+    previous = '검증정은 신장 기능이 좋지 않은 경우 의료진과 상담하세요. ' * 8
+    fresh = '검증정은 신장 기능이 좋지 않은 경우 의료진과 상담하세요.'
+    with conversation_context([dict(role='assistant', content=previous)], summary_requested=True), \
+         patch.object(gemini, '_generate_chat_response', return_value=fresh), \
+         patch.object(gemini, '_summarize_chat_reply') as summarize:
+        assert gemini.generate_chat_response('짧게 요약해 주세요.') == fresh
+    summarize.assert_not_called()
+
+
 def test_prior_answer_policy_is_invalidated():
     from app.services.pharmacist.cache_context import REPLY_POLICY_VERSION
     assert REPLY_POLICY_VERSION >= 5

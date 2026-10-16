@@ -1205,6 +1205,10 @@ def generate_chat_response(
         if previous:
             summary_limit = max(1, len(previous) - 1)
             wants_summary = True
+    if summary_limit is not None and len(reply) <= min(summary_limit, CHAT_REPLY_MAX_CHARS):
+        # The fresh, verified response already satisfies the user's request.
+        # Re-summarizing it can only add latency and introduce avoidable failure.
+        return reply
     if len(reply) <= CHAT_REPLY_MAX_CHARS and not wants_summary:
         return reply
     medicines = [*(selected_medicines or []), *(temporary_medicines or [])]
