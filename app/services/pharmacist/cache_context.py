@@ -6,7 +6,7 @@ from datetime import date
 
 from app.database import get_connection
 
-REPLY_POLICY_VERSION = 3
+REPLY_POLICY_VERSION = 4
 
 
 def health_cache_context(user_id: str) -> dict:

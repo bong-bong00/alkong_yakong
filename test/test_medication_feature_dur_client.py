@@ -74,6 +74,7 @@ class MedicationFeatureDurClientTest(unittest.TestCase):
                 "medicine_codes": ["100"],
                 "medicine_names_by_code": {"100": "등록약정"},
                 "analysis_purpose": "consultation",
+                "consultation_types": ["병용금기", "중복성분", "효능군중복"],
             },
         )
 
@@ -386,6 +387,7 @@ class MedicationFeatureDurClientTest(unittest.TestCase):
                     "200": "손입력약정",
                 },
                 "analysis_purpose": "consultation",
+                "consultation_types": ["병용금기", "중복성분", "효능군중복"],
             },
         )
 
@@ -432,6 +434,7 @@ class MedicationFeatureDurClientTest(unittest.TestCase):
                     "202": "둘째약정",
                 },
                 "analysis_purpose": "consultation",
+                "consultation_types": ["병용금기", "중복성분", "효능군중복"],
             },
         )
 
@@ -496,6 +499,7 @@ class MedicationFeatureDurClientTest(unittest.TestCase):
                     "200": "화면임시약정",
                 },
                 "analysis_purpose": "consultation",
+                "consultation_types": ["병용금기", "중복성분", "효능군중복"],
             },
         )
 

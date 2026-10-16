@@ -609,15 +609,20 @@ def _chat_response_quality(
     jargon = _unexplained_jargon(reply)
     if jargon:
         quality_issues.append("unexplained_jargon")
-    compact_reply = _compact_product_name(reply)
-    if any(
-        _compact_product_name(name) not in compact_reply
-        for name in required_medicine_names
-        if _compact_product_name(name)
-    ):
+    from app.services.pharmacist.conversation import mentioned_medicines
+    required_products = [
+        {"medicine_code": str(index), "product_name": name}
+        for index, name in enumerate(dict.fromkeys(required_medicine_names)) if name
+    ]
+    # Accept the unique verified display label without guessing another strength
+    # or a product with the same short name. Never require ingredient/export text.
+    if len(mentioned_medicines(reply, required_products)) != len(required_products):
         quality_issues.append("missing_medicine_coverage")
     if any(phrase in reply for phrase in forbidden_phrases if phrase):
         quality_issues.append("wrong_medicine_scope")
+    from app.services.pharmacist.response_policy import broad_stop_instruction
+    if broad_stop_instruction(reply):
+        quality_issues.append("unqualified_stop_instruction")
     if quality_issues:
         jargon_codes = sorted(
             {
@@ -884,6 +889,11 @@ def _confirmed_zero_messages(
             if selected_medicine is not None
             else "확인한 약들 사이에서 함께 먹으면 안 되는 조합은 확인되지 않았어요."
         )
+    if "duplicate" in intents:
+        if "중복성분" in zero_types:
+            messages.append("확인한 약들 사이에서 같은 성분의 중복은 확인되지 않았어요.")
+        if "효능군중복" in zero_types:
+            messages.append("식약처 함께먹기 검사 기준에 등재된 비슷한 효과의 중복은 확인되지 않았어요. 이는 허가된 사용 목적이 서로 다르다는 뜻은 아니에요.")
     user_context = dur_result.get("user_context") or {}
     if (
         "age" in intents
@@ -933,7 +943,9 @@ def _dur_no_match_reply(
             "끝까지 확인하지 못했어요. 복용 전 의사나 약사와 상담해 주세요."
         )
     if zero_messages:
-        if "combination" in intents and selected_medicine is None:
+        if intents & {"combination", "interaction", "duplicate"}:
+            zero_messages.append("이 결과가 모든 상호작용이나 개인별 복용 안전성을 보장하지는 않아요.")
+        if intents & {"combination", "duplicate"} and selected_medicine is None:
             return " ".join(
                 [*zero_messages, "더 궁금한 점이 있으면 의사나 약사와 상담해 주세요."]
             )
@@ -1071,10 +1083,11 @@ def _summary_preserves_meaning(client, source: str, summary: str) -> bool:
     return isinstance(result, dict) and result.get("preserved") is True
 
 
-def _summarize_chat_reply(client, reply: str, *, medicine_names: tuple[str, ...] = ()) -> str:
+def _summarize_chat_reply(client, reply: str, *, medicine_names: tuple[str, ...] = (), force=False) -> str:
     """Condense an accepted answer, never truncate it or invent a safety conclusion."""
-    if len(reply) <= CHAT_REPLY_MAX_CHARS:
+    if len(reply) <= CHAT_REPLY_MAX_CHARS and not force:
         return reply
+    limit = min(CHAT_REPLY_MAX_CHARS, max(180, int(len(reply) * .65))) if force else CHAT_REPLY_MAX_CHARS
     from app.services.pharmacist.conversation import medicine_name_aliases, medicine_mention_position
     required_names = tuple(dict.fromkeys(
         alias for name in medicine_names
@@ -1092,7 +1105,7 @@ def _summarize_chat_reply(client, reply: str, *, medicine_names: tuple[str, ...]
         "검사 미완료를 정상 0건으로 바꾸지 마세요. 어려운 용어는 쉬운 말로 바꾸세요. "
         "요약문만 반환하세요.\n" + CHAT_LENGTH_INSTRUCTION
     )
-    target_chars = 420
+    target_chars = min(420, limit)
     feedback = ""
     # Length-only misses get further compression attempts; unsafe/failed output
     # keeps the bounded two-attempt policy instead of repeatedly regenerating it.
@@ -1115,8 +1128,8 @@ def _summarize_chat_reply(client, reply: str, *, medicine_names: tuple[str, ...]
                 response, required_medicine_names=required_names,
             )
             numeric_complete = numbers <= set(re.findall(r"\d+(?:\.\d+)?", summary))
-            length_only_miss = complete and numeric_complete and len(summary) > CHAT_REPLY_MAX_CHARS
-            if (complete and numeric_complete and len(summary) <= CHAT_REPLY_MAX_CHARS
+            length_only_miss = complete and numeric_complete and len(summary) > limit
+            if (complete and numeric_complete and len(summary) <= limit
                     and _summary_preserves_meaning(client, reply, summary)):
                 logger.warning("Gemini summary accepted source_length=%d response_length=%d", len(reply), len(summary))
                 return summary
@@ -1126,7 +1139,7 @@ def _summarize_chat_reply(client, reply: str, *, medicine_names: tuple[str, ...]
                 target_chars = max(200, target_chars - 80)
                 feedback = (
                     f"앞 요약의 실제 길이는 {len(summary)}자로 최대 길이를 "
-                    f"{len(summary) - CHAT_REPLY_MAX_CHARS}자 초과했습니다. "
+                    f"{len(summary) - limit}자 초과했습니다. "
                     f"아래 초안을 더 압축하되 원문의 필수 조건을 보존하세요.\n"
                     f"[압축할 초안]\n{summary}\n[/압축할 초안]"
                 )
@@ -1158,16 +1171,23 @@ def generate_chat_response(
     if not reply:
         return INCOMPLETE_CHAT_REPLY
     from app.services.pharmacist.conversation import evidence_medicines
+    from app.services.chat_context_service import resolve_question_intents
+    effective_intents = resolve_question_intents(message, intent)
+    is_dosage = bool(effective_intents & {"dosage", "usage"})
+    if is_dosage:
+        from app.services.pharmacist.response_policy import label_dosage_voice
+        reply = label_dosage_voice(reply)
     # Verified label information is not an individual prescription. Keep this
     # distinction even when the model or final summarizer omits the instruction.
     dosage_notice = (
         "다음은 공식 설명서의 일반 용법 안내예요. 실제 복용은 처방·약사 안내를 따라 주세요.\n"
-        if intent == "dosage" and evidence_medicines()
+        if is_dosage and evidence_medicines()
         else ""
     )
     if dosage_notice and not reply.startswith(dosage_notice):
         reply = dosage_notice + reply
-    if len(reply) <= CHAT_REPLY_MAX_CHARS:
+    wants_summary = bool(re.search(r"요약|짧게|간단히", message)) and len(reply) > 180
+    if len(reply) <= CHAT_REPLY_MAX_CHARS and not wants_summary:
         return reply
     medicines = [*(selected_medicines or []), *(temporary_medicines or [])]
     if selected_medicine:
@@ -1181,7 +1201,10 @@ def generate_chat_response(
     try:
         from google import genai
         with genai.Client(api_key=GEMINI_API_KEY) as client:
-            summarized = _summarize_chat_reply(client, reply, medicine_names=names)
+            summarized = (
+                _summarize_chat_reply(client, reply, medicine_names=names, force=True)
+                if wants_summary else _summarize_chat_reply(client, reply, medicine_names=names)
+            )
             if dosage_notice and not summarized.startswith(dosage_notice):
                 summarized = dosage_notice + summarized
             return summarized
@@ -1218,6 +1241,8 @@ def _generate_chat_response(
 
     if general_reply := general_conversation_reply(message):
         return general_reply
+    if re.search(r"두\s*배|2\s*배|임의로.*(?:늘|증량)", message):
+        return "약의 양을 임의로 늘리거나 두 배로 복용하지 마세요. 현재 처방과 복용 방법을 의사나 약사에게 확인해 주세요."
 
     has_medicine_context = bool(selected_medicine or selected_medicines)
     question_scope = classify_question_scope(
@@ -1245,6 +1270,13 @@ def _generate_chat_response(
         general_medication_question = question_scope == "general_medication"
 
     intents = resolve_question_intents(message, intent)
+    from app.services.pharmacist.response_policy import food_only_question
+    food_scope = food_only_question(message)
+    if food_scope:
+        # The existing food suggestion carries intent=combination. That is a
+        # label/food question, not a request for a drug-pair DUR verdict.
+        intents = {"precautions"}
+    role_comparison = "duplicate" in intents and bool(re.search(r"비슷|효능|효과|역할", message))
     safety_question = is_safety_question(intents)
     compact_message = "".join(str(message or "").split())
     all_medicines_question = (
@@ -1327,7 +1359,7 @@ def _generate_chat_response(
                 )
 
             required_fields = (
-                {"ingredient"}
+                ({"ingredient", "efficacy"} if role_comparison else {"ingredient"})
                 if intents & {"combination", "duplicate"}
                 else _required_official_fields(intents)
             )
@@ -1613,6 +1645,12 @@ def _generate_chat_response(
                 and item.get("식약처_공식정보")
             ]
             official_contexts = [item for item in official_contexts if item]
+            if food_scope:
+                for context in official_contexts:
+                    original = next((item["식약처_공식정보"] for item in official_data_list
+                        if item.get("식약처_공식정보", {}).get("medicine_code") == context.get("medicine_code")), {})
+                    if original.get("interaction"):
+                        context["interaction"] = original["interaction"]
             if "combination" in intents or (
                 (all_medicines_question or selected_medicines_question)
                 and "duplicate" in intents
@@ -1714,12 +1752,20 @@ def _generate_chat_response(
                     all_medicines=all_medicines_question,
                 )
                 if dur_result.get("status") == "incomplete" and dur_result.get("items"):
-                    return _partial_dur_warning_reply(dur_result["items"], notice)
+                    notice = _partial_dur_warning_reply(dur_result["items"], notice)
+                # A failed complete assessment must remain explicitly incomplete,
+                # but must not suppress already verified label precautions.
+                from app.services.pharmacist.response_policy import official_excerpt_reply
+                label_reply = official_excerpt_reply(official_contexts, {"precautions"})
+                if label_reply and "“" in label_reply:
+                    record_evidence([item["식약처_공식정보"] for item in official_data_list if item.get("match_type") == "exact"])
+                    return notice + "\n" + label_reply
                 return notice
             if (
                 safety_question
                 and dur_result["status"] == "current"
                 and not dur_result["items"]
+                and not role_comparison
             ):
                 record_evidence(
                     [item["식약처_공식정보"] for item in official_data_list if item.get("match_type") == "exact"],
@@ -1777,6 +1823,22 @@ def _generate_chat_response(
                 dur_result=prompt_dur_result,
             )
             prompt += dialogue_prompt()
+            if food_scope:
+                prompt += (
+                    "\n이번 질문은 음식·음료와 약에 관한 질문입니다. 약끼리의 병용검사 결과로 대체하지 마세요. "
+                    "질문에 나온 음식·음료에 관한 공식 문장만 답하고, 없으면 관련 내용을 확인하지 못했다고 하세요. "
+                    "음식 관련 안내가 없다는 것을 함께 먹어도 안전하다는 뜻으로 바꾸지 마세요."
+                )
+            if role_comparison:
+                prompt += (
+                    "\n같은 성분인지, DUR에 등재된 효능군 중복인지, 허가 효능의 사용 목적이 비슷한지는 서로 다릅니다. "
+                    "각 약의 공식 효능을 근거로 사용 목적을 비교해 답하세요. DUR 중복 0건을 효능이 전혀 다르거나 함께 먹어도 안전하다고 바꾸지 마세요. "
+                    "의학적 계열을 추측하지 말고 허가 효능 문구에서 확인되는 공통 목적만 설명하세요. 약을 서로 대체하거나 임의로 중단하라고 권하지 마세요."
+                )
+            prompt += (
+                "\n설명서의 일반 용법은 '설명서에 기재되어 있어요'로 설명하고 사용자에게 용량을 정해 '드세요'라고 지시하지 마세요. "
+                "이상반응은 원문의 증상별 조건을 유지하세요. 여러 경미한 증상까지 한데 묶어 '이러한 증상이면 즉시 중단'으로 일반화하지 마세요."
+            )
             prompt += "\n출처 표시는 서버가 별도로 처리합니다. 답변 본문에 출처·참고자료 표기를 생성하지 마세요."
             if all_medicines_question or selected_medicines_question:
                 verified_count = len(official_contexts)
@@ -1829,7 +1891,7 @@ def _generate_chat_response(
             required_names = (
                 tuple(verified_all_medicine_names)
                 if (all_medicines_question or selected_medicines_question)
-                and bool(intents & {"overview", "precautions"})
+                and (bool(intents & {"overview", "precautions"}) or role_comparison)
                 else ()
             )
             forbidden_phrases: tuple[str, ...] = ()
@@ -1853,7 +1915,7 @@ def _generate_chat_response(
                 prompt=prompt,
                 max_output_tokens=(
                     1024
-                    if bool(intents & {"dosage", "usage", "precautions"})
+                    if bool(intents & {"dosage", "usage", "precautions"}) or role_comparison
                     else 512
                 ),
                 required_medicine_names=required_names,
@@ -1863,10 +1925,15 @@ def _generate_chat_response(
                 reply,
                 confirmed_zero_messages,
             )
+            if reply == INCOMPLETE_CHAT_REPLY and (not safety_question or role_comparison):
+                from app.services.pharmacist.response_policy import official_excerpt_reply
+                fallback = official_excerpt_reply(official_contexts, {"efficacy"} if role_comparison else intents, food=food_scope)
+                if fallback:
+                    reply = _prepend_confirmed_zero_messages(fallback, confirmed_zero_messages)
             if reply != INCOMPLETE_CHAT_REPLY:
                 record_evidence(
                     [item["식약처_공식정보"] for item in official_data_list
-                     if item.get("match_type") == "exact" and _has_requested_official_content(item["식약처_공식정보"], intents)],
+                     if item.get("match_type") == "exact" and (_has_requested_official_content(item["식약처_공식정보"], intents) or role_comparison)],
                     dur=safety_question and dur_result.get("status") == "current" and bool(dur_result.get("items")),
                 )
             if (

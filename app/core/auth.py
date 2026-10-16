@@ -384,6 +384,10 @@ async def require_authorized_request(
             or (method == "POST" and path in {
                 "/api/v1/prescriptions/ocr", "/api/v1/prescriptions/confirm"
             })
+            or (service_role() == "main" and claims["role"] == "guardian" and (
+                (method == "POST" and path == "/api/v1/drug-explain/chat")
+                or (method == "GET" and path == "/api/v1/drug-explain/cache-context")
+            ))
             or (method == "POST" and len(segments) == 7
                 and segments[:3] == ["api", "v1", "users"]
                 and segments[4] == "prescriptions" and segments[6] == "schedule-days")

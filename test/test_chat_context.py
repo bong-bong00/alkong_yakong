@@ -920,7 +920,8 @@ class ChatContextTest(unittest.TestCase):
             intent="duplicate",
             e_drug_result=None,
         )
-        self.assertIn("성분이나 비슷한 효과가 겹친다는 정보를 확인한 공식 자료에서는 찾지 못했어요", reply)
+        self.assertIn("같은 성분의 중복은 확인되지 않았어요", reply)
+        self.assertIn("검사 기준에 등재된 비슷한 효과의 중복은 확인되지 않았어요", reply)
         self.assertIn("더 궁금하시면 의사나 약사와 상담해 주세요.", reply)
         self.assertNotIn("모든 위험이 없다는 뜻은 아니에요", reply)
         self.assertEqual(

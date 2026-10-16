@@ -6,6 +6,8 @@ import '../../../../core/network/api_client.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../core/widgets/senior_card.dart';
 import '../../../../core/widgets/senior_header.dart';
+import '../../../../core/widgets/senior_button.dart';
+import '../../../drug_explain/drug_explain_screen.dart';
 import '../../../dashboard/presentation/screens/patient_data.dart';
 import '../../../medicines/application/user_medicines_controller.dart';
 import '../../../medicines/domain/user_medicine_models.dart';
@@ -97,6 +99,22 @@ class CarePatientScreen extends ConsumerWidget {
                     const SizedBox(height: 12),
                   ],
                   _MedicineListCard(medicines: medicines),
+                  const SizedBox(height: 12),
+                  SeniorButton(
+                    label: '${patient.title} 님 약사 상담',
+                    subLabel: '이 분의 약과 건강정보로 물어봐요',
+                    kind: SeniorButtonKind.secondary,
+                    onPressed: profile == null
+                        ? null
+                        : () => Navigator.of(context).push(
+                            MaterialPageRoute<void>(
+                              builder: (_) => DrugExplainScreen(
+                                patientId: patient.patientId,
+                                patientName: patient.title,
+                              ),
+                            ),
+                          ),
+                  ),
                   const SizedBox(height: 12),
                   SeniorCard(
                     padding: const EdgeInsets.symmetric(

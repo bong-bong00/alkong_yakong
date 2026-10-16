@@ -114,6 +114,8 @@ def _health_terms(profile: dict[str, Any]) -> list[str]:
     terms = [*profile["diseases"], *profile["past_illnesses"], *profile["allergies"]]
     aliases = {
         "콩팥병": ["콩팥", "신장"], "간·콩팥병": ["간장애", "간질환", "신장", "콩팥"],
+        "신장질환": ["신장", "콩팥"], "신장병": ["신장", "콩팥"],
+        "간질환": ["간장애", "간질환"],
         "당뇨": ["당뇨"], "심장병": ["심장"], "페니실린": ["페니실린"],
     }
     candidates = [term for value in terms for term in aliases.get(value, [value])]
@@ -256,6 +258,9 @@ def generate_health_reply(
         return delivered(fallback)
     prompt = (build_health_prompt(message, profile, relevant, incomplete=incomplete) + dialogue_prompt()
               + "\n출처 표시는 서버가 별도로 처리합니다. 답변 본문에 출처·참고자료 표기를 생성하지 마세요.")
+    prompt += '\n약별로 빠뜨리지 말아야 할 등록 건강 항목(새 진단 아님): ' + json.dumps([
+        {'약': item['display_name'], '관련항목': _matched_groups(item['cautions'], terms)}
+        for item in relevant], ensure_ascii=False)
     try:
         from google import genai
 
@@ -268,13 +273,13 @@ def generate_health_reply(
             if not reply or reply == gemini.INCOMPLETE_CHAT_REPLY:
                 return delivered(fallback)
             # Existing verifier rejects invented/changed conditions, not just length.
-            if not _reply_grounded(client, profile, relevant, reply):
+            if not _coverage_complete(reply, relevant, terms) or not _reply_grounded(client, profile, relevant, reply):
                 return delivered(fallback)
             if len(reply) > 500:
                 reply = gemini._summarize_chat_reply(
                     client, reply, medicine_names=tuple(item["display_name"] for item in relevant),
                 )
-                if not _reply_grounded(client, profile, relevant, reply):
+                if not _coverage_complete(reply, relevant, terms) or not _reply_grounded(client, profile, relevant, reply):
                     return delivered(fallback)
             # Coverage notices and closing are server-owned, not model-dependent.
             reply = reply.replace(CONSULT, "").strip()
@@ -348,7 +353,8 @@ def _evidence_reply(official, terms, notice: str) -> str:
     """
     from app.services.pharmacist.plain_language import explain_health_terms
     parts = []
-    closing = "\n" + CONSULT
+    omitted = False
+    closing = "\n약의 양·복용 간격 변경은 의료진에게 확인해 주세요. " + CONSULT
     limited_notice = "\n일부 핵심 내용만 안내했어요."
     budget = 600 - len(notice) - len(closing) - len(limited_notice)
     for index, item in enumerate(official):
@@ -357,31 +363,68 @@ def _evidence_reply(official, terms, notice: str) -> str:
         label = item.get("display_name") or str(item["product_name"]).split("(", 1)[0].strip()
         share = (budget - len("\n".join(parts))) // max(1, len(official) - index) - 1
         excerpts = _warning_excerpts(source, matches)
-        plain = next((value for unit in excerpts if (value := _plain_warning(unit))), None)
         chosen = []
-        for unit in excerpts:
-            if len(explain_health_terms(" ".join([*chosen, unit]))) + len(label) + 11 <= share:
-                chosen.append(unit)
-            if len(chosen) == 2:
-                break
+        covered = set()
+        groups = _matched_groups(source, terms)
+        # Cover distinct registered conditions, not just the first short alcohol
+        # sentence. Never shorten an unknown clinical qualification to fit.
+        ranked = sorted(excerpts, key=lambda unit: (-sum(any(_mentions(unit, t) for t in group) for group in groups), len(unit)))
+        for unit in ranked:
+            hits = {i for i, group in enumerate(groups) if any(_mentions(unit, t) for t in group)}
+            if hits and hits <= covered: continue
+            value = _plain_warning(unit) or f'공식 주의: “{unit}”'
+            if len(explain_health_terms(" ".join([*chosen, value]))) + len(label) + 3 <= share:
+                chosen.append(value)
+                covered |= hits
         paragraph = " ".join(chosen) or None
-        detail = plain or (f'공식 주의: “{paragraph}”' if paragraph else
-                  "긴 주의사항의 적용 조건은 의사나 약사에게 확인해 주세요.")
+        missing = ["/".join(group) for i, group in enumerate(groups) if i not in covered]
+        omitted = omitted or bool(missing)
+        detail = paragraph or "긴 주의사항의 적용 조건은 의사나 약사에게 확인해 주세요."
+        if missing:
+            detail += ' 추가 확인: ' + ', '.join(missing) + '.'
         if item.get("등록_알레르기와_일치한_공식_성분명"):
             detail = (
                 "등록한 알레르기명과 공식 성분명이 일치하며, "
                 "공식 주의사항에 과민반응 관련 안내가 있어요."
             )
             if paragraph:
-                detail += f' 공식 주의사항: “{paragraph}”'
+                detail += ' ' + paragraph
         part = explain_health_terms(f"{label}: {detail}")
         if len("\n".join([*parts, part])) > budget:
             break
         parts.append(part)
     if not parts:
         parts = ["등록한 건강 정보와 관련될 수 있는 공식 주의사항이 있어요."]
-    limited = limited_notice if len(parts) < len(official) else ""
+    limited = limited_notice if omitted or len(parts) < len(official) else ""
     return notice + "\n".join(parts) + limited + closing
+
+
+def _matched_groups(source, terms):
+    aliases = (("신장", "콩팥"), ("알코올", "알콜", "음주", "술", "에탄올"),
+               ("당뇨", "당뇨병"), ("간장애", "간질환"))
+    groups = []
+    for term in terms:
+        group = next((a for a in aliases if term in a), (term,))
+        if group not in groups and any(_mentions(source, value) for value in group):
+            groups.append(group)
+    return groups
+
+
+def _coverage_complete(reply, official, terms):
+    from app.services.pharmacist.conversation import medicine_name_aliases, medicine_mention_position
+    positions = []
+    for item in official:
+        hits = [p for alias in medicine_name_aliases(item['product_name'])
+                if (p := medicine_mention_position(reply, alias)) is not None]
+        if not hits: return False
+        positions.append((min(hits), item))
+    positions.sort(key=lambda pair: pair[0])
+    for i, (start, item) in enumerate(positions):
+        section = reply[start:positions[i+1][0] if i+1 < len(positions) else len(reply)]
+        if any(not any(_mentions(section, term) for term in group)
+               for group in _matched_groups(item['cautions'], terms)):
+            return False
+    return True
 
 
 def _reply_grounded(client, profile, official, reply) -> bool:
@@ -429,10 +472,10 @@ past_history가 true인데 병명 배열이 비면 과거 병명을 모르는 �
 문자열이 겹쳐도 개인에게 해당한다고 확정하지 말고 원문의 적용 조건을 그대로 설명하세요.
 공식 주의사항에 근거가 있는 내용만 약 이름과 함께 설명하세요.
 각 약은 display_name으로 표시하세요. 성분명 괄호·수출명은 답변에 쓰지 마세요.
-약마다 건강정보와 연결되는 중요한 주의사항 1~2개를 실제 행동과 이유로 설명하세요.
+약마다 건강정보와 연결되는 항목별 주의사항을 실제 행동과 이유로 설명하세요. 음주 한 가지만 설명하고 신장질환·천식 등 다른 관련 항목을 누락하지 마세요.
 건강정보 전체를 서두에 나열하지 마세요. '관련 내용이 있어요'라는 키워드 나열로 대신하지 마세요.
 인사·서론 없이 약별 짧은 문단으로 바로 시작하세요. 관련 없는 건강정보나 알레르기 미일치 설명은 쓰지 마세요.
-음주 관련 공식 안내가 있으면 술을 마실 때의 구체적인 주의를 우선 설명하세요.
+음주 관련 공식 안내도 다른 등록 질환의 주의와 함께 설명하세요. 분량을 위해 관련 질환을 조용히 생략하지 마세요.
 신장애는 '콩팥 기능 저하', 간장애는 '간 기능 저하'처럼 쉬운 말로 설명하세요.
 QT 간격 연장·저칼륨혈증·저마그네슘혈증·Torsade de pointes 같은 전문 용어를 설명 없이 나열하지 마세요.
 꼭 필요한 용어는 같은 문장에서 쉬운 뜻을 설명하고, 관련 없는 전문 문단 전체를 옮기지 마세요.

@@ -46,7 +46,30 @@ def client(tmp_path, monkeypatch):
     def today(user_id: str):
         return {"user_id": user_id, "doses": []}
 
+    @api.get("/api/v1/drug-explain/cache-context")
+    def cache_context(user_id: str):
+        return {"verified": True, "fingerprint": user_id}
+
     return TestClient(api)
+
+
+def test_guardian_chat_and_cache_are_bound_to_current_accepted_patient(client):
+    patient = signup(client)
+    guardian = signup(client, '01033334444', 'guardian')
+    other = signup(client, '01055556666')
+    body = {'user_id': patient['id'], 'message': '주의사항'}
+    cache = '/api/v1/drug-explain/cache-context?user_id=' + patient['id']
+    assert client.post('/api/v1/drug-explain/chat', headers=header(guardian), json=body).status_code == 403
+    assert client.get(cache, headers=header(guardian)).status_code == 403
+    link = client.post('/api/v1/guardians/link-requests', headers=header(guardian), json={
+        'guardian_user_id': guardian['id'], 'patient_phone': '01011112222'}).json()['id']
+    assert client.patch('/api/v1/guardians/' + link, headers=header(patient), json={'status': 'ACCEPTED'}).status_code == 200
+    assert client.post('/api/v1/drug-explain/chat', headers=header(guardian), json=body).status_code == 200
+    assert client.get(cache, headers=header(guardian)).status_code == 200
+    assert client.post('/api/v1/drug-explain/chat', headers=header(guardian), json={**body, 'user_id': other['id']}).status_code == 403
+    assert client.delete('/api/v1/guardians/' + link, headers=header(patient)).status_code == 204
+    assert client.post('/api/v1/drug-explain/chat', headers=header(guardian), json=body).status_code == 403
+    assert client.get(cache, headers=header(guardian)).status_code == 403
 
 
 def signup(client, phone="01011112222", role="patient"):

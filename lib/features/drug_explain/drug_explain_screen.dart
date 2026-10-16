@@ -25,12 +25,16 @@ class DrugExplainScreen extends StatefulWidget {
 
   /// 약 자세히에서 "이 약 물어보기"로 들어오면 그 약을 고른 채로 연다.
   final String? initialMedicine;
+  final String? patientId;
+  final String? patientName;
 
   const DrugExplainScreen({
     super.key,
     this.apiClient,
     this.medicationApiClient,
     this.initialMedicine,
+    this.patientId,
+    this.patientName,
   });
 
   @override
@@ -66,28 +70,49 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
   final List<Map<String, dynamic>> _messages = [];
   int _conversationStart = 0;
   final _conversationStore = PharmacistConversationStore();
-  late final String _conversationUserId = MvpSession.userId;
+  late final String _signedInUserId;
+  late final String _subjectUserId;
+  // A guardian's own chat and every patient's chat have separate histories
+  // and answer caches. Never change the globally signed-in session identity.
+  late final String _conversationUserId;
   String? _conversationId;
   final _answerCache = PharmacistAnswerCache();
   String? _healthFingerprint;
   String? _medicineFingerprint;
   DateTime? _contextVerifiedAt;
+  bool _guardianAccessVerified = false;
 
   Future<void> _refreshCacheContext() async {
     _healthFingerprint = null;
     _contextVerifiedAt = null;
+    _guardianAccessVerified = false;
     try {
       final result = await _apiClient.get(
-        '/api/v1/drug-explain/cache-context?user_id=${Uri.encodeComponent(_conversationUserId)}',
+        '/api/v1/drug-explain/cache-context?user_id=${Uri.encodeComponent(_subjectUserId)}',
+        allowCache: widget.patientId == null,
       );
       if (result is Map &&
           result['verified'] == true &&
           result['fingerprint'] is String) {
         _healthFingerprint = result['fingerprint'] as String;
         _contextVerifiedAt = DateTime.now();
+        _guardianAccessVerified = true;
       }
     } catch (_) {
       // Unknown health state permits historical viewing, never automatic reuse.
+    }
+    if (widget.patientId != null && !_guardianAccessVerified && mounted) {
+      setState(() {
+        _messages.clear();
+        _selectedMedicines.clear();
+        _temporaryMedicinesByCode.clear();
+        _searchedMedicines.clear();
+        _medicines.clear();
+        _officialMedicinesByName.clear();
+        _confirmedOfficialProductNames.clear();
+        _conversationStart = 0;
+        _conversationId = null;
+      });
     }
   }
 
@@ -101,6 +126,7 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
   }
 
   Future<void> _saveConversation() async {
+    if (MvpSession.userId != _signedInUserId) return;
     final messages = _messages
         .skip(_conversationStart)
         .where((message) => message['createdAt'] != null)
@@ -138,6 +164,7 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
 
   Future<void> _openPreviousConversations() async {
     if (_isLoading || _isLoadingMedicines) return;
+    if (!await _canUsePatientContext()) return;
     try {
       final records = await _conversationStore.load(_conversationUserId);
       if (!mounted) return;
@@ -370,6 +397,11 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
   @override
   void initState() {
     super.initState();
+    _signedInUserId = MvpSession.userId;
+    _subjectUserId = widget.patientId ?? _signedInUserId;
+    _conversationUserId = widget.patientId == null
+        ? _signedInUserId
+        : '$_signedInUserId::patient::${widget.patientId}';
     WidgetsBinding.instance.addObserver(this);
     _apiClient = widget.apiClient ?? ApiClient();
     _medicationApiClient =
@@ -401,6 +433,9 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
 
   /// 머리말 인사. 약을 고르면 그 약 이야기로 좁혀 말한다.
   String _greeting(String userName) {
+    if (widget.patientId != null) {
+      return '${widget.patientName ?? '연결된 환자'} 님의 약과 건강정보에 관해 물어보세요.';
+    }
     // 인사에는 고른 약 이름을 다 적는다 — 무엇을 놓고 말하는지 한 번은
     // 정확히 보여 드린다. 위 칸은 좁아서 "외 1개"로 줄인다.
     if (_selectedMedicines.isNotEmpty) {
@@ -479,7 +514,10 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
       );
     }
 
-    for (final item in MvpSession.latestOcrItems) {
+    for (final item
+        in widget.patientId == null
+            ? MvpSession.latestOcrItems
+            : <Map<String, dynamic>>[]) {
       final officialName = firstText([
         item['official_product_name'],
         item['product_name'],
@@ -499,7 +537,7 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
       );
     }
 
-    final userId = MvpSession.userId.trim();
+    final userId = _subjectUserId.trim();
     if (userId.isEmpty) {
       if (!mounted) return;
       setState(() {
@@ -524,6 +562,7 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
     try {
       final response = await _medicationApiClient.get(
         '/api/v1/users/${Uri.encodeComponent(userId)}/medicines',
+        allowCache: widget.patientId == null,
       );
       final payload = Map<String, dynamic>.from(response as Map);
       final medicines = payload['medicines'];
@@ -711,6 +750,8 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
     bool forceRefresh = false,
   }) async {
     if (_isLoading) return;
+    if (!await _canUsePatientContext()) return;
+    if (_isLoading || !mounted) return;
 
     final text = (message ?? _chatController.text).trim();
     if (text.isEmpty) return;
@@ -786,7 +827,7 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
             }.toList(growable: false);
       // 선택 범위와 최근 대화를 실제 AI 약사 상담 API에 전달한다.
       final body = <String, dynamic>{
-        'user_id': MvpSession.userId,
+        'user_id': _subjectUserId,
         'message': requestText,
         'recent_history': recentHistory,
       };
@@ -926,7 +967,9 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
             error.statusCode == null ||
             error.statusCode == 408 ||
             (error.statusCode ?? 0) >= 500;
-        final old = unavailable ? historicalAnswer : null;
+        final old = unavailable && widget.patientId == null
+            ? historicalAnswer
+            : null;
         final response = old?['response'] as Map?;
         _messages.add({
           'isMe': false,
@@ -968,6 +1011,30 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
     return RegExp(
       r'[0-9A-Za-z가-힣]{2,}(?:정|캡슐|연질|시럽|주사|액|패치|크림|산)(?=과|와|은|는|이|가|을|를|에|의|도|만|,|\s|$)',
     ).hasMatch(text.trim());
+  }
+
+  Future<bool> _canUsePatientContext() async {
+    if (MvpSession.userId != _signedInUserId) {
+      if (mounted) {
+        showSeniorSnackbar(
+          context,
+          '로그인 계정이 바뀌었어요. 상담 화면을 다시 열어 주세요.',
+          error: true,
+        );
+      }
+      return false;
+    }
+    if (widget.patientId == null) return true;
+    await _refreshCacheContext();
+    if (!mounted) return false;
+    if (MvpSession.userId != _signedInUserId) return false;
+    if (_guardianAccessVerified) return true;
+    showSeniorSnackbar(
+      context,
+      '환자 연결 권한을 확인하지 못했어요. 연결 상태와 인터넷을 확인해 주세요.',
+      error: true,
+    );
+    return false;
   }
 
   bool _isGeneralCoffeeMedicineQuestion(String text) {
@@ -1028,6 +1095,12 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
                             style: AppText.screenTitle(size: 28),
                           ),
                         ),
+                        if (widget.patientId != null)
+                          Text(
+                            '${widget.patientName ?? '연결된 환자'} 님 대신 상담',
+                            key: const ValueKey('guardian-chat-subject'),
+                            style: AppText.body(size: 15),
+                          ),
                       ],
                     ),
                   ),

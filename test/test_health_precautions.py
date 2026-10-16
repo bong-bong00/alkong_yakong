@@ -273,7 +273,7 @@ def test_generated_health_reply_also_explains_technical_terms(context, monkeypat
     monkeypatch.setattr(gemini, "GEMINI_API_KEY", "test-key")
     monkeypatch.setattr("google.genai.Client", MagicMock())
     monkeypatch.setattr(gemini, "_generate_complete_chat_reply", lambda *args, **kwargs:
-                        "확인약정: 고혈압 관련 안내와 QT 간격 연장, 저칼륨혈증이 있으면 사용하지 마세요.")
+                        "확인약정: 고혈압과 음주 관련 안내와 QT 간격 연장, 저칼륨혈증이 있으면 사용하지 마세요.")
     monkeypatch.setattr(health, "_reply_grounded", lambda *args: True)
     result = ask(selected_medicine=MEDICINE)
     assert "QT 간격 연장(심장이 다음 박동" in result

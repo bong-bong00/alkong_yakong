@@ -35,7 +35,7 @@ class ApiClient {
     }
   }
 
-  Future<dynamic> get(String path) async {
+  Future<dynamic> get(String path, {bool allowCache = true}) async {
     final generation = SessionCredentials.generation;
     try {
       final data = await _send(
@@ -53,7 +53,7 @@ class ApiClient {
           path,
           generation,
         );
-        if (cached != null) return cached;
+        if (allowCache && cached != null) return cached;
       }
       rethrow;
     }

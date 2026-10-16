@@ -43,11 +43,13 @@ def main():
         'DEMO_SEED_ENABLED': 'false', 'DUR_AUTO_SYNC': 'false',
         'MFDS_DRUG_PERMISSION_DB_PATH': str(output.parent / 'qa-mfds.db'),
         'EASY_CATEGORY_MAP_DB_PATH': str(output.parent / 'qa-easy.db')})
-    from init_db import TABLE_DEFINITIONS
+    from init_db import TABLE_DEFINITIONS, INDEXES
     user_id = 'qa-synthetic-' + secrets.token_hex(8)
     with sqlite3.connect(db) as connection:
         for definition in TABLE_DEFINITIONS.values():
             connection.execute(definition)
+        for statement in INDEXES:
+            connection.execute(statement)
         connection.execute('INSERT INTO users(id,name,role,birth_date,diseases,past_illnesses,allergies,smoking,drinking) '
             'VALUES(?,?,?,?,?,?,?,?,?)', (user_id, 'Synthetic QA', 'PATIENT', '1950-05-05',
             json.dumps(['신장질환', '당뇨', '천식']), json.dumps(['고혈압']), json.dumps(['페니실린']), '폈어요', '자주 마셔요'))
@@ -81,10 +83,13 @@ def main():
         if kwargs.get('selected_medicine'):
             items = [kwargs['selected_medicine'], *items]
         request = DurAnalyzeRequest(user_id=user_id, medicine_codes=[m['medicine_code'] for m in items],
-            medicine_names_by_code={m['medicine_code']: m['product_name'] for m in items}, analysis_purpose='consultation')
+            medicine_names_by_code={m['medicine_code']: m['product_name'] for m in items}, analysis_purpose='consultation',
+            consultation_types=sorted(kwargs.get('requested_types', set())))
         data = analyze_dur(request, persist=False, refresh=True)
         matches = [m for m in data.get('matches', []) if m.get('type') in kwargs.get('requested_types', set())]
-        complete = data.get('analysis_complete') is True and not data.get('incomplete')
+        # Age/pregnancy checks are intentionally not part of this pair query.
+        requested = set(kwargs.get('requested_types', set()))
+        complete = not (requested & set(data.get('incomplete_types', [])))
         return {'status': 'current' if complete else 'incomplete', 'items': matches,
             'has_risk': bool(matches) if complete or matches else None,
             'zero_result_types': list(kwargs.get('requested_types', set())) if complete and not matches else [],
@@ -111,6 +116,9 @@ def main():
         ('combination', '이 세 약을 함께 먹을 때 주의할 점이 있는지 확인해 주세요.', MEDICINES),
         ('duplicate', '이 세 약 사이에 같은 성분이나 비슷한 역할이 겹치는지 확인해 주세요.', MEDICINES),
         ('health_precautions', '등록한 질환, 과거력, 알레르기, 흡연과 음주 정보를 참고해 주의할 점을 알려주세요.', MEDICINES),
+        ('precautions', '선택한 세 약을 먹을 때 무엇을 조심해야 하는지 알려주세요.', MEDICINES),
+        ('efficacy', '선택한 세 약이 어디에 쓰이는지 알려주세요.', MEDICINES),
+        ('combination', '아디팜정과 같이 먹으면 안 되는 음식이 있나요?', [MEDICINES[0]]),
         (None, '오늘 날씨와 주식 가격을 알려주세요.', [MEDICINES[0]]),
     ]
     results = []
@@ -130,6 +138,7 @@ def main():
         data = response.json()
         reply = data.get('reply', '')
         entry = {'intent': intent, 'status_code': response.status_code, 'reply': reply,
+            'selected_count': len(selected), 'question': message,
             'sources': data.get('sources', []), 'highlights': data.get('health_highlight_terms', []),
             'medicine_count': len(data.get('conversation_medicines', [])), 'chars': len(reply),
             'elapsed_seconds': round(time.monotonic()-started, 2),

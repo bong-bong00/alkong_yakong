@@ -103,8 +103,9 @@ def test_actual_generated_answer_attaches_source_only_after_success():
         assert "최근 대화" in generate.call_args.kwargs["prompt"]
         with conversation_context(previous) as failed:
             generate.return_value = gemini.INCOMPLETE_CHAT_REPLY
-            gemini.generate_chat_response("술은?", selected_medicine=A, intent="precautions")
-            assert failed["sources"] == []
+            fallback = gemini.generate_chat_response("술은?", selected_medicine=A, intent="precautions")
+            assert "공식 안내 일부" in fallback and "음주 시 주의" in fallback
+            assert failed["sources"] == ["식약처 e약은요"]
 
 
 def test_health_followup_preserves_personal_question_intent():

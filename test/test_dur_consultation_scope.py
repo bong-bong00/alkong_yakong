@@ -36,7 +36,7 @@ def database(tmp_path, monkeypatch):
     monkeypatch.setattr(client, "fetch_permission_detail", lambda **kwargs: None)
     monkeypatch.setattr(external_api_service, "fetch_e_drug_info", lambda **kwargs: None)
     monkeypatch.setattr(dur_sync_service, "refresh_dur_for_ingredients",
-                        lambda names: {"status": "ok", "fetched": 0, "upserted": 0})
+                        lambda names, **kwargs: {"status": "ok", "fetched": 0, "upserted": 0})
     return path
 
 
@@ -151,3 +151,20 @@ def test_local_catalog_failure_still_tries_official_name_lookup(database, monkey
     assert result["analysis_complete"] is True
     assert result["assessment_status"] == "SAFE"
     assert len(result["medicine_names"]) == 2
+
+
+def test_requested_types_refresh_only_scope_and_leave_other_types_incomplete(database, monkeypatch):
+    calls = []
+    def refresh(names, **kwargs):
+        calls.append(kwargs)
+        return {"status": "ok", "fetched": 0, "upserted": 0}
+    monkeypatch.setattr(dur_sync_service, "refresh_dur_for_ingredients", refresh)
+    result = dur_analysis.analyze(DurAnalyzeRequest(
+        user_id="patient-1", medicine_codes=["MED-1"],
+        medicine_names_by_code={"MED-1": "테스트정"},
+        analysis_purpose="consultation", consultation_types=["병용금기"],
+    ))
+    assert calls == [{"force_refresh": True, "risk_types": {"병용금기"}}]
+    assert "병용금기" not in result["incomplete_types"]
+    assert {"연령금기", "임부금기", "효능군중복"} <= set(result["incomplete_types"])
+    assert result["analysis_complete"] is False

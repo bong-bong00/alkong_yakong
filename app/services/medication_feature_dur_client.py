@@ -220,8 +220,9 @@ def load_remote_combination_context(
                 "medicine_codes": requested_codes,
                 "medicine_names_by_code": names_by_code,
                 "analysis_purpose": "consultation",
+                "consultation_types": sorted(checked_types),
             },
-            timeout=MEDICATION_FEATURE_TIMEOUT_SECONDS,
+            timeout=max(MEDICATION_FEATURE_TIMEOUT_SECONDS, 30),
             headers=_service_headers(uid, "dur_consultation"),
         )
         dur_response.raise_for_status()
