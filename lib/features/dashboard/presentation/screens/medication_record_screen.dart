@@ -13,6 +13,7 @@ import '../../../medication/application/medication_controller.dart';
 import '../../application/medication_calendar_provider.dart';
 import '../../application/medication_history_provider.dart';
 import '../widgets/day_dose_detail.dart';
+import '../widgets/planned_medication_detail.dart';
 import '../../../medication/domain/medication_models.dart';
 import 'month_calendar_screen.dart';
 
@@ -219,15 +220,18 @@ class _MedicationRecordScreenState
                     const SizedBox(height: 12),
                     // 오늘 하루를 시간대별로 한 장에 둔다. 날짜별 카드를 쌓는 대신
                     // 달력이 날짜를 맡고, 여기서는 오늘 상태만 본다.
-                    DayDoseDetail(
-                      key: _dayKey,
-                      dayLabel:
-                          '${_detailDate.month}월 ${_detailDate.day}일'
-                          '${_isToday ? ' 오늘' : ''}',
-                      date: _detailDate,
-                      doses: _detailDoses(today),
-                      footnote: null,
-                    ),
+                    if (_detailDate.isAfter(dateOnly(DateTime.now())))
+                      _plannedDetail()
+                    else
+                      DayDoseDetail(
+                        key: _dayKey,
+                        dayLabel:
+                            '${_detailDate.month}월 ${_detailDate.day}일'
+                            '${_isToday ? ' 오늘' : ''}',
+                        date: _detailDate,
+                        doses: _detailDoses(today),
+                        footnote: null,
+                      ),
                     // 먹기 전과 후를 나란히 놓는 자리는 여기 하나다.
                     // 오늘 홈은 "지금 할 일" 한 가지만 말한다.
                     // 잰 값이 없어도 칸은 남긴다 — 여기서 심박수로 가는
@@ -249,6 +253,21 @@ class _MedicationRecordScreenState
           ],
         ),
       ),
+    );
+  }
+
+  Widget _plannedDetail() {
+    final plans = ref.watch(
+      medicationMonthPlansProvider(
+        MonthKey(_detailDate.year, _detailDate.month, widget.patientUserId),
+      ),
+    );
+    return PlannedMedicationDetail(
+      key: _dayKey,
+      dayLabel: '${_detailDate.month}월 ${_detailDate.day}일',
+      slots: plans.valueOrNull?[_detailDate.day] ?? const [],
+      loading: plans.isLoading,
+      failed: plans.hasError,
     );
   }
 
@@ -553,7 +572,9 @@ class _WeekDay extends StatelessWidget {
       label:
           '${status.date.day}일 $label요일, '
           '${status.future
-              ? '아직 오지 않은 날'
+              ? status.hasUpcomingSchedule
+                    ? '아직 오지 않은 날, 복약 예정'
+                    : '아직 오지 않은 날'
               : status.noRecord
               ? '기록 없음'
               : '${status.total}번 중 ${status.taken}번'}'
@@ -581,23 +602,48 @@ class _WeekDay extends StatelessWidget {
               constraints: const BoxConstraints(maxWidth: 44, maxHeight: 44),
               child: AspectRatio(
                 aspectRatio: 1,
-                child: Container(
-                  alignment: Alignment.center,
-                  decoration: BoxDecoration(
-                    color: background,
-                    shape: BoxShape.circle,
-                    // 전체 달력과 같이, 누른 날은 검은 테두리로 짚는다.
-                    border: picked
-                        ? Border.all(color: AppColors.textPrimary, width: 2)
-                        : null,
-                  ),
-                  child: FittedBox(
-                    fit: BoxFit.scaleDown,
-                    child: Text(
-                      '${status.date.day}',
-                      style: AppText.cardTitle(size: 19, color: ink),
+                child: Stack(
+                  clipBehavior: Clip.none,
+                  fit: StackFit.expand,
+                  children: [
+                    Container(
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        color: background,
+                        shape: BoxShape.circle,
+                        // 전체 달력과 같이, 누른 날은 검은 테두리로 짚는다.
+                        border: picked
+                            ? Border.all(color: AppColors.textPrimary, width: 2)
+                            : null,
+                      ),
+                      child: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        child: Text(
+                          '${status.date.day}',
+                          style: AppText.cardTitle(size: 19, color: ink),
+                        ),
+                      ),
                     ),
-                  ),
+                    if (status.hasUpcomingSchedule)
+                      Positioned(
+                        top: -6,
+                        left: 0,
+                        right: 0,
+                        child: Center(
+                          child: Container(
+                            key: ValueKey(
+                              'week-planned-dot-${status.date.day}',
+                            ),
+                            width: 6,
+                            height: 6,
+                            decoration: const BoxDecoration(
+                              color: AppColors.point,
+                              shape: BoxShape.circle,
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
                 ),
               ),
             ),

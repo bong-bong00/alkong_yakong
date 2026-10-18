@@ -202,7 +202,7 @@ void main() {
     '보호자 · 돌보는 분 관리 (90)': () => const CareManageScreen(),
     '보호자 · 어르신 한 분 (91)': () => const CarePatientScreen(patient: _carePatient),
     '보호자 · 어느 분 처방전 (96)': () => const GuardianPickPatientScreen(),
-    '약이 들어왔어요 (84)': () => const MedicineArrivedScreen(
+    '처방전이 등록되었어요 (84)': () => const MedicineArrivedScreen(
       senderTitle: '딸 지안',
       medicines: [
         {'name': '메트포르민 500mg', 'dose': '한 번에 1알 · 아침 · 저녁'},

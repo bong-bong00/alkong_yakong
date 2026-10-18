@@ -60,7 +60,7 @@ Future<void> showFamilyRequestSheet(
           ],
           const SizedBox(height: 14),
           Text(
-            '다 넣으시면 어르신 전화기에 "약이 들어왔어요" 알림이 옵니다.',
+            '등록이 끝나면 어르신 전화기에 "처방전이 등록되었어요" 알림이 옵니다.',
             style: AppText.body(size: 18),
           ),
         ],

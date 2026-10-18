@@ -1234,6 +1234,53 @@ void main() {
     });
   }
 
+  for (final uncheckInPicker in [true, false]) {
+    testWidgets('내 약 전체 상담 후 선택 해제해도 키워드를 유지한다: $uncheckInPicker', (
+      tester,
+    ) async {
+      usePhoneScreen(tester);
+      final bodies = <Map<String, dynamic>>[];
+      final client = MockClient((request) async {
+        if (request.url.path.endsWith('/dashboard')) {
+          return jsonResponse({
+            'today_medications': [
+              {'product_name': '게보린정'},
+            ],
+          });
+        }
+        bodies.add(jsonDecode(request.body) as Map<String, dynamic>);
+        return jsonResponse({'reply': '등록된 약 안내입니다.'});
+      });
+      await tester.pumpWidget(appWith(client));
+      await tester.pumpAndSettle();
+      final keywords = find.byWidgetPredicate(
+        (widget) =>
+            widget is ListView && widget.scrollDirection == Axis.horizontal,
+      );
+      expect(keywords, findsNothing);
+      await tester.tap(find.text('내 약에 대해 알려주세요'));
+      await tester.pumpAndSettle();
+      expect(keywords, findsOneWidget);
+
+      await pickSubject(tester, '게보린정');
+      if (uncheckInPicker) {
+        // Reopen the picker, uncheck the same drug, then confirm.
+        await pickSubject(tester, '게보린정');
+      } else {
+        await clearSubject(tester);
+      }
+      expect(find.text('약 고르기'), findsOneWidget);
+      expect(keywords, findsOneWidget);
+      expect(find.byKey(const ValueKey('ask-내 약 알려주세요')), findsOneWidget);
+      expect(bodies, hasLength(1));
+      await tester.tap(find.byKey(const ValueKey('ask-내 약 알려주세요')));
+      await tester.pumpAndSettle();
+      expect(bodies.last.containsKey('selected_medicine'), isFalse);
+      expect(bodies.last.containsKey('temporary_medicines'), isFalse);
+      expect(tester.takeException(), isNull);
+    });
+  }
+
   testWidgets('질문 보기는 저마다의 intent를 그대로 보낸다', (tester) async {
     usePhoneScreen(tester);
     final bodies = <Map<String, dynamic>>[];

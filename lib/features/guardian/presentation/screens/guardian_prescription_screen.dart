@@ -10,6 +10,7 @@ import '../../../../core/widgets/senior_button.dart';
 import '../../../dashboard/presentation/screens/patient_data.dart';
 import '../../../prescription/presentation/screens/prescription_screen.dart';
 import '../../application/guardians_provider.dart';
+import '../../../dashboard/application/medication_calendar_provider.dart';
 import '../../../medicines/application/user_medicines_controller.dart';
 import '../../../medication/application/medication_controller.dart';
 import '../../../dashboard/application/medication_history_provider.dart';
@@ -30,6 +31,7 @@ Future<void> openGuardianPrescription(
           container.invalidate(patientMedicinesProvider(patient.patientId));
           container.invalidate(patientTodayProvider(patient.patientId));
           container.invalidate(patientHistoryProvider(patient.patientId));
+          container.invalidate(medicationMonthPlansProvider);
           Navigator.of(context).maybePop();
           if (!context.mounted) return;
           showSeniorSnackbar(context, '${patient.name} 님의 약과 복용 일정을 등록했어요');

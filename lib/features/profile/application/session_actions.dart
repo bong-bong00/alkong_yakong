@@ -8,6 +8,7 @@ import '../../../core/session/mvp_session.dart';
 import '../../../core/session/session_credentials.dart';
 import '../../../core/network/api_client.dart';
 import '../../dashboard/application/medication_history_provider.dart';
+import '../../dashboard/application/medication_calendar_provider.dart';
 import '../../guardian/application/guardians_provider.dart';
 import '../../guardian/presentation/screens/care_patient_screen.dart';
 import '../../biosignal/application/heart_device.dart';
@@ -129,7 +130,8 @@ void resetUserScopedData(WidgetRef ref) {
     ..invalidate(carePatientProfileProvider)
     ..invalidate(heartSensorProvider)
     ..invalidate(alarmPreferencesProvider)
-    ..invalidate(medicationHistoryProvider);
+    ..invalidate(medicationHistoryProvider)
+    ..invalidate(medicationMonthPlansProvider);
   ref.invalidate(prescriptionHistoryProvider);
 }
 

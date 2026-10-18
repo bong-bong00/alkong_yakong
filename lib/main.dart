@@ -68,7 +68,7 @@ final _router = GoRouter(
         final data = extra is Map ? Map<String, dynamic>.from(extra) : const {};
         final raw = data['medicines'];
         return MedicineArrivedScreen(
-          senderTitle: data['sender']?.toString() ?? '가족',
+          senderTitle: data['sender']?.toString() ?? '보호자',
           medicines: [
             if (raw is List)
               for (final item in raw)

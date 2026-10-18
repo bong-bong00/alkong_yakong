@@ -77,6 +77,8 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
   final List<String> _searchedMedicines = [];
   final List<Map<String, dynamic>> _messages = [];
   int _conversationStart = 0;
+  // Keep the patient's all-medicines shortcuts when temporarily selecting drugs.
+  bool _registeredMedicineAsksStarted = false;
   final _conversationStore = PharmacistConversationStore();
   late final String _signedInUserId;
   late final String _subjectUserId;
@@ -120,6 +122,7 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
         _officialMedicinesByName.clear();
         _confirmedOfficialProductNames.clear();
         _conversationStart = 0;
+        _registeredMedicineAsksStarted = false;
         _conversationId = null;
       });
     }
@@ -188,6 +191,7 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
                   setState(() {
                     _conversationId = null;
                     _conversationStart = 0;
+                    _registeredMedicineAsksStarted = false;
                     _messages.clear();
                     _pendingGeneralQuestion = null;
                     _chatController.clear();
@@ -206,6 +210,7 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
             ),
           );
         _conversationStart = 0;
+        _registeredMedicineAsksStarted = false;
         _conversationId = conversation['id'] as String;
         _selectedMedicines.clear();
         // Keep current registered medicines. Old search selections are not registered.
@@ -287,14 +292,16 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
       !widget.generalConsultation &&
       widget.patientId == null &&
       _selectedMedicines.isEmpty &&
-      _messages
-          .skip(_conversationStart)
-          .any(
-            (message) =>
-                message['isMe'] == true &&
-                message['contextText'] == _generalSuggestions.first['prompt'] &&
-                message['intent'] == 'overview',
-          );
+      (_registeredMedicineAsksStarted ||
+          _messages
+              .skip(_conversationStart)
+              .any(
+                (message) =>
+                    message['isMe'] == true &&
+                    message['contextText'] ==
+                        _generalSuggestions.first['prompt'] &&
+                    message['intent'] == 'overview',
+              ));
 
   /// 화면에 적는 이름. 용량(mg)은 떼고 약 이름만 보여 준다.
   String _shortName(String name) => nameWithoutStrength(name);
@@ -758,6 +765,8 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
     List<_DrugSearchCandidate> candidates = const [],
   }) {
     setState(() {
+      _registeredMedicineAsksStarted =
+          _registeredMedicineAsksStarted || _showRegisteredMedicineAsks;
       for (final candidate in candidates) {
         // 찾아서 더한 약은 복용중인 약으로 치지 않는다. 묻기 위해
         // 잠깐 올려 둔 것일 뿐, 내가 먹는 약이라고 말한 적은 없다.
@@ -784,6 +793,8 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
   void _clearMedicine() {
     if (_isLoading) return;
     setState(() {
+      _registeredMedicineAsksStarted =
+          _registeredMedicineAsksStarted || _showRegisteredMedicineAsks;
       _selectedMedicines.clear();
       _conversationStart = _messages.length;
       _conversationId = null;

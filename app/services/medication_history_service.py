@@ -9,6 +9,7 @@ from typing import Any
 from fastapi import HTTPException
 
 from app.database import get_connection
+from app.core.kst import today_kst
 from app.services.today_medication_service import _slot_from_time
 
 _SLOT_ORDER = ("morning", "lunch", "dinner")
@@ -46,8 +47,9 @@ def get_medication_history(user_id: str, start: str, end: str) -> dict[str, Any]
             JOIN user_medicines um ON um.id = ms.user_medicine_id
             WHERE ms.user_id = ? AND ms.scheduled_date BETWEEN ? AND ?
               AND UPPER(um.medicine_code) NOT LIKE 'MVP-%'
+              AND (ms.scheduled_date <= ? OR COALESCE(um.is_active, 1) = 1)
             """,
-            (user_id, first.isoformat(), last.isoformat()),
+            (user_id, first.isoformat(), last.isoformat(), today_kst().isoformat()),
         ).fetchall()
     finally:
         conn.close()

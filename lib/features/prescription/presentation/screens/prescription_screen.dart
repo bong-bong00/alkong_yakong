@@ -1,4 +1,5 @@
 import 'dart:async';
+import '../../../dashboard/application/medication_calendar_provider.dart';
 import '../../domain/registration_result.dart';
 import 'dart:convert';
 import 'dart:io';
@@ -495,6 +496,7 @@ class _PrescriptionScreenState extends ConsumerState<PrescriptionScreen> {
       refreshFailed = true;
     }
     ref.invalidate(medicationHistoryProvider);
+    ref.invalidate(medicationMonthPlansProvider);
     ref.invalidate(prescriptionHistoryProvider);
     if (ref.read(userMedicinesProvider).hasError) {
       refreshFailed = true;
@@ -619,6 +621,7 @@ class _PrescriptionScreenState extends ConsumerState<PrescriptionScreen> {
       ]);
       ref.invalidate(prescriptionHistoryProvider);
       ref.invalidate(medicationHistoryProvider);
+      ref.invalidate(medicationMonthPlansProvider);
       if (!mounted || MvpSession.userId.trim() != userId) return null;
       // Retain the existing explicit confirmation screen; never open on home entry.
       await _familyRegistrations.finish(userId);

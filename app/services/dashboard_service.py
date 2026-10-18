@@ -5,6 +5,7 @@ from datetime import date
 from fastapi import HTTPException
 
 from app.database import get_connection
+from app.core.kst import today_kst
 
 
 def get_dashboard(user_id: str, target_date: str | None = None) -> dict:
@@ -175,7 +176,7 @@ _WEEKDAYS = "월화수목금토일"
 
 def get_medication_calendar(user_id: str, year: int | None = None, month: int | None = None) -> dict:
     """해당 달 medication_schedules만 본다. 스케줄 없는 날을 빠뜨린 날로 치지 않는다."""
-    today = date.today()
+    today = today_kst()
     year = int(year or today.year)
     month = int(month or today.month)
     if month < 1 or month > 12:
@@ -193,9 +194,11 @@ def get_medication_calendar(user_id: str, year: int | None = None, month: int | 
         rows = conn.execute(
             """
             SELECT ms.scheduled_date, ms.scheduled_time, ms.time_slot,
-                   COALESCE(ms.status, 'PENDING') AS status
+                   COALESCE(ms.status, 'PENDING') AS status,
+                   um.dosage, um.dose_amount, um.dose_unit, m.product_name
             FROM medication_schedules ms
             JOIN user_medicines um ON um.id = ms.user_medicine_id
+            LEFT JOIN medicines m ON m.medicine_code = um.medicine_code
             WHERE ms.user_id = ?
               AND ms.scheduled_date >= ?
               AND ms.scheduled_date <= ?
@@ -231,7 +234,21 @@ def get_medication_calendar(user_id: str, year: int | None = None, month: int | 
         else:
             taken = all(str(row["status"] or "").upper() == "TAKEN" for row in slots)
             mark = "done" if taken else "missed"
-        days.append({"day": day_n, "mark": mark})
+        planned = {}
+        if current > today:
+            for row in slots:
+                clock = str(row["scheduled_time"] or "")
+                label = _SLOT_LABEL.get(str(row["time_slot"] or "").upper(), "복약")
+                key = (clock, label)
+                group = planned.setdefault(key, {"slot": label, "time": clock, "medicines": []})
+                amount = str(row["dosage"] or "").strip()
+                if row["dose_amount"] is not None and row["dose_unit"]:
+                    amount = f'{float(row["dose_amount"]):g}{row["dose_unit"]}'
+                group["medicines"].append({
+                    "name": row["product_name"] or "약 이름 확인 필요",
+                    "amount": amount or "복용량 확인 필요",
+                })
+        days.append({"day": day_n, "mark": mark, "planned_slots": list(planned.values())})
         if mark == "missed":
             leftover = [
                 row
