@@ -511,6 +511,19 @@ void main() {
 
     // 고르기 전에는 약 이름 없이 묻는 질문을 보여 준다.
     expect(find.text('내 약에 대해 알려주세요'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('suggestion-약 보관할 때 주의할 점은요?')),
+      findsOneWidget,
+    );
+    await tester.scrollUntilVisible(
+      find.byKey(const ValueKey('suggestion-약 설명서에서 무엇을 확인하나요?')),
+      120,
+      scrollable: find.byType(Scrollable).first,
+    );
+    expect(
+      find.byKey(const ValueKey('suggestion-약 설명서에서 무엇을 확인하나요?')),
+      findsOneWidget,
+    );
     expect(find.text('꼭 식사 후에 복용해야 하나요?'), findsNothing);
 
     await pickSubject(tester, '게보린정');
@@ -1062,10 +1075,9 @@ void main() {
     await tester.pumpAndSettle();
 
     const expected = <String, (String, String)>{
-      '내 약에 대해 알려주세요': (
-        'overview',
-        '제가 현재 먹는 약 전체를 쉬운 말로 알려주세요.',
-      ),
+      '내 약에 대해 알려주세요': ('overview', '제가 현재 먹는 약 전체를 쉬운 말로 알려주세요.'),
+      '약 보관할 때 주의할 점은요?': ('precautions', '약을 보관할 때 일반적으로 확인할 주의사항을 알려주세요.'),
+      '약 설명서에서 무엇을 확인하나요?': ('overview', '약 설명서에서 확인해야 하는 항목을 쉽게 알려주세요.'),
     };
     for (final entry in expected.entries) {
       await tester.pumpWidget(
@@ -1073,13 +1085,57 @@ void main() {
       );
       await tester.pumpAndSettle();
       final card = find.text(entry.key);
-      await tester.ensureVisible(card);
+      await tester.scrollUntilVisible(
+        card,
+        120,
+        scrollable: find.byType(Scrollable).first,
+      );
       await tester.tap(card);
       await tester.pumpAndSettle();
       expect(bodies.last['intent'], entry.value.$1);
       expect(bodies.last['message'], entry.value.$2);
       expect(bodies.last.containsKey('selected_medicine'), isFalse);
       expect(bodies.last.containsKey('current_medicines'), isFalse);
+      expect(
+        find.text('내 약 알려주세요'),
+        entry.key == '내 약에 대해 알려주세요' ? findsOneWidget : findsNothing,
+      );
+      if (entry.key == '내 약에 대해 알려주세요') {
+        final horizontal = find.byWidgetPredicate(
+          (widget) =>
+              widget is ListView && widget.scrollDirection == Axis.horizontal,
+        );
+        expect(horizontal, findsOneWidget);
+        final horizontalScroll = find.descendant(
+          of: horizontal,
+          matching: find.byType(Scrollable),
+        );
+        for (final label in [
+          '내 약 알려주세요',
+          '같이 먹어도 돼요?',
+          '겹치는 약 있어요?',
+          '조심할 점은요?',
+          '내 건강에서 주의할 점은요?',
+        ]) {
+          await tester.scrollUntilVisible(
+            find.byKey(ValueKey('ask-$label')),
+            120,
+            scrollable: horizontalScroll,
+          );
+          expect(find.byKey(ValueKey('ask-$label')), findsOneWidget);
+        }
+        await tester.drag(horizontal, const Offset(1600, 0));
+        await tester.pumpAndSettle();
+        await tester.ensureVisible(
+          find.byKey(const ValueKey('ask-같이 먹어도 돼요?')),
+        );
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('같이 먹어도 돼요?'));
+        await tester.pumpAndSettle();
+        expect(bodies.last['intent'], 'combination');
+        expect(bodies.last.containsKey('selected_medicine'), isFalse);
+        expect(bodies.last.containsKey('temporary_medicines'), isFalse);
+      }
       // 화면에는 누른 그대로가 남는다.
       expect(
         find.descendant(

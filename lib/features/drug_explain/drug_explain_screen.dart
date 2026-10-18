@@ -283,6 +283,19 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
   /// 그래서 "아침 약이랑 우유" 같은 질문이 그대로 통한다.
   bool get _asksAboutAllMedicines => _selectedMedicines.isEmpty;
 
+  bool get _showRegisteredMedicineAsks =>
+      !widget.generalConsultation &&
+      widget.patientId == null &&
+      _selectedMedicines.isEmpty &&
+      _messages
+          .skip(_conversationStart)
+          .any(
+            (message) =>
+                message['isMe'] == true &&
+                message['contextText'] == _generalSuggestions.first['prompt'] &&
+                message['intent'] == 'overview',
+          );
+
   /// 화면에 적는 이름. 용량(mg)은 떼고 약 이름만 보여 준다.
   String _shortName(String name) => nameWithoutStrength(name);
 
@@ -297,6 +310,16 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
     {
       'label': '내 약에 대해 알려주세요',
       'prompt': '제가 현재 먹는 약 전체를 쉬운 말로 알려주세요.',
+      'intent': 'overview',
+    },
+    {
+      'label': '약 보관할 때 주의할 점은요?',
+      'prompt': '약을 보관할 때 일반적으로 확인할 주의사항을 알려주세요.',
+      'intent': 'precautions',
+    },
+    {
+      'label': '약 설명서에서 무엇을 확인하나요?',
+      'prompt': '약 설명서에서 확인해야 하는 항목을 쉽게 알려주세요.',
       'intent': 'overview',
     },
   ];
@@ -776,6 +799,7 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
       message: ask['prompt']!.replaceAll('{medicines}', names.join(', ')),
       displayMessage: ask['display'] ?? ask['label'],
       intent: ask['intent'],
+      registeredOnly: _showRegisteredMedicineAsks,
     );
   }
 
@@ -789,7 +813,10 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
       message: suggestion['prompt']!.replaceAll('{medicine}', official),
       displayMessage: suggestion['label'],
       intent: suggestion['intent'],
-      registeredOnly: widget.consultationSelector == null && medicine == null,
+      registeredOnly:
+          widget.consultationSelector == null &&
+          medicine == null &&
+          suggestion['label'] == _generalSuggestions.first['label'],
     );
   }
 
@@ -1314,7 +1341,9 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
               ),
             ),
             // 무엇을 물어야 할지 떠오르지 않을 때. 누르면 그대로 물어본다.
-            if (_selectedMedicines.isNotEmpty || widget.registeredMedicinesOnly)
+            if (_selectedMedicines.isNotEmpty ||
+                widget.registeredMedicinesOnly ||
+                _showRegisteredMedicineAsks)
               _AskBar(
                 asks:
                     (widget.generalConsultation
