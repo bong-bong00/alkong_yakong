@@ -49,39 +49,47 @@ class PlannedMedicationDetail extends StatelessWidget {
                     style: AppText.label(size: 19),
                   ),
                 ),
+                const SizedBox(width: 20),
                 Flexible(
-                  child: FittedBox(
-                    fit: BoxFit.scaleDown,
+                  child: Align(
                     alignment: Alignment.centerRight,
-                    child: Row(
-                      children: [
-                        Text(slot.time, style: AppText.label(size: 18)),
-                        const SizedBox(width: 8),
-                        Text(
-                          '예정',
-                          style: AppText.caption(
-                            size: 16,
-                            color: AppColors.point,
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: Alignment.centerRight,
+                      child: Row(
+                        children: [
+                          Text(slot.time, style: AppText.label(size: 18)),
+                          const SizedBox(width: 8),
+                          Text(
+                            '예정',
+                            style: AppText.caption(
+                              size: 16,
+                              color: AppColors.point,
+                            ),
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
                   ),
                 ),
               ],
             ),
             for (final medicine in slot.medicines) ...[
-              const SizedBox(height: 8),
+              const SizedBox(height: 16),
               Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Expanded(
                     child: Text(medicine.name, style: AppText.body(size: 18)),
                   ),
-                  const SizedBox(width: 12),
-                  Flexible(
+                  const SizedBox(width: 24),
+                  ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 88),
                     child: Text(
                       medicine.amount,
+                      key: ValueKey(
+                        'planned-amount-${slot.time}-${medicine.name}',
+                      ),
                       textAlign: TextAlign.end,
                       style: AppText.body(size: 18),
                     ),

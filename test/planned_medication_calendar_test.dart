@@ -63,6 +63,8 @@ void main() {
         expect(find.text('전체 달력'), findsOneWidget);
         final dot = find.byKey(const ValueKey('month-planned-dot-15'));
         expect(dot, findsOneWidget);
+        final ring = find.byKey(const ValueKey('month-selected-ring-15'));
+        expect(tester.getSize(ring), const Size(46, 46));
         expect(
           find.byKey(const ValueKey('month-planned-dot-16')),
           findsNothing,
@@ -110,9 +112,7 @@ void main() {
     );
   }
 
-  testWidgets('weekly marker sits above number without marking completed', (
-    tester,
-  ) async {
+  testWidgets('weekly dates do not display planned markers', (tester) async {
     final future = DateTime(now.year, now.month, now.day + 1);
     await tester.pumpWidget(
       wrap(
@@ -123,13 +123,64 @@ void main() {
       ),
     );
     final dot = find.byKey(ValueKey('week-planned-dot-${future.day}'));
-    expect(dot, findsOneWidget);
-    expect(
-      tester.getRect(dot).bottom,
-      lessThan(tester.getRect(find.text('${future.day}')).top),
-    );
+    expect(dot, findsNothing);
+    expect(find.text('${future.day}'), findsOneWidget);
     expect(find.bySemanticsLabel(RegExp('복약 예정')), findsOneWidget);
   });
+
+  for (final scale in [1.0, 2.0]) {
+    testWidgets(
+      'long names and amounts have aligned separate columns at $scale',
+      (tester) async {
+        tester.view.physicalSize = const Size(320, 1200);
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.reset);
+        const names = [
+          '휴온스시메티딘정200밀리그램(수출명:TAGAMENTTab.200밀리그램)',
+          '프리마란정(메퀴타진)',
+          '아디팜정(히드록시진염산염)',
+        ];
+        await tester.pumpWidget(
+          wrap(
+            MediaQuery(
+              data: MediaQueryData(textScaler: TextScaler.linear(scale)),
+              child: SingleChildScrollView(
+                child: PlannedMedicationDetail(
+                  dayLabel: '10월 22일',
+                  slots: [
+                    PlannedMedicationSlot(
+                      slot: '아침',
+                      time: '08:00',
+                      medicines: [
+                        for (final name in names) PlannedMedicine(name, '0.5알'),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+        final amounts = [
+          for (final name in names)
+            tester.getRect(find.byKey(ValueKey('planned-amount-08:00-$name'))),
+        ];
+        for (var i = 0; i < names.length; i++) {
+          final nameRect = tester.getRect(find.text(names[i]));
+          expect(amounts[i].left - nameRect.right, greaterThanOrEqualTo(23));
+          expect(amounts[i].top, closeTo(nameRect.top, 1));
+          expect(amounts[i].right, closeTo(amounts.first.right, 1));
+          if (i > 0) {
+            expect(
+              nameRect.top - tester.getRect(find.text(names[i - 1])).bottom,
+              greaterThanOrEqualTo(15),
+            );
+          }
+        }
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
 
   testWidgets(
     'record tab selection loads future details rather than past-dose status',

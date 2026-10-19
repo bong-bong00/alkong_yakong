@@ -624,25 +624,6 @@ class _WeekDay extends StatelessWidget {
                         ),
                       ),
                     ),
-                    if (status.hasUpcomingSchedule)
-                      Positioned(
-                        top: -6,
-                        left: 0,
-                        right: 0,
-                        child: Center(
-                          child: Container(
-                            key: ValueKey(
-                              'week-planned-dot-${status.date.day}',
-                            ),
-                            width: 6,
-                            height: 6,
-                            decoration: const BoxDecoration(
-                              color: AppColors.point,
-                              shape: BoxShape.circle,
-                            ),
-                          ),
-                        ),
-                      ),
                   ],
                 ),
               ),
