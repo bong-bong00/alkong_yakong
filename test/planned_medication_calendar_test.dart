@@ -71,6 +71,25 @@ void main() {
           tester.getRect(dot).bottom,
           lessThan(tester.getRect(find.text('15')).top),
         );
+        expect(
+          tester.getRect(find.text('15')).top - tester.getRect(dot).bottom,
+          lessThanOrEqualTo(4),
+        );
+        final legend = find.byKey(const ValueKey('calendar-legend-row'));
+        final labels = ['복약 완료', '미완료', '오늘', '예정'];
+        final labelRects = [
+          for (final label in labels)
+            tester.getRect(
+              find.descendant(of: legend, matching: find.text(label)),
+            ),
+        ];
+        for (final rect in labelRects) {
+          expect(rect.center.dy, closeTo(labelRects.first.center.dy, 1));
+          expect(rect.left, greaterThanOrEqualTo(0));
+          expect(rect.right, lessThanOrEqualTo(320));
+        }
+        expect(find.text('다 드심'), findsNothing);
+        expect(find.text('놓침'), findsNothing);
         await tester.ensureVisible(find.byType(PlannedMedicationDetail));
         await tester.pumpAndSettle();
         expect(find.text('복약 예정 1회'), findsOneWidget);

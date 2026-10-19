@@ -521,11 +521,11 @@ class _DayCell extends StatelessWidget {
       case DayMark.done:
         background = AppColors.calendarDone;
         ink = AppColors.pointBorder;
-        spoken = '다 드신 날';
+        spoken = '복약 완료';
       case DayMark.missed:
         background = AppColors.calendarMissed;
         ink = AppColors.calendarMissedInk;
-        spoken = '빠뜨린 날';
+        spoken = '복약 미완료';
       case DayMark.today:
         background = AppColors.textPrimary;
         ink = Colors.white;
@@ -572,27 +572,34 @@ class _DayCell extends StatelessWidget {
                           ? Border.all(color: AppColors.pointBorder, width: 2)
                           : null,
                     ),
-                    child: Text(
-                      '${day.day}',
-                      style: AppText.cardTitle(
-                        size: 18,
-                        color: ink,
-                      ).copyWith(height: 1),
+                    child: Stack(
+                      clipBehavior: Clip.none,
+                      alignment: Alignment.center,
+                      children: [
+                        Text(
+                          '${day.day}',
+                          style: AppText.cardTitle(
+                            size: 18,
+                            color: ink,
+                          ).copyWith(height: 1),
+                        ),
+                        if (day.plannedSlots.isNotEmpty)
+                          Positioned(
+                            // Anchor to the number itself, not the taller day cell.
+                            top: -8,
+                            child: Container(
+                              key: ValueKey('month-planned-dot-${day.day}'),
+                              width: 6,
+                              height: 6,
+                              decoration: const BoxDecoration(
+                                color: AppColors.point,
+                                shape: BoxShape.circle,
+                              ),
+                            ),
+                          ),
+                      ],
                     ),
                   ),
-                  if (day.plannedSlots.isNotEmpty)
-                    Positioned(
-                      top: -3,
-                      child: Container(
-                        key: ValueKey('month-planned-dot-${day.day}'),
-                        width: 6,
-                        height: 6,
-                        decoration: const BoxDecoration(
-                          color: AppColors.point,
-                          shape: BoxShape.circle,
-                        ),
-                      ),
-                    ),
                 ],
               ),
             ),
@@ -608,15 +615,22 @@ class _Legend extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Wrap(
-      spacing: 14,
-      runSpacing: 10,
-      children: [
-        _LegendItem(color: AppColors.calendarDone, label: '다 드심'),
-        _LegendItem(color: AppColors.calendarMissed, label: '놓침'),
-        _LegendItem(color: AppColors.textPrimary, label: '오늘'),
-        _LegendItem(color: AppColors.point, label: '복약 예정', size: 6),
-      ],
+    return const FittedBox(
+      fit: BoxFit.scaleDown,
+      alignment: Alignment.centerLeft,
+      child: Row(
+        key: ValueKey('calendar-legend-row'),
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _LegendItem(color: AppColors.calendarDone, label: '복약 완료'),
+          SizedBox(width: 10),
+          _LegendItem(color: AppColors.calendarMissed, label: '미완료'),
+          SizedBox(width: 10),
+          _LegendItem(color: AppColors.textPrimary, label: '오늘'),
+          SizedBox(width: 10),
+          _LegendItem(color: AppColors.point, label: '예정', size: 6),
+        ],
+      ),
     );
   }
 }
@@ -626,7 +640,7 @@ class _LegendItem extends StatelessWidget {
   final String label;
   final double size;
 
-  const _LegendItem({required this.color, required this.label, this.size = 18});
+  const _LegendItem({required this.color, required this.label, this.size = 12});
 
   @override
   Widget build(BuildContext context) {
@@ -638,8 +652,12 @@ class _LegendItem extends StatelessWidget {
           height: size,
           decoration: BoxDecoration(color: color, shape: BoxShape.circle),
         ),
-        const SizedBox(width: 8),
-        Text(label, style: AppText.label(size: 17, color: AppColors.textBody)),
+        const SizedBox(width: 4),
+        Text(
+          label,
+          maxLines: 1,
+          style: AppText.label(size: 16, color: AppColors.textBody),
+        ),
       ],
     );
   }
