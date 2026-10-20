@@ -78,6 +78,24 @@ void main() {
           lessThanOrEqualTo(4),
         );
         final legend = find.byKey(const ValueKey('calendar-legend-row'));
+        final markers = find.descendant(
+          of: legend,
+          matching: find.byWidgetPredicate(
+            (widget) =>
+                widget is Container &&
+                widget.decoration is BoxDecoration &&
+                (widget.decoration as BoxDecoration).shape == BoxShape.circle,
+          ),
+        );
+        expect(markers, findsNWidgets(4));
+        final markerSizes = [
+          for (final marker in markers.evaluate())
+            tester.getSize(find.byWidget(marker.widget)),
+        ];
+        for (final size in markerSizes) {
+          expect(size, markerSizes.first);
+        }
+        expect(tester.getSize(dot), const Size(6, 6));
         final labels = ['복약 완료', '미완료', '오늘', '예정'];
         final labelRects = [
           for (final label in labels)
