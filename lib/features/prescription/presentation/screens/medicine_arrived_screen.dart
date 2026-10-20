@@ -7,11 +7,11 @@ import '../../../../core/widgets/senior_button.dart';
 import '../../../../core/widgets/senior_card.dart';
 import '../../../../core/widgets/senior_header.dart';
 
-/// 가족이 대신 넣어 준 약이 들어왔을 때 (프로토타입 84).
+/// 보호자가 처방전을 대신 등록했을 때 (프로토타입 84).
 ///
 /// 어르신이 따로 하실 일은 없다. "알겠어요" 하나만 누르면 끝난다.
 class MedicineArrivedScreen extends StatelessWidget {
-  /// 넣어 준 가족 호칭 ("딸 지안").
+  /// 등록한 보호자 이름. 없으면 보호자로 표시한다.
   final String senderTitle;
 
   /// 새로 들어온 약. {name, dose, times}.
@@ -25,11 +25,14 @@ class MedicineArrivedScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final sender = senderTitle.trim().isEmpty || senderTitle.trim() == '가족'
+        ? '보호자'
+        : senderTitle.trim();
     return Scaffold(
       backgroundColor: AppColors.pageBg,
       body: Column(
         children: [
-          const SeniorTitleHeader(title: '약이 들어왔어요'),
+          const SeniorTitleHeader(title: '처방전이 등록되었어요'),
           Expanded(
             child: SingleChildScrollView(
               padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
@@ -47,7 +50,7 @@ class MedicineArrivedScreen extends StatelessWidget {
                         Row(
                           children: [
                             InitialAvatar(
-                              name: senderTitle.split(' ').last,
+                              name: sender,
                               size: 60,
                               background: AppColors.pointTint,
                               foreground: AppColors.point,
@@ -55,7 +58,7 @@ class MedicineArrivedScreen extends StatelessWidget {
                             const SizedBox(width: 16),
                             Expanded(
                               child: Text(
-                                '$senderTitle 님이\n약을 넣어드렸어요',
+                                '$sender 님이 처방전을 등록했어요',
                                 style: AppText.emphasis(size: 25),
                               ),
                             ),

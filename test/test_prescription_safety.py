@@ -196,8 +196,13 @@ def test_same_confirm_payload_is_idempotent():
     assert first["registered"] is True
     assert second["duplicate"] is True
     assert second["prescription_id"] == first["prescription_id"]
+    assert second["registration_revision"] != first["registration_revision"]
 
     conn = get_connection()
+    assert conn.execute(
+        "SELECT registration_revision FROM prescriptions WHERE id=?",
+        (first["prescription_id"],),
+    ).fetchone()[0] == second["registration_revision"]
     assert conn.execute(
         "SELECT COUNT(*) FROM user_medicines WHERE user_id = ? AND medicine_code = ?",
         (user_id, medicine_code),

@@ -2,6 +2,7 @@ import sqlite3
 import unittest
 from unittest.mock import patch
 from app.services.pharmacist.cache_context import health_cache_context
+from app.services.pharmacist.cache_context import REPLY_POLICY_VERSION
 
 
 class CacheContextTest(unittest.TestCase):
@@ -24,3 +25,8 @@ class CacheContextTest(unittest.TestCase):
         with patch('app.services.pharmacist.cache_context.get_connection',
                    side_effect=sqlite3.OperationalError()):
             self.assertEqual(health_cache_context('user'), {'verified': False})
+
+    def test_reply_policy_change_invalidates_automatic_answer_reuse(self):
+        current = self.context()
+        with patch('app.services.pharmacist.cache_context.REPLY_POLICY_VERSION', REPLY_POLICY_VERSION + 1):
+            self.assertNotEqual(current['fingerprint'], self.context()['fingerprint'])

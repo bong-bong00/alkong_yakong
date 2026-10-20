@@ -9,7 +9,6 @@ import '../../../../core/widgets/recovery_view.dart';
 import '../../../../core/widgets/coach_marks.dart';
 import '../../../../core/widgets/help_button.dart';
 import '../../../../core/widgets/senior_card.dart';
-import '../../../../core/widgets/senior_header.dart';
 import '../../application/user_medicines_controller.dart';
 import '../../domain/display_policy.dart';
 import '../../domain/user_medicine_models.dart';
@@ -148,7 +147,6 @@ class _MedicineListState extends State<_MedicineList> {
     final active = widget.items
         .where((item) => item.status == 'active')
         .toList();
-    final past = widget.items.where((item) => item.status != 'active').toList();
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 18, 16, 28),
       children: [
@@ -191,12 +189,6 @@ class _MedicineListState extends State<_MedicineList> {
           )
         else
           _GroupedMedicines(medicines: active, focusKey: _medicineKey),
-        // 지금 안 드시는 약은 줄 하나로 접어 둔다. 목록을 보는 이유는
-        // 대부분 "지금 먹는 약"이기 때문이다.
-        if (past.isNotEmpty) ...[
-          const SizedBox(height: 2),
-          _PastMedicines(medicines: past),
-        ],
       ],
     );
   }
@@ -408,99 +400,6 @@ class _MedicineCard extends StatelessWidget {
           ),
         ],
       ),
-    );
-  }
-}
-
-/// 지금은 안 드시는 약. 줄을 누르면 그 자리에서 펴진다.
-class _PastMedicines extends StatefulWidget {
-  final List<UserMedicine> medicines;
-
-  const _PastMedicines({required this.medicines});
-
-  @override
-  State<_PastMedicines> createState() => _PastMedicinesState();
-}
-
-class _PastMedicinesState extends State<_PastMedicines> {
-  bool _open = false;
-
-  @override
-  Widget build(BuildContext context) {
-    // 칸 하나로 둔다. 접혀 있을 때는 "이전에 사용한 약" 한 줄만 보이고,
-    // 누르면 그 칸이 아래로 늘어나며 약들이 따라 나온다. 칸을 둘로 나누면
-    // 펼친 목록이 남의 칸처럼 떨어져 보인다.
-    return _StackedCard(
-      child: SeniorCard(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            SeniorListRow(
-              label: '이전에 사용한 약',
-              labelColor: AppColors.textTertiary,
-              value: '${widget.medicines.length}가지',
-              trailing: const SeniorChevron(),
-              onTap: () => setState(() => _open = !_open),
-            ),
-            if (_open)
-              for (final medicine in widget.medicines) ...[
-                // 제목 줄과 약 줄을 가는 선으로 가른다.
-                const SeniorDivider(),
-                SeniorListRow(
-                  label: nameWithoutStrength(
-                    medicine.displayName,
-                    strength: medicine.ingredientStrength,
-                  ),
-                  labelColor: AppColors.textTertiary,
-                  value: medicine.useType.label,
-                  trailing: const SeniorChevron(),
-                  onTap: () =>
-                      context.push('/medicines/${medicine.medicineCode}'),
-                ),
-              ],
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-/// 카드 한 장이 뒤에 더 깔린 모양.
-///
-/// 지금 드시는 약과 같은 흰 카드를 쓰되, 뒤에 회색 카드가 왼쪽으로 조금
-/// 삐져나오게 둔다. "이 아래에 지난 약이 더 있다"를 색이 아니라 모양으로 말한다.
-class _StackedCard extends StatelessWidget {
-  final Widget child;
-
-  const _StackedCard({required this.child});
-
-  /// 뒤 카드가 왼쪽으로 보이는 만큼.
-  static const double _peek = 6;
-
-  @override
-  Widget build(BuildContext context) {
-    return Stack(
-      children: [
-        // 카드와 똑같은 크기·모서리로 한 장을 왼쪽으로 밀어 깐다.
-        // 그래야 삐져나온 회색이 위아래 모서리까지 카드를 따라 휘어진다.
-        Positioned(
-          left: 0,
-          right: _peek,
-          top: 0,
-          bottom: 0,
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              color: AppColors.chevron,
-              borderRadius: BorderRadius.circular(22),
-            ),
-          ),
-        ),
-        Padding(
-          padding: const EdgeInsets.only(left: _peek),
-          child: child,
-        ),
-      ],
     );
   }
 }

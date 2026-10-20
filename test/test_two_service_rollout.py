@@ -12,7 +12,7 @@ import requests
 import app.database as database
 from app.core import auth
 from app.core.kst import today_kst
-from app.routes import auth as auth_routes, biosignal, dashboard, guardians, medication_logs, notifications, users
+from app.routes import auth as auth_routes, biosignal, dashboard, guardians, internal, medication_logs, notifications, users
 from app.services import medication_feature_dur_client as remote
 from init_db import TABLE_DEFINITIONS
 
@@ -45,6 +45,8 @@ def services(tmp_path, monkeypatch):
     monkeypatch.setenv("ALKONGYAKONG_AUTH_SECRET", "test-two-service-shared-key-not-for-production")
     monkeypatch.setenv("AUTH_AUTHORITY_BASE_URL", "https://main.test")
     monkeypatch.setattr(remote, "MEDICATION_FEATURE_BASE_URL", "https://medication.test")
+    import app.core.config as config
+    monkeypatch.setattr(config, "MEDICATION_FEATURE_BASE_URL", "https://medication.test")
 
     class RoleMiddleware:
         def __init__(self, app, current_role):
@@ -62,7 +64,7 @@ def services(tmp_path, monkeypatch):
         api.add_middleware(RoleMiddleware, current_role=name)
         for router in (auth_routes.router, users.router, guardians.router,
                        dashboard.router, medication_logs.router, biosignal.router,
-                       notifications.router):
+                       notifications.router, internal.router):
             api.include_router(router)
         clients[name] = TestClient(api)
 
@@ -82,6 +84,18 @@ def services(tmp_path, monkeypatch):
         wrapped.url = url
         return wrapped
     monkeypatch.setattr(requests, "get", internal_get)
+    def internal_delete(url, **kwargs):
+        split = urlsplit(url)
+        assert split.hostname == "medication.test"
+        claims = auth.verify_token(kwargs["headers"]["Authorization"][7:])
+        assert claims["scope"] == "account_purge"
+        response = clients["medication"].delete(split.path, headers=kwargs["headers"])
+        wrapped = requests.Response()
+        wrapped.status_code = response.status_code
+        wrapped._content = response.content
+        wrapped.url = url
+        return wrapped
+    monkeypatch.setattr(requests, "delete", internal_delete)
     yield clients, paths, calls
     for client in clients.values():
         client.close()
@@ -144,3 +158,8 @@ def test_two_db_take_cancel_guardian_read_and_revoke(services):
     assert {scope for _, scope, _ in calls} >= {"identity_read", "guardian_link_check", "patient_read"}
     with sqlite3.connect(paths["medication"]) as conn:
         assert conn.execute("SELECT status FROM medication_logs ORDER BY id").fetchall() == [("TAKEN",), ("CANCELLED",)]
+    assert main.delete(f"/api/v1/users/{patient['id']}", headers=patient_header).status_code == 204
+    for path in paths.values():
+        with sqlite3.connect(path) as conn:
+            assert conn.execute("SELECT 1 FROM users WHERE id=?", (patient["id"],)).fetchone() is None
+    assert medication.get(today_path, headers=patient_header).status_code == 401

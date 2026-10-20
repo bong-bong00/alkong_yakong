@@ -35,6 +35,7 @@ class HeartScreen extends ConsumerStatefulWidget {
   /// 누구의 기록을 볼지. null이면 로그인한 사람(MvpSession) 본인이다.
   /// 보호자가 어르신 기록을 볼 때 어르신 id를 넘긴다.
   final String? userId;
+  final String? patientTitle;
 
   /// 기록을 읽어 올 곳. 없으면 이 화면이 하나 만들어 쓴다.
   final HeartRepository? repository;
@@ -52,6 +53,7 @@ class HeartScreen extends ConsumerStatefulWidget {
     super.key,
     this.guardianTitle = '',
     this.userId,
+    this.patientTitle,
     this.repository,
     this.sensor,
     this.routeBasedMeasurement = false,
@@ -156,6 +158,8 @@ class _HeartScreenState extends ConsumerState<HeartScreen> {
         builder: (_) => MonthlyHeartScreen(
           data: data,
           guardianTitle: resolveGuardianTitle(context, widget.guardianTitle),
+          patientTitle: widget.patientTitle,
+          now: data.periodDate,
         ),
       ),
     );
@@ -261,8 +265,30 @@ class _HeartScreenState extends ConsumerState<HeartScreen> {
                         style: AppText.screenTitle(size: 24),
                       ),
                     ),
+                    if (_viewingOther)
+                      TextButton.icon(
+                        key: const Key('guardian-heart-refresh'),
+                        style: TextButton.styleFrom(
+                          textStyle: AppText.body(size: 15),
+                          minimumSize: const Size(48, 48),
+                          padding: const EdgeInsets.symmetric(horizontal: 8),
+                          iconSize: 20,
+                        ),
+                        label: const Text('새로고침'),
+                        onPressed: _loading
+                            ? null
+                            : () => unawaited(_load(quiet: true)),
+                        icon: const Icon(Icons.refresh),
+                      ),
                   ],
                 ),
+                if (_viewingOther && widget.patientTitle != null) ...[
+                  const SizedBox(height: 6),
+                  Text(
+                    '${widget.patientTitle} 님',
+                    style: AppText.caption(size: 17),
+                  ),
+                ],
                 const SizedBox(height: 14),
                 SeniorSegmented(
                   labels: const ['이번 주', '한 달'],
@@ -302,6 +328,20 @@ class _HeartScreenState extends ConsumerState<HeartScreen> {
                     ),
                   ],
                   if (data != null) ...[
+                    if (_viewingOther) ...[
+                      const SizedBox(height: 12),
+                      HeartDailyBars(
+                        month: (data.periodDate ?? DateTime.now()).month,
+                        readings: weeklyReadings,
+                        weekStart: DateTime(
+                          (data.periodDate ?? DateTime.now()).year,
+                          (data.periodDate ?? DateTime.now()).month,
+                          (data.periodDate ?? DateTime.now()).day -
+                              (data.periodDate ?? DateTime.now()).weekday +
+                              1,
+                        ),
+                      ),
+                    ],
                     if (weeklyReadings.isNotEmpty) ...[
                       const SizedBox(height: 12),
                       HeartReadingsCard(

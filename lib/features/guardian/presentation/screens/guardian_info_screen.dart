@@ -7,14 +7,16 @@ import '../../../../core/theme/app_typography.dart';
 import '../../../../core/widgets/senior_card.dart';
 import '../../../../core/widgets/senior_header.dart';
 import '../../../profile/application/current_user_controller.dart';
+import '../../../profile/presentation/screens/account_screen.dart';
 import '../../../profile/presentation/screens/help_screen.dart';
 import '../../../profile/presentation/screens/policy_screen.dart';
 import '../../application/guardians_provider.dart';
+import '../../application/guardian_alert_inbox.dart';
 import 'guardian_account_screen.dart';
 import 'guardian_alert_prefs_screen.dart';
 import 'care_manage_screen.dart';
 
-/// 보호자 · 정보 탭 (프로토타입 93).
+/// 보호자 · 설정 탭. 기존 정보 탭 구성을 유지한다.
 ///
 /// 어르신 화면의 "내 정보"와 다르다. 보호자는 약을 먹지 않으니
 /// 내 약 목록·복약 알림·폴라 센서가 없다.
@@ -30,7 +32,7 @@ class GuardianInfoScreen extends ConsumerWidget {
 
     return Column(
       children: [
-        const SeniorTitleHeader(title: '정보'),
+        const SeniorTitleHeader(title: '설정'),
         Expanded(
           child: SingleChildScrollView(
             padding: const EdgeInsets.fromLTRB(20, 16, 20, 28),
@@ -104,11 +106,18 @@ class GuardianInfoScreen extends ConsumerWidget {
                         label: '알림 받는 방법',
                         icon: TablerIcons.bell,
                         trailing: const SeniorChevron(),
-                        onTap: () => Navigator.of(context).push(
-                          MaterialPageRoute<void>(
-                            builder: (_) => const GuardianAlertPrefsScreen(),
-                          ),
-                        ),
+                        onTap: () async {
+                          await Navigator.of(context).push(
+                            MaterialPageRoute<void>(
+                              builder: (_) => const GuardianAlertPrefsScreen(),
+                            ),
+                          );
+                          if (context.mounted) {
+                            ref
+                                .read(guardianAlertRevisionProvider.notifier)
+                                .state++;
+                          }
+                        },
                       ),
                       const SeniorDivider(),
                       SeniorListRow(
@@ -117,7 +126,7 @@ class GuardianInfoScreen extends ConsumerWidget {
                         trailing: const SeniorChevron(),
                         onTap: () => Navigator.of(context).push(
                           MaterialPageRoute<void>(
-                            builder: (_) => const HelpScreen(),
+                            builder: (_) => const HelpScreen(isGuardian: true),
                           ),
                         ),
                       ),
@@ -133,6 +142,24 @@ class GuardianInfoScreen extends ConsumerWidget {
                         ),
                       ),
                     ],
+                  ),
+                ),
+                const SizedBox(height: 20),
+                SeniorCard(
+                  key: const ValueKey('guardian-account-actions'),
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  color: AppColors.dangerBg,
+                  child: SeniorListRow(
+                    label: '로그아웃·탈퇴',
+                    labelColor: AppColors.danger,
+                    icon: TablerIcons.logout,
+                    iconColor: AppColors.danger,
+                    trailing: const SeniorChevron(color: AppColors.danger),
+                    onTap: () => Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) => const AccountScreen(isGuardian: true),
+                      ),
+                    ),
                   ),
                 ),
               ],

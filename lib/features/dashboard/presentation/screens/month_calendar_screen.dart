@@ -14,6 +14,9 @@ import '../../../../core/widgets/senior_wheel.dart';
 import '../../../medication/application/medication_controller.dart';
 import '../../../medication/domain/medication_models.dart';
 import '../widgets/day_dose_detail.dart';
+import '../widgets/planned_medication_detail.dart';
+import '../../domain/planned_medication.dart';
+import '../../application/medication_history_provider.dart' show dateOnly;
 
 /// 한 칸이 가질 수 있는 상태.
 ///
@@ -31,12 +34,14 @@ class CalendarDay {
   /// 그날 시간대별 결과. 칸을 누르면 아래 카드가 이것으로 바뀐다.
   final List<CalendarSlot> slots;
   final bool presentation;
+  final List<PlannedMedicationSlot> plannedSlots;
 
   const CalendarDay(
     this.day,
     this.mark, {
     this.slots = const [],
     this.presentation = false,
+    this.plannedSlots = const [],
   });
 }
 
@@ -114,6 +119,7 @@ class _MonthCalendarScreenState extends ConsumerState<MonthCalendarScreen> {
   late List<MissedDay> _missed;
   bool _hasSchedules = false;
   bool _loading = false;
+  bool _loadFailed = false;
   int? _pickedDay;
 
   @override
@@ -217,6 +223,9 @@ class _MonthCalendarScreenState extends ConsumerState<MonthCalendarScreen> {
                       _markOf(row['mark']?.toString() ?? ''),
                       slots: _slotsOf(row['slots']),
                       presentation: row['marker'] == PresentationHistory.marker,
+                      plannedSlots: PlannedMedicationSlot.parse(
+                        row['planned_slots'],
+                      ),
                     ),
               ].where((item) => item.day > 0).toList()
             : _days;
@@ -231,11 +240,15 @@ class _MonthCalendarScreenState extends ConsumerState<MonthCalendarScreen> {
               ]
             : _missed;
         _loading = false;
+        _loadFailed = false;
       });
       if (mounted) setState(() {});
     } catch (_) {
       if (!mounted) return;
-      setState(() => _loading = false);
+      setState(() {
+        _loading = false;
+        _loadFailed = true;
+      });
       if (mounted) setState(() {});
     }
   }
@@ -265,6 +278,7 @@ class _MonthCalendarScreenState extends ConsumerState<MonthCalendarScreen> {
       _pickedDay = null;
       _hasSchedules = false;
       _loading = true;
+      _loadFailed = false;
     });
     unawaited(_load());
   }
@@ -453,19 +467,31 @@ class _MonthCalendarScreenState extends ConsumerState<MonthCalendarScreen> {
                         const SizedBox(height: 12),
                         // 기록 탭과 같은 하루 상세를 둔다. 두 화면이 서로 다른
                         // 모양으로 같은 내용을 말하면 다른 것으로 읽힌다.
-                        DayDoseDetail(
-                          dayLabel: _detailLabel,
-                          date: _detailDate,
-                          doses: _detailDoses,
-                          footnote:
-                              _days.any(
-                                (day) =>
-                                    day.day == _detailDate.day &&
-                                    day.presentation,
-                              )
-                              ? '시연용 가상약(실제 약 아님) · 앱 내부 시연 기록'
-                              : null,
-                        ),
+                        if (_detailDate.isAfter(dateOnly(DateTime.now())))
+                          PlannedMedicationDetail(
+                            dayLabel: _detailLabel,
+                            slots:
+                                _days
+                                    .where((day) => day.day == _detailDate.day)
+                                    .firstOrNull
+                                    ?.plannedSlots ??
+                                const [],
+                            failed: _loadFailed,
+                          )
+                        else
+                          DayDoseDetail(
+                            dayLabel: _detailLabel,
+                            date: _detailDate,
+                            doses: _detailDoses,
+                            footnote:
+                                _days.any(
+                                  (day) =>
+                                      day.day == _detailDate.day &&
+                                      day.presentation,
+                                )
+                                ? '시연용 가상약(실제 약 아님) · 앱 내부 시연 기록'
+                                : null,
+                          ),
                       ],
                     ),
                   ),
@@ -495,11 +521,11 @@ class _DayCell extends StatelessWidget {
       case DayMark.done:
         background = AppColors.calendarDone;
         ink = AppColors.pointBorder;
-        spoken = '다 드신 날';
+        spoken = '복약 완료';
       case DayMark.missed:
         background = AppColors.calendarMissed;
         ink = AppColors.calendarMissedInk;
-        spoken = '빠뜨린 날';
+        spoken = '복약 미완료';
       case DayMark.today:
         background = AppColors.textPrimary;
         ink = Colors.white;
@@ -515,7 +541,8 @@ class _DayCell extends StatelessWidget {
     }
 
     return Semantics(
-      label: '${day.day}일 $spoken',
+      label:
+          '${day.day}일 $spoken${day.plannedSlots.isNotEmpty ? ', 복약 예정' : ''}',
       button: onTap != null,
       selected: picked,
       child: GestureDetector(
@@ -526,24 +553,54 @@ class _DayCell extends StatelessWidget {
             constraints: const BoxConstraints(minHeight: 54),
             alignment: Alignment.center,
             color: Colors.transparent,
-            child: Container(
+            child: SizedBox(
               width: 42,
-              height: 42,
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                color: background,
-                shape: BoxShape.circle,
-                // 보고 있는 하루만 옅은 테로 짚어 준다.
-                border: picked
-                    ? Border.all(color: AppColors.pointBorder, width: 2)
-                    : null,
-              ),
-              child: Text(
-                '${day.day}',
-                style: AppText.cardTitle(
-                  size: 18,
-                  color: ink,
-                ).copyWith(height: 1),
+              height: 54,
+              child: Stack(
+                clipBehavior: Clip.none,
+                alignment: Alignment.center,
+                children: [
+                  Container(
+                    width: 42,
+                    height: 42,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: background,
+                      shape: BoxShape.circle,
+                      // 보고 있는 하루만 옅은 테로 짚어 준다.
+                      border: picked
+                          ? Border.all(color: AppColors.pointBorder, width: 2)
+                          : null,
+                    ),
+                    child: Stack(
+                      clipBehavior: Clip.none,
+                      alignment: Alignment.center,
+                      children: [
+                        Text(
+                          '${day.day}',
+                          style: AppText.cardTitle(
+                            size: 18,
+                            color: ink,
+                          ).copyWith(height: 1),
+                        ),
+                        if (day.plannedSlots.isNotEmpty)
+                          Positioned(
+                            // Anchor to the number itself, not the taller day cell.
+                            top: -8,
+                            child: Container(
+                              key: ValueKey('month-planned-dot-${day.day}'),
+                              width: 6,
+                              height: 6,
+                              decoration: const BoxDecoration(
+                                color: AppColors.point,
+                                shape: BoxShape.circle,
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                ],
               ),
             ),
           ),
@@ -558,14 +615,22 @@ class _Legend extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Wrap(
-      spacing: 14,
-      runSpacing: 10,
-      children: [
-        _LegendItem(color: AppColors.calendarDone, label: '다 드심'),
-        _LegendItem(color: AppColors.calendarMissed, label: '놓침'),
-        _LegendItem(color: AppColors.textPrimary, label: '오늘'),
-      ],
+    return const FittedBox(
+      fit: BoxFit.scaleDown,
+      alignment: Alignment.centerLeft,
+      child: Row(
+        key: ValueKey('calendar-legend-row'),
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _LegendItem(color: AppColors.calendarDone, label: '복약 완료'),
+          SizedBox(width: 10),
+          _LegendItem(color: AppColors.calendarMissed, label: '미완료'),
+          SizedBox(width: 10),
+          _LegendItem(color: AppColors.textPrimary, label: '오늘'),
+          SizedBox(width: 10),
+          _LegendItem(color: AppColors.point, label: '예정', size: 6),
+        ],
+      ),
     );
   }
 }
@@ -573,8 +638,9 @@ class _Legend extends StatelessWidget {
 class _LegendItem extends StatelessWidget {
   final Color color;
   final String label;
+  final double size;
 
-  const _LegendItem({required this.color, required this.label});
+  const _LegendItem({required this.color, required this.label, this.size = 12});
 
   @override
   Widget build(BuildContext context) {
@@ -582,12 +648,16 @@ class _LegendItem extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       children: [
         Container(
-          width: 18,
-          height: 18,
+          width: size,
+          height: size,
           decoration: BoxDecoration(color: color, shape: BoxShape.circle),
         ),
-        const SizedBox(width: 8),
-        Text(label, style: AppText.label(size: 17, color: AppColors.textBody)),
+        const SizedBox(width: 4),
+        Text(
+          label,
+          maxLines: 1,
+          style: AppText.label(size: 16, color: AppColors.textBody),
+        ),
       ],
     );
   }

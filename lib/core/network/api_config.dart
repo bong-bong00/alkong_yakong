@@ -6,10 +6,10 @@ abstract final class ApiConfig {
     'LOCAL_API_BASE_URL',
   );
   static const String productionBaseUrl = 'https://alkong-yakong.onrender.com';
-  // OCR·약 등록·목록·상세·DUR·복약 기능은 개인 Render를 기본으로 쓴다.
+  // OCR·약 등록·목록·상세·DUR·복약 기능은 본인 작업공간의 약 서버를 쓴다.
   // 로컬 서버가 필요할 때만 LOCAL_API_BASE_URL dart-define으로 덮어쓴다.
   static const String medicationFeatureBaseUrl =
-      'https://alkong-yakong-j0jn.onrender.com';
+      'https://alkong-yakong-medication.onrender.com';
   static const String desktopDevelopmentBaseUrl = 'http://localhost:8000';
 
   static String get localFeatureBaseUrl => _overrideLocalBaseUrl.isNotEmpty

@@ -49,6 +49,22 @@ def test_medication_question_with_weather_word_is_not_blocked():
     assert classify_question_scope("비 오는 날 약 보관은 어떻게 하나요?") == "general_medication"
 
 
+@pytest.mark.parametrize("message", ["간경화가 뭐야?", "간경화란?", "당뇨가 무엇인가요?"])
+@pytest.mark.parametrize("context", [False, True])
+def test_disease_definition_has_clear_medication_only_boundary(message, context):
+    assert classify_question_scope(message, has_medicine_context=context) == "unrelated"
+    with patch.object(gemini_service, "_generate_content_with_retry") as generate:
+        assert gemini_service.generate_chat_response(
+            message, **({"selected_medicine": A} if context else {})
+        ) == UNRELATED_QUESTION_REPLY
+        generate.assert_not_called()
+
+
+@pytest.mark.parametrize("message", ["타이레놀이 뭐야?", "당뇨약의 부작용이 뭐야?"])
+def test_medicine_definition_remains_in_scope(message):
+    assert classify_question_scope(message) != "unrelated"
+
+
 @pytest.mark.parametrize("medicines", [[A], [A, B]])
 def test_off_topic_followup_is_checked_before_history_resolution(medicines):
     history = [

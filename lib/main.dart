@@ -11,7 +11,6 @@ import 'package:go_router/go_router.dart';
 import 'core/providers/user_role.dart';
 import 'core/session/auth_session.dart';
 import 'core/session/session_credentials.dart';
-import 'core/constants/app_colors.dart';
 import 'core/theme/app_theme.dart';
 import 'features/auth/presentation/screens/login_screen.dart';
 import 'features/auth/presentation/screens/signup_screen.dart';
@@ -69,7 +68,7 @@ final _router = GoRouter(
         final data = extra is Map ? Map<String, dynamic>.from(extra) : const {};
         final raw = data['medicines'];
         return MedicineArrivedScreen(
-          senderTitle: data['sender']?.toString() ?? '가족',
+          senderTitle: data['sender']?.toString() ?? '보호자',
           medicines: [
             if (raw is List)
               for (final item in raw)
@@ -273,11 +272,12 @@ class _StartupGate extends StatelessWidget {
   );
 }
 
-class AlkongYakongApp extends StatelessWidget {
+class AlkongYakongApp extends ConsumerWidget {
   const AlkongYakongApp({super.key});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final isGuardian = ref.watch(userRoleProvider) == UserRole.guardian;
     return MaterialApp.router(
       title: '알콩약콩',
       debugShowCheckedModeBanner: false,
@@ -289,21 +289,20 @@ class AlkongYakongApp extends StatelessWidget {
         valueListenable: SessionCredentials.offline,
         builder: (context, offline, _) => Column(
           children: [
-            if (offline)
-              Material(
-                color: AppColors.pointTint,
+            Expanded(child: child ?? const SizedBox()),
+            if (offline && !isGuardian)
+              const Material(
                 child: SafeArea(
-                  bottom: false,
+                  top: false,
                   child: Padding(
-                    padding: const EdgeInsets.all(10),
+                    padding: EdgeInsets.all(10),
                     child: Text(
-                      '오프라인 · 저장된 내 정보만 보고 있어요.',
-                      style: Theme.of(context).textTheme.bodyMedium,
+                      '오프라인 · 저장된 정보입니다. 변경·복약 기록은 연결 후 가능합니다.',
+                      textAlign: TextAlign.center,
                     ),
                   ),
                 ),
               ),
-            Expanded(child: child ?? const SizedBox()),
           ],
         ),
       ),

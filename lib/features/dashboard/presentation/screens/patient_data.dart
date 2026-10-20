@@ -20,11 +20,14 @@ class CarePatient {
 
   /// 아직 안 드신 첫 시간대 ("저녁 약"). 다 드셨거나 약이 없으면 null.
   final String? nextDoseLabel;
+  final String? doseStatus;
+  final String? overdueDoseLabel;
   final List<CareSlot> slots;
 
   /// 가장 최근에 잰 심박수. 잰 적이 없으면 null.
   final int? heartRate;
   final bool? heartRateNormal;
+  final DateTime? heartRateAt;
 
   /// 최근 7일 복약률. 기록이 없으면 null.
   final int? weekRate;
@@ -40,9 +43,12 @@ class CarePatient {
     this.takenCount = 0,
     this.totalCount = 0,
     this.nextDoseLabel,
+    this.doseStatus,
+    this.overdueDoseLabel,
     this.slots = const [],
     this.heartRate,
     this.heartRateNormal,
+    this.heartRateAt,
     this.weekRate,
     this.activities = const [],
   });
@@ -66,6 +72,8 @@ class CarePatient {
       takenCount: number(json['taken_count']) ?? 0,
       totalCount: number(json['total_count']) ?? 0,
       nextDoseLabel: text(json['next_dose_label']),
+      doseStatus: text(json['dose_status']),
+      overdueDoseLabel: text(json['overdue_dose_label']),
       slots: [
         if (slots is List)
           for (final slot in slots)
@@ -74,10 +82,14 @@ class CarePatient {
                 slot['label']?.toString() ?? '',
                 slot['taken'] == true,
                 time: slot['taken_at']?.toString() ?? '',
+                recordStatus: slot['record_status']?.toString(),
               ),
       ],
       heartRate: number(json['heart_rate']),
       heartRateNormal: json['heart_rate_normal'] as bool?,
+      heartRateAt: DateTime.tryParse(
+        text(json['heart_rate_at']) ?? '',
+      )?.toLocal(),
       weekRate: number(json['week_rate']),
       activities: [
         if (activities is List)
@@ -91,11 +103,19 @@ class CarePatient {
     );
   }
 
-  /// "어머니 · 김복자". 호칭을 모르면 이름만.
-  String get title => relation.isEmpty ? name : '$relation · $name';
+  /// 이름을 기본 식별자로 쓴다. 관계는 별도 보조 정보다.
+  String get title => name.trim().isEmpty ? '이름 미등록' : name.trim();
+
+  String get heartRateTimeLabel {
+    final at = heartRateAt;
+    if (at == null) return '측정 시각을 확인할 수 없어요';
+    return '${at.year}.${at.month.toString().padLeft(2, '0')}.${at.day.toString().padLeft(2, '0')} '
+        '${at.hour.toString().padLeft(2, '0')}:${at.minute.toString().padLeft(2, '0')} 측정';
+  }
 
   /// 오늘 아직 기록이 오지 않은 약이 있는지.
-  bool get needsAttention => nextDoseLabel != null;
+  bool get needsAttention =>
+      doseStatus == null ? nextDoseLabel != null : doseStatus == 'overdue';
 }
 
 /// 오늘 한 시간대.
@@ -106,8 +126,9 @@ class CareSlot {
   /// 어르신이 직접 누른 시각 — "08:10". 아직 안 드셨거나 기록이 없으면 빈 글자.
   /// 없는 시각을 지어내지 않는다. 빈 글자면 화면이 시각 자리를 비운다.
   final String time;
+  final String? recordStatus;
 
-  const CareSlot(this.label, this.taken, {this.time = ''});
+  const CareSlot(this.label, this.taken, {this.time = '', this.recordStatus});
 }
 
 /// 보호자 한 사람이 보는 전체 — 연결된 분과 수락을 기다리는 요청.

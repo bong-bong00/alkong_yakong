@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -6,6 +7,7 @@ import '../../../core/network/api_config.dart';
 import '../../../core/session/mvp_session.dart';
 import '../../medicines/domain/display_policy.dart';
 import '../../reminder/domain/reminder_ladder.dart';
+import '../../reminder/application/reminder_notifications.dart';
 import '../domain/medication_models.dart';
 import '../domain/presentation_medication.dart';
 
@@ -260,6 +262,7 @@ class MedicationController extends Notifier<TodayMedication> {
       ],
     );
     ref.read(reminderSchedulerProvider).cancelSlot(slot);
+    await ref.read(reminderNotificationsProvider).cancelSlotForToday(slot);
     _snoozeCount.remove(slot);
     _guardianNotified.add(slot);
   }
@@ -336,6 +339,7 @@ class MedicationController extends Notifier<TodayMedication> {
     );
     _guardianNotified.remove(slot);
     _scheduleLadder(slot);
+    await ref.read(reminderNotificationsProvider).restoreSlotForToday(slot);
   }
 
   DateTime snooze(DoseSlot slot, {DateTime? now}) {
@@ -343,7 +347,9 @@ class MedicationController extends Notifier<TodayMedication> {
     final count = (_snoozeCount[slot] ?? 0) + 1;
     _snoozeCount[slot] = count;
 
-    final until = slot.todayAt(at).add(ReminderLadder.snoozeInterval * count);
+    final planned = slot.todayAt(at).add(ReminderLadder.snoozeInterval * count);
+    final minimum = at.add(ReminderLadder.snoozeInterval);
+    final until = planned.isAfter(minimum) ? planned : minimum;
     state = state.copyWith(
       doses: [
         for (final dose in state.doses)
@@ -351,6 +357,14 @@ class MedicationController extends Notifier<TodayMedication> {
       ],
     );
     _scheduleLadder(slot, now: at);
+    unawaited(
+      ref
+          .read(reminderNotificationsProvider)
+          .snoozeSlot(slot, until)
+          .catchError((Object error) {
+            debugPrint('복약 재알림 예약 실패: ${error.runtimeType}');
+          }),
+    );
     return until;
   }
 

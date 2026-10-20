@@ -185,10 +185,20 @@ def analyze_dur(
         dur_sync_upserted = 0
         dur_sync_fetched = 0
         do_refresh = persist if refresh is None else refresh
+        requested_sync_types = (
+            set(request.consultation_types) & OFFICIAL_DUR_TYPES
+            if request.analysis_purpose == "consultation" and request.consultation_types is not None
+            else None
+        )
         if ingredients and do_refresh:
             from app.services.dur_sync_service import refresh_dur_for_ingredients
 
-            dur_sync = refresh_dur_for_ingredients(ingredients)
+            dur_sync = (
+                (refresh_dur_for_ingredients(ingredients, force_refresh=True, risk_types=requested_sync_types)
+                 if requested_sync_types != set() else {"status": "ok", "fetched": 0, "upserted": 0})
+                if request.analysis_purpose == "consultation"
+                else refresh_dur_for_ingredients(ingredients)
+            )
             dur_sync_status = str(dur_sync.get("status") or "failed")
             dur_sync_upserted = int(dur_sync.get("upserted") or 0)
             dur_sync_fetched = int(dur_sync.get("fetched") or 0)
@@ -254,6 +264,11 @@ def analyze_dur(
         taboo_n = len(taboo_rows)
         incomplete_reasons = []
         incomplete_types: set[str] = set()
+        if requested_sync_types is not None:
+            not_checked = OFFICIAL_DUR_TYPES - requested_sync_types
+            if not_checked:
+                incomplete_types.update(not_checked)
+                incomplete_reasons.append("이번 상담에서 요청하지 않은 검사 항목은 완료로 판정하지 않았어요.")
         if missing_count:
             incomplete_reasons.append(f"{missing_count}개 약의 공식 정보를 확인하지 못해 검사에서 빠졌어요.")
             incomplete_types.update(ALL_CHECK_TYPES)

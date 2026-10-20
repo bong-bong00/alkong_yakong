@@ -21,12 +21,13 @@ class BiosignalPolicyTest(unittest.TestCase):
             conn.execute(
                 "INSERT INTO users (id, name, role) VALUES ('U1', '테스트', 'PATIENT')"
             )
+            conn.execute("INSERT INTO users(id,name,role) VALUES('guardian','보호자','GUARDIAN')")
             conn.execute(
                 """
                 INSERT INTO guardians (
                     id, user_id, guardian_name, relationship,
-                    phone, notification_enabled
-                ) VALUES ('G1', 'U1', '보호자', '가족', '01000000000', 1)
+                    phone, notification_enabled, guardian_user_id, consent_verified_at
+                ) VALUES ('G1', 'U1', '보호자', '가족', '01000000000', 1, 'guardian', CURRENT_TIMESTAMP)
                 """
             )
             conn.commit()
@@ -64,12 +65,12 @@ class BiosignalPolicyTest(unittest.TestCase):
 
             self.assertEqual(counts["heart_rate_logs"], 1)
             self.assertEqual(counts["baseline_heart_rate"], 0)
-            self.assertEqual(counts["abnormal_events"], 0)
-            self.assertEqual(counts["notifications"], 0)
+            self.assertEqual(counts["abnormal_events"], 1)
+            self.assertEqual(counts["notifications"], 1)
             self.assertEqual(source, "POLAR_30S_AVERAGE")
             self.assertEqual(measurement_context, "general")
             self.assertIsNone(result["baseline"])
-            self.assertIsNone(result["abnormal_event"])
+            self.assertEqual(result["abnormal_event"]["event_type"], "HIGH_HEART_RATE")
             response = HeartRateResponse.model_validate(result)
             self.assertIsNone(response.baseline)
         finally:

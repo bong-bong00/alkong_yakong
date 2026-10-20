@@ -125,6 +125,8 @@ abstract final class SessionCredentials {
       ..remove('access_token')
       ..remove('token_type')
       ..remove('expires_in');
+    user.remove('password');
+    user.remove('password_hash');
     final data = {'access_token': response['access_token'], 'profile': user};
     final previous = userId;
     // Validate before replacing a previous account's session.
@@ -168,7 +170,10 @@ abstract final class SessionCredentials {
             value['id'] != userId) {
           return;
         }
-        profile = Map<String, dynamic>.from(value);
+        profile = Map<String, dynamic>.from(value)
+          ..remove('password')
+          ..remove('password_hash')
+          ..remove('access_token');
         await _storage.write(
           key: _sessionKey,
           value: jsonEncode({'access_token': _token, 'profile': profile}),

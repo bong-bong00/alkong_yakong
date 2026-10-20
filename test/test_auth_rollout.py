@@ -46,7 +46,30 @@ def client(tmp_path, monkeypatch):
     def today(user_id: str):
         return {"user_id": user_id, "doses": []}
 
+    @api.get("/api/v1/drug-explain/cache-context")
+    def cache_context(user_id: str):
+        return {"verified": True, "fingerprint": user_id}
+
     return TestClient(api)
+
+
+def test_guardian_chat_and_cache_are_bound_to_current_accepted_patient(client):
+    patient = signup(client)
+    guardian = signup(client, '01033334444', 'guardian')
+    other = signup(client, '01055556666')
+    body = {'user_id': patient['id'], 'message': '주의사항'}
+    cache = '/api/v1/drug-explain/cache-context?user_id=' + patient['id']
+    assert client.post('/api/v1/drug-explain/chat', headers=header(guardian), json=body).status_code == 403
+    assert client.get(cache, headers=header(guardian)).status_code == 403
+    link = client.post('/api/v1/guardians/link-requests', headers=header(guardian), json={
+        'guardian_user_id': guardian['id'], 'patient_phone': '01011112222'}).json()['id']
+    assert client.patch('/api/v1/guardians/' + link, headers=header(patient), json={'status': 'ACCEPTED'}).status_code == 200
+    assert client.post('/api/v1/drug-explain/chat', headers=header(guardian), json=body).status_code == 200
+    assert client.get(cache, headers=header(guardian)).status_code == 200
+    assert client.post('/api/v1/drug-explain/chat', headers=header(guardian), json={**body, 'user_id': other['id']}).status_code == 403
+    assert client.delete('/api/v1/guardians/' + link, headers=header(patient)).status_code == 204
+    assert client.post('/api/v1/drug-explain/chat', headers=header(guardian), json=body).status_code == 403
+    assert client.get(cache, headers=header(guardian)).status_code == 403
 
 
 def signup(client, phone="01011112222", role="patient"):
@@ -59,6 +82,22 @@ def signup(client, phone="01011112222", role="patient"):
 
 def header(account):
     return {"Authorization": f"Bearer {account['access_token']}"}
+
+
+def test_password_change_requires_owner_and_current_password(client):
+    account = signup(client)
+    other = signup(client, "01033334444", "guardian")
+    url = f"/api/v1/users/{account['id']}/password"
+    body = {"current_password": "test123", "new_password": "new-test456"}
+    assert client.post(url, json=body).status_code == 401
+    assert client.post(url, headers=header(other), json=body).status_code == 403
+    assert client.post(url, headers=header(account), json={**body, "current_password": "wrong"}).status_code == 400
+    assert client.post(url, headers=header(account), json={**body, "new_password": "short"}).status_code == 422
+    response = client.post(url, headers=header(account), json=body)
+    assert response.status_code == 204 and not response.content
+    assert client.post('/api/v1/users/login', json={"phone": "01011112222", "password": "test123"}).status_code == 401
+    assert client.post('/api/v1/users/login', json={"phone": "01011112222", "password": "new-test456"}).status_code == 200
+    assert 'password_hash' not in client.get(f"/api/v1/users/{account['id']}", headers=header(account)).json()
 
 
 def test_login_issues_credential_and_rejects_unauthenticated_or_other_user(client):
@@ -113,7 +152,12 @@ def test_guardian_acceptance_is_patient_only_and_revocation_is_immediate(client)
     assert client.get(path, headers=header(guardian)).status_code == 403
 
 
-def test_deleted_identity_cannot_use_old_token(client):
+def test_deleted_identity_cannot_use_old_token(client, monkeypatch):
+    from unittest.mock import Mock
+    import requests
+    import app.core.config as config
+    monkeypatch.setattr(config, 'MEDICATION_FEATURE_BASE_URL', 'https://medication.test')
+    monkeypatch.setattr(requests, 'delete', Mock(return_value=Mock(status_code=204)))
     account = signup(client)
     assert client.delete(f"/api/v1/users/{account['id']}", headers=header(account)).status_code == 204
     assert client.get("/api/v1/medicines/lookup", headers=header(account)).status_code == 401

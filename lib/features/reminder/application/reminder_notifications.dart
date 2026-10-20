@@ -9,6 +9,9 @@ import 'package:timezone/data/latest_all.dart' as tz_data;
 import 'package:timezone/timezone.dart' as tz;
 
 import 'alarm_preferences.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import '../../../core/session/mvp_session.dart';
+import '../../medication/domain/medication_models.dart';
 
 /// 매일 같은 시각에 울릴 알림 하나.
 ///
@@ -20,6 +23,7 @@ class PlannedReminder {
   final int minute;
   final String title;
   final String body;
+  final DoseSlot? slot;
 
   const PlannedReminder({
     required this.id,
@@ -27,6 +31,7 @@ class PlannedReminder {
     required this.minute,
     required this.title,
     required this.body,
+    this.slot,
   });
 
   @override
@@ -71,6 +76,7 @@ abstract final class ReminderPlan {
     minute: time % 60,
     title: title,
     body: '${AlarmPreferences.clock(time)} 약을 물과 함께 드세요.',
+    slot: ReminderNotifications.slotForHour(time ~/ 60),
   );
 
   static PlannedReminder _followUp(int id, int time) {
@@ -82,6 +88,7 @@ abstract final class ReminderPlan {
       minute: total % 60,
       title: followUpTitle,
       body: '${AlarmPreferences.clock(time)} 약, 아직 안 드셨다면 지금 드세요.',
+      slot: ReminderNotifications.slotForHour(time ~/ 60),
     );
   }
 
@@ -140,6 +147,73 @@ class ReminderNotifications {
   bool _ready = false;
   Future<bool>? _notificationAsk;
   Future<void> _queue = Future.value();
+  AlarmPreferences? _lastPrefs;
+  final Map<DoseSlot, String> _completedDays = {};
+  static String _day(DateTime at) => '${at.year}-${at.month}-${at.day}';
+  static DoseSlot slotForHour(int hour) => hour < 11
+      ? DoseSlot.morning
+      : hour < 17
+      ? DoseSlot.lunch
+      : DoseSlot.dinner;
+  String _completedKey(DoseSlot slot) =>
+      'reminder_completed_${MvpSession.userId}_${slot.name}';
+
+  Future<void> cancelSlotForToday(DoseSlot slot) async {
+    _completedDays[slot] = _day(DateTime.now());
+    try {
+      await (await SharedPreferences.getInstance()).setString(
+        _completedKey(slot),
+        _completedDays[slot]!,
+      );
+    } catch (_) {}
+    if (_lastPrefs != null) await sync(_lastPrefs!);
+    if (_ready) {
+      await _plugin!.cancel(id: 7200 + slot.index);
+      await _plugin!.cancel(id: 7300 + slot.index);
+    }
+  }
+
+  Future<void> snoozeSlot(DoseSlot slot, DateTime until) async {
+    await cancelSlotForToday(slot);
+    if (!_ready) return;
+    final at = tz.TZDateTime.from(until, tz.local);
+    final mode = await _scheduleMode();
+    for (final pair in [
+      (7200, at),
+      (7300, at.add(const Duration(minutes: 10))),
+    ]) {
+      final reminder = PlannedReminder(
+        id: pair.$1 + slot.index,
+        hour: pair.$2.hour,
+        minute: pair.$2.minute,
+        title: '약 드셨나요?',
+        body: '${slot.label} 약의 복용 여부를 확인해 주세요.',
+        slot: slot,
+      );
+      await _plugin!.zonedSchedule(
+        id: reminder.id,
+        title: reminder.title,
+        body: reminder.body,
+        scheduledDate: pair.$2,
+        notificationDetails: _details(reminder),
+        androidScheduleMode: mode,
+        payload: '${slot.name}:${MvpSession.userId}',
+      );
+    }
+  }
+
+  Future<void> clearUserReminders() async {
+    _completedDays.clear();
+    if (_ready) await _plugin!.cancelAll();
+  }
+
+  Future<void> restoreSlotForToday(DoseSlot slot) async {
+    _completedDays.remove(slot);
+    try {
+      await (await SharedPreferences.getInstance()).remove(_completedKey(slot));
+    } catch (_) {}
+    if (_lastPrefs != null) await sync(_lastPrefs!);
+  }
 
   AndroidFlutterLocalNotificationsPlugin? get _android => _plugin
       ?.resolvePlatformSpecificImplementation<
@@ -197,7 +271,9 @@ class ReminderNotifications {
   static void _onResponse(NotificationResponse response) {
     final action = response.actionId;
     if (action == null || action.isEmpty) return;
-    pendingAction.value = action;
+    pendingAction.value = response.payload?.isNotEmpty == true
+        ? '$action:${response.payload}'
+        : action;
   }
 
   static Future<tz.Location> _localLocation() async {
@@ -252,10 +328,14 @@ class ReminderNotifications {
   ///
   /// 시간을 연달아 바꾸면 호출이 겹친다. 줄 세워 돌려야 지운 알림이
   /// 앞선 호출 때문에 되살아나지 않는다.
-  Future<void> sync(AlarmPreferences prefs) =>
-      _queue = _queue.then((_) => _sync(prefs));
+  Future<void> sync(AlarmPreferences prefs) {
+    _lastPrefs = prefs;
+    if (!_ready) return Future.value();
+    return _queue = _queue.then((_) => _sync(prefs));
+  }
 
   Future<void> _sync(AlarmPreferences prefs) async {
+    _lastPrefs = prefs;
     if (!_ready) return;
     final plugin = _plugin!;
     try {
@@ -263,13 +343,40 @@ class ReminderNotifications {
         await plugin.cancel(id: id);
       }
       final plan = ReminderPlan.forPrefs(prefs);
-      if (plan.isEmpty) return;
+      if (plan.isEmpty) {
+        for (final slot in DoseSlot.values) {
+          await plugin.cancel(id: 7200 + slot.index);
+          await plugin.cancel(id: 7300 + slot.index);
+        }
+        return;
+      }
 
       await requestPermissions();
       final mode = await _scheduleMode();
       final now = tz.TZDateTime.now(tz.local);
+      try {
+        final store = await SharedPreferences.getInstance();
+        for (final slot in DoseSlot.values) {
+          final saved = store.getString(_completedKey(slot));
+          if (saved == null) {
+            _completedDays.remove(slot);
+          } else {
+            _completedDays[slot] = saved;
+          }
+        }
+      } catch (_) {}
       for (final reminder in plan) {
-        await _schedule(plugin, reminder, now, mode);
+        final reference =
+            _completedDays[reminder.slot ?? slotForHour(reminder.hour)] ==
+                _day(now)
+            ? tz.TZDateTime(
+                tz.local,
+                now.year,
+                now.month,
+                now.day + 1,
+              ).subtract(const Duration(seconds: 1))
+            : now;
+        await _schedule(plugin, reminder, reference, mode);
       }
     } catch (e) {
       debugPrint('복약 알림 예약 실패: $e');
@@ -301,6 +408,8 @@ class ReminderNotifications {
       notificationDetails: _details(reminder),
       androidScheduleMode: m,
       matchDateTimeComponents: DateTimeComponents.time,
+      payload:
+          '${(reminder.slot ?? slotForHour(reminder.hour)).name}:${MvpSession.userId}',
     );
 
     try {

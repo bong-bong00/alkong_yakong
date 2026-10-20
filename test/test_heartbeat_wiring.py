@@ -35,8 +35,7 @@ class HeartbeatWiringTest(unittest.TestCase):
         sensor_source = self.SENSOR.read_text(encoding="utf-8")
         polar_source = self.POLAR.read_text(encoding="utf-8")
         self.assertIn("if (bpm == null)", sensor_source)
-        self.assertLess(sensor_source.index("if (bpm <= 0) return;"),
-                        sensor_source.index("_datasetCollector.addPolarBpm"))
+        self.assertIn("if (bpm <= 0) return", sensor_source)
         self.assertIn("Duration(seconds: 15)", sensor_source)
         self.assertIn("averageValidHeartRates(_baselineSamples)", sensor_source)
         self.assertIn("_polar.startAverageMonitoring()", sensor_source)

@@ -8,6 +8,7 @@ import '../../../core/session/mvp_session.dart';
 import '../../../core/session/session_credentials.dart';
 import '../../../core/network/api_client.dart';
 import '../../dashboard/application/medication_history_provider.dart';
+import '../../dashboard/application/medication_calendar_provider.dart';
 import '../../guardian/application/guardians_provider.dart';
 import '../../guardian/presentation/screens/care_patient_screen.dart';
 import '../../biosignal/application/heart_device.dart';
@@ -18,6 +19,7 @@ import '../../prescription/presentation/screens/prescription_history_screen.dart
 import '../domain/user_profile.dart';
 import '../data/user_repository.dart';
 import 'current_user_controller.dart';
+import '../../reminder/application/reminder_notifications.dart';
 
 /// Restore only after the backend confirms both the saved UUID and role.
 /// A cached preference alone cannot unlock protected screens.
@@ -128,7 +130,8 @@ void resetUserScopedData(WidgetRef ref) {
     ..invalidate(carePatientProfileProvider)
     ..invalidate(heartSensorProvider)
     ..invalidate(alarmPreferencesProvider)
-    ..invalidate(medicationHistoryProvider);
+    ..invalidate(medicationHistoryProvider)
+    ..invalidate(medicationMonthPlansProvider);
   ref.invalidate(prescriptionHistoryProvider);
 }
 
@@ -137,6 +140,7 @@ void resetUserScopedData(WidgetRef ref) {
 /// 일반 모드로 되돌린다. 다음 사람이 쉬운 모드에 갇힌 채로
 /// 로그인 화면을 만나지 않도록.
 Future<void> endSession(WidgetRef ref) async {
+  await ref.read(reminderNotificationsProvider).clearUserReminders();
   await ref.read(appModeProvider.notifier).set(AppMode.normal);
   await AuthSession.logout();
   MvpSession.medicineCode = '';

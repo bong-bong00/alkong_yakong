@@ -219,7 +219,7 @@ def test_clova_network_timeout_returns_request_failed(monkeypatch):
 
     assert result.ok is False
     assert result.error.startswith("request_failed:")
-    assert "timed out" in result.error
+    assert result.error == "request_failed:timeout"
     assert result.status_code is None
 
 
@@ -236,7 +236,7 @@ def test_clova_http_error_keeps_status_without_parsing_result(monkeypatch):
 
     assert result.ok is False
     assert result.status_code == 503
-    assert result.error == "http_503:unavailable"
+    assert result.error == "http_503"
 
 
 def test_clova_invalid_json_is_reported_clearly(monkeypatch):
@@ -278,4 +278,24 @@ def test_clova_inference_failure_is_not_treated_as_success(monkeypatch):
 
     assert result.ok is False
     assert result.status_code == 200
-    assert result.error == "infer_FAILURE:unsupported image"
+    assert result.error == "inference_failed"
+
+
+def test_provider_error_payload_is_not_exposed(monkeypatch):
+    monkeypatch.setattr(clova_engine, 'CLOVA_OCR_API_URL', 'https://ocr.test/private-key')
+    monkeypatch.setattr(clova_engine, 'CLOVA_OCR_SECRET_KEY', 'SECRET')
+    monkeypatch.setattr(clova_engine.requests, 'post', lambda *a, **k:
+        _ErrorResponse(status_code=403, text='SECRET patient-name'))
+    result = clova_engine.extract_with_clova(b'image')
+    assert result.error == 'http_403'
+    assert 'SECRET' not in result.error and 'patient-name' not in result.error
+
+
+def test_request_exception_is_redacted(monkeypatch):
+    monkeypatch.setattr(clova_engine, 'CLOVA_OCR_API_URL', 'https://ocr.test')
+    monkeypatch.setattr(clova_engine, 'CLOVA_OCR_SECRET_KEY', 'SECRET')
+    def failed(*a, **k):
+        raise requests.ConnectionError('SECRET patient-name https://private-url')
+    monkeypatch.setattr(clova_engine.requests, 'post', failed)
+    result = clova_engine.extract_with_clova(b'image')
+    assert result.error == 'request_failed:ConnectionError'

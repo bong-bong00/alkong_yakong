@@ -10,8 +10,8 @@ from fastapi import APIRouter, Header, HTTPException, Query, Response
 
 import app.database as database
 from app.database import get_connection
-from app.core.auth import auth_enforced, issue_token
-from app.models.schemas import UserCreate, UserLogin, UserUpdate
+from app.core.auth import auth_enforced, issue_token, service_role
+from app.models.schemas import PasswordChangeRequest, UserCreate, UserLogin, UserUpdate
 from app.models.response_schemas import UserCreateResponse, UserResponse
 from app.services.account_lookup import find_account_by_phone, phone_digits
 from app.services.medication_history_service import get_medication_history
@@ -135,6 +135,29 @@ def _validate_history_lists(values: dict) -> None:
                 status_code=400,
                 detail='병명과 "없어요"를 함께 선택할 수 없어요.',
             )
+
+
+@router.post("/{user_id}/password", status_code=204)
+def change_password(user_id: str, body: PasswordChangeRequest):
+    if service_role() != "main":
+        raise HTTPException(status_code=404, detail="메인 서버에서 변경해 주세요.")
+    conn = get_connection()
+    try:
+        user = _load_user(conn, user_id)
+        stored = user["password_hash"]
+        if not _verify_password(body.current_password, stored):
+            raise HTTPException(status_code=400, detail="현재 비밀번호가 올바르지 않아요.")
+        changed = conn.execute(
+            "UPDATE users SET password_hash = ?, updated_at = CURRENT_TIMESTAMP "
+            "WHERE id = ? AND password_hash = ?",
+            (_hash_password(body.new_password), user_id, stored),
+        )
+        if changed.rowcount != 1:
+            raise HTTPException(status_code=409, detail="비밀번호가 변경되었어요. 다시 확인해 주세요.")
+        conn.commit()
+    finally:
+        conn.close()
+    return Response(status_code=204)
 
 
 @router.post("", response_model=UserCreateResponse)
@@ -356,6 +379,21 @@ def delete_user(user_id: str):
     try:
         _load_user(conn, user_id)
         try:
+            from app.core.auth import service_role, service_headers
+            from app.core.config import MEDICATION_FEATURE_BASE_URL
+            if service_role() == "main" and auth_enforced():
+                if not MEDICATION_FEATURE_BASE_URL:
+                    raise HTTPException(503, "약 기록 서버 연결 설정이 필요해요.")
+                import requests
+                from urllib.parse import quote
+                try:
+                    remote = requests.delete(
+                        MEDICATION_FEATURE_BASE_URL + "/api/v1/internal/users/" + quote(user_id, safe=""),
+                        headers=service_headers(user_id, "account_purge"), timeout=15,
+                    )
+                    remote.raise_for_status()
+                except requests.RequestException:
+                    raise HTTPException(503, "약 기록 서버의 탈퇴 처리를 확인하지 못했어요. 계정은 유지됩니다. 다시 시도해 주세요.") from None
             # 이 사람이 보호자로서 보낸 대기 요청은 지우고, 수락된 연결은
             # 계정 연결만 끊는다. 어르신 쪽 연락처 기록은 어르신 것이다.
             conn.execute(

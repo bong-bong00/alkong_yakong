@@ -22,12 +22,10 @@ class _Fixture extends UserMedicinesController {
     'status': 'active',
     'use_route_type': 'eat',
     'interaction_status': 'none',
-    'ask_doctor_when': [_generalAdvice],
+    'ask_doctor_when': code == 'empty-caution' ? [] : [_generalAdvice],
+    if (code == 'server-effects') 'possible_side_effects': ['서버에서 확인한 이상반응.'],
     'official_usage': _labelUsage,
-    if (code == 'prescribed') ...{
-      'dose_amount': '0.5',
-      'frequency_per_day': 3,
-    },
+    if (code == 'prescribed') ...{'dose_amount': '0.5', 'frequency_per_day': 3},
   });
 }
 
@@ -80,5 +78,31 @@ void main() {
     expect(find.text('얼마나'), findsNothing);
     expect(find.text('복용법'), findsOneWidget);
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('서버 부작용 정보가 비어도 시연용 증상을 대신 표시하지 않는다', (tester) async {
+    await mount(tester, '197800308');
+    await tester.tap(find.text('주의'));
+    await tester.pumpAndSettle();
+    expect(find.text('나타날 수 있는 증상'), findsNothing);
+    expect(find.textContaining('입이 마르거나 속이 불편할 수 있어요'), findsNothing);
+    expect(find.textContaining('의사나 약사에게 알려주세요'), findsOneWidget);
+  });
+
+  testWidgets('확인한 서버 부작용은 기존 증상 영역에 표시한다', (tester) async {
+    await mount(tester, 'server-effects');
+    await tester.tap(find.text('주의'));
+    await tester.pumpAndSettle();
+    expect(find.text('나타날 수 있는 증상'), findsOneWidget);
+    expect(find.text('서버에서 확인한 이상반응.'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('정보 부족을 주의사항이 없다는 의미로 안내하지 않는다', (tester) async {
+    await mount(tester, 'empty-caution');
+    await tester.tap(find.text('주의'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('현재 확인된 주의사항 정보가 없어요'), findsOneWidget);
+    expect(find.text('이 약에 따로 적힌 주의사항이 없어요.'), findsNothing);
   });
 }

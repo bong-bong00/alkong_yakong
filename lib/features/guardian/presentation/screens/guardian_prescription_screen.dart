@@ -6,11 +6,16 @@ import '../../../../core/theme/app_typography.dart';
 import '../../../../core/widgets/senior_card.dart';
 import '../../../../core/widgets/senior_feedback.dart';
 import '../../../../core/widgets/senior_header.dart';
+import '../../../../core/widgets/senior_button.dart';
 import '../../../dashboard/presentation/screens/patient_data.dart';
 import '../../../prescription/presentation/screens/prescription_screen.dart';
 import '../../application/guardians_provider.dart';
+import '../../../dashboard/application/medication_calendar_provider.dart';
+import '../../../medicines/application/user_medicines_controller.dart';
+import '../../../medication/application/medication_controller.dart';
+import '../../../dashboard/application/medication_history_provider.dart';
 
-/// 그 어르신 대신 처방전을 찍는 화면을 연다 (프로토타입 80).
+/// 선택한 환자의 처방전 등록 방법 선택 화면을 연다.
 Future<void> openGuardianPrescription(
   BuildContext context,
   CarePatient patient,
@@ -21,9 +26,15 @@ Future<void> openGuardianPrescription(
         onBehalfOf: patient.title,
         onBehalfOfUserId: patient.patientId,
         onCompleted: (_) {
+          final container = ProviderScope.containerOf(context, listen: false);
+          container.invalidate(careOverviewProvider);
+          container.invalidate(patientMedicinesProvider(patient.patientId));
+          container.invalidate(patientTodayProvider(patient.patientId));
+          container.invalidate(patientHistoryProvider(patient.patientId));
+          container.invalidate(medicationMonthPlansProvider);
           Navigator.of(context).maybePop();
           if (!context.mounted) return;
-          showSeniorSnackbar(context, '${patient.title} 님께 약을 넣어드렸어요');
+          showSeniorSnackbar(context, '${patient.name} 님의 약과 복용 일정을 등록했어요');
         },
       ),
     ),
@@ -38,9 +49,8 @@ class GuardianPickPatientScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final patients =
-        ref.watch(careOverviewProvider).valueOrNull?.patients ??
-        const <CarePatient>[];
+    final overview = ref.watch(careOverviewProvider);
+    final patients = overview.valueOrNull?.patients ?? const <CarePatient>[];
 
     return Scaffold(
       backgroundColor: AppColors.pageBg,
@@ -56,7 +66,7 @@ class GuardianPickPatientScreen extends ConsumerWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text('보호자 화면 · 대신 찍기', style: AppText.label(size: 17)),
+                      Text('처방전 대신 등록', style: AppText.label(size: 17)),
                       Text(
                         '어느 분 처방전인가요?',
                         style: AppText.screenTitle(size: 26),
@@ -73,13 +83,35 @@ class GuardianPickPatientScreen extends ConsumerWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
+                  if (overview.isLoading && overview.valueOrNull == null)
+                    Text('돌보는 분을 불러오는 중이에요', style: AppText.body(size: 18)),
+                  if (overview.hasError) ...[
+                    Text(
+                      '환자 목록을 불러오지 못했어요. 연결 상태를 다시 확인해 주세요.',
+                      style: AppText.body(size: 18),
+                    ),
+                    const SizedBox(height: 8),
+                    SeniorButton(
+                      label: '다시 불러오기',
+                      kind: SeniorButtonKind.secondary,
+                      fontSize: 18,
+                      minHeight: 52,
+                      onPressed: () => ref.invalidate(careOverviewProvider),
+                    ),
+                  ] else if (!overview.isLoading && patients.isEmpty)
+                    Text(
+                      '연결된 환자가 없어요. 설정 → 돌보는 분 관리에서 먼저 연결해 주세요.',
+                      style: AppText.body(size: 18),
+                    ),
                   for (final patient in patients) ...[
                     SeniorCard(
                       padding: const EdgeInsets.symmetric(
                         horizontal: 20,
                         vertical: 14,
                       ),
-                      onTap: () => openGuardianPrescription(context, patient),
+                      onTap: overview.hasError
+                          ? null
+                          : () => openGuardianPrescription(context, patient),
                       child: Row(
                         children: [
                           InitialAvatar(
@@ -112,26 +144,27 @@ class GuardianPickPatientScreen extends ConsumerWidget {
                     ),
                     const SizedBox(height: 12),
                   ],
-                  SeniorCard(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 22,
-                      vertical: 14,
+                  if (patients.isNotEmpty && !overview.hasError)
+                    SeniorCard(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 22,
+                        vertical: 14,
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            '선택한 환자의 약으로 등록돼요',
+                            style: AppText.cardTitle(size: 21),
+                          ),
+                          const SizedBox(height: 6),
+                          Text(
+                            '등록이 끝나면 해당 환자의 앱에서도 약과 복용 일정을 확인할 수 있어요.',
+                            style: AppText.body(size: 18),
+                          ),
+                        ],
+                      ),
                     ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          '고른 분에게만 들어갑니다',
-                          style: AppText.cardTitle(size: 21),
-                        ),
-                        const SizedBox(height: 6),
-                        Text(
-                          '등록이 끝나면 그 어르신 전화기에 "약을 넣어드렸어요" 알림이 갑니다.',
-                          style: AppText.body(size: 18),
-                        ),
-                      ],
-                    ),
-                  ),
                 ],
               ),
             ),

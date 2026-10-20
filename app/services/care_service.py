@@ -81,11 +81,14 @@ def _patient_summary(row) -> dict[str, Any]:
             start=(today - timedelta(days=6)).isoformat(),
         )
     doses = (remote["today"] if remote else get_today_medicines(patient_id)).get("doses") or []
+    now = datetime.now(_KST)
     slots = [
-        {"label": _SLOT_LABELS.get(dose["slot"], dose["slot"]), "taken": bool(dose.get("taken"))}
+        {"label": _SLOT_LABELS.get(dose["slot"], dose["slot"]), "taken": bool(dose.get("taken")), "taken_at": dose.get("taken_at"),
+         "record_status": _dose_record_status(dose, now)}
         for dose in doses
     ]
     next_slot = next((slot["label"] for slot in slots if not slot["taken"]), None)
+    overdue = next((slot["label"] for slot in slots if slot["record_status"] == "overdue"), None)
 
     week = (remote["history"] if remote else get_medication_history(
         patient_id, (today - timedelta(days=6)).isoformat(), today.isoformat()
@@ -118,6 +121,9 @@ def _patient_summary(row) -> dict[str, Any]:
         "taken_count": sum(1 for slot in slots if slot["taken"]),
         "total_count": len(slots),
         "next_dose_label": f"{next_slot} 약" if next_slot else None,
+        "overdue_dose_label": f"{overdue} 약" if overdue else None,
+        "dose_status": ("overdue" if overdue else "scheduled" if any(s["record_status"] == "scheduled" for s in slots)
+                        else "time_unknown" if next_slot else "completed" if slots else "empty"),
         "slots": slots,
         "heart_rate": heart["bpm"] if heart else None,
         "heart_rate_normal": heart["normal"] if heart else None,
@@ -125,6 +131,27 @@ def _patient_summary(row) -> dict[str, Any]:
         "week_rate": round(week_taken * 100 / week_total) if week_total else None,
         "activities": activities,
     }
+
+
+def _dose_record_status(dose: dict[str, Any], now: datetime) -> str:
+    if dose.get("taken"):
+        return "recorded"
+    clocks = []
+    raw = dose.get("scheduled_times")
+    if not isinstance(raw, list) or not raw:
+        return "time_unknown"
+    for value in raw:
+        try:
+            hour, minute = str(value).split(":")[:2]
+            clock = (int(hour), int(minute))
+            if not (0 <= clock[0] <= 23 and 0 <= clock[1] <= 59):
+                return "time_unknown"
+            clocks.append(clock)
+        except (ValueError, TypeError):
+            return "time_unknown"
+    # A grouped slot is incomplete until every scheduled dose is recorded.
+    # Do not warn before the last known time in that group has arrived.
+    return "overdue" if (now.hour, now.minute) >= max(clocks) else "scheduled"
 
 
 def _age(birth_date: str | None, today: date) -> int | None:

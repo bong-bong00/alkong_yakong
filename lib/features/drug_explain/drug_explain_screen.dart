@@ -17,6 +17,7 @@ import '../medicines/domain/display_policy.dart';
 import 'chat_highlight.dart';
 import 'conversation_store.dart';
 import 'answer_cache.dart';
+import '../../core/session/offline_status.dart';
 
 class DrugExplainScreen extends StatefulWidget {
   final ApiClient? apiClient;
@@ -24,12 +25,24 @@ class DrugExplainScreen extends StatefulWidget {
 
   /// 약 자세히에서 "이 약 물어보기"로 들어오면 그 약을 고른 채로 연다.
   final String? initialMedicine;
+  final String? patientId;
+  final String? patientName;
+  final bool generalConsultation;
+  final bool registeredMedicinesOnly;
+  final Widget? consultationSelector;
+  final VoidCallback? onBack;
 
   const DrugExplainScreen({
     super.key,
     this.apiClient,
     this.medicationApiClient,
     this.initialMedicine,
+    this.patientId,
+    this.patientName,
+    this.generalConsultation = false,
+    this.registeredMedicinesOnly = false,
+    this.consultationSelector,
+    this.onBack,
   });
 
   @override
@@ -64,29 +77,54 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
   final List<String> _searchedMedicines = [];
   final List<Map<String, dynamic>> _messages = [];
   int _conversationStart = 0;
+  // Keep the patient's all-medicines shortcuts when temporarily selecting drugs.
+  bool _registeredMedicineAsksStarted = false;
   final _conversationStore = PharmacistConversationStore();
-  late final String _conversationUserId = MvpSession.userId;
+  late final String _signedInUserId;
+  late final String _subjectUserId;
+  // A guardian's own chat and every patient's chat have separate histories
+  // and answer caches. Never change the globally signed-in session identity.
+  late final String _conversationUserId;
   String? _conversationId;
   final _answerCache = PharmacistAnswerCache();
   String? _healthFingerprint;
   String? _medicineFingerprint;
   DateTime? _contextVerifiedAt;
+  bool _guardianAccessVerified = false;
 
   Future<void> _refreshCacheContext() async {
     _healthFingerprint = null;
     _contextVerifiedAt = null;
+    _guardianAccessVerified = false;
+    if (widget.generalConsultation) return;
     try {
       final result = await _apiClient.get(
-        '/api/v1/drug-explain/cache-context?user_id=${Uri.encodeComponent(_conversationUserId)}',
+        '/api/v1/drug-explain/cache-context?user_id=${Uri.encodeComponent(_subjectUserId)}',
+        allowCache: widget.patientId == null,
       );
       if (result is Map &&
           result['verified'] == true &&
           result['fingerprint'] is String) {
         _healthFingerprint = result['fingerprint'] as String;
         _contextVerifiedAt = DateTime.now();
+        _guardianAccessVerified = true;
       }
     } catch (_) {
       // Unknown health state permits historical viewing, never automatic reuse.
+    }
+    if (widget.patientId != null && !_guardianAccessVerified && mounted) {
+      setState(() {
+        _messages.clear();
+        _selectedMedicines.clear();
+        _temporaryMedicinesByCode.clear();
+        _searchedMedicines.clear();
+        _medicines.clear();
+        _officialMedicinesByName.clear();
+        _confirmedOfficialProductNames.clear();
+        _conversationStart = 0;
+        _registeredMedicineAsksStarted = false;
+        _conversationId = null;
+      });
     }
   }
 
@@ -100,6 +138,7 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
   }
 
   Future<void> _saveConversation() async {
+    if (MvpSession.userId != _signedInUserId) return;
     final messages = _messages
         .skip(_conversationStart)
         .where((message) => message['createdAt'] != null)
@@ -107,7 +146,7 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
     if (!messages.any((message) => message['isMe'] == true)) return;
     _conversationId ??= DateTime.now().microsecondsSinceEpoch.toString();
     final title = _selectedMedicines.isEmpty
-        ? '내 약 전체'
+        ? (widget.generalConsultation ? '일반 약 상담' : '내 약 전체')
         : _selectedMedicines.map(_shortName).join(', ');
     await _conversationStore.save(_conversationUserId, {
       'id': _conversationId,
@@ -137,6 +176,7 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
 
   Future<void> _openPreviousConversations() async {
     if (_isLoading || _isLoadingMedicines) return;
+    if (!await _canUsePatientContext()) return;
     try {
       final records = await _conversationStore.load(_conversationUserId);
       if (!mounted) return;
@@ -151,6 +191,7 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
                   setState(() {
                     _conversationId = null;
                     _conversationStart = 0;
+                    _registeredMedicineAsksStarted = false;
                     _messages.clear();
                     _pendingGeneralQuestion = null;
                     _chatController.clear();
@@ -169,6 +210,7 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
             ),
           );
         _conversationStart = 0;
+        _registeredMedicineAsksStarted = false;
         _conversationId = conversation['id'] as String;
         _selectedMedicines.clear();
         // Keep current registered medicines. Old search selections are not registered.
@@ -205,6 +247,11 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
           }
         }
         _pendingGeneralQuestion = conversation['pendingQuestion'] as String?;
+        if (widget.registeredMedicinesOnly) {
+          _selectedMedicines.clear();
+          _temporaryMedicinesByCode.clear();
+          _searchedMedicines.clear();
+        }
         _chatController.clear();
       });
       _scrollToBottom();
@@ -241,6 +288,21 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
   /// 그래서 "아침 약이랑 우유" 같은 질문이 그대로 통한다.
   bool get _asksAboutAllMedicines => _selectedMedicines.isEmpty;
 
+  bool get _showRegisteredMedicineAsks =>
+      !widget.generalConsultation &&
+      widget.patientId == null &&
+      _selectedMedicines.isEmpty &&
+      (_registeredMedicineAsksStarted ||
+          _messages
+              .skip(_conversationStart)
+              .any(
+                (message) =>
+                    message['isMe'] == true &&
+                    message['contextText'] ==
+                        _generalSuggestions.first['prompt'] &&
+                    message['intent'] == 'overview',
+              ));
+
   /// 화면에 적는 이름. 용량(mg)은 떼고 약 이름만 보여 준다.
   String _shortName(String name) => nameWithoutStrength(name);
 
@@ -253,25 +315,75 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
   /// 약 이름 없이 "아침 약"처럼 물어도 된다.
   static const List<Map<String, String>> _generalSuggestions = [
     {
-      'label': '아침 약이랑 우유 같이 먹어도 돼요?',
-      'prompt': '제가 아침에 먹는 약이랑 우유를 같이 먹어도 되는지 알려주세요.',
-      'intent': 'combination',
+      'label': '내 약에 대해 알려주세요',
+      'prompt': '제가 현재 먹는 약 전체를 쉬운 말로 알려주세요.',
+      'intent': 'overview',
     },
     {
-      'label': '혈압약이랑 관절약 같이 먹어도 돼요?',
-      'prompt': '제가 먹는 혈압약이랑 관절약을 같이 먹어도 되는지 알려주세요.',
-      'intent': 'combination',
+      'label': '약 보관할 때 주의할 점은요?',
+      'prompt': '약을 보관할 때 일반적으로 확인할 주의사항을 알려주세요.',
+      'intent': 'precautions',
     },
     {
-      'label': '졸리지 않는 감기약이 있어요?',
-      'prompt': '제가 먹는 약과 같이 먹어도 되는, 졸리지 않는 감기약이 있는지 알려주세요.',
+      'label': '약 설명서에서 무엇을 확인하나요?',
+      'prompt': '약 설명서에서 확인해야 하는 항목을 쉽게 알려주세요.',
       'intent': 'overview',
     },
   ];
 
+  static const _guardianGeneralSuggestions = [
+    {
+      'label': '약 보관할 때 주의할 점은요?',
+      'prompt': '약을 보관할 때 일반적으로 확인할 주의사항을 알려주세요.',
+      'intent': 'precautions',
+    },
+    {
+      'label': '약 설명서에서 무엇을 확인하나요?',
+      'prompt': '약 설명서에서 확인해야 하는 항목을 쉽게 알려주세요.',
+      'intent': 'overview',
+    },
+    {
+      'label': '약을 먹을 때 물로 먹어야 하나요?',
+      'prompt': '약을 먹을 때 물로 먹어야 하나요?',
+      'intent': 'overview',
+    },
+  ];
+  static const _guardianPatientSuggestions = [
+    {
+      'label': '등록된 약의 사용 목적은요?',
+      'prompt': '환자에게 등록된 각 약의 사용 목적을 알려주세요.',
+      'intent': 'efficacy',
+    },
+    {
+      'label': '등록된 약의 복용법은요?',
+      'prompt': '환자에게 등록된 각 약의 복용법을 알려주세요.',
+      'intent': 'dosage',
+    },
+    {
+      'label': '등록된 약의 주의사항은요?',
+      'prompt': '환자에게 등록된 각 약의 주의사항을 알려주세요.',
+      'intent': 'precautions',
+    },
+  ];
+
+  Map<String, String> _scopedAsk(Map<String, String> ask) {
+    if (widget.patientId == null) return ask;
+    String scoped(String text) => text
+        .replaceAll('내 약', '등록된 약')
+        .replaceAll('내 건강 상태에서', '건강정보에서')
+        .replaceAll('내 건강', '건강정보')
+        .replaceAll('등록한 질환', '환자에게 등록된 질환')
+        .replaceAll('제가 현재 먹는 약', '환자에게 등록된 약')
+        .replaceAll('제 건강 상태', '환자의 건강 상태');
+    return {
+      for (final entry in ask.entries)
+        entry.key: entry.key == 'intent' ? entry.value : scoped(entry.value),
+    };
+  }
+
   /// 내 건강을 함께 보고 답해 달라는 질문. 어느 쪽이든 끝에 붙인다.
   static const Map<String, String> _healthPrompt = {
-    'label': '내 건강에 맞춰서',
+    'label': '내 건강에서 주의할 점은요?',
     'prompt': '등록한 질환, 과거력, 알레르기, 흡연과 음주 정보를 참고해 제 건강 상태에서 주의할 점을 알려주세요.',
     'display': '내 건강 상태에서 주의할 점은?',
     'intent': 'health_precautions',
@@ -369,6 +481,13 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
   @override
   void initState() {
     super.initState();
+    _signedInUserId = MvpSession.userId;
+    _subjectUserId = widget.patientId ?? _signedInUserId;
+    _conversationUserId = widget.generalConsultation
+        ? '$_signedInUserId::general'
+        : widget.patientId == null
+        ? _signedInUserId
+        : '$_signedInUserId::patient::${widget.patientId}';
     WidgetsBinding.instance.addObserver(this);
     _apiClient = widget.apiClient ?? ApiClient();
     _medicationApiClient =
@@ -400,6 +519,12 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
 
   /// 머리말 인사. 약을 고르면 그 약 이야기로 좁혀 말한다.
   String _greeting(String userName) {
+    if (widget.generalConsultation) {
+      return '궁금한 약이나 복용 관련 내용을 물어보세요.';
+    }
+    if (widget.patientId != null) {
+      return '${widget.patientName ?? '연결된 환자'} 님의 약에 대해 궁금한 점을 물어보세요.';
+    }
     // 인사에는 고른 약 이름을 다 적는다 — 무엇을 놓고 말하는지 한 번은
     // 정확히 보여 드린다. 위 칸은 좁아서 "외 1개"로 줄인다.
     if (_selectedMedicines.isNotEmpty) {
@@ -408,7 +533,7 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
     }
     final given = _givenName(userName);
     final hello = given.isEmpty ? '안녕하세요.' : '$given 님, 안녕하세요.';
-    return '$hello 드시는 모든 약들에 대해 알고 있어요. 약이든 건강이든 편하게 물어보세요.';
+    return '$hello 약에 대해 궁금한 점을 물어보세요.';
   }
 
   /// "김복자" → "복자". 성은 떼고 부른다 — 성만으로는 누구인지 모른다.
@@ -419,6 +544,7 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
   }
 
   Future<void> _loadMedicines() async {
+    if (widget.generalConsultation) return;
     _medicineFingerprint = null;
     final names = <String>[];
     final officialMedicines = <String, _DrugSearchCandidate>{};
@@ -478,7 +604,10 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
       );
     }
 
-    for (final item in MvpSession.latestOcrItems) {
+    for (final item
+        in widget.patientId == null
+            ? MvpSession.latestOcrItems
+            : <Map<String, dynamic>>[]) {
       final officialName = firstText([
         item['official_product_name'],
         item['product_name'],
@@ -498,7 +627,7 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
       );
     }
 
-    final userId = MvpSession.userId.trim();
+    final userId = _subjectUserId.trim();
     if (userId.isEmpty) {
       if (!mounted) return;
       setState(() {
@@ -523,6 +652,7 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
     try {
       final response = await _medicationApiClient.get(
         '/api/v1/users/${Uri.encodeComponent(userId)}/medicines',
+        allowCache: widget.patientId == null,
       );
       final payload = Map<String, dynamic>.from(response as Map);
       final medicines = payload['medicines'];
@@ -622,6 +752,7 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
         searched: _searchedMedicines,
         shortName: _shortName,
         selected: _selectedMedicines,
+        searchListOnly: widget.consultationSelector != null,
       ),
     );
     if (!mounted || pick == null) return;
@@ -634,6 +765,8 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
     List<_DrugSearchCandidate> candidates = const [],
   }) {
     setState(() {
+      _registeredMedicineAsksStarted =
+          _registeredMedicineAsksStarted || _showRegisteredMedicineAsks;
       for (final candidate in candidates) {
         // 찾아서 더한 약은 복용중인 약으로 치지 않는다. 묻기 위해
         // 잠깐 올려 둔 것일 뿐, 내가 먹는 약이라고 말한 적은 없다.
@@ -660,6 +793,8 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
   void _clearMedicine() {
     if (_isLoading) return;
     setState(() {
+      _registeredMedicineAsksStarted =
+          _registeredMedicineAsksStarted || _showRegisteredMedicineAsks;
       _selectedMedicines.clear();
       _conversationStart = _messages.length;
       _conversationId = null;
@@ -675,6 +810,7 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
       message: ask['prompt']!.replaceAll('{medicines}', names.join(', ')),
       displayMessage: ask['display'] ?? ask['label'],
       intent: ask['intent'],
+      registeredOnly: _showRegisteredMedicineAsks,
     );
   }
 
@@ -688,6 +824,10 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
       message: suggestion['prompt']!.replaceAll('{medicine}', official),
       displayMessage: suggestion['label'],
       intent: suggestion['intent'],
+      registeredOnly:
+          widget.consultationSelector == null &&
+          medicine == null &&
+          suggestion['label'] == _generalSuggestions.first['label'],
     );
   }
 
@@ -708,8 +848,12 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
     String? displayMessage,
     String? intent,
     bool forceRefresh = false,
+    bool registeredOnly = false,
   }) async {
     if (_isLoading) return;
+    forceRefresh = forceRefresh || widget.registeredMedicinesOnly;
+    if (!await _canUsePatientContext()) return;
+    if (_isLoading || !mounted) return;
 
     final text = (message ?? _chatController.text).trim();
     if (text.isEmpty) return;
@@ -783,10 +927,11 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
                 (medicine) => medicine.itemName,
               ),
             }.toList(growable: false);
-      // TODO: 실제 AI 챗봇 API 엔드포인트로 변경 필요
-      // 현재는 기존 약물 설명 API 구조를 임시로 챗봇 응답처럼 활용하도록 구성
+      // 선택 범위와 최근 대화를 실제 AI 약사 상담 API에 전달한다.
       final body = <String, dynamic>{
-        'user_id': MvpSession.userId,
+        'user_id': _subjectUserId,
+        if (widget.generalConsultation) 'consultation_mode': 'general',
+        if (widget.registeredMedicinesOnly) 'consultation_mode': 'patient_all',
         'message': requestText,
         'recent_history': recentHistory,
       };
@@ -814,7 +959,9 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
       // 고른 약이 없으면 알콩이가 내 약 전부를 본다. 이름으로 찾아 둔 약도
       // 그 안에 든다.
       final temporaryMedicines = _temporaryMedicinesByCode.values;
-      if (_asksAboutAllMedicines && temporaryMedicines.isNotEmpty) {
+      if (!registeredOnly &&
+          _asksAboutAllMedicines &&
+          temporaryMedicines.isNotEmpty) {
         body['temporary_medicines'] = temporaryMedicines
             .map(
               (medicine) => {
@@ -826,6 +973,7 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
       }
       final requestKey = PharmacistAnswerCache.canonical({
         ...body,
+        'answer_policy_version': 9,
         if (intent == 'health_precautions') 'health_reply_version': 2,
         'scope': _asksAboutAllMedicines ? 'all' : 'selection',
         'recent_history':
@@ -838,6 +986,7 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
         requestKey,
       );
       final contextFresh =
+          !OfflineStatus.active.value &&
           _contextVerifiedAt != null &&
           DateTime.now().difference(_contextVerifiedAt!) <
               const Duration(minutes: 5);
@@ -925,7 +1074,9 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
             error.statusCode == null ||
             error.statusCode == 408 ||
             (error.statusCode ?? 0) >= 500;
-        final old = unavailable ? historicalAnswer : null;
+        final old = unavailable && widget.patientId == null
+            ? historicalAnswer
+            : null;
         final response = old?['response'] as Map?;
         _messages.add({
           'isMe': false,
@@ -969,6 +1120,30 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
     ).hasMatch(text.trim());
   }
 
+  Future<bool> _canUsePatientContext() async {
+    if (MvpSession.userId != _signedInUserId) {
+      if (mounted) {
+        showSeniorSnackbar(
+          context,
+          '로그인 계정이 바뀌었어요. 상담 화면을 다시 열어 주세요.',
+          error: true,
+        );
+      }
+      return false;
+    }
+    if (widget.patientId == null) return true;
+    await _refreshCacheContext();
+    if (!mounted) return false;
+    if (MvpSession.userId != _signedInUserId) return false;
+    if (_guardianAccessVerified) return true;
+    showSeniorSnackbar(
+      context,
+      '환자 연결 권한을 확인하지 못했어요. 연결 상태와 인터넷을 확인해 주세요.',
+      error: true,
+    );
+    return false;
+  }
+
   bool _isGeneralCoffeeMedicineQuestion(String text) {
     final normalized = text.toLowerCase().replaceAll(RegExp(r'\s+'), '');
     final mentionsCoffee =
@@ -998,9 +1173,62 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
         .skip(_conversationStart)
         .any((message) => message['isMe'] == true);
     final suggestions = medicine == null
-        ? _generalSuggestions
+        ? (widget.consultationSelector != null
+              ? (widget.generalConsultation
+                    ? _guardianGeneralSuggestions
+                    : _guardianPatientSuggestions)
+              : _generalSuggestions)
         : _medicineSuggestions;
     final greeting = _greeting(MvpSession.userName);
+    final subjectCard = Container(
+      width: double.infinity,
+      decoration: const BoxDecoration(
+        color: AppColors.surface,
+        border: Border(bottom: BorderSide(color: AppColors.border, width: 1)),
+      ),
+      padding: const EdgeInsets.fromLTRB(20, 2, 20, 14),
+      child: widget.consultationSelector != null
+          ? InkWell(
+              key: const ValueKey('guardian-medicine-picker'),
+              onTap: _isLoading ? null : _pickMedicines,
+              child: InputDecorator(
+                decoration: InputDecoration(
+                  labelText: '약 검색',
+                  border: const OutlineInputBorder(),
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 16,
+                  ),
+                  suffixIcon: _subjectLabel == null
+                      ? const Icon(Icons.search)
+                      : TextButton(
+                          onPressed: _isLoading ? null : _clearMedicine,
+                          style: TextButton.styleFrom(
+                            foregroundColor: AppColors.textSecondary,
+                            textStyle: const TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.normal,
+                            ),
+                            minimumSize: const Size(48, 48),
+                            padding: const EdgeInsets.symmetric(horizontal: 8),
+                          ),
+                          child: const Text('지우기'),
+                        ),
+                ),
+                child: Text(
+                  _subjectLabel ?? '약을 검색해 선택하세요',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            )
+          : _SubjectCard(
+              key: const ValueKey('ai-subject-card'),
+              medicineName: _subjectLabel,
+              onTap: _isLoading ? null : _pickMedicines,
+              onClear: _isLoading ? null : _clearMedicine,
+            ),
+    );
 
     return Scaffold(
       backgroundColor: AppColors.bg,
@@ -1013,7 +1241,7 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
               borderColor: AppColors.surface,
               child: Row(
                 children: [
-                  const SeniorBackButton(),
+                  SeniorBackButton(onTap: widget.onBack),
                   const SizedBox(width: 14),
                   Expanded(
                     child: Column(
@@ -1027,6 +1255,13 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
                             style: AppText.screenTitle(size: 28),
                           ),
                         ),
+                        if (widget.patientId != null &&
+                            widget.consultationSelector == null)
+                          Text(
+                            '${widget.patientName ?? '연결된 환자'} 님 대신 상담',
+                            key: const ValueKey('guardian-chat-subject'),
+                            style: AppText.body(size: 15),
+                          ),
                       ],
                     ),
                   ),
@@ -1035,22 +1270,9 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
                 ],
               ),
             ),
-            Container(
-              width: double.infinity,
-              decoration: const BoxDecoration(
-                color: AppColors.surface,
-                border: Border(
-                  bottom: BorderSide(color: AppColors.border, width: 1),
-                ),
-              ),
-              padding: const EdgeInsets.fromLTRB(20, 2, 20, 14),
-              child: _SubjectCard(
-                key: const ValueKey('ai-subject-card'),
-                medicineName: _subjectLabel,
-                onTap: _isLoading ? null : _pickMedicines,
-                onClear: _isLoading ? null : _clearMedicine,
-              ),
-            ),
+            if (widget.consultationSelector != null)
+              widget.consultationSelector!,
+            if (!widget.registeredMedicinesOnly) subjectCard,
             Expanded(
               child: ListView(
                 controller: _scrollController,
@@ -1130,12 +1352,28 @@ class _DrugExplainScreenState extends State<DrugExplainScreen>
               ),
             ),
             // 무엇을 물어야 할지 떠오르지 않을 때. 누르면 그대로 물어본다.
-            _AskBar(
-              asks: _selectedMedicines.isEmpty
-                  ? _allMedicineAsks
-                  : _pickedMedicineAsks,
-              onAsk: _isLoading ? null : _askPreset,
-            ),
+            if (_selectedMedicines.isNotEmpty ||
+                widget.registeredMedicinesOnly ||
+                _showRegisteredMedicineAsks)
+              _AskBar(
+                asks:
+                    (widget.generalConsultation
+                            ? (_selectedMedicines.isEmpty
+                                  ? const <Map<String, String>>[]
+                                  : _pickedMedicineAsks
+                                        .where(
+                                          (ask) =>
+                                              ask['intent'] !=
+                                              'health_precautions',
+                                        )
+                                        .toList())
+                            : _selectedMedicines.isEmpty
+                            ? _allMedicineAsks
+                            : _pickedMedicineAsks)
+                        .map(_scopedAsk)
+                        .toList(),
+                onAsk: _isLoading ? null : _askPreset,
+              ),
             Padding(
               padding: const EdgeInsets.fromLTRB(20, 10, 20, 14),
               child: Row(
@@ -1372,6 +1610,7 @@ class _MedicinePick {
 /// 고를 수 있으면 그 말을 할 수 없다.
 class _MedicinePickSheet extends StatefulWidget {
   final ApiClient apiClient;
+  final bool searchListOnly;
 
   /// 등록된 복용중인 약.
   final List<String> medicines;
@@ -1390,6 +1629,7 @@ class _MedicinePickSheet extends StatefulWidget {
     required this.shortName,
     this.searched = const [],
     this.selected = const [],
+    this.searchListOnly = false,
   });
 
   @override
@@ -1568,22 +1808,34 @@ class _MedicinePickSheetState extends State<_MedicinePickSheet> {
           ],
           if (!searching) ...[
             const SizedBox(height: 18),
-            Text('복용중인 약', style: AppText.caption(size: 17.5)),
-            const SizedBox(height: 8),
-            if (widget.medicines.isEmpty)
-              Text(
-                '등록된 약이 없어요. 위에서 약 이름으로 찾아보세요.',
-                style: AppText.body(size: 18, color: AppColors.textBody),
-              )
-            else
-              _rows(widget.medicines),
-            // 찾아서 더한 약은 따로 세운다. 검색했다고 내가 먹는 약이
-            // 되는 것은 아니다.
-            if (_searchedNames.isNotEmpty) ...[
-              const SizedBox(height: 18),
-              Text('찾아서 더한 약', style: AppText.caption(size: 17.5)),
+            if (widget.searchListOnly) ...[
+              Text('검색한 약', style: AppText.caption(size: 17.5)),
               const SizedBox(height: 8),
-              _rows(_searchedNames),
+              if (_searchedNames.isEmpty)
+                Text(
+                  '위에서 약 이름으로 검색해 주세요.',
+                  style: AppText.body(size: 18, color: AppColors.textBody),
+                )
+              else
+                _rows(_searchedNames),
+            ] else ...[
+              Text('복용중인 약', style: AppText.caption(size: 17.5)),
+              const SizedBox(height: 8),
+              if (widget.medicines.isEmpty)
+                Text(
+                  '등록된 약이 없어요. 위에서 약 이름으로 찾아보세요.',
+                  style: AppText.body(size: 18, color: AppColors.textBody),
+                )
+              else
+                _rows(widget.medicines),
+              // 찾아서 더한 약은 따로 세운다. 검색했다고 내가 먹는 약이
+              // 되는 것은 아니다.
+              if (_searchedNames.isNotEmpty) ...[
+                const SizedBox(height: 18),
+                Text('찾아서 더한 약', style: AppText.caption(size: 17.5)),
+                const SizedBox(height: 8),
+                _rows(_searchedNames),
+              ],
             ],
           ],
         ],

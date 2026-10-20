@@ -3,6 +3,7 @@ import '../../../core/session/presentation_history.dart';
 import '../../../dev_mock.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../domain/planned_medication.dart';
 
 /// 한 달치 "며칠에 어느 때를 드셨는지".
 ///
@@ -11,6 +12,28 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 ///
 /// 날(1~31) → {때 이름: 드셨는지}. 기록이 없는 날은 목록에 없다.
 typedef MonthSlots = Map<int, Map<String, bool>>;
+
+final medicationMonthPlansProvider = FutureProvider.autoDispose
+    .family<Map<int, List<PlannedMedicationSlot>>, MonthKey>((ref, key) async {
+      final id = key.patientId?.trim().isNotEmpty == true
+          ? key.patientId!.trim()
+          : MvpSession.userId.trim();
+      if (id.isEmpty) return {};
+      final response = await PresentationHistory.fetchCalendar(
+        id,
+        key.year,
+        key.month,
+      );
+      final rows = response['days'];
+      return {
+        if (rows is List)
+          for (final row in rows)
+            if (row is Map && row['day'] is num)
+              (row['day'] as num).toInt(): PlannedMedicationSlot.parse(
+                row['planned_slots'],
+              ),
+      };
+    });
 
 @immutable
 class MonthKey {

@@ -339,7 +339,9 @@ def refresh_dur_for_ingredients(
         return {"status": "no_queries", "fetched": 0, "upserted": 0}
     if not DUR_API_KEY:
         return {"status": "skipped_missing_key", "fetched": 0, "upserted": 0}
-    if not DUR_AUTO_SYNC:
+    # Explicit consultation refreshes must work even when background/bootstrap
+    # synchronization is disabled (for example during a database cutover).
+    if not DUR_AUTO_SYNC and not force_refresh:
         return {"status": "disabled", "fetched": 0, "upserted": 0}
 
     fetched = 0
@@ -755,7 +757,7 @@ def _extract_items(value: Any) -> list[dict[str, Any]]:
     if isinstance(value, dict):
         value = value.get("item", value)
     if isinstance(value, dict):
-        return [value]
+        return [value] if value else []
     if not isinstance(value, list):
         return []
 

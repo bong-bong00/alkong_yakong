@@ -1,4 +1,5 @@
 import '../../../core/network/api_client.dart';
+import 'family_prescription_repository.dart';
 
 /// 가족에게 처방전을 부탁한 결과.
 enum PrescriptionHelpOutcome {
@@ -29,10 +30,14 @@ class PrescriptionHelpResult {
 /// 부탁은 **보호자에게 알림으로 남는다**. 어르신 화면에서 깃발만 세우면
 /// 가족은 부탁받은 줄도 모른 채 어르신만 기다리게 된다.
 class PrescriptionHelpRepository {
-  PrescriptionHelpRepository({ApiClient? apiClient})
-    : _api = apiClient ?? ApiClient();
+  PrescriptionHelpRepository({
+    ApiClient? apiClient,
+    FamilyPrescriptionRepository? registrations,
+  }) : _api = apiClient ?? ApiClient(),
+       _registrations = registrations ?? FamilyPrescriptionRepository();
 
   final ApiClient _api;
+  final FamilyPrescriptionRepository _registrations;
 
   Future<PrescriptionHelpResult> ask(String userId) async {
     final id = userId.trim();
@@ -40,14 +45,19 @@ class PrescriptionHelpRepository {
       return const PrescriptionHelpResult(PrescriptionHelpOutcome.failed);
     }
     try {
+      // Establish the baseline before notifying the guardian, so a quick
+      // registration cannot be mistaken for an old prescription.
+      await _registrations.begin(id);
       final response = await _api.post(
         '/api/v1/users/${Uri.encodeComponent(id)}/prescription-help-requests',
         body: const {},
       );
       if (response is! Map) {
+        await _registrations.finish(id);
         return const PrescriptionHelpResult(PrescriptionHelpOutcome.failed);
       }
       if (response['sent'] != true) {
+        await _registrations.finish(id);
         return const PrescriptionHelpResult(PrescriptionHelpOutcome.noGuardian);
       }
       final raw = response['guardians'];

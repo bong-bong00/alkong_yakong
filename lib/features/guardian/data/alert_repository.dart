@@ -1,5 +1,6 @@
 import '../../../core/network/api_client.dart';
 import '../../dashboard/presentation/screens/patient_data.dart';
+import '../application/guardian_alert_preferences.dart';
 
 /// 보호자에게 온 알림.
 ///
@@ -20,10 +21,15 @@ class AlertRepository {
         '/api/v1/users/${Uri.encodeComponent(id)}/notifications',
       );
       if (response is! List) return null;
+      final preferences = await GuardianAlertPreferences.read();
       return [
-        for (final raw in response)
-          if (raw is Map) _toAlert(Map<String, dynamic>.from(raw)),
-      ];
+            for (final raw in response)
+              if (raw is Map) _toAlert(Map<String, dynamic>.from(raw)),
+          ]
+          .where(
+            (alert) => GuardianAlertPreferences.allows(preferences, alert.type),
+          )
+          .toList();
     } catch (_) {
       return null;
     }
@@ -37,7 +43,7 @@ class AlertRepository {
       title: json['title']?.toString() ?? _titleOf(type),
       desc: json['message']?.toString() ?? '',
       time: _time(json['sent_at'] ?? json['created_at']),
-      // 부탁은 눌러서 바로 대신 찍는 자리로 간다.
+      // 부탁을 누르면 선택한 환자의 처방전 등록 화면으로 간다.
       tappable: kind == 'help',
       id: int.tryParse(json['id']?.toString() ?? ''),
     );
@@ -61,8 +67,8 @@ class AlertRepository {
 
   static String _titleOf(String type) => switch (_kindOf(type)) {
     'help' => '처방전을 찍어 주세요',
-    'alert' => '심장 박동이 빨라요',
-    'miss' => '약을 안 드셨어요',
+    'alert' => '심박수 기록을 확인해 주세요',
+    'miss' => '복용 완료 기록을 확인해 주세요',
     'refill' => '약이 떨어졌어요',
     'prescription' => '새 처방전',
     'shared' => '어르신이 보냈어요',
@@ -72,7 +78,7 @@ class AlertRepository {
 
   /// **상대시간을 쓰지 않는다.** "15분 전"은 언제인지 다시 계산하게 만든다.
   static String _time(Object? raw) {
-    final parsed = DateTime.tryParse(raw?.toString() ?? '');
+    final parsed = DateTime.tryParse(raw?.toString() ?? '')?.toLocal();
     if (parsed == null) return '';
     final now = DateTime.now();
     final sameDay =

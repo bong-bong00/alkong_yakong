@@ -1179,7 +1179,7 @@ def _reactivate_duplicate_prescription(cursor, *, user_id: str, prescription_id:
             """
             UPDATE user_medicines
             SET is_active = 1, status = 'ACTIVE', start_date = ?, end_date = ?,
-                last_prescribed_at = ?
+                last_prescribed_at = ?, schedule_recovery_pending = 0
             WHERE id = ?
             """,
             (today, end_date, today, user_medicine_id),
@@ -1268,7 +1268,7 @@ def _registration_result(
     user_id: str,
     items: list[dict],
     duplicate: bool = False,
-    registration_revision: int = 1,
+    registration_revision: str | int = 1,
 ) -> dict:
     dur_result = _analyze_registered_medicines_locally(user_id)
     if not isinstance(dur_result, dict):
@@ -1405,13 +1405,15 @@ def confirm_prescription(request: PrescriptionConfirmRequest) -> dict:
                 user_id=request.user_id,
                 prescription_id=duplicate["id"],
             )
+            revision = str(uuid.uuid4())
+            cursor.execute("UPDATE prescriptions SET registration_revision=? WHERE id=?", (revision, duplicate["id"]))
             conn.commit()
             return _registration_result(
                 prescription_id=duplicate["id"],
                 user_id=request.user_id,
                 items=restored_items,
                 duplicate=True,
-                registration_revision=duplicate["registration_revision"],
+                registration_revision=revision,
             )
 
         prescription_id = str(uuid.uuid4())
@@ -1579,11 +1581,14 @@ def confirm_prescription(request: PrescriptionConfirmRequest) -> dict:
                 }
             )
 
+        revision = str(uuid.uuid4())
+        cursor.execute("UPDATE prescriptions SET registration_revision=? WHERE id=?", (revision, prescription_id))
         conn.commit()
         return _registration_result(
             prescription_id=prescription_id,
             user_id=request.user_id,
             items=created_items,
+            registration_revision=revision,
         )
     except HTTPException:
         conn.rollback()

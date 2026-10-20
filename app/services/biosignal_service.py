@@ -46,7 +46,7 @@ def save_heart_rate(request: HeartRateCreate) -> dict:
             log_id = existing["id"]
             measured_at = existing["measured_at"]
         else:
-            measured_at = request.measured_at or datetime.now().isoformat(timespec="seconds")
+            measured_at = request.measured_at or datetime.now(timezone.utc).isoformat(timespec="seconds")
             cursor.execute(
                 """
                 INSERT INTO heart_rate_logs (
@@ -65,6 +65,29 @@ def save_heart_rate(request: HeartRateCreate) -> dict:
                 ),
             )
             log_id = cursor.lastrowid
+        event = cursor.execute(
+            "SELECT id,event_type,severity FROM abnormal_events WHERE heart_rate_log_id=?",
+            (log_id,),
+        ).fetchone()
+        event = dict(event) if event else None
+        if not existing and (request.bpm < 60 or request.bpm > 100) and request.source.startswith("POLAR"):
+            kind = "LOW_HEART_RATE" if request.bpm < 60 else "HIGH_HEART_RATE"
+            cursor.execute(
+                "INSERT INTO abnormal_events(user_id,heart_rate_log_id,event_type,bpm,severity,occurred_at) VALUES(?,?,?,?,'NOTICE',?)",
+                (request.user_id, log_id, kind, request.bpm, measured_at),
+            )
+            event_id = cursor.lastrowid
+            event = {"id": event_id, "event_type": kind, "severity": "NOTICE"}
+            for guardian in cursor.execute(
+                "SELECT id FROM guardians WHERE user_id=? AND UPPER(status)='ACCEPTED' AND notification_enabled=1 AND guardian_user_id IS NOT NULL AND consent_verified_at IS NOT NULL",
+                (request.user_id,),
+            ).fetchall():
+                cursor.execute(
+                    "INSERT INTO notifications(user_id,guardian_id,abnormal_event_id,notification_type,title,message,status) VALUES(?,?,?,'HEART_RANGE_NOTICE',?,?,'STORED')",
+                    (request.user_id, guardian["id"], event_id,
+                     "심박수 기록을 확인해 주세요",
+                     f"{request.bpm}회/분으로 측정되었어요. 60~100회/분 기준 범위를 벗어난 기록입니다. 측정 상황을 확인하고 필요하면 의료진과 상담해 주세요."),
+                )
         baseline = cursor.execute(
             "SELECT * FROM baseline_heart_rate WHERE user_id = ?",
             (request.user_id,),
@@ -78,7 +101,7 @@ def save_heart_rate(request: HeartRateCreate) -> dict:
             "measured_at": response_time.isoformat() if response_time else measured_at,
             "measurement_context": request.measurement_context,
             "baseline": dict(baseline) if baseline else None,
-            "abnormal_event": None,
+            "abnormal_event": event,
         }
     except Exception:
         conn.rollback()

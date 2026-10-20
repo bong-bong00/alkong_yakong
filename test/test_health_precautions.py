@@ -269,6 +269,28 @@ def test_health_generation_exception_retains_official_answer(context, monkeypatc
     assert result.endswith(health.CONSULT)
 
 
+def test_generated_health_reply_also_explains_technical_terms(context, monkeypatch):
+    monkeypatch.setattr(gemini, "GEMINI_API_KEY", "test-key")
+    monkeypatch.setattr("google.genai.Client", MagicMock())
+    monkeypatch.setattr(gemini, "_generate_complete_chat_reply", lambda *args, **kwargs:
+                        "확인약정: 고혈압과 음주 관련 안내와 QT 간격 연장, 저칼륨혈증이 있으면 사용하지 마세요.")
+    monkeypatch.setattr(health, "_reply_grounded", lambda *args: True)
+    result = ask(selected_medicine=MEDICINE)
+    assert "QT 간격 연장(심장이 다음 박동" in result
+    assert "저칼륨혈증(혈액 속 칼륨이 부족한 상태)" in result
+    assert "사용하지 마세요" in result and len(result) <= 600
+
+
+def test_fallback_health_quote_also_explains_terms_without_changing_conditions(context, monkeypatch):
+    monkeypatch.setattr(health, "_official_cautions", lambda medicine: {
+        "product_name": medicine["product_name"],
+        "cautions": "고혈압 환자에게 QT 간격 연장이 있으면 사용하지 않는다.",
+    })
+    result = ask(selected_medicine=MEDICINE)
+    assert "QT 간격 연장(심장이 다음 박동" in result
+    assert "사용하지 않는다" in result and len(result) <= 600
+
+
 def test_health_reply_over_length_returns_bounded_evidence_not_failure(context, monkeypatch):
     monkeypatch.setattr(gemini, "GEMINI_API_KEY", "test-key")
     monkeypatch.setattr("google.genai.Client", MagicMock())

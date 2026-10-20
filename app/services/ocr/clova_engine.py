@@ -75,13 +75,14 @@ def extract_with_clova(
             timeout=timeout_sec,
         )
     except requests.RequestException as error:
-        return ClovaOcrResult(False, error=f"request_failed:{error}")
+        # Provider exceptions can include secret URLs, headers, or patient data.
+        code = "timeout" if isinstance(error, requests.Timeout) else type(error).__name__
+        return ClovaOcrResult(False, error=f"request_failed:{code}")
 
     if response.status_code != 200:
-        detail = (response.text or "")[:300]
         return ClovaOcrResult(
             False,
-            error=f"http_{response.status_code}:{detail}",
+            error=f"http_{response.status_code}",
             status_code=response.status_code,
         )
 
@@ -99,7 +100,7 @@ def extract_with_clova(
     if infer_result and infer_result.upper() not in {"SUCCESS", "OK"}:
         return ClovaOcrResult(
             False,
-            error=f"infer_{infer_result}:{first.get('message')}",
+            error="inference_failed",
             status_code=response.status_code,
         )
 

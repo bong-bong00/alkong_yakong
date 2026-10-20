@@ -30,6 +30,7 @@ def create_medication_logs_batch(request: MedicationBatchRequest):
 
 
 @router.post("/medication-logs/batch/cancel")
+@router.post("/medication-logs/undo", include_in_schema=False)
 def cancel_medication_logs_batch(request: MedicationBatchRequest):
     return cancel_medications_taken(request)
 

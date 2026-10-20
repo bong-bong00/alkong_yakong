@@ -17,13 +17,15 @@ from typing import Any
 from urllib.parse import quote
 
 import requests
-from fastapi import HTTPException, Request
+from fastapi import Depends, HTTPException, Request
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from app.database import get_connection
 
 _AUDIENCE = "alkong-yakong"
 _ACCESS_TTL_SECONDS = 7 * 24 * 60 * 60
 _SERVICE_TTL_SECONDS = 60
+_bearer_scheme = HTTPBearer(auto_error=False)
 _READABLE_BY_GUARDIAN = {
     "medicines", "today-medicines", "medication-history",
     "medication-calendar", "medication-overview", "dashboard", "prescriptions",
@@ -33,6 +35,15 @@ _READABLE_BY_GUARDIAN = {
 
 def auth_enforced() -> bool:
     return os.getenv("AUTH_ENFORCED", "false").strip().lower() == "true"
+
+
+def service_headers(user_id: str, scope: str = "patient_read") -> dict[str, str]:
+    """Use the same purpose-bound two-part credential on both servers."""
+    if not auth_enforced():
+        return {}
+    token, _ = issue_token("main", role="service", kind="service",
+                           target=user_id, scope=scope)
+    return {"Authorization": f"Bearer {token}"}
 
 
 def service_role() -> str:
@@ -49,9 +60,15 @@ def validate_auth_configuration() -> None:
         raise RuntimeError("SERVICE_ROLE must be main or medication")
     if len(os.getenv("ALKONGYAKONG_AUTH_SECRET", "")) < 32:
         raise RuntimeError("ALKONGYAKONG_AUTH_SECRET must be at least 32 characters")
-    db_path = os.getenv("ALKONGYAKONG_DB_PATH", "")
-    if not db_path or not os.path.isabs(db_path):
-        raise RuntimeError("ALKONGYAKONG_DB_PATH must be an absolute persistent path")
+    from app.database import database_backend
+    if database_backend() == "postgresql":
+        from app.postgres import validate_url, schema_for_role
+        validate_url(os.getenv("NEON_DATABASE_URL", ""))
+        schema_for_role()
+    else:
+        db_path = os.getenv("ALKONGYAKONG_DB_PATH", "")
+        if not db_path or not os.path.isabs(db_path):
+            raise RuntimeError("ALKONGYAKONG_DB_PATH must be an absolute persistent path")
     required_url = (
         "AUTH_AUTHORITY_BASE_URL" if service_role() == "medication"
         else "MEDICATION_FEATURE_BASE_URL"
@@ -223,7 +240,10 @@ async def _guardian_can_read(guardian_id: str, patient_id: str) -> bool:
     return await asyncio.to_thread(_linked_guardian_remotely, guardian_id, patient_id)
 
 
-async def require_authorized_request(request: Request) -> None:
+async def require_authorized_request(
+    request: Request,
+    credentials: HTTPAuthorizationCredentials | None = Depends(_bearer_scheme),
+) -> None:
     if not auth_enforced():
         return
     path = request.url.path
@@ -256,6 +276,10 @@ async def require_authorized_request(request: Request) -> None:
         if not isinstance(target, str) or not target:
             raise HTTPException(status_code=403, detail="대상 사용자가 없는 서버 요청이에요.")
         if (
+            scope == "account_purge" and service_role() == "medication"
+            and method == "DELETE" and claims["sub"] == "main"
+            and path == f"/api/v1/internal/users/{target}"
+        ) or (
             scope == "medicine_read"
             and method == "GET"
             and len(segments) == 5
@@ -295,11 +319,16 @@ async def require_authorized_request(request: Request) -> None:
             return
         raise HTTPException(status_code=403, detail="허용되지 않은 서버 요청이에요.")
 
+    if path.startswith("/api/v1/internal/"):
+        raise HTTPException(status_code=403, detail="서버 전용 요청입니다.")
     subject = claims["sub"]
     identity = await asyncio.to_thread(load_authority_identity, subject)
     if str(identity.get("role", "")).lower() != claims["role"]:
         raise HTTPException(status_code=401, detail="다시 로그인해 주세요.")
     request.state.auth_identity = identity
+    if path.startswith("/api/v1/guardians/accounts/") or path == "/api/v1/guardians/link-requests":
+        if claims["role"] != "guardian":
+            raise HTTPException(status_code=403, detail="보호자 계정으로 확인해 주세요.")
     target = None
     if len(segments) >= 4 and segments[:3] == ["api", "v1", "users"]:
         target = segments[3]
@@ -344,6 +373,8 @@ async def require_authorized_request(request: Request) -> None:
     if target == subject:
         await asyncio.to_thread(provision_medication_identity, identity)
         return
+    if path.startswith("/api/v1/guardians/users/"):
+        raise HTTPException(status_code=403, detail="본인의 보호자 연결만 확인할 수 있어요.")
     if (
         target
         and (
@@ -353,6 +384,10 @@ async def require_authorized_request(request: Request) -> None:
             or (method == "POST" and path in {
                 "/api/v1/prescriptions/ocr", "/api/v1/prescriptions/confirm"
             })
+            or (service_role() == "main" and claims["role"] == "guardian" and (
+                (method == "POST" and path == "/api/v1/drug-explain/chat")
+                or (method == "GET" and path == "/api/v1/drug-explain/cache-context")
+            ))
             or (method == "POST" and len(segments) == 7
                 and segments[:3] == ["api", "v1", "users"]
                 and segments[4] == "prescriptions" and segments[6] == "schedule-days")

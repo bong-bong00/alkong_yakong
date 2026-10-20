@@ -24,6 +24,9 @@ def pytest_sessionstart(session):
     os.environ["ALKONGYAKONG_DB_PATH"] = str(root / "alkongyakong.db")
     os.environ["MFDS_DRUG_PERMISSION_DB_PATH"] = str(root / "mfds.db")
     os.environ["EASY_CATEGORY_MAP_DB_PATH"] = str(root / "easy-category.db")
+    os.environ["APP_ENV"] = "development"
+    os.environ["ALKONGYAKONG_DATABASE_BACKEND"] = "sqlite"
+    os.environ["AUTH_ENFORCED"] = "false"
     # Automatic network workers can outlive a test's DB monkeypatch and read
     # a different test's database. Explicit worker tests can opt back in.
     os.environ["DUR_AUTO_SYNC"] = "false"
@@ -42,6 +45,8 @@ def pytest_sessionstart(session):
     database.DB_PATH = os.environ["ALKONGYAKONG_DB_PATH"]
     init_db.DB_PATH = database.DB_PATH
     init_db.initialize_database()
+    from app.services.mfds_drug_permission.db import initialize_permission_db
+    initialize_permission_db()
 
 
 def pytest_sessionfinish(session, exitstatus):

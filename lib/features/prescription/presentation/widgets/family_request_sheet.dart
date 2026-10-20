@@ -60,7 +60,7 @@ Future<void> showFamilyRequestSheet(
           ],
           const SizedBox(height: 14),
           Text(
-            '다 넣으시면 어르신 전화기에 "약이 들어왔어요" 알림이 옵니다.',
+            '등록이 끝나면 어르신 전화기에 "처방전이 등록되었어요" 알림이 옵니다.',
             style: AppText.body(size: 18),
           ),
         ],
@@ -81,5 +81,5 @@ Future<void> showFamilyRequestSheet(
 const List<String> _steps = [
   '보호자 앱을 엽니다',
   '"돌보는 분"에서 어르신을 고릅니다',
-  '"처방전 대신 찍기"를 눌러 처방전을 찍습니다',
+  '"처방전 대신 등록"을 눌러 사진 촬영·앨범 선택·직접 작성 중에서 고릅니다',
 ];

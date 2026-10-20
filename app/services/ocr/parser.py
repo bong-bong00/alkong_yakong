@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import math
+from itertools import product
 import re
 import unicodedata
 from typing import Any
@@ -118,6 +120,7 @@ def parse_prescription_text(
     raw_text: str,
     *,
     tables: list[dict[str, Any]] | tuple[dict[str, Any], ...] | None = None,
+    fields: list[dict[str, Any]] | tuple[dict[str, Any], ...] | None = None,
 ) -> dict[str, Any] | None:
     """CLOVA 원문을 외부 생성 모델 없이 결정적으로 구조화한다."""
     text = (raw_text or "").strip()
@@ -131,10 +134,17 @@ def parse_prescription_text(
         parser_engine = "heuristic"
 
     table_items = _items_from_clova_tables(tables or ())
+    # Some CLOVA responses contain only a merged header table, while individual
+    # fields have reliable coordinates. Recover only complete, unambiguous rows.
+    if not table_items and fields:
+        table_items = _items_from_clova_tables(_tables_from_field_coordinates(fields))
+        if table_items:
+            parser_engine = "heuristic+clova-coordinates"
     if table_items:
         # 표 행의 값이 같은 이름 주변에서 추측한 숫자보다 우선한다.
         parsed["items"] = [*table_items, *(parsed.get("items") or [])]
-        parser_engine = "heuristic+clova-table"
+        if parser_engine != "heuristic+clova-coordinates":
+            parser_engine = "heuristic+clova-table"
 
     parsed = expand_inferred_drug_items(parsed, text)
     if not parsed.get("items"):
@@ -235,6 +245,73 @@ def _table_number(text: str, *, integer: bool = False) -> str | int | None:
         return int(number) if number.is_integer() else None
     except ValueError:
         return None
+
+
+def _tables_from_field_coordinates(fields):
+    """Use observed header x-positions and medicine baselines, never fill missing values."""
+    located = []
+    for field in fields:
+        if not isinstance(field, dict):
+            continue
+        text = str(field.get('text') or '').strip()
+        poly = field.get('boundingPoly')
+        if not isinstance(poly, dict):
+            continue
+        vertices = poly.get('vertices') or []
+        try:
+            xs = [float(v['x']) for v in vertices]
+            ys = [float(v['y']) for v in vertices]
+            confidence = field.get('confidence')
+            if confidence is not None:
+                confidence = float(confidence)
+                if not math.isfinite(confidence) or not 0.5 <= confidence <= 1:
+                    continue
+            if len(xs) < 4 or not all(math.isfinite(n) for n in xs + ys):
+                continue
+            height = max(ys) - min(ys)
+            if height <= 0:
+                continue
+        except (TypeError, ValueError, KeyError):
+            continue
+        located.append({'text': text, 'x': (min(xs) + max(xs)) / 2,
+                        'y': (min(ys) + max(ys)) / 2, 'height': height})
+    keys = ('dosage', 'frequency_per_day', 'duration_days')
+    headers = {key: [p for p in located if _table_header_role(p['text']) == key] for key in keys}
+    if any(len(values) > 8 for values in headers.values()):
+        return []
+    groups = []
+    for group in product(*(headers[key] for key in keys)):
+        if not group[0]['x'] < group[1]['x'] < group[2]['x']:
+            continue
+        if max(p['y'] for p in group) - min(p['y'] for p in group) > max(p['height'] for p in group) * 1.5:
+            continue
+        groups.append(group)
+    if len(groups) != 1:
+        return []
+    group = groups[0]
+    gap = min(group[i+1]['x'] - group[i]['x'] for i in range(2))
+    if gap <= 0:
+        return []
+    header_bottom = max(p['y'] + p['height'] / 2 for p in group)
+    drug_fields = [p for p in located if p['y'] > header_bottom and
+                   p['x'] < group[0]['x'] - gap and iter_glued_drug_tokens(p['text'])]
+    cells = [{'rowIndex': 0, 'columnIndex': 0, 'text': '약품명'}]
+    cells += [{'rowIndex': 0, 'columnIndex': i+1, 'text': p['text']} for i, p in enumerate(group)]
+    for ordinal, drug in enumerate(sorted(drug_fields, key=lambda p: p['y']), 1):
+        values = []
+        for index, header in enumerate(group):
+            matches = [p for p in located if
+                abs(p['x'] - header['x']) < gap * 0.45 and
+                abs(p['y'] - drug['y']) <= max(drug['height'], p['height']) * 0.85 and
+                _table_number(p['text'], integer=index != 0) is not None]
+            if len(matches) != 1:
+                break
+            values.append(matches[0]['text'])
+        if len(values) != 3:
+            continue
+        cells.append({'rowIndex': ordinal, 'columnIndex': 0, 'text': drug['text']})
+        cells += [{'rowIndex': ordinal, 'columnIndex': i+1, 'text': value} for i, value in enumerate(values)]
+    return [{'cells': cells}]
 
 
 def _items_from_clova_tables(

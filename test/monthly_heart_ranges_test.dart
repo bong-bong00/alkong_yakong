@@ -31,7 +31,8 @@ void main() {
         .map((r) => r.id)
         .toList();
     expect(shownIds(), [4, 3]);
-    expect(find.byKey(const Key('daily-heart-bars')), findsOneWidget);
+    // These are general readings, not before/after medication measurements.
+    expect(find.byKey(const Key('daily-heart-bars')), findsNothing);
     final toggle = find.byKey(const Key('monthly-heart-toggle-readings'));
     await tester.ensureVisible(toggle);
     await tester.tap(toggle);

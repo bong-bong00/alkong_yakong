@@ -119,6 +119,7 @@ def get_today_medicines(user_id: str, target_date: str | None = None) -> dict[st
         schedule_rows = conn.execute(
             f"""
             SELECT ms.id AS schedule_id, ms.time_slot, ms.scheduled_time, ms.status,
+                   (SELECT MAX(ml.taken_at) FROM medication_logs ml WHERE ml.schedule_id=ms.id AND ml.status='TAKEN') AS taken_at,
                    um.dosage, um.frequency_per_day,
                    m.medicine_code, m.product_name, m.ingredient, m.easy_category,
                    m.efficacy, m.precautions, m.short_explanation,
@@ -277,6 +278,7 @@ def _ensure_today_schedules(conn, user_id: str, day: str) -> None:
                um.start_date, um.end_date, um.prescription_item_id
         FROM user_medicines um
         WHERE um.user_id = ? AND COALESCE(um.is_active, 1) = 1
+          AND COALESCE(um.schedule_recovery_pending, 0) = 0
         """,
         (user_id,),
     ).fetchall()
@@ -482,8 +484,12 @@ def _doses_from_schedules(rows, *, guidance_cursor=None) -> list[dict[str, Any]]
         slot = _slot_from_time(row["time_slot"], row["scheduled_time"])
         bucket = buckets.setdefault(
             slot,
-            {"slot": slot, "taken": True, "medicines": [], "_codes": set()},
+            {"slot": slot, "taken": True, "medicines": [], "_codes": set(), "scheduled_times": [], "taken_at": None},
         )
+        bucket["scheduled_times"].append(row["scheduled_time"])
+        recorded = dict(row).get("taken_at")
+        if recorded and (not bucket["taken_at"] or recorded > bucket["taken_at"]):
+            bucket["taken_at"] = recorded
         status = str(row["status"] or "PENDING").upper()
         if status in {"PENDING", "MISSED", "SNOOZED"}:
             bucket["taken"] = False
@@ -502,6 +508,15 @@ def _doses_from_schedules(rows, *, guidance_cursor=None) -> list[dict[str, Any]]
             continue
         item = buckets[slot]
         item.pop("_codes", None)
+        item["scheduled_times"] = sorted(set(item["scheduled_times"]))
+        if not item["taken"]:
+            item["taken_at"] = None
+        elif item["taken_at"]:
+            from datetime import datetime, timezone, timedelta
+            moment = datetime.fromisoformat(str(item["taken_at"]).replace("Z", "+00:00"))
+            if moment.tzinfo is None:
+                moment = moment.replace(tzinfo=timezone.utc)
+            item["taken_at"] = moment.astimezone(timezone(timedelta(hours=9))).isoformat()
         if item["medicines"]:
             result.append(item)
     return result

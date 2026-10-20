@@ -4,6 +4,7 @@ from fastapi import HTTPException
 
 from app.database import get_connection
 from app.models.schemas import MedicationReminderRequest
+from app.core.config import MEDICATION_FEATURE_BASE_URL
 
 
 def generate_medication_reminders(
@@ -115,6 +116,10 @@ def request_prescription_help(user_id: str) -> dict:
             """,
             (user_id,),
         ).fetchall()
+        from app.core.auth import auth_enforced
+        if auth_enforced():
+            registered = {row["id"] for row in cursor.execute("SELECT id FROM guardians WHERE user_id=? AND guardian_user_id IS NOT NULL AND UPPER(status)='ACCEPTED'", (user_id,))}
+            guardians = [row for row in guardians if row["id"] in registered]
         if not guardians:
             return {
                 "user_id": user_id,
@@ -193,6 +198,51 @@ def get_user_notifications(user_id: str, *, viewer_id: str | None = None) -> lis
             """,
             (user_id, viewer, user_id, viewer, viewer, user_id, viewer),
         ).fetchall()
-        return [dict(row) for row in rows]
+        stored = [dict(row) for row in rows]
+        from datetime import datetime, timezone
+        for row in stored:
+            for field in ("created_at", "sent_at"):
+                if row.get(field):
+                    at = datetime.fromisoformat(str(row[field]).replace("Z", "+00:00"))
+                    if at.tzinfo is None:
+                        at = at.replace(tzinfo=timezone.utc)
+                    row[field] = at.isoformat()
     finally:
         conn.close()
+    if not MEDICATION_FEATURE_BASE_URL:
+        return stored
+    return [row for row in stored if row["notification_type"] != "MEDICATION_MISSED"] + _current_missed_notices(user_id)
+
+
+def _current_missed_notices(user_id):
+    """Derived in-app notices follow authoritative records, including cancellation.
+
+    Never claim that a patient did not swallow medicine; only a completion record
+    is missing. Today's notices use actual schedule times plus a four-hour grace.
+    """
+    import hashlib
+    from datetime import datetime, timedelta, timezone
+    from app.core.kst import today_kst
+    from app.services.medication_gateway import medication_get
+    today = today_kst()
+    history = medication_get(user_id, "/medication-history", params={"start": (today - timedelta(days=6)).isoformat(), "end": today.isoformat()})
+    current = medication_get(user_id, "/today-medicines")
+    doses = {dose["slot"]: dose for dose in current.get("doses", [])}
+    slots = {"아침": "morning", "점심": "lunch", "저녁": "dinner"}
+    now = datetime.now(timezone(timedelta(hours=9)))
+    notices = []
+    for day in history.get("days", []):
+        for label in day.get("missed_slots", []):
+            if day["date"] == today.isoformat():
+                times = doses.get(slots.get(label), {}).get("scheduled_times", [])
+                if not times:
+                    continue
+                due = datetime.fromisoformat(day["date"] + "T" + max(times)).replace(tzinfo=now.tzinfo) + timedelta(hours=4)
+                if now < due:
+                    continue
+            key = f"{user_id}:{day['date']}:{label}"
+            notices.append({"id": -int(hashlib.sha256(key.encode()).hexdigest()[:8], 16), "user_id": user_id,
+                            "guardian_id": None, "notification_type": "MEDICATION_MISSED", "status": "STORED",
+                            "title": "복용 기록을 확인해 주세요", "message": f"{day['date']} {label} 약의 완료 기록이 아직 없어요. 실제 복용 여부를 확인해 주세요.",
+                            "created_at": due.isoformat() if day["date"] == today.isoformat() else day["date"] + "T23:59:00+09:00", "sent_at": None})
+    return notices

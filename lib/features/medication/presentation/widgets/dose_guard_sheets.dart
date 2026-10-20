@@ -1,6 +1,8 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'dart:async';
+import '../../../../core/widgets/senior_feedback.dart';
 
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
@@ -140,59 +142,61 @@ Future<void> showDuplicateDoseSheet({
   final takenAt = dose.takenAt ?? DateTime.now();
   return _showGuardSheet<void>(
     context,
-    _GuardSheet(
-      children: [
-        Text(
-          '${dose.slot.label} 약은 이미\n드신 것으로 되어 있어요',
-          style: AppText.emphasis(size: 27),
-        ),
-        const SizedBox(height: 14),
-        _RecordProof(takenAt: takenAt),
-        const SizedBox(height: 14),
-        Text.rich(
-          TextSpan(
-            style: AppText.body(),
-            children: [
-              const TextSpan(text: '한 번 더 드시면 약이 겹칠 수 있어요. '),
-              TextSpan(
-                text: '지금은 드시지 마세요.',
-                style: AppText.body(
-                  weight: FontWeight.w600,
-                  color: AppColors.textPrimary,
-                ),
-              ),
-            ],
+    Builder(
+      builder: (context) => _GuardSheet(
+        children: [
+          Text(
+            '${dose.slot.label} 약은 이미\n드신 것으로 되어 있어요',
+            style: AppText.emphasis(size: 27),
           ),
-        ),
-        const SizedBox(height: 14),
-        SeniorButton(
-          label: '알겠어요',
-          fontSize: 23,
-          onPressed: () => Navigator.of(context).pop(),
-        ),
-        const SizedBox(height: 12),
-        // 회색 텍스트 링크를 액션으로 쓰지 않는다. 눌리는 면을 준다.
-        SeniorButton(
-          label: '기록이 잘못됐어요 · 되돌리기',
-          kind: SeniorButtonKind.secondary,
-          minHeight: 62,
-          fontSize: 19,
-          onPressed: () async {
-            try {
-              await onUndo();
-              if (context.mounted) Navigator.of(context).pop();
-            } catch (_) {
-              if (context.mounted) {
-                showSeniorSnackbar(
-                  context,
-                  '취소하지 못했어요. 다시 시도해 주세요.',
-                  error: true,
-                );
+          const SizedBox(height: 14),
+          _RecordProof(takenAt: takenAt),
+          const SizedBox(height: 14),
+          Text.rich(
+            TextSpan(
+              style: AppText.body(),
+              children: [
+                const TextSpan(text: '한 번 더 드시면 약이 겹칠 수 있어요. '),
+                TextSpan(
+                  text: '지금은 드시지 마세요.',
+                  style: AppText.body(
+                    weight: FontWeight.w600,
+                    color: AppColors.textPrimary,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 14),
+          SeniorButton(
+            label: '알겠어요',
+            fontSize: 23,
+            onPressed: () => Navigator.of(context).pop(),
+          ),
+          const SizedBox(height: 12),
+          // 회색 텍스트 링크를 액션으로 쓰지 않는다. 눌리는 면을 준다.
+          SeniorButton(
+            label: '기록이 잘못됐어요 · 되돌리기',
+            kind: SeniorButtonKind.secondary,
+            minHeight: 62,
+            fontSize: 19,
+            onPressed: () async {
+              try {
+                await onUndo();
+                if (context.mounted) Navigator.of(context).pop();
+              } catch (_) {
+                if (context.mounted) {
+                  showSeniorSnackbar(
+                    context,
+                    '복용 취소를 저장하지 못했어요. 다시 시도해 주세요.',
+                    error: true,
+                  );
+                }
               }
-            }
-          },
-        ),
-      ],
+            },
+          ),
+        ],
+      ),
     ),
   );
 }

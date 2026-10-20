@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import sqlite3
 
-# Display reference range only, not a diagnosis or an emergency threshold.
+# 기준값이 아직 없을 때 쓰는 범위. 앱의 HeartSensor와 같다.
 _NORMAL_LOW = 60
 _NORMAL_HIGH = 100
 
@@ -14,13 +14,14 @@ def latest_heart_reading(conn: sqlite3.Connection, user_id: str) -> dict | None:
         """
         SELECT bpm, measured_at FROM heart_rate_logs
         WHERE user_id = ?
-        ORDER BY measured_at DESC, id DESC
+        ORDER BY datetime(measured_at) DESC, id DESC
         LIMIT 1
         """,
         (user_id,),
     ).fetchone()
     if row is None:
         return None
+    low, high = _NORMAL_LOW, _NORMAL_HIGH
     bpm = int(row["bpm"])
     return {"bpm": bpm, "measured_at": row["measured_at"],
             "normal": _NORMAL_LOW <= bpm <= _NORMAL_HIGH}

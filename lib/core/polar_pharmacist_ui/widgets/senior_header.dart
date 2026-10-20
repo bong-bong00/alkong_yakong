@@ -192,13 +192,7 @@ class InitialAvatar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final trimmed = name.trim();
-    // 프로토타입은 성이 아니라 이름 첫 글자를 쓴다 (김복자 → 복).
-    // 성이 같은 분이 여럿이면 성만으로는 구별이 안 된다.
-    final initial = trimmed.isEmpty
-        ? '님'
-        : (trimmed.length >= 2 && !trimmed.contains(' ')
-              ? trimmed.substring(1, 2)
-              : trimmed.substring(0, 1));
+    final initial = trimmed.isEmpty ? '님' : trimmed.characters.first;
     return Container(
       width: size,
       height: size,

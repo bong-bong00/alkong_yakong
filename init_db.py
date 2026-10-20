@@ -188,6 +188,7 @@ TABLE_DEFINITIONS = {
             is_active INTEGER NOT NULL DEFAULT 1,
             status TEXT NOT NULL DEFAULT 'ACTIVE',
             last_prescribed_at TEXT,
+            schedule_recovery_pending INTEGER NOT NULL DEFAULT 0,
             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
             FOREIGN KEY (medicine_code) REFERENCES medicines(medicine_code),
@@ -551,6 +552,7 @@ ADDITIVE_COLUMNS = {
         "administration_route": "TEXT",
     },
     "user_medicines": {
+        "schedule_recovery_pending": "INTEGER NOT NULL DEFAULT 0",
         "dose_amount": "REAL",
         "dose_unit": "TEXT",
         "status": "TEXT NOT NULL DEFAULT 'ACTIVE'",
@@ -879,6 +881,19 @@ def seed_reviewed_detail_explanations(cursor: sqlite3.Cursor) -> None:
 
 
 def initialize_database(*, preserve_records: bool = False) -> None:
+    from app.database import database_backend, get_connection
+    if database_backend() == "postgresql":
+        from app.postgres import prepare_schema
+        with get_connection() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            prepare_schema(connection)
+            connection.execute("""UPDATE guardians SET consent_verified_at = CURRENT_TIMESTAMP
+                WHERE guardian_user_id IS NOT NULL AND consent_verified_at IS NULL
+                  AND status='ACCEPTED' AND requested_by='GUARDIAN'""")
+            connection.execute("""UPDATE guardians SET status='PENDING'
+                WHERE guardian_user_id IS NOT NULL AND consent_verified_at IS NULL
+                  AND status='ACCEPTED'""")
+        return
     conn = sqlite3.connect(DB_PATH)
     conn.execute("PRAGMA foreign_keys = ON")
     conn.execute("BEGIN IMMEDIATE")

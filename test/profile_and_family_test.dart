@@ -97,6 +97,61 @@ void main() {
   });
 
   group('처방전 넣기 · 가족에게 부탁하기', () {
+    testWidgets('waiting screen polls and stops after registration', (
+      tester,
+    ) async {
+      tester.view.physicalSize = const Size(390, 1200);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      var registered = false;
+      var checked = 0;
+      await tester.pumpWidget(
+        wrap(
+          AddMedicineScreen(
+            onPick: (_) {},
+            familyAsked: true,
+            onCheckFamily: () async {
+              checked++;
+              return registered;
+            },
+          ),
+        ),
+      );
+      await tester.pump(const Duration(seconds: 10));
+      await tester.pumpAndSettle();
+      expect(checked, 1);
+      registered = true;
+      await tester.pump(const Duration(seconds: 10));
+      await tester.pumpAndSettle();
+      expect(checked, 2);
+      expect(find.textContaining('아직 처방전을 넣지 않으셨어요'), findsNothing);
+      await tester.pump(const Duration(seconds: 20));
+      expect(checked, 2);
+      await tester.pumpWidget(const SizedBox());
+    });
+
+    testWidgets('query failure is not displayed as not registered', (
+      tester,
+    ) async {
+      tester.view.physicalSize = const Size(390, 1200);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(
+        wrap(
+          AddMedicineScreen(
+            onPick: (_) {},
+            familyAsked: true,
+            onCheckFamily: () async => null,
+          ),
+        ),
+      );
+      await tester.tap(find.text('넣으셨는지 확인하기'));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('아직 처방전을 넣지 않으셨어요'), findsNothing);
+      expect(find.text('넣으셨는지 확인하기'), findsOneWidget);
+      await tester.pumpWidget(const SizedBox());
+    });
+
     testWidgets('가족이 아직 안 넣었으면 그렇다고 말한다', (tester) async {
       tester.view.physicalSize = const Size(390, 1200);
       tester.view.devicePixelRatio = 1.0;
@@ -135,6 +190,7 @@ void main() {
       await tester.tap(find.text('넣으셨는지 확인하기'));
       await tester.pumpAndSettle();
       expect(checked, 2);
+      await tester.pumpWidget(const SizedBox());
     });
 
     testWidgets('가족이 이미 넣었으면 아무 말도 붙이지 않는다', (tester) async {

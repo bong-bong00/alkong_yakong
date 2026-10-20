@@ -3,6 +3,11 @@ from typing import List, Literal, Optional
 from pydantic import BaseModel, Field, field_validator
 
 
+class PasswordChangeRequest(BaseModel):
+    current_password: str = Field(min_length=1)
+    new_password: str = Field(min_length=6)
+
+
 class UserCreate(BaseModel):
     name: str
     birth_date: Optional[str] = None
@@ -60,6 +65,11 @@ class UserUpdate(BaseModel):
 class UserLogin(BaseModel):
     phone: str
     password: str
+
+
+class MedicationBatchRequest(BaseModel):
+    user_id: str
+    schedule_ids: List[int] = Field(min_length=1, max_length=50)
 
 
 class GuardianCreate(BaseModel):
@@ -151,6 +161,7 @@ class DurAnalyzeRequest(BaseModel):
     medicine_codes: List[str] = Field(default_factory=list)
     medicine_names_by_code: dict[str, str] = Field(default_factory=dict)
     analysis_purpose: Literal["medication", "consultation"] = "medication"
+    consultation_types: Optional[List[Literal["병용금기", "중복성분", "효능군중복"]]] = None
     is_pregnant: Optional[bool] = None
 
 
@@ -190,6 +201,7 @@ class MarkMissedRequest(BaseModel):
 
 class HeartRateCreate(BaseModel):
     user_id: str
+    client_request_id: Optional[str] = Field(default=None, max_length=100)
     bpm: int = Field(gt=0)
     client_request_id: Optional[str] = Field(default=None, min_length=1, max_length=100)
     measured_at: Optional[str] = None
@@ -216,6 +228,7 @@ class PharmacistHistoryMessage(BaseModel):
 
 class DrugExplainChatRequest(BaseModel):
     user_id: str
+    consultation_mode: Literal["personal", "general", "patient_all"] = "personal"
     message: str
     recent_history: List[PharmacistHistoryMessage] = Field(default_factory=list, max_length=6)
     selected_medicine: Optional[SelectedMedicine] = None

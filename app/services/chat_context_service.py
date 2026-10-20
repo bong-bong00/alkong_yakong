@@ -57,8 +57,8 @@ EXPLICIT_QUESTION_INTENTS = frozenset(
 )
 
 UNRELATED_QUESTION_REPLY = (
-    "저는 약에 관한 질문을 도와드려요. "
-    "복용법이나 주의사항을 물어봐 주세요."
+    "AI 약사는 약에 관한 질문을 도와드려요. "
+    "약의 효능·복용법·주의사항을 물어봐 주세요."
 )
 AMBIGUOUS_QUESTION_REPLY = (
     "약에 관한 질문인지 한 번만 더 알려주세요. "
@@ -106,6 +106,15 @@ def classify_question_scope(message: str, *, has_medicine_context: bool = False)
         term in normalized for term in medicine_terms
     )
     if not has_medicine_topic:
+        # A standalone term-definition question is not a request about the
+        # selected medicine, even when an old medicine context is present.
+        disease_terms = (
+            "간경화", "간경변", "당뇨", "고혈압", "저혈압", "고지혈증",
+            "천식", "위궤양", "뇌졸중", "간염", "신부전", "치매", "질환", "질병",
+        )
+        if (any(term in normalized for term in disease_terms)
+                and re.search(r"뭐야|뭔가요|무엇인가요|무슨병|어떤병|정의|뜻|(?:이란|란)[?？]*$", normalized)):
+            return "unrelated"
         unrelated_terms = (
             "날씨",
             "기온",
@@ -131,7 +140,7 @@ def classify_question_scope(message: str, *, has_medicine_context: bool = False)
         return "ambiguous"
 
     if any(term in normalized for term in ("깜빡", "잊었", "놓쳐", "보관", "저장")):
-        return "general_medication"
+        return "medicine_specific" if product_identity else "general_medication"
 
     medicine_specific_terms = (
         "부작용",
@@ -180,7 +189,7 @@ def classify_question_scope(message: str, *, has_medicine_context: bool = False)
 
 def build_general_medication_prompt(message: str) -> str:
     return f"""
-당신은 고령 사용자를 위한 의약품 일반 질문 도우미입니다.
+당신은 의약품 일반 질문 도우미입니다. 사용자의 나이·질환·임신 여부를 추측하지 마세요.
 질문의 답을 첫 문장에 쓰고 보통 2~3문장으로 마치세요.
 공백과 줄바꿈을 포함해 최대 600자, 보통 300~450자로 작성하세요. 기계적으로 자르지 말고 필수 안전 조건을 보존하세요.
 특정 약의 제품명·성분·처방 정보가 없으므로 개인 복용량, 복용 시점, 안전 여부를 추정하지 마세요.
@@ -435,7 +444,8 @@ def build_grounded_chat_prompt(
         else "정상 완료된 0건 항목으로 확정된 안내가 없습니다."
     )
     return f"""
-당신은 고령 사용자를 위한 알콩약콩 의약품 설명 도우미입니다.
+당신은 알콩약콩 의약품 설명 도우미입니다.
+사용자의 나이·질환·임신 여부를 추정하지 마세요. 고령자 등 공식 사용 조건은 일반 조건으로만 소개하고 '선생님처럼 고령자'라고 단정하지 마세요.
 
 반드시 지킬 규칙:
 - 아래에 제공된 식약처 공식정보를 최우선 근거로 사용하세요. e약은요 정보가 있으면 우선하고, 없을 때는 정확한 품목으로 검증된 의약품 허가정보만 사용하세요.

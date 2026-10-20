@@ -20,6 +20,7 @@ enum AddMedicineMethod { camera, gallery, manual, family }
 class AddMedicineScreen extends StatefulWidget {
   final void Function(AddMedicineMethod method) onPick;
   final String guardianTitle;
+  final String? onBehalfOf;
 
   /// 부탁을 마친 뒤 오늘 화면으로 돌아가는 길.
   final VoidCallback? onGoHome;
@@ -38,12 +39,13 @@ class AddMedicineScreen extends StatefulWidget {
   ///
   /// 넣었으면 부른 쪽이 다음 화면으로 넘기고 true를 돌려준다.
   /// 아직이면 false를 돌려주고, 이 화면이 "아직 안 넣으셨어요"라고 말한다.
-  final Future<bool> Function()? onCheckFamily;
+  final Future<bool?> Function()? onCheckFamily;
 
   const AddMedicineScreen({
     super.key,
     required this.onPick,
     this.guardianTitle = '',
+    this.onBehalfOf,
     this.onGoHome,
     this.familyAsked = false,
     this.onAskFamily,
@@ -54,7 +56,53 @@ class AddMedicineScreen extends StatefulWidget {
   State<AddMedicineScreen> createState() => _AddMedicineScreenState();
 }
 
-class _AddMedicineScreenState extends State<AddMedicineScreen> {
+class _AddMedicineScreenState extends State<AddMedicineScreen>
+    with WidgetsBindingObserver {
+  Timer? _poll;
+  bool _arrived = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    if (_asked) _startPolling();
+  }
+
+  @override
+  void didUpdateWidget(covariant AddMedicineScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.familyAsked && !oldWidget.familyAsked) {
+      _asked = true;
+      _startPolling();
+    }
+  }
+
+  void _startPolling() {
+    _poll?.cancel();
+    if (!_asked || _arrived || widget.onCheckFamily == null) return;
+    _poll = Timer.periodic(const Duration(seconds: 10), (_) {
+      if (mounted && (ModalRoute.of(context)?.isCurrent ?? true)) {
+        unawaited(_checkFamily());
+      }
+    });
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _startPolling();
+    } else {
+      _poll?.cancel();
+    }
+  }
+
+  @override
+  void dispose() {
+    _poll?.cancel();
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
   /// 가족에게 부탁했는지. 화면을 옮기지 않고 자리에서 카드로 바뀐다.
   late bool _asked = widget.familyAsked;
 
@@ -85,7 +133,10 @@ class _AddMedicineScreenState extends State<AddMedicineScreen> {
       _asking = false;
       _asked = sent;
     });
-    if (sent) unawaited(_checkFamily());
+    if (sent) {
+      _startPolling();
+      unawaited(_checkFamily());
+    }
   }
 
   /// 가족이 넣었는지 확인한다. 넣었으면 부른 쪽이 다음 화면으로 넘긴다.
@@ -96,12 +147,24 @@ class _AddMedicineScreenState extends State<AddMedicineScreen> {
       _checking = true;
       _notYet = false;
     });
-    final arrived = await check();
+    bool? arrived;
+    try {
+      arrived = await check();
+    } catch (_) {
+      // Query errors must not be interpreted as an unregistered prescription.
+      arrived = null;
+    }
     if (!mounted) return;
     setState(() {
       _checking = false;
-      _notYet = !arrived;
+      _notYet = arrived == false;
+      _arrived = arrived == true;
     });
+    if (arrived == true || arrived == null) {
+      _poll?.cancel();
+    } else {
+      _startPolling();
+    }
   }
 
   @override
@@ -110,33 +173,46 @@ class _AddMedicineScreenState extends State<AddMedicineScreen> {
       backgroundColor: AppColors.pageBg,
       body: Column(
         children: [
-          const SeniorBackHeader(title: '처방전 등록'),
+          SeniorBackHeader(
+            title: widget.onBehalfOf == null ? '처방전 등록' : '처방전 대신 등록',
+          ),
           Expanded(
             child: SingleChildScrollView(
               padding: const EdgeInsets.fromLTRB(16, 18, 16, 28),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(6, 6, 6, 0),
-                    child: Text.rich(
-                      TextSpan(
-                        children: [
-                          TextSpan(
-                            text: '어떻게 ',
-                            style: AppText.screenTitle(
-                              size: 26,
-                            ).copyWith(fontWeight: FontWeight.w500),
-                          ),
-                          TextSpan(
-                            text: '넣을까요?',
-                            style: AppText.screenTitle(size: 26),
-                          ),
-                        ],
+                  if (widget.onBehalfOf != null) ...[
+                    Text(
+                      '${widget.onBehalfOf} 님의 약을 등록해요',
+                      style: AppText.cardTitle(size: 21),
+                    ),
+                    const SizedBox(height: 12),
+                  ],
+                  if (widget.onBehalfOf == null) ...[
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(6, 6, 6, 0),
+                      child: Text.rich(
+                        TextSpan(
+                          children: [
+                            TextSpan(
+                              text: '어떻게 ',
+                              style: AppText.screenTitle(
+                                size: 26,
+                              ).copyWith(fontWeight: FontWeight.w500),
+                            ),
+                            TextSpan(
+                              text: '넣을까요?',
+                              style: AppText.screenTitle(
+                                size: 26,
+                              ).copyWith(fontWeight: FontWeight.w500),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
-                  ),
-                  const SizedBox(height: 16),
+                    const SizedBox(height: 16),
+                  ],
                   // 가장 쉬운 길 하나만 파란 면으로 크게 둔다.
                   _PrimaryWay(
                     icon: TablerIcons.camera,
@@ -157,7 +233,7 @@ class _AddMedicineScreenState extends State<AddMedicineScreen> {
                     label: '직접 작성',
                     onTap: () => widget.onPick(AddMedicineMethod.manual),
                   ),
-                  if (!_asked) ...[
+                  if (widget.onBehalfOf == null && !_asked) ...[
                     const SizedBox(height: 12),
                     _SmallWay(
                       icon: TablerIcons.users,
@@ -165,7 +241,7 @@ class _AddMedicineScreenState extends State<AddMedicineScreen> {
                       onTap: _asking ? null : _askFamily,
                     ),
                   ],
-                  if (_asked) ...[
+                  if (widget.onBehalfOf == null && _asked) ...[
                     const SizedBox(height: 12),
                     _AskedCard(
                       guardianTitle: resolveGuardianTitle(
@@ -366,8 +442,8 @@ class _AskedCard extends StatelessWidget {
                       style: AppText.cardTitle(size: 21),
                     ),
                     Text(
-                      '$guardianTitle 전화기에 알림이 갔어요. '
-                      '찍어서 보내시면 이 화면에 약이 나타납니다',
+                      '$guardianTitle 앱에 부탁을 남겼어요. '
+                      '처방전을 등록하시면 이 화면에서 확인할 수 있어요.',
                       style: AppText.caption(size: 17.5),
                     ),
                   ],

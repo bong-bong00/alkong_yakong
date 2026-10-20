@@ -14,6 +14,54 @@ def _chat_response(text, *, finish_reason="STOP"):
 
 
 class ChatReplyLengthTest(unittest.TestCase):
+    def test_verified_dosage_keeps_general_label_after_summary(self):
+        from app.services.pharmacist.conversation import conversation_context, record_evidence
+        medicine = {"medicine_code": "197800210", "product_name": "아디팜정", "source": "허가정보"}
+        for source in ("설명서 용법이에요.", "설명. " * 200):
+            def generated(*args, **kwargs):
+                record_evidence([medicine])
+                return source
+            with self.subTest(long=len(source) > 600), conversation_context([]), \
+                    patch.object(service, "_generate_chat_response", side_effect=generated), \
+                    patch("google.genai.Client"), \
+                    patch.object(service, "_summarize_chat_reply", return_value="요약한 용법이에요."):
+                reply = service.generate_chat_response("어떻게 먹나요?", intent="dosage")
+            self.assertTrue(reply.startswith("다음은 공식 설명서의 일반 용법 안내예요."))
+            self.assertEqual(reply.count("실제 복용은 처방·약사 안내를 따라 주세요."), 1)
+
+    def test_unverified_dosage_does_not_claim_official_label(self):
+        from app.services.pharmacist.conversation import conversation_context
+        with conversation_context([]), patch.object(service, "_generate_chat_response", return_value="확인하지 못했어요."):
+            reply = service.generate_chat_response("어떻게 먹나요?", intent="dosage")
+        self.assertEqual(reply, "확인하지 못했어요.")
+
+    def test_finalizer_passes_product_names_to_summary(self):
+        meds = [{"medicine_code": "197800210", "product_name": "아디팜정(히드록시진염산염)"},
+                {"medicine_code": "197800308", "product_name": "프리마란정(메퀴타진)"}]
+        with patch.object(service, "_generate_chat_response", return_value="설명. " * 200), \
+                patch("google.genai.Client"), patch.object(service, "_summarize_chat_reply", return_value="안내예요.") as summary:
+            service.generate_chat_response("질문", selected_medicines=meds)
+        self.assertEqual(summary.call_args.kwargs["medicine_names"], tuple(m["product_name"] for m in meds))
+
+    def test_all_scope_summary_uses_verified_evidence_names(self):
+        from app.services.pharmacist.conversation import conversation_context, record_evidence
+        medicine = {"medicine_code": "197800210", "product_name": "아디팜정(히드록시진염산염)", "source": "e약은요"}
+        def generated(*args, **kwargs):
+            record_evidence([medicine])
+            return "설명. " * 200
+        with conversation_context([]), patch.object(service, "_generate_chat_response", side_effect=generated), \
+                patch("google.genai.Client"), patch.object(service, "_summarize_chat_reply", return_value="안내예요.") as summary:
+            service.generate_chat_response("약 전체", intent="overview")
+        self.assertEqual(summary.call_args.kwargs["medicine_names"], (medicine["product_name"],))
+
+    def test_summary_dropping_a_short_display_name_is_rejected(self):
+        source = "아디팜정: 주의하세요. 프리마란정: 주의하세요. " + "설명. " * 200
+        with patch.object(service, "_generate_content_with_retry", return_value=_chat_response("아디팜정: 주의하세요.")), \
+                patch.object(service, "_summary_preserves_meaning", return_value=True):
+            self.assertEqual(service._summarize_chat_reply(MagicMock(), source, medicine_names=(
+                "아디팜정(히드록시진염산염)", "프리마란정(메퀴타진)",
+            )), source)
+
     def test_short_and_boundary_replies_are_unchanged(self):
         for reply in ("확인하지 못했어요.", "가" * 599 + "."):
             with self.subTest(length=len(reply)), patch.object(

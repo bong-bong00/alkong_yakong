@@ -46,13 +46,8 @@ void main() {
     expect(find.text('메트포르민'), findsOneWidget);
     expect(find.text('암로디핀'), findsOneWidget);
     expect(find.text('아스피린'), findsOneWidget);
-    // 지난 약은 접혀 있다.
-    await tester.scrollUntilVisible(
-      find.text('이전에 사용한 약'),
-      150,
-      scrollable: find.byType(Scrollable).first,
-    );
-    expect(find.text('이전에 사용한 약'), findsOneWidget);
+    expect(find.text('이전에 사용한 약'), findsNothing);
+    expect(find.text('사용 방법 확인 필요'), findsOneWidget);
   });
 
   testWidgets('내 정보가 가짜 몸 정보를 그린다', (tester) async {

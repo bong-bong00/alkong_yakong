@@ -24,7 +24,7 @@ class OcrPipelineResult:
 
 def _parse_result(raw_text: str, engine_name: str | None = None, **extra_trace: Any) -> OcrPipelineResult:
     started = perf_counter()
-    parsed = parse_prescription_text(raw_text, tables=extra_trace.get("tables"))
+    parsed = parse_prescription_text(raw_text, tables=extra_trace.get("tables"), fields=extra_trace.get("fields"))
     extra_trace["parser_elapsed_ms"] = round((perf_counter() - started) * 1000)
     if not parsed or not parsed.get("items"):
         trace = {"stage": "parser", **extra_trace}
