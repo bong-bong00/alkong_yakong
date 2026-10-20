@@ -567,10 +567,6 @@ class _DayCell extends StatelessWidget {
                     decoration: BoxDecoration(
                       color: background,
                       shape: BoxShape.circle,
-                      // 보고 있는 하루만 옅은 테로 짚어 준다.
-                      border: picked
-                          ? Border.all(color: AppColors.pointBorder, width: 2)
-                          : null,
                     ),
                     child: Stack(
                       clipBehavior: Clip.none,
@@ -600,6 +596,23 @@ class _DayCell extends StatelessWidget {
                       ],
                     ),
                   ),
+                  if (picked)
+                    Positioned(
+                      width: 46,
+                      height: 46,
+                      child: IgnorePointer(
+                        child: Container(
+                          key: ValueKey('month-selected-ring-${day.day}'),
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            border: Border.all(
+                              color: AppColors.pointBorder,
+                              width: 2,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
                 ],
               ),
             ),
@@ -623,11 +636,11 @@ class _Legend extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           _LegendItem(color: AppColors.calendarDone, label: '복약 완료'),
-          SizedBox(width: 10),
+          SizedBox(width: 18),
           _LegendItem(color: AppColors.calendarMissed, label: '미완료'),
-          SizedBox(width: 10),
+          SizedBox(width: 18),
           _LegendItem(color: AppColors.textPrimary, label: '오늘'),
-          SizedBox(width: 10),
+          SizedBox(width: 18),
           _LegendItem(color: AppColors.point, label: '예정', size: 6),
         ],
       ),
