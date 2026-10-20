@@ -415,6 +415,7 @@ class HeartSensor extends ChangeNotifier {
           'device_id': _deviceId ?? PolarService.defaultDeviceId,
           'source': 'POLAR_30S_AVERAGE',
           'measurement_context': measurementContext.value,
+          // ignore: equal_keys_in_map
           'client_request_id': clientRequestId,
         },
       );
