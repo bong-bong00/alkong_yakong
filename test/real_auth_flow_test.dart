@@ -34,26 +34,15 @@ void main() {
   tearDown(() async => AuthSession.logout());
 
   testWidgets(
-    'guardian hides global offline footer without clearing failure status',
+    'offline failure does not show a global footer',
     (tester) async {
       await tester.pumpWidget(const ProviderScope(child: AlkongYakongApp()));
       await tester.pumpAndSettle();
-      final container = ProviderScope.containerOf(
-        tester.element(find.byType(AlkongYakongApp)),
-      );
       SessionCredentials.offline.value = true;
-      await tester.pumpAndSettle();
-      expect(find.textContaining('오프라인 · 저장된 정보'), findsOneWidget);
-      container.read(userRoleProvider.notifier).state = UserRole.guardian;
       await tester.pumpAndSettle();
       expect(find.textContaining('오프라인 · 저장된 정보'), findsNothing);
       expect(SessionCredentials.offline.value, isTrue);
-      container.read(userRoleProvider.notifier).state = UserRole.patient;
-      await tester.pumpAndSettle();
-      expect(find.textContaining('오프라인 · 저장된 정보'), findsOneWidget);
       SessionCredentials.offline.value = false;
-      await tester.pumpAndSettle();
-      expect(find.textContaining('오프라인 · 저장된 정보'), findsNothing);
     },
   );
 

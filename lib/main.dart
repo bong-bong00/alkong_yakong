@@ -272,12 +272,11 @@ class _StartupGate extends StatelessWidget {
   );
 }
 
-class AlkongYakongApp extends ConsumerWidget {
+class AlkongYakongApp extends StatelessWidget {
   const AlkongYakongApp({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final isGuardian = ref.watch(userRoleProvider) == UserRole.guardian;
+  Widget build(BuildContext context) {
     return MaterialApp.router(
       title: '알콩약콩',
       debugShowCheckedModeBanner: false,
@@ -285,27 +284,6 @@ class AlkongYakongApp extends ConsumerWidget {
       // 앱 안에 글자 크기 설정을 두지 않고 시스템 설정을 그대로 따른다.
       // (MediaQuery.textScaler를 건드리지 않는 것이 곧 그 구현이다.)
       routerConfig: _router,
-      builder: (context, child) => ValueListenableBuilder<bool>(
-        valueListenable: SessionCredentials.offline,
-        builder: (context, offline, _) => Column(
-          children: [
-            Expanded(child: child ?? const SizedBox()),
-            if (offline && !isGuardian)
-              const Material(
-                child: SafeArea(
-                  top: false,
-                  child: Padding(
-                    padding: EdgeInsets.all(10),
-                    child: Text(
-                      '오프라인 · 저장된 정보입니다. 변경·복약 기록은 연결 후 가능합니다.',
-                      textAlign: TextAlign.center,
-                    ),
-                  ),
-                ),
-              ),
-          ],
-        ),
-      ),
     );
   }
 }
